@@ -727,6 +727,11 @@ Step 0 is the repository. Steps 1–5 decouple without changing behaviour, 6–8
    - the full suite;
    - test_processes, test_watchdog, test_console_restart and test_recovery, three times;
    - the transcripts are unchanged.
+
+   **Done** (2026-10-16; 3261 passed, ruff, format and mypy clean; transcripts and the public API golden unchanged; the four process files passed 3 runs out of 3, 20 tests each). The user moved on from step 8's review with no renames. `busk/process/options.py` (new) has `RunOptions`, frozen and keyword-only: one field per `busk run` option, named as its `argparse` destination (`no_console`, `state_dir`, …), with the option's default, and `library` as a tuple. `RunOptions.from_arguments(namespace)` reads a parse and ignores its other attributes (the subcommand; the console child's `--control`, `--link` and `--restarted`). `run_console`, `ThreadsBackend`, `Root` and `root.is_interactive` take it, and `cli.main` and the console child's `main` build it. `test_run_options.py` (4 tests): one field per option, the defaults are the parser's, every option of a full command line lands in its field, and the options are frozen. **Deviations:**
+   - **`ProcessBackend` needed no change:** it already took the descriptors, `restarted` and `log` as values, not the parse.
+   - **`replay.main(logs, *, until=None, at=(), frames=None)`** takes keyword parameters instead of a second dataclass, since replay has no run options and only `cli.main` calls it.
+   - The typed `duration` showed one `float | None` that mypy could not narrow through the `unbounded` flag in `run_console`; the test is now inline. Behaviour is unchanged.
 10. **The CLI on the runner.**
     - `run_console` becomes: options, then load and recover, then `LiveShow._attached(link from the backend, …)`, then the prompt, the script or stdin, then `stop()`, autosave's finish, and the report.
     - The CLI keeps autosave, recovery, the event log's start, `gc.freeze()`, the status lines and the limitation report.

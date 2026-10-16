@@ -250,14 +250,23 @@ def summary(record: Record) -> str:
     return record.kind
 
 
-def main(args: argparse.Namespace) -> int:
-    """Run ``busk replay``; 0 when the whole log replays, 1 otherwise."""
+def main(
+    logs: Sequence[Path],
+    *,
+    until: float | None = None,
+    at: Sequence[float] = (),
+    frames: Path | None = None,
+) -> int:
+    """Run ``busk replay`` on the event-log files ``logs`` (oldest first),
+    up to engine time ``until``, also ticking at each time of ``at``, and
+    writing every frame to ``frames`` as JSON; return 0 when the whole log
+    replays, 1 otherwise."""
     replayer = Replayer()
-    frames: list[dict[str, Any]] = []
+    written: list[dict[str, Any]] = []
     ticks = records = 0
     last: float | None = None
     try:
-        for tick in replayer.run(read_log(args.log), until=args.until, at=args.at):
+        for tick in replayer.run(read_log(logs), until=until, at=at):
             ticks += 1
             records += len(tick.records)
             last = tick.t
@@ -265,19 +274,19 @@ def main(args: argparse.Namespace) -> int:
                 print(f"{tick.t:12.6f}  {summary(record)}")
             if not tick.records:
                 print(f"{tick.t:12.6f}  (--at)")
-            if args.frames is not None:
-                frames.append(frame_json(tick.frame))
+            if frames is not None:
+                written.append(frame_json(tick.frame))
     except (LogError, ReplayError) as exc:
         print(f"error   {exc}", file=sys.stderr)
         return 1
     except OSError as exc:
         print(f"error   cannot read {exc.filename}: {exc.strerror}", file=sys.stderr)
         return 1
-    if args.frames is not None:
+    if frames is not None:
         try:
-            args.frames.write_text(json.dumps({"frames": frames}) + "\n", encoding="utf-8")
+            frames.write_text(json.dumps({"frames": written}) + "\n", encoding="utf-8")
         except OSError as exc:
-            print(f"error   cannot write {args.frames}: {exc.strerror}", file=sys.stderr)
+            print(f"error   cannot write {frames}: {exc.strerror}", file=sys.stderr)
             return 1
     end = "" if last is None else f", up to t={last:.6f}"
     print(f"replayed {records} record(s) in {ticks} tick(s){end}")

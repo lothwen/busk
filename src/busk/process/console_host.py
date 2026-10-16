@@ -99,6 +99,7 @@ from busk.persistence.paths import state_directory, web_key
 from busk.persistence.show_file import ShowLoadError, load_show, newest_backup, utc_now
 from busk.persistence.values_file import load_values
 from busk.process.links import EngineLink, LocalEngine, RemoteBus, start_log
+from busk.process.options import RunOptions
 from busk.process.report import RouteReporter, plural, print_statistics, say, warn
 from busk.process.root import is_interactive
 from busk.process.wire import Attach, Endpoint, Kind, LinkClosed, Processes, loads
@@ -256,8 +257,8 @@ class ThreadsBackend:
 
     ownsDuration = True
 
-    def __init__(self, args: argparse.Namespace) -> None:
-        self._args = args
+    def __init__(self, options: RunOptions) -> None:
+        self._options = options
         self._engine: Engine | None = None
         self._scheduler: OutputScheduler | None = None
         self._reporter: RouteReporter | None = None
@@ -286,8 +287,8 @@ class ThreadsBackend:
             print(f"{route.label}: {route.description}")
         for notice in notices:
             print(notice.text, file=sys.stderr if notice.failed else sys.stdout)
-        printing = self._args.console and not interactive
-        if not routes and not self._args.console:
+        printing = self._options.console and not interactive
+        if not routes and not self._options.console:
             print("no output: no route is open (add --console to print frames)", file=sys.stderr)
         engine = Engine(compiled, clock, base)
         printer = ConsoleOutput(engine, compiled.universes, sys.stdout) if printing else None
@@ -302,9 +303,9 @@ class ThreadsBackend:
         )
         self._reporter = RouteReporter(self._scheduler)
         self._engine = engine
-        if not self._args.no_log:
+        if not self._options.no_log:
             records = start_log(engine, show, base)
-            logs = state_directory(self._args.state_dir) / "logs"
+            logs = state_directory(self._options.state_dir) / "logs"
             self._pump = LogPump(records, EventLog(logs, report=warn))
         return LocalEngine(engine)
 
@@ -346,7 +347,7 @@ class ThreadsBackend:
         path = None if self._pump is None else self._pump.log.path
         return [
             f"processes: one (--threads), pid {os.getpid()}",
-            log_line(not self._args.no_log, path),
+            log_line(not self._options.no_log, path),
         ]
 
     def disarm(self) -> None:
@@ -552,23 +553,23 @@ class ProcessBackend:
 # ------------------------------------------------------------------- the run
 
 
-def run_console(args: argparse.Namespace, backend: Backend, *, restarted: str | None = None) -> int:
-    """Run the console of ``busk run`` (``args``: the run options) with
+def run_console(options: RunOptions, backend: Backend, *, restarted: str | None = None) -> int:
+    """Run the console of ``busk run`` (``options``: the run options) with
     ``backend`` running the engine; return the exit code (0 or 1).
 
     ``restarted`` (how the previous console ended, e.g. ``killed by signal
     9``) makes this console the replacement of one that crashed (see the
     module docs).
     """
-    path: Path = args.show
-    state_dir = state_directory(args.state_dir)
+    path: Path = options.show
+    state_dir = state_directory(options.state_dir)
     show = _load(path)
     if show is None:
         return 1
     adopt = restarted is not None
     recovery = (
         None
-        if args.no_recover and not adopt
+        if options.no_recover and not adopt
         else read_recovery(state_dir, show["meta"]["id"], path, force=adopt)
     )
     recovered_from: Path | None = None
@@ -593,8 +594,8 @@ def run_console(args: argparse.Namespace, backend: Backend, *, restarted: str | 
     print_issues(compiled.warnings, sys.stderr)
 
     base = None
-    if args.values is not None and not adopt:  # a running engine has its base frame
-        base = _logical_frame(args.values, show, compiled)
+    if options.values is not None and not adopt:  # a running engine has its base frame
+        base = _logical_frame(options.values, show, compiled)
         if base is None:
             return 1
 
@@ -604,8 +605,8 @@ def run_console(args: argparse.Namespace, backend: Backend, *, restarted: str | 
         for limitation in limitations:
             print(f"  {limitation}")
 
-    console_on = not args.no_console
-    interactive = is_interactive(args)
+    console_on = not options.no_console
+    interactive = is_interactive(options)
     clock = MonotonicClock()
     link = backend.connect(show, compiled, base, clock, interactive=interactive, stamp=stamp)
     session = Session(
@@ -616,12 +617,12 @@ def run_console(args: argparse.Namespace, backend: Backend, *, restarted: str | 
         dirty=recovered_from is not None,
         engine_state=lambda: link.snapshot,
         stamp=stamp,
-        causes=not args.no_log,
+        causes=not options.no_log,
         report=warn,
     )
     if recovery is not None:
         _recover(session, recovery, recovered_from, adopt=adopt)
-    library = ProfileLibrary(args.library)
+    library = ProfileLibrary(options.library)
     for problem in library.problems:
         print(f"library: skipped {problem}", file=sys.stderr)
 
@@ -693,12 +694,12 @@ def run_console(args: argparse.Namespace, backend: Backend, *, restarted: str | 
     console = Console(
         session,
         library,
-        iface=args.iface,
+        iface=options.iface,
         status=lambda: _status(link, backend),
         about=backend.about,
     )
-    unbounded = args.duration is None or not backend.ownsDuration
-    end = math.inf if unbounded else clock.now() + args.duration
+    duration = options.duration
+    end = math.inf if duration is None or not backend.ownsDuration else clock.now() + duration
     code = 0
     try:
         backend.arm()
@@ -707,7 +708,7 @@ def run_console(args: argparse.Namespace, backend: Backend, *, restarted: str | 
         backend.ready()
         if adopt:
             print(f"busk console: restarted after a crash ({restarted}); type 'help'", flush=True)
-        elif args.script is not None and not console.run_script(args.script, say):
+        elif options.script is not None and not console.run_script(options.script, say):
             code = 1
         if code == 0 and not console.quit_requested:
             if interactive:
@@ -716,9 +717,9 @@ def run_console(args: argparse.Namespace, backend: Backend, *, restarted: str | 
                     print("busk console: type 'help' for the commands, 'quit' to stop.", flush=True)
                 interact(console)
             elif console_on:
-                _read_commands(console, supervisor, clock, end, waits=args.duration is not None)
+                _read_commands(console, supervisor, clock, end, waits=options.duration is not None)
             else:
-                if args.duration is None:
+                if options.duration is None:
                     print("Running; press Ctrl+C to stop.", file=sys.stderr, flush=True)
                 _wait(supervisor, clock, end)
     except (KeyboardInterrupt, Terminated):
@@ -1089,7 +1090,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     backend.handle_signals()
     try:
-        return run_console(args, backend, restarted=args.restarted)
+        return run_console(RunOptions.from_arguments(args), backend, restarted=args.restarted)
     except (KeyboardInterrupt, Terminated):
         return 0  # during start-up, before the command loop
     except Exception:

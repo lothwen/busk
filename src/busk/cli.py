@@ -111,6 +111,7 @@ from busk.process.console_host import (
     run_console,
     status_line,
 )
+from busk.process.options import RunOptions
 from busk.process.report import plural
 from busk.process.root import Root
 from busk.session.ids import RandomIds
@@ -130,11 +131,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         reader = read_gdtf if args.format == "gdtf" else read_ofl
         return _import(reader, args.files, args.manufacturer, args.out, report=args.report)
     if args.command == "replay":
-        return replay.main(args)
-    if args.threads or not hasattr(socket, "send_fds"):
-        return run_console(args, ThreadsBackend(args))
+        return replay.main(args.log, until=args.until, at=args.at, frames=args.frames)
+    options = RunOptions.from_arguments(args)
+    if options.threads or not hasattr(socket, "send_fds"):
+        return run_console(options, ThreadsBackend(options))
     # Only --version may come before the subcommand: the first "run" is it.
-    return Root(args, arguments[arguments.index("run") + 1 :]).run()
+    return Root(options, arguments[arguments.index("run") + 1 :]).run()
 
 
 def _parser() -> argparse.ArgumentParser:

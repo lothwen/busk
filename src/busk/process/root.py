@@ -65,7 +65,6 @@ restart; its ``info`` command shows them.
 
 from __future__ import annotations
 
-import argparse
 import contextlib
 import json
 import os
@@ -87,6 +86,7 @@ from busk.output.console import ConsoleOutput
 from busk.output.scheduler import STALL_S, OutputScheduler
 from busk.persistence.eventlog import EventLog
 from busk.persistence.paths import state_directory
+from busk.process.options import RunOptions
 from busk.process.report import RouteReporter, plural, print_statistics, warn
 from busk.process.wire import (
     Attach,
@@ -194,17 +194,17 @@ class Root:
     """Runs ``busk run`` as three processes (see the module docs).
 
     ``run_argv`` are the arguments after ``run``, passed to the console as
-    they are; ``args`` is their parse.
+    they are; ``options`` are what they say.
     """
 
-    def __init__(self, args: argparse.Namespace, run_argv: Sequence[str]) -> None:
-        self._args = args
+    def __init__(self, options: RunOptions, run_argv: Sequence[str]) -> None:
+        self._options = options
         self._argv = list(run_argv)
         self._log = (
             None
-            if args.no_log
+            if options.no_log
             else EventLog(
-                state_directory(args.state_dir) / "logs", opened=self._log_opened, report=warn
+                state_directory(options.state_dir) / "logs", opened=self._log_opened, report=warn
             )
         )
         self._log_path: Path | None = None  # the event log's file, once open
@@ -212,7 +212,7 @@ class Root:
         self._clock = MonotonicClock()
         printer = (
             ConsoleOutput(self._frames, (), sys.stdout)
-            if args.console and not is_interactive(args)
+            if options.console and not is_interactive(options)
             else None
         )
         self._scheduler = OutputScheduler(self._frames, [], self._clock, printer)
@@ -257,8 +257,8 @@ class Root:
             target=self._scheduler.run, args=(output_stop,), name="busk-output", daemon=True
         )
         try:
-            if self._args.stats is not None:
-                self._stats_file = self._args.stats.open("a", encoding="utf-8")
+            if self._options.stats is not None:
+                self._stats_file = self._options.stats.open("a", encoding="utf-8")
             with self._start_engine() as console_end:
                 self._start_console(console_end, None)
             output.start()
@@ -284,7 +284,7 @@ class Root:
         signals, end ``--duration``, write ``--stats``; return the run's exit
         code."""
         stats_due = time.monotonic()
-        duration = self._args.duration
+        duration = self._options.duration
         while True:
             self._report_routes()
             now = time.monotonic()
@@ -567,7 +567,7 @@ class Root:
         self._reporter.poll()
         if not self._routes_checked and self._scheduler.layout is not None:
             self._routes_checked = True
-            if not self._scheduler.routes and not self._args.console:
+            if not self._scheduler.routes and not self._options.console:
                 print(
                     "no output: no route is open (add --console to print frames)",
                     file=sys.stderr,
@@ -659,11 +659,11 @@ def rss(pid: int) -> int | None:
     return int(resident) * os.sysconf("SC_PAGE_SIZE")
 
 
-def is_interactive(args: argparse.Namespace) -> bool:
-    """Whether ``busk run args`` opens the interactive prompt: the console
-    reads commands, there is no ``--duration``, and stdin is a terminal.
-    (``--console`` frame lines are off at a prompt.)"""
-    if args.no_console or args.duration is not None:
+def is_interactive(options: RunOptions) -> bool:
+    """Whether a run with ``options`` opens the interactive prompt: the
+    console reads commands, there is no ``--duration``, and stdin is a
+    terminal. (``--console`` frame lines are off at a prompt.)"""
+    if options.no_console or options.duration is not None:
         return False
     try:
         return sys.stdin.isatty()
