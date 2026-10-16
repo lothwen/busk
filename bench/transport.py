@@ -41,6 +41,7 @@ from busk.compiler.compile import CompiledShow, compile_show  # noqa: E402
 from busk.engine.clock import MonotonicClock  # noqa: E402
 from busk.engine.install import EMPTY_FRAME, Install  # noqa: E402
 from busk.model.show import Show  # noqa: E402
+from busk.process.report import warn  # noqa: E402
 from busk.process.wire import ShowDecoder, ShowEncoder, dumps, engine_view  # noqa: E402
 from busk.session.ids import CounterIds  # noqa: E402
 from busk.session.session import Session  # noqa: E402
@@ -88,7 +89,7 @@ def edit_bytes(show: Show) -> dict[str, tuple[float, int, int]]:
     """Per edit kind: median and max bytes per edit, most chunks per edit."""
     compiled = compile_show(show)
     bus = RecordingBus(compiled)
-    session = Session(show, bus, compiled=compiled, ids=CounterIds(10_000))
+    session = Session(show, bus, compiled=compiled, ids=CounterIds(10_000), report=warn)
     result: dict[str, tuple[float, int, int]] = {}
     for kind, make in edits(session.show).items():
         sizes: list[int] = []

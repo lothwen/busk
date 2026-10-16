@@ -54,8 +54,8 @@ The :class:`FeedbackWorker` runs on its own thread at :data:`FEEDBACK_HZ`:
 
 from __future__ import annotations
 
+import logging
 import math
-import sys
 import threading
 import time
 from collections.abc import Callable, Mapping
@@ -85,8 +85,7 @@ type FeedbackValue = float | str
 """An LED (1.0 or 0.0), a motor-fader position (0..1) or a label."""
 
 
-def _stderr(message: str) -> None:
-    print(message, file=sys.stderr, flush=True)
+_log = logging.getLogger("busk.surfaces")
 
 
 class FeedbackSender(Protocol):
@@ -238,6 +237,11 @@ class FeedbackWorker:
     the binding resolver's :attr:`~busk.io.bindings.BindingResolver.lastInput`,
     timed on the same clock as ``clock``, the engine's. ``senders`` returns
     the senders this worker does not own (OSC surfaces), by surface id.
+
+    ``report`` gets the send failures and unexpected errors; ``say`` and
+    ``warn`` the lines of the MIDI feedback ports opening, missing and
+    reconnecting, as :func:`~busk.io.surfaces.open_midi` words them. All three
+    log on ``busk.surfaces`` by default (``say`` at INFO); the CLI prints them.
     """
 
     def __init__(
@@ -248,7 +252,9 @@ class FeedbackWorker:
         *,
         clock: Callable[[], float] = time.monotonic,
         senders: Callable[[], Mapping[SurfaceId, FeedbackSender]] = dict,
-        report: Callable[[str], None] = _stderr,
+        report: Callable[[str], None] = _log.warning,
+        say: Callable[[str], None] = _log.info,
+        warn: Callable[[str], None] = _log.warning,
     ) -> None:
         self._latest = compiled
         self._snapshot = snapshot
@@ -256,6 +262,8 @@ class FeedbackWorker:
         self._clock = clock
         self._senders = senders
         self._report = report
+        self._say = say
+        self._warn = warn
         self._compiled: CompiledShow | None = None
         self._bindings: tuple[Binding, ...] = ()  # the bindings with feedback
         self._midi: dict[SurfaceId, tuple[ControlSurface, midi.MidiOutput | None]] = {}
@@ -340,7 +348,13 @@ class FeedbackWorker:
         for ident, surface in wanted.items():
             if ident not in self._midi:
                 port = midi.MidiOutput(surface)
-                opened = open_midi(f"MIDI {ident} feedback", port, midi.output_names)
+                opened = open_midi(
+                    f"MIDI {ident} feedback",
+                    port,
+                    midi.output_names,
+                    say=self._say,
+                    warn=self._warn,
+                )
                 self._midi[ident] = (surface, port if opened else None)
 
     def _follow_ports(self) -> None:
@@ -354,7 +368,10 @@ class FeedbackWorker:
             return
         for ident, (surface, port) in list(self._midi.items()):
             make = partial(midi.MidiOutput, surface)
-            self._midi[ident] = (surface, follow_midi(f"MIDI {ident} feedback", port, make, names))
+            followed = follow_midi(
+                f"MIDI {ident} feedback", port, make, names, say=self._say, warn=self._warn
+            )
+            self._midi[ident] = (surface, followed)
 
     def _failed(self, surface: SurfaceId, exc: Exception) -> None:
         """Count a failed send, and report the first one of ``surface``."""

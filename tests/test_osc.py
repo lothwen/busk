@@ -27,6 +27,7 @@ from busk.io.osc import BUNDLE, MAX_DEPTH, OscArg, OscError, OscSurface, decode,
 from busk.io.surfaces import SurfaceManager
 from busk.model.show import Show
 from busk.model.surface import ControlSurface, InputAddress
+from busk.process.report import say, warn
 from harness import Harness
 
 # OSC 1.0 specification, "Examples": the two messages and their bytes.
@@ -364,7 +365,7 @@ def test_a_message_reaches_the_bus_through_a_binding(
     compiled = compile_doc(doc)
     bus = CommandBus(compiled, FakeClock())
     resolver = BindingResolver(cast(Show, doc), compiled, bus)
-    manager = SurfaceManager(resolver.handle)
+    manager = SurfaceManager(resolver.handle, say=say, warn=warn)
     manager.reconcile(compiled)
     try:
         out = capsys.readouterr().out
@@ -407,7 +408,7 @@ def test_the_manager_reports_a_taken_port(
     client: socket.socket, capsys: pytest.CaptureFixture[str]
 ) -> None:
     port = client.getsockname()[1]
-    manager = SurfaceManager(lambda event: None)
+    manager = SurfaceManager(lambda event: None, say=say, warn=warn)
     manager.reconcile(compile_doc(show_with_osc(port)))
     manager.close()
     assert f"OSC s-osc: cannot listen on udp {port}: Address already in use\n" in (

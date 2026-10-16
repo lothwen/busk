@@ -30,6 +30,7 @@ from busk.io.ratelimit import (
 )
 from busk.model.common import SurfaceId
 from busk.model.surface import ControlSurface
+from busk.process.report import warn
 from busk.web.api import WebApi
 from test_web_api import FakeClient, Link
 
@@ -186,7 +187,7 @@ def test_osc_drops_are_counted_and_reported_once_a_second(
 ) -> None:
     clock = Clock()
     events: list[InputEvent] = []
-    surface = OscSurface(osc_surface(), events.append, clock=clock)
+    surface = OscSurface(osc_surface(), events.append, clock=clock, report=warn)
     source = ("10.0.0.7", 9000)
     for k in range(2000):  # 2 s at 1000 messages a second
         clock.now = k / 1000
@@ -204,7 +205,7 @@ def test_osc_drops_are_counted_and_reported_once_a_second(
 def test_an_osc_message_of_zeros_is_never_dropped(capsys: pytest.CaptureFixture[str]) -> None:
     clock = Clock()
     events: list[InputEvent] = []
-    surface = OscSurface(osc_surface(), events.append, clock=clock)
+    surface = OscSurface(osc_surface(), events.append, clock=clock, report=warn)
     source = ("10.0.0.7", 9000)
     for _ in range(int(OSC_BURST) + 10):
         surface.datagram(encode("/fader", 0.5), source)

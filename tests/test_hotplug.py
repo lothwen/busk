@@ -24,6 +24,7 @@ from busk.io import midi
 from busk.io.events import InputEvent
 from busk.io.surfaces import HOTPLUG_S, SurfaceManager
 from busk.model.surface import ControlSurface
+from busk.process.report import say, warn
 from test_feedback import ACTIVE, SMALL, Rig, build, snapshot
 
 NANO = "nanoKONTROL2:nanoKONTROL2 _ CTRL 20:0"
@@ -106,7 +107,7 @@ def test_a_device_appears_vanishes_and_reappears_with_each_message_once(
     ports: Ports, capsys: pytest.CaptureFixture[str]
 ) -> None:
     events: list[InputEvent] = []
-    manager = SurfaceManager(events.append)
+    manager = SurfaceManager(events.append, say=say, warn=warn)
     manager.reconcile(show(midi_surface("s-nano", "nanoKONTROL2")))
     assert capsys.readouterr() == (
         "",
@@ -143,7 +144,7 @@ def test_a_replug_between_two_reads_reconnects_at_once(
     ports: Ports, capsys: pytest.CaptureFixture[str]
 ) -> None:
     ports.names.append(NANO)
-    manager = SurfaceManager(lambda event: None)
+    manager = SurfaceManager(lambda event: None, say=say, warn=warn)
     manager.reconcile(show(midi_surface("s-nano", "nanoKONTROL2")))
     manager.poll(0.0)
     ports.names[-1] = NANO_AGAIN
@@ -160,7 +161,7 @@ def test_a_backend_that_cannot_list_ports_is_not_reported_again(
     ports: Ports, capsys: pytest.CaptureFixture[str]
 ) -> None:
     ports.broken = True
-    manager = SurfaceManager(lambda event: None)
+    manager = SurfaceManager(lambda event: None, say=say, warn=warn)
     manager.reconcile(show(midi_surface("s-nano", "nanoKONTROL2")))
     assert "unavailable: ALSA lib" in capsys.readouterr().err
     for now in (0.0, 2.0, 4.0):
@@ -178,7 +179,7 @@ def test_poll_opens_nothing_after_close_or_for_other_surfaces(
 ) -> None:
     calls: list[int] = []
     ports.list = lambda: calls.append(1) or list(ports.names)  # type: ignore[method-assign]
-    manager = SurfaceManager(lambda event: None)
+    manager = SurfaceManager(lambda event: None, say=say, warn=warn)
     manager.reconcile(show())  # no MIDI surface: the names are never read
     manager.poll(0.0)
     assert calls == []
@@ -245,7 +246,7 @@ def wait_until(condition: Callable[[], bool], timeout: float = 2.0) -> bool:
 def test_a_virtual_alsa_port_created_and_destroyed(capsys: pytest.CaptureFixture[str]) -> None:
     name = f"busk-hotplug-{uuid.uuid4().hex[:8]}"
     events: list[InputEvent] = []
-    manager = SurfaceManager(events.append)
+    manager = SurfaceManager(events.append, say=say, warn=warn)
     manager.reconcile(show(midi_surface("s-virtual", name)))
     assert f"MIDI s-virtual: {name!r} not found" in capsys.readouterr().err
     try:

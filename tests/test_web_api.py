@@ -28,6 +28,7 @@ from busk.compiler.compile import CompiledShow
 from busk.io.ratelimit import WEB_BURST
 from busk.io.surfaces import SurfaceManager
 from busk.model.surface import ControlSurface
+from busk.process import report
 from busk.session.session import CommandResult
 from busk.web import api as web_api
 from busk.web.api import PROTOCOL_VERSION, STATE_HZ, WebApi, WebLink, WebSurface
@@ -517,7 +518,7 @@ def shown(*surfaces: ControlSurface) -> CompiledShow:
 
 
 def test_the_manager_opens_web_surfaces(link: Link, capsys: pytest.CaptureFixture[str]) -> None:
-    manager = SurfaceManager(lambda event: None, link.link())
+    manager = SurfaceManager(lambda event: None, link.link(), say=report.say, warn=report.warn)
     manager.reconcile(shown(web_surface()))
     out = capsys.readouterr().out
     match = re.fullmatch(rf"Web s-web: http://127\.0\.0\.1:(\d+)/\?k={KEY}\n", out)
@@ -543,7 +544,7 @@ def test_a_taken_port_is_reported(link: Link, capsys: pytest.CaptureFixture[str]
     assert first.open() is None
     taken = web_surface()
     taken["match"]["port"] = first.server.port  # type: ignore[typeddict-item]
-    manager = SurfaceManager(lambda event: None, link.link())
+    manager = SurfaceManager(lambda event: None, link.link(), say=report.say, warn=report.warn)
     manager.reconcile(shown(taken))
     captured = capsys.readouterr()
     assert captured.out == ""

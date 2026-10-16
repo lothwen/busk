@@ -87,7 +87,7 @@ from busk.output.console import ConsoleOutput
 from busk.output.scheduler import STALL_S, OutputScheduler
 from busk.persistence.eventlog import EventLog
 from busk.persistence.paths import state_directory
-from busk.process.report import RouteReporter, plural, print_statistics
+from busk.process.report import RouteReporter, plural, print_statistics, warn
 from busk.process.wire import (
     Attach,
     Endpoint,
@@ -203,7 +203,9 @@ class Root:
         self._log = (
             None
             if args.no_log
-            else EventLog(state_directory(args.state_dir) / "logs", opened=self._log_opened)
+            else EventLog(
+                state_directory(args.state_dir) / "logs", opened=self._log_opened, report=warn
+            )
         )
         self._log_path: Path | None = None  # the event log's file, once open
         self._frames = FrameLink(self._log)

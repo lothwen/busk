@@ -99,7 +99,7 @@ from busk.persistence.paths import state_directory, web_key
 from busk.persistence.show_file import ShowLoadError, load_show, newest_backup, utc_now
 from busk.persistence.values_file import load_values
 from busk.process.links import EngineLink, LocalEngine, RemoteBus, start_log
-from busk.process.report import RouteReporter, plural, print_statistics
+from busk.process.report import RouteReporter, plural, print_statistics, say, warn
 from busk.process.root import is_interactive
 from busk.process.wire import Attach, Endpoint, Kind, LinkClosed, Processes, loads
 from busk.session.library import ProfileLibrary
@@ -305,7 +305,7 @@ class ThreadsBackend:
         if not self._args.no_log:
             records = start_log(engine, show, base)
             logs = state_directory(self._args.state_dir) / "logs"
-            self._pump = LogPump(records, EventLog(logs))
+            self._pump = LogPump(records, EventLog(logs, report=warn))
         return LocalEngine(engine)
 
     def start(self) -> None:
@@ -617,6 +617,7 @@ def run_console(args: argparse.Namespace, backend: Backend, *, restarted: str | 
         engine_state=lambda: link.snapshot,
         stamp=stamp,
         causes=not args.no_log,
+        report=warn,
     )
     if recovery is not None:
         _recover(session, recovery, recovered_from, adopt=adopt)
@@ -631,6 +632,7 @@ def run_console(args: argparse.Namespace, backend: Backend, *, restarted: str | 
         live=lambda: link.compiled,
         page=lambda: _page(link),
         clock=clock.now,
+        report=warn,
     )
     try:
         key = web_key(state_dir)
@@ -644,7 +646,7 @@ def run_console(args: argparse.Namespace, backend: Backend, *, restarted: str | 
         clock=clock.now,
         key=key,
     )
-    surfaces = SurfaceManager(resolver.handle, web)
+    surfaces = SurfaceManager(resolver.handle, web, say=say, warn=warn)
     surfaces.reconcile(compiled)
     feedback = FeedbackWorker(
         lambda: link.compiled,
@@ -652,6 +654,9 @@ def run_console(args: argparse.Namespace, backend: Backend, *, restarted: str | 
         resolver.lastInput,
         clock=clock.now,
         senders=surfaces.senders,
+        report=warn,
+        say=say,
+        warn=warn,
     )
     feedback.open()  # its ports' lines print here; its thread, started later, owns them
     sys.stdout.flush()
@@ -702,7 +707,7 @@ def run_console(args: argparse.Namespace, backend: Backend, *, restarted: str | 
         backend.ready()
         if adopt:
             print(f"busk console: restarted after a crash ({restarted}); type 'help'", flush=True)
-        elif args.script is not None and not console.run_script(args.script, _say):
+        elif args.script is not None and not console.run_script(args.script, say):
             code = 1
         if code == 0 and not console.quit_requested:
             if interactive:
@@ -853,10 +858,6 @@ def engine_back(snapshot: EngineSnapshot | None, *, skipped: bool) -> str:
     if snapshot.page is not None:
         parts.append(f"page {snapshot.page.number}")
     return f"engine back: restored {', '.join(parts)}"
-
-
-def _say(text: str) -> None:
-    print(text, flush=True)
 
 
 def _logical_frame(path: Path, show: Show, compiled: CompiledShow) -> NDArray[np.float64] | None:

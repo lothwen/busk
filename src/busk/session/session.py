@@ -52,9 +52,9 @@ one reference assignment after every change: they never take the lock.
 
 from __future__ import annotations
 
+import logging
 import queue
 import secrets
-import sys
 import threading
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -125,8 +125,7 @@ _MODES: Final = frozenset({"BLIND", "PROGRAMMER_FADE", "HIGHLIGHT"})
 """Programmer commands that switch a mode: no undo step."""
 
 
-def _stderr(message: str) -> None:
-    print(message, file=sys.stderr, flush=True)
+_log = logging.getLogger("busk.session")
 
 
 class Session:
@@ -142,7 +141,7 @@ class Session:
         ids: IdFactory | None = None,
         wall_clock: WallClock = utc_now,
         dirty: bool = False,
-        report: Report = _stderr,
+        report: Report = _log.warning,
         engine_state: Callable[[], EngineSnapshot | None] | None = None,
         stamp: Stamp | None = None,
         programmer: Programmer = EMPTY,
@@ -257,7 +256,8 @@ class Session:
         raises :class:`~busk.commands.bus.CommandRejected`, as the bus does).
         Every other command is handed to one worker thread that submits them
         in arrival order, so an input thread never blocks behind a long edit;
-        failures are reported through ``report``.
+        failures are reported through ``report`` (by default a ``busk.session``
+        warning; the CLI prints them on stderr).
         """
         if command_class(cast(Mapping[str, object], command)) == "performance":
             self._bus.submit(command, origin)

@@ -62,6 +62,7 @@ from busk.model.show import Show  # noqa: E402
 from busk.model.validate import has_errors, validate_show  # noqa: E402
 from busk.persistence.autosave import AutosaveWorker  # noqa: E402
 from busk.persistence.show_file import new_show  # noqa: E402
+from busk.process.report import warn  # noqa: E402
 from busk.session.ids import CounterIds  # noqa: E402
 from busk.session.library import ProfileLibrary  # noqa: E402
 from busk.session.session import Session  # noqa: E402
@@ -79,7 +80,9 @@ def demo_show() -> Show:
     ids = CounterIds()
     show = new_show("Club Night", ids=ids, now=NOW, cid=CID)
     compiled = compile_show(show)
-    session = Session(show, Engine(compiled, MonotonicClock()).bus, compiled=compiled, ids=ids)
+    session = Session(
+        show, Engine(compiled, MonotonicClock()).bus, compiled=compiled, ids=ids, report=warn
+    )
     console = Console(session, ProfileLibrary())
     lines = (ROOT / "examples" / "phase3-build.busk").read_text().splitlines()
     for line in lines:
@@ -219,7 +222,7 @@ def measure(name: str, show: Show, running: int, *, processes: bool) -> dict[str
     clock = MonotonicClock()
     compiled = compile_show(show)
     engine = make_engine(compiled, clock, processes=processes)
-    session = Session(show, engine.bus, compiled=compiled, ids=CounterIds(10_000))
+    session = Session(show, engine.bus, compiled=compiled, ids=CounterIds(10_000), report=warn)
     engine.start()
     for playback in list(show["playbacks"])[:running]:
         session.submit(

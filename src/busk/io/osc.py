@@ -30,8 +30,9 @@ becomes an :class:`~busk.io.events.InputEvent` on the input address
 messages a second, bursts of :data:`~busk.io.ratelimit.OSC_BURST`. Beyond it
 a message is dropped and counted in :attr:`OscSurface.dropped`, unless all
 its values are 0: it may release a button, which must never stick. Drops are
-printed on stderr at most once a second (``OSC s-touch: rate limit: 37
-messages dropped``).
+reported through ``report`` at most once a second (``OSC s-touch: rate limit:
+37 messages dropped``): a ``busk.surfaces`` warning by default, stderr in the
+CLI.
 
 Feedback
 --------
@@ -46,10 +47,10 @@ feedback worker sends every value again when the destination changes.
 
 from __future__ import annotations
 
+import logging
 import math
 import socket
 import struct
-import sys
 import threading
 import time
 from collections.abc import Callable
@@ -60,6 +61,8 @@ from busk.io.midi import FeedbackKind
 from busk.io.ratelimit import OSC_BURST, OSC_RATE, TokenBucket
 from busk.model.common import SurfaceId
 from busk.model.surface import ControlSurface, InputAddress, OscInput, SurfaceMatch
+
+_log = logging.getLogger("busk.surfaces")
 
 type OscArg = int | float | str | bytes | bool | None
 """A decoded argument (``N`` and ``I`` are ``None``)."""
@@ -278,10 +281,13 @@ class OscSurface:
         on_event: Callable[[InputEvent], None],
         *,
         clock: Callable[[], float] = time.monotonic,
+        report: Callable[[str], None] = _log.warning,
     ) -> None:
-        """``clock`` times the rate limit (tests pass a fake one)."""
+        """``clock`` times the rate limit (tests pass a fake one); ``report``
+        gets the rate limit's drop lines."""
         self.surface = surface
         self._on_event = on_event
+        self._report = report
         self._socket: socket.socket | None = None
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
@@ -363,11 +369,7 @@ class OscSurface:
                 self.dropped += 1
                 if dropped := self._bucket.report():
                     noun = "message" if dropped == 1 else "messages"
-                    print(
-                        f"OSC {self.id}: rate limit: {dropped} {noun} dropped",
-                        file=sys.stderr,
-                        flush=True,
-                    )
+                    self._report(f"OSC {self.id}: rate limit: {dropped} {noun} dropped")
                 continue
             for value in given:
                 try:

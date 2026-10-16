@@ -83,6 +83,7 @@ from busk.model.common import PlaybackId, SurfaceId  # noqa: E402
 from busk.model.show import Show  # noqa: E402
 from busk.model.surface import InputAddress  # noqa: E402
 from busk.model.validate import has_errors, validate_show  # noqa: E402
+from busk.process.report import say, warn  # noqa: E402
 from busk.session.ids import CounterIds  # noqa: E402
 from busk.session.session import InputSink, Session  # noqa: E402
 from busk.web.api import WebLink  # noqa: E402
@@ -254,7 +255,7 @@ def measure(name: str, show: Show, seconds: float, *, processes: bool) -> dict[s
     clock = MonotonicClock()
     compiled = compile_show(show)
     engine = make_engine(compiled, clock, processes=processes)
-    session = Session(show, engine.bus, compiled=compiled, ids=CounterIds(10_000))
+    session = Session(show, engine.bus, compiled=compiled, ids=CounterIds(10_000), report=warn)
     reports: list[str] = []
 
     def page() -> str | None:
@@ -277,7 +278,7 @@ def measure(name: str, show: Show, seconds: float, *, processes: bool) -> dict[s
         clock=clock.now,
         key=KEY,
     )
-    surfaces = SurfaceManager(resolver.handle, link)
+    surfaces = SurfaceManager(resolver.handle, link, say=say, warn=warn)
     surfaces.reconcile(compiled)
     outputs = {
         binding["surfaceId"]: FakeMidiOut()
@@ -291,6 +292,8 @@ def measure(name: str, show: Show, seconds: float, *, processes: bool) -> dict[s
         clock=clock.now,
         senders=lambda: {**surfaces.senders(), **outputs},
         report=reports.append,
+        say=say,
+        warn=warn,
     )
     feedback.open()
 

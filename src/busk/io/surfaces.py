@@ -13,13 +13,15 @@ removed or changed ones. Each kind gets its own input:
   its WebSocket on its port. It restarts only when its port or host
   changes, so phones stay connected through other edits.
 
-Opening a surface prints its lines on stdout (``MIDI s-nano: <port>``,
-``OSC s-touch: listening on udp 8000, feedback to the sender``, one
-``Web s-phone: http://10.0.0.5:8080/?k=…`` per address). A surface that
-cannot open is reported once on stderr, with the reason (for a missing MIDI
-device, the ports that do exist; for OSC and the web, a port in use), and
-the run goes on without it. An OSC or web surface is tried again only when
-an edit changes it.
+Opening a surface reports its lines through ``say`` (``MIDI s-nano:
+<port>``, ``OSC s-touch: listening on udp 8000, feedback to the sender``,
+one ``Web s-phone: http://10.0.0.5:8080/?k=…`` per address). A surface that
+cannot open is reported once through ``warn``, with the reason (for a
+missing MIDI device, the ports that do exist; for OSC and the web, a port in
+use), and the run goes on without it. An OSC or web surface is tried again
+only when an edit changes it. By default ``say`` logs at INFO and ``warn``
+at WARNING on the ``busk.surfaces`` logger; the CLI passes printers for
+stdout and stderr (phase-8-plan §5.6).
 
 **MIDI hot-plug** (phase-7-plan decision 18, §5.16). Every
 :data:`HOTPLUG_S` :meth:`SurfaceManager.poll` reads the MIDI input port
@@ -29,7 +31,7 @@ names once and serves every MIDI surface from that list
 * a surface that is not open and whose device now appears is opened:
   ``MIDI s-nano: <port> (connected)``;
 * an open one whose port name has vanished is closed and waits for its
-  device: ``MIDI s-nano: unplugged; waiting for it`` (stderr).
+  device: ``MIDI s-nano: unplugged; waiting for it`` (a ``warn`` line).
 
 rtmidi raises nothing when a device is unplugged, so the vanished name is
 the only signal. ALSA gives a replugged device a new client number, so a
@@ -45,8 +47,8 @@ thread only.
 
 from __future__ import annotations
 
+import logging
 import math
-import sys
 from collections.abc import Callable
 from functools import partial
 from typing import Final, Protocol
@@ -60,6 +62,11 @@ from busk.model.surface import ControlSurface
 from busk.web.api import WebLink, WebSurface
 
 type Opened = midi.MidiInput | OscSurface | WebSurface
+
+_log = logging.getLogger("busk.surfaces")
+
+type Report = Callable[[str], None]
+"""Where a line goes: a printer in the CLI, a logger method by default."""
 
 HOTPLUG_S: Final = 2.0
 """Seconds between two reads of the MIDI port names (decision 18)."""
@@ -80,31 +87,40 @@ class MidiPort(Protocol):
     def close(self) -> None: ...
 
 
-def open_midi(label: str, port: MidiPort, names: Callable[[], list[str]]) -> bool:
-    """Open ``port`` among the ports ``names()`` lists, and print the outcome
-    after ``label``: the port's name on stdout, or on stderr why it did not
-    open (for a missing device, the ports that do exist). ``True`` when it
-    opened."""
+def open_midi(
+    label: str,
+    port: MidiPort,
+    names: Callable[[], list[str]],
+    *,
+    say: Report = _log.info,
+    warn: Report = _log.warning,
+) -> bool:
+    """Open ``port`` among the ports ``names()`` lists, and report the
+    outcome after ``label``: the port's name through ``say``, or through
+    ``warn`` why it did not open (for a missing device, the ports that do
+    exist). ``True`` when it opened."""
     try:
         available = names()
         name = port.open(available)
     except Exception as exc:  # no ALSA sequencer, backend not loadable, …
-        print(f"{label}: unavailable: {exc}", file=sys.stderr, flush=True)
+        warn(f"{label}: unavailable: {exc}")
         return False
     if name is None:
         wanted = repr(port.deviceName) if port.deviceName else "no match.deviceName"
-        print(
-            f"{label}: {wanted} not found; available: {', '.join(available) or 'none'}",
-            file=sys.stderr,
-            flush=True,
-        )
+        warn(f"{label}: {wanted} not found; available: {', '.join(available) or 'none'}")
         return False
-    print(f"{label}: {name}", flush=True)
+    say(f"{label}: {name}")
     return True
 
 
 def follow_midi[P: MidiPort](
-    label: str, port: P | None, make: Callable[[], P], names: list[str]
+    label: str,
+    port: P | None,
+    make: Callable[[], P],
+    names: list[str],
+    *,
+    say: Report = _log.info,
+    warn: Report = _log.warning,
 ) -> P | None:
     """One hot-plug step for one MIDI port (see the module docs): ``port``
     is the open port, or ``None`` while its device is missing; ``names`` are
@@ -112,13 +128,14 @@ def follow_midi[P: MidiPort](
     afterwards: ``port`` while its name is still there, a new port from
     ``make()`` once its device appears (in the same step as the old name
     vanished, for a replug between two reads), ``None`` while it is
-    missing. Each change is printed after ``label``; a port that appears but
-    will not open is tried again on the next read, silently."""
+    missing. Each change is reported after ``label`` (a connection through
+    ``say``, an unplug through ``warn``); a port that appears but will not
+    open is tried again on the next read, silently."""
     if port is not None:
         if port.portName in names:
             return port
         port.close()
-        print(f"{label}: unplugged; waiting for it", file=sys.stderr, flush=True)
+        warn(f"{label}: unplugged; waiting for it")
     found = make()
     try:
         name = found.open(names)
@@ -126,7 +143,7 @@ def follow_midi[P: MidiPort](
         return None
     if name is None:
         return None
-    print(f"{label}: {name} (connected)", flush=True)
+    say(f"{label}: {name} (connected)")
     return found
 
 
@@ -141,9 +158,18 @@ class SurfaceManager:
     calls :meth:`senders`.
     """
 
-    def __init__(self, handle: Callable[[InputEvent], None], web: WebLink | None = None) -> None:
+    def __init__(
+        self,
+        handle: Callable[[InputEvent], None],
+        web: WebLink | None = None,
+        *,
+        say: Report = _log.info,
+        warn: Report = _log.warning,
+    ) -> None:
         self._handle = handle
         self._web = web
+        self._say = say
+        self._warn = warn
         self._open: dict[SurfaceId, tuple[ControlSurface, Opened | None]] = {}
         """Each surface's definition as opened, and its input (``None`` when
         it could not open)."""
@@ -194,37 +220,41 @@ class SurfaceManager:
         for ident, surface, port in surfaces:
             assert port is None or isinstance(port, midi.MidiInput)
             make = partial(midi.MidiInput, surface, self._handle)
-            followed = follow_midi(f"MIDI {ident}", port, make, names)
+            followed = follow_midi(
+                f"MIDI {ident}", port, make, names, say=self._say, warn=self._warn
+            )
             self._open[ident] = (surface, followed)
 
     def _open_midi(self, surface: ControlSurface) -> midi.MidiInput | None:
         """Open a MIDI surface's input, reporting the outcome."""
         port = midi.MidiInput(surface, self._handle)
-        return port if open_midi(f"MIDI {surface['id']}", port, midi.input_names) else None
+        label = f"MIDI {surface['id']}"
+        opened = open_midi(label, port, midi.input_names, say=self._say, warn=self._warn)
+        return port if opened else None
 
     def _open_osc(self, surface: ControlSurface) -> OscSurface | None:
         """Open an OSC surface, reporting the outcome."""
-        osc = OscSurface(surface, self._handle)
+        osc = OscSurface(surface, self._handle, report=self._warn)
         reason = osc.open()
         if reason is not None:
-            print(f"OSC {surface['id']}: {reason}", file=sys.stderr, flush=True)
+            self._warn(f"OSC {surface['id']}: {reason}")
             return None
-        print(f"OSC {surface['id']}: {osc.describe()}", flush=True)
+        self._say(f"OSC {surface['id']}: {osc.describe()}")
         return osc
 
     def _open_web(self, surface: ControlSurface) -> WebSurface | None:
         """Open a web surface, printing the addresses to open on a phone."""
         label = f"Web {surface['id']}"
         if self._web is None:
-            print(f"{label}: unavailable: no engine to serve", file=sys.stderr, flush=True)
+            self._warn(f"{label}: unavailable: no engine to serve")
             return None
         web = WebSurface(surface, self._web)
         reason = web.open()
         if reason is not None:
-            print(f"{label}: {reason}", file=sys.stderr, flush=True)
+            self._warn(f"{label}: {reason}")
             return None
         for url in web.urls():
-            print(f"{label}: {url}", flush=True)
+            self._say(f"{label}: {url}")
         return web
 
     def _publish(self) -> None:

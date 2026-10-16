@@ -55,7 +55,8 @@ the motor never fights the operator's finger (phase-6-plan §5.10).
 
 **Errors never escape** into the backend's thread. A command the bus
 rejects (or any other exception) is reported once per binding, through the
-``report`` callback, and the binding keeps working.
+``report`` callback (by default a ``busk.surfaces`` warning; the CLI prints it
+on stderr), and the binding keeps working.
 
 **Live edits** (Phase 3). Commands go to a *sink*: the engine's bus, or the
 session's :class:`~busk.session.session.InputSink`, which also takes
@@ -68,7 +69,7 @@ new bindings work without a restart.
 
 from __future__ import annotations
 
-import sys
+import logging
 import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -97,8 +98,7 @@ PRESS: Final = 0.5
 """A button is pressed while its value is at least this."""
 
 
-def _stderr(message: str) -> None:
-    print(message, file=sys.stderr, flush=True)
+_log = logging.getLogger("busk.surfaces")
 
 
 def current_page(compiled: CompiledShow, ident: str | None) -> CompiledPage | None:
@@ -144,7 +144,7 @@ class BindingResolver:
         show: Show,
         compiled: CompiledShow,
         bus: CommandSink,
-        report: Callable[[str], None] = _stderr,
+        report: Callable[[str], None] = _log.warning,
         *,
         live: Callable[[], CompiledShow] | None = None,
         page: Callable[[], str | None] | None = None,

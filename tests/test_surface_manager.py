@@ -14,6 +14,7 @@ from busk.compiler.compile import CompiledShow
 from busk.io import midi
 from busk.io.surfaces import SurfaceManager
 from busk.model.surface import ControlSurface
+from busk.process.report import say, warn
 
 NANO = "nanoKONTROL2:nanoKONTROL2 _ CTRL 20:0"
 APC = "APC40 mkII:APC40 mkII MIDI 1 24:0"
@@ -62,7 +63,7 @@ def opened(monkeypatch: pytest.MonkeyPatch) -> list[FakePort]:
 
 
 def test_open_change_and_close(opened: list[FakePort], capsys: pytest.CaptureFixture[str]) -> None:
-    manager = SurfaceManager(lambda event: None)
+    manager = SurfaceManager(lambda event: None, say=say, warn=warn)
     nano, apc = midi_surface("s-a", "nanoKONTROL2"), midi_surface("s-b", "APC40")
     manager.reconcile(show(nano, apc))
     assert [port.name for port in opened] == [NANO, APC]
@@ -87,7 +88,7 @@ def test_open_change_and_close(opened: list[FakePort], capsys: pytest.CaptureFix
 def test_a_missing_device_is_reported_once(
     opened: list[FakePort], capsys: pytest.CaptureFixture[str]
 ) -> None:
-    manager = SurfaceManager(lambda event: None)
+    manager = SurfaceManager(lambda event: None, say=say, warn=warn)
     missing = midi_surface("s-x", "Launchpad")
     for _ in range(3):
         manager.reconcile(show(missing))
@@ -106,14 +107,14 @@ def test_a_backend_that_cannot_run_is_reported(
         raise OSError("no ALSA sequencer")
 
     monkeypatch.setattr(midi, "input_names", broken)
-    manager = SurfaceManager(lambda event: None)
+    manager = SurfaceManager(lambda event: None, say=say, warn=warn)
     manager.reconcile(show(midi_surface("s-a", "nano")))
     assert capsys.readouterr().err == "MIDI s-a: unavailable: no ALSA sequencer\n"
 
 
 def test_events_reach_the_handler(opened: list[FakePort]) -> None:
     events: list[Any] = []
-    manager = SurfaceManager(events.append)
+    manager = SurfaceManager(events.append, say=say, warn=warn)
     manager.reconcile(show(midi_surface("s-a", "nano")))
     opened[0].callback(midi.mido.Message("control_change", channel=0, control=3, value=127))
     assert [(e.surfaceId, e.address, e.value) for e in events] == [
@@ -130,7 +131,7 @@ def test_a_web_surface_needs_the_engine(
         ControlSurface,
         {"id": "s-w", "name": "w", "kind": "web", "match": {"port": 8080}, "faderPickup": "jump"},
     )
-    manager = SurfaceManager(lambda event: None)
+    manager = SurfaceManager(lambda event: None, say=say, warn=warn)
     manager.reconcile(show(web))
     assert opened == []
     assert manager.senders() == {}

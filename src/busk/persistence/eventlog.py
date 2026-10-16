@@ -50,7 +50,7 @@ from __future__ import annotations
 
 import contextlib
 import json
-import sys
+import logging
 import threading
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
@@ -64,6 +64,8 @@ from busk.commands.types import CommandEnvelope
 from busk.engine.snapshot import EngineSnapshot, PageStatus, PlaybackStatus, Restore, SpeedStatus
 from busk.persistence.paths import log_directory
 from busk.persistence.show_file import WallClock, file_stamp, utc_now
+
+_log = logging.getLogger("busk.eventlog")
 
 ROTATE_BYTES: Final = 64 * 1024 * 1024
 """A log file is rotated once the next line would take it past this size."""
@@ -203,8 +205,9 @@ class EventLog:
     module docs). ``directory`` is ``<stateDir>/logs``.
 
     Not thread-safe: one writer thread calls :meth:`add`. A write that fails
-    is reported once on stderr and the record is lost; the log goes on
-    trying. ``opened`` is called with each new file's path.
+    is reported once through ``report`` (by default a ``busk.eventlog``
+    warning) and the record is lost; the log goes on trying. ``opened`` is
+    called with each new file's path.
     """
 
     def __init__(
@@ -215,12 +218,14 @@ class EventLog:
         keep: int = KEEP,
         wall_clock: WallClock = utc_now,
         opened: Callable[[Path], None] | None = None,
+        report: Callable[[str], None] = _log.warning,
     ) -> None:
         self._directory = directory
         self._max_bytes = max_bytes
         self._keep = keep
         self._wall_clock = wall_clock
         self._opened = opened
+        self._report = report
         self._file: IO[bytes] | None = None
         self._show: str | None = None
         self._size = 0
@@ -250,7 +255,7 @@ class EventLog:
             self.lost += 1
             if not self._failed:
                 self._failed = True
-                print(f"event log: cannot write: {exc}", file=sys.stderr)
+                self._report(f"event log: cannot write: {exc}")
 
     def flush(self) -> None:
         """Hand what was written to the operating system."""

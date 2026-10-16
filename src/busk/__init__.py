@@ -55,4 +55,10 @@ Package map (a subset of spec §21):
     The ``busk`` command line (``validate``, ``new``, ``run``).
 """
 
+import logging
+
 __version__ = "0.1.0"
+
+# Core modules report through ``busk.*`` loggers (phase-8-plan §5.6); a
+# program that configures no logging sees nothing of them.
+logging.getLogger(__name__).addHandler(logging.NullHandler())

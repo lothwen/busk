@@ -8,7 +8,10 @@ process of ``busk run --threads``.
   engine stalls) and each route whose status changed (``sACN r1: send
   failed: …``, then ``sACN r1: sending again``);
 * :func:`print_statistics` prints the final ``engine:`` line and each
-  route's counts.
+  route's counts;
+* :func:`say` and :func:`warn` are the reporters the CLI passes to the
+  session, the surfaces, the feedback worker and the event log, which
+  log by default (phase-8-plan §5.6): a line on stdout or stderr, at once.
 """
 
 from __future__ import annotations
@@ -66,6 +69,16 @@ def print_statistics(
         if route.faults:
             line += f", {plural(route.faults, 'fault')}"
         print(line)
+
+
+def say(text: str) -> None:
+    """Print ``text`` on stdout at once (the CLI's INFO lines)."""
+    print(text, flush=True)
+
+
+def warn(text: str) -> None:
+    """Print ``text`` on stderr at once (the CLI's warnings)."""
+    print(text, file=sys.stderr, flush=True)
 
 
 def plural(count: int, word: str) -> str:

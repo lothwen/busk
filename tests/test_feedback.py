@@ -22,6 +22,7 @@ from busk.io import midi
 from busk.io.feedback import ECHO_HOLD, FeedbackValue, FeedbackWorker, feedback_values
 from busk.model.common import MasterId, PlaybackId, SurfaceId
 from busk.model.surface import InputAddress
+from busk.process.report import say, warn
 from harness import Harness, tap
 
 type Spec = tuple[str, Doc, str] | tuple[str, Doc, str, str]
@@ -351,6 +352,8 @@ class Rig:
             self.lastInput,
             senders=lambda: self.senders,
             report=self.reports.append,
+            say=say,
+            warn=warn,
         )
 
     def sent(self, surface: str = "s-midi") -> list[tuple[int, str, FeedbackValue]]:
