@@ -748,6 +748,23 @@ Step 0 is the repository. Steps 1–5 decouple without changing behaviour, 6–8
     - the public API golden is unchanged, which proves the CLI needed no new public API.
 
     **Fallback:** if process mode resists, only `--threads` moves onto the runner, and process mode keeps its own wiring. That gets recorded in **Done** and in the README.
+
+    **Done** (2026-10-16; 3261 passed, ruff, format and mypy clean; transcripts and the public API golden unchanged). **No fallback:** both run modes run on the runner. The four process files passed 3 runs out of 3, 20 tests each. `-m perf` 12 passed (Appendix A 0.079 ms mean, reference rig 1.943 ms, 60-GO burst 17.6 ms, safety stage ratio 1.013), and `-m soak` passed (72 s). `edit_latency.py --processes`: demo 0 overruns in 804 ticks, reference 0 in 1913. `surface_load.py --processes`: demo 0 in 2010, reference 14 in 2006 (0.70 %); that bench does not use the console wiring, and two more runs of each tree gave 0.30 % and 0.55 % before the step, 0.20 % and 0.70 % after. The five example scripts ran through the real CLI in process mode, on a fresh show, in this tree and in the step 9 commit. Their masked, sorted lines match, apart from the root's `no output: no route is open` warning. That warning is the race the transcript test leaves out: it came in 3 of 4 phase 3 runs here and 4 of 4 before. What changed:
+   - **`LiveShow._attached(show, compiled, link, clock, *, …)`** is an alternate constructor (`cls.__new__` and a `_setup` shared with `__init__`). It takes:
+     - the CLI's loaded and compiled show, which is not validated or compiled again;
+     - the backend's link;
+     - the session's `path`, `dirty`, `stamp` and `causes`;
+     - the console's `iface`, `status` and `about`;
+     - the CLI printers `say` and `warn`;
+     - `poll`: the CLI's status line, then the backend's reports.
+
+     The `--values` base frame is not a parameter, because the backend has already built it into the engine or the `RemoteBus`.
+   - **An attached show runs no engine.** It opens nothing on its own, and its `frame` stays `None`. `run_console` calls `_open()` where the surfaces opened before, so their lines print in the same place. Then `start()`, which only starts the feedback thread. Then `_poll()` between commands, or `_start_monitor()` for the interactive prompt. Then `stop()`, before `backend.stop()`. The CLI keeps its own `link.sync(SETTLE_S)` after `arm()`, with its own message.
+   - **`Supervisor` is gone.** Its loop is now `LiveShow`'s monitor (`_poll`: the CLI's `poll`, then the surfaces). Its status-line half is `console_host.StatusLines`. At the interactive prompt the thread is now named `busk-monitor`, not `busk-supervisor`.
+   - **`EngineLink` and `LocalEngine` moved** from `process/links.py` to a new `busk/engine/link.py`, so the runner and the CLI share one `LocalEngine.sync`. `test_links.py` imports `LocalEngine` from there. Step 7's copies are gone: `console_host.SETTLE_S` and `_SUPERVISE_S` were removed, and the CLI uses `runner.SETTLE_S` and `runner.MONITOR_S`.
+   - **`_LocalRun` takes `printer` (`--console`) and `say`/`warn`**, which default to the `busk.output` logger. `ThreadsBackend` passes the CLI printers, and keeps `RouteReporter` for route status: the CLI prints both status changes on stderr, while `_LocalRun.poll` logs `sending again` as INFO. `_LocalRun.stop()` no longer polls; `LiveShow.stop()` does that after it. The `--threads` route lines now flush at once (same text, same streams).
+   - **`validate`, `new` and `import`** import `load_show`, `ShowLoadError`, `new_show`, `save_show`, `read_ofl`, `read_gdtf`, `ImportFailed` and `ImportReport` from `busk`. `new` no longer passes `RandomIds`, which is the default. `utc_now`, `installation_cid` and `state_directory` stay internal: they belong to the CLI's state directory.
+   - The README layout names `engine/link.py` and the new jobs of `links.py` and `console_host.py`. The rest of the README is step 12's.
 11. **Packaging** (§5.9): `LICENSE`, the `pyproject.toml` changes, and `test_packaging.py`, which checks that `__version__` matches `pyproject.toml` and that `License-Expression: MIT` is in the built wheel's metadata. → *verify*, in scratch directories only:
     - `uv build --out-dir <scratch>`;
     - a fresh virtual environment with the wheel and no extras: `busk --version` prints `busk 0.1.0`, `busk validate tests/fixtures/appendix_a.json` reports 0 errors, the docs examples run, and a MIDI surface gives the one warning;

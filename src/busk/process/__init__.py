@@ -16,7 +16,7 @@ Phase 6 layout: one process, the same components, in-process links.
 
 ``wire``          framing, messages, raw frames and the compiled-show codec
 ``engine_host``   the engine process: ``python -m busk.process.engine_host``
-``links``         the console's side: ``EngineLink``, ``LocalEngine``, ``RemoteBus``
+``links``         the console's side of the engine process: ``RemoteBus``
 ``console_host``  the console process (``python -m busk.process.console_host``),
                   and ``run_console``, which ``--threads`` runs in one process
 ``root``          the root: spawns and links the children, runs the output

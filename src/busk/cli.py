@@ -81,6 +81,12 @@
     counts. ``--values FILE``, ``--duration SECONDS`` and ``--console`` work as
     in Phase 2 (``--console`` frame lines are off at an interactive prompt).
 
+``validate``, ``new`` and ``import`` use only the public API (``busk.load_show``,
+``busk.new_show``, ``busk.read_ofl`` …), and ``run`` runs its show on
+:class:`busk.LiveShow`'s wiring (phase-8-plan step 10); only the state
+directory, the process split, autosave and recovery, the event log, replay
+and the status lines are the CLI's own.
+
 Route, surface, limitation, status, frame and statistics lines go to
 stdout. Issues, warnings, routes and surfaces that cannot open, send
 failures and other diagnostics go to stderr, except for ``validate``, whose
@@ -96,13 +102,21 @@ import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from busk import __version__, replay
+from busk import (
+    ImportFailed,
+    ImportReport,
+    ShowLoadError,
+    __version__,
+    load_show,
+    new_show,
+    read_gdtf,
+    read_ofl,
+    replay,
+    save_show,
+)
 from busk.engine.clock import SWITCH_INTERVAL
-from busk.importers import ImportFailed, ImportReport
-from busk.importers.gdtf import read_gdtf
-from busk.importers.ofl import read_ofl
 from busk.persistence.paths import installation_cid, state_directory
-from busk.persistence.show_file import ShowLoadError, load_show, new_show, save_show, utc_now
+from busk.persistence.show_file import utc_now
 from busk.process.console_host import (
     ThreadsBackend,
     add_run_arguments,
@@ -114,7 +128,6 @@ from busk.process.console_host import (
 from busk.process.options import RunOptions
 from busk.process.report import plural
 from busk.process.root import Root
-from busk.session.ids import RandomIds
 
 __all__ = ["SWITCH_INTERVAL", "main", "status_line"]
 
@@ -240,7 +253,7 @@ def _new(path: Path, title: str | None, state_dir: Path | None) -> int:
         return 1
     now = utc_now()
     cid = installation_cid(state_directory(state_dir))
-    show = new_show(title or path.stem, ids=RandomIds(), now=now, cid=cid)
+    show = new_show(title or path.stem, now=now, cid=cid)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         save_show(show, path, now=now, backups=False)

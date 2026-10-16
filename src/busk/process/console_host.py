@@ -4,12 +4,22 @@
 (``cli._run``), without the engine and the output: load, recover and compile
 the show, open the session, the surfaces, feedback, the web remote and
 autosave, then read console commands until ``quit``, the end of stdin or of
-``--script``, or a signal. What runs the engine is a :class:`Backend`:
+``--script``, or a signal.
+
+The show runs on the library's runner (phase-8-plan step 10): a
+:class:`~busk.runner.LiveShow` attached to the backend's engine link
+(``LiveShow._attached``) builds the session, the console, the surfaces and
+feedback, polls them and stops them in order, as it does for a library user.
+What only the CLI has stays here: recovery and autosave, the ``--values``
+frame, the event log, ``gc.freeze()``, the status lines, the limitation
+report, the prompt, stdin and ``--script``. What runs the engine is a
+:class:`Backend`:
 
 * :class:`ThreadsBackend` (``busk run --threads``): the Phase 6 layout. The
-  engine and the output scheduler run as threads of this process, behind a
-  :class:`~busk.process.links.LocalEngine`; this process prints the route
-  lines, owns ``--duration`` and prints the final statistics;
+  engine and the output scheduler run as threads of this process (the
+  runner's ``_LocalRun``), behind a :class:`~busk.engine.link.LocalEngine`;
+  this process prints the route lines, owns ``--duration`` and prints the
+  final statistics;
 * :class:`ProcessBackend` (the console process): the session's bus is a
   :class:`~busk.process.links.RemoteBus` on the link the root handed over
   (``--link``). The root prints the route lines and the statistics, owns
@@ -18,9 +28,9 @@ autosave, then read console commands until ``quit``, the end of stdin or of
 
 Either way, everything that read ``engine.snapshot`` and
 ``engine.bus.compiled`` reads the backend's
-:class:`~busk.process.links.EngineLink`. Before the first command (the
+:class:`~busk.engine.link.EngineLink`. Before the first command (the
 script's or stdin's) the console waits until the engine has applied the
-start-up state (:meth:`EngineLink.sync <busk.process.links.EngineLink.sync>`),
+start-up state (:meth:`EngineLink.sync <busk.engine.link.EngineLink.sync>`),
 so ``status`` right after start shows the recovered masters and page.
 
 **Signals** (§5.9, console process only). ``SIGTERM`` and ``SIGHUP`` (the root
@@ -65,7 +75,6 @@ import signal
 import socket
 import sys
 import threading
-import time
 import traceback
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
@@ -82,37 +91,28 @@ from busk.compiler.values import compile_values
 from busk.console.console import Console, interact
 from busk.engine.clock import SWITCH_INTERVAL, Clock, MonotonicClock
 from busk.engine.install import Stamp
+from busk.engine.link import EngineLink, LocalEngine
 from busk.engine.loop import Engine
 from busk.engine.snapshot import EngineSnapshot
-from busk.io.bindings import BindingResolver
-from busk.io.feedback import FeedbackWorker
-from busk.io.surfaces import SurfaceManager
 from busk.model.show import Show
 from busk.model.validate import Issue, has_errors
-from busk.output.artnet import ArtNetNetwork
 from busk.output.console import ConsoleOutput
-from busk.output.sacn import Sequences
-from busk.output.scheduler import OutputScheduler, build_routes
 from busk.persistence.autosave import AutosaveWorker, Recovery, read_recovery
 from busk.persistence.eventlog import EventLog, LogPump
-from busk.persistence.paths import state_directory, web_key
+from busk.persistence.paths import state_directory
 from busk.persistence.show_file import ShowLoadError, load_show, newest_backup, utc_now
 from busk.persistence.values_file import load_values
-from busk.process.links import EngineLink, LocalEngine, RemoteBus, start_log
+from busk.process.links import RemoteBus, start_log
 from busk.process.options import RunOptions
 from busk.process.report import RouteReporter, plural, print_statistics, say, warn
 from busk.process.root import is_interactive
 from busk.process.wire import Attach, Endpoint, Kind, LinkClosed, Processes, loads
+from busk.runner import MONITOR_S, SETTLE_S, LiveShow, _LocalRun
 from busk.session.library import ProfileLibrary
-from busk.session.session import InputSink, Session
-from busk.web.api import WebLink
+from busk.session.session import Session
 
 EXIT_FAILED: Final = 70
 """The exit code of a console that hit an unexpected exception (``EX_SOFTWARE``)."""
-
-SETTLE_S: Final = 15.0
-"""How long the console waits for the engine to apply the start-up state
-before it reads commands anyway (the root's ``STARTUP_S``)."""
 
 
 class Terminated(BaseException):
@@ -191,7 +191,7 @@ def _positive_seconds(text: str) -> float:
 class Backend(Protocol):
     """What runs the engine for :func:`run_console`, called in this order:
     :meth:`connect`, :meth:`start`, :meth:`arm` (then :meth:`poll` every
-    :data:`_SUPERVISE_S` and :meth:`ready` once), :meth:`disarm`,
+    :data:`~busk.runner.MONITOR_S` and :meth:`ready` once), :meth:`disarm`,
     :meth:`stop`, :meth:`report`."""
 
     ownsDuration: bool
@@ -253,17 +253,20 @@ class Backend(Protocol):
 
 class ThreadsBackend:
     """``busk run --threads``: the engine and the output scheduler as threads
-    of this process, as in Phase 6."""
+    of this process, as in Phase 6.
+
+    They are the runner's (:class:`~busk.runner._LocalRun`, what a
+    :class:`~busk.runner.LiveShow` runs, phase-8-plan step 10). This backend
+    adds only what the CLI has: the printed route lines and route reports,
+    ``--console``'s frame lines, the ``--values`` base frame, the event
+    log's writer, the switch interval and the final statistics."""
 
     ownsDuration = True
 
     def __init__(self, options: RunOptions) -> None:
         self._options = options
-        self._engine: Engine | None = None
-        self._scheduler: OutputScheduler | None = None
+        self._run: _LocalRun | None = None
         self._reporter: RouteReporter | None = None
-        self._stops = (threading.Event(), threading.Event())  # engine, output
-        self._threads: list[threading.Thread] = []
         self._switch_interval = sys.getswitchinterval()
         self._pump: LogPump | None = None  # the event log's writer
 
@@ -277,32 +280,18 @@ class ThreadsBackend:
         interactive: bool,
         stamp: Stamp,
     ) -> EngineLink:
-        """Open the routes (printing their lines) and build the engine. With
+        """Build the engine and open the routes (printing their lines). With
         the event log on, the engine keeps records and its first queued item
         is the connection's ``start`` (before the session installs)."""
-        sequences = Sequences()
-        artnet = ArtNetNetwork()
-        routes, notices = build_routes(show["output"], compiled.universes, sequences, artnet=artnet)
-        for route in routes:
-            print(f"{route.label}: {route.description}")
-        for notice in notices:
-            print(notice.text, file=sys.stderr if notice.failed else sys.stdout)
-        printing = self._options.console and not interactive
-        if not routes and not self._options.console:
-            print("no output: no route is open (add --console to print frames)", file=sys.stderr)
         engine = Engine(compiled, clock, base)
+        printing = self._options.console and not interactive
         printer = ConsoleOutput(engine, compiled.universes, sys.stdout) if printing else None
-        self._scheduler = OutputScheduler(
-            engine,
-            routes,
-            clock,
-            printer,
-            layout=compiled.layout,
-            sequences=sequences,
-            artnet=artnet,
-        )
-        self._reporter = RouteReporter(self._scheduler)
-        self._engine = engine
+        run = _LocalRun(engine, show, compiled, clock, printer=printer, say=say, warn=warn)
+        assert run.scheduler is not None  # the output is on
+        if not run.scheduler.routes and not self._options.console:
+            print("no output: no route is open (add --console to print frames)", file=sys.stderr)
+        self._run = run
+        self._reporter = RouteReporter(run.scheduler)
         if not self._options.no_log:
             records = start_log(engine, show, base)
             logs = state_directory(self._options.state_dir) / "logs"
@@ -312,21 +301,10 @@ class ThreadsBackend:
     def start(self) -> None:
         """Start the engine and output threads; keep the engine responsive
         while edits compile (see ``SWITCH_INTERVAL``)."""
-        assert self._engine is not None
-        assert self._scheduler is not None
+        assert self._run is not None
         self._switch_interval = sys.getswitchinterval()
         sys.setswitchinterval(SWITCH_INTERVAL)
-        engine_stop, output_stop = self._stops
-        self._threads = [
-            threading.Thread(
-                target=self._engine.run, args=(engine_stop,), name="busk-engine", daemon=True
-            ),
-            threading.Thread(
-                target=self._scheduler.run, args=(output_stop,), name="busk-output", daemon=True
-            ),
-        ]
-        for thread in self._threads:
-            thread.start()
+        self._run.start()
         if self._pump is not None:
             self._pump.start()
 
@@ -357,21 +335,17 @@ class ThreadsBackend:
         """The engine stops first, so the output thread's final pass sends the
         last frame it published; then the output thread terminates the
         streams."""
-        engine_stop, output_stop = self._stops
-        engine_stop.set()
-        if self._threads:
-            self._threads[0].join()
-        output_stop.set()
-        if self._threads:
-            self._threads[1].join()
+        if self._run is not None:
+            self._run.stop()
         if self._pump is not None:
             self._pump.stop()  # after the engine: its last records too
         sys.setswitchinterval(self._switch_interval)
 
     def report(self) -> None:
-        if self._engine is not None and self._scheduler is not None:
+        run = self._run
+        if run is not None and run.scheduler is not None:
             self.poll()  # the last route changes
-            print_statistics(self._engine.stats, self._engine.compiled.engineHz, self._scheduler)
+            print_statistics(run.engine.stats, run.engine.compiled.engineHz, run.scheduler)
 
 
 class ProcessBackend:
@@ -555,7 +529,9 @@ class ProcessBackend:
 
 def run_console(options: RunOptions, backend: Backend, *, restarted: str | None = None) -> int:
     """Run the console of ``busk run`` (``options``: the run options) with
-    ``backend`` running the engine; return the exit code (0 or 1).
+    ``backend`` running the engine; return the exit code (0 or 1). The
+    show runs as an attached :class:`~busk.runner.LiveShow` (see the module
+    docs).
 
     ``restarted`` (how the previous console ended, e.g. ``killed by signal
     9``) makes this console the replacement of one that crashed (see the
@@ -609,57 +585,34 @@ def run_console(options: RunOptions, backend: Backend, *, restarted: str | None 
     interactive = is_interactive(options)
     clock = MonotonicClock()
     link = backend.connect(show, compiled, base, clock, interactive=interactive, stamp=stamp)
-    session = Session(
-        show,
-        link.bus,
-        compiled=compiled,
-        path=path,
-        dirty=recovered_from is not None,
-        engine_state=lambda: link.snapshot,
-        stamp=stamp,
-        causes=not options.no_log,
-        report=warn,
-    )
-    if recovery is not None:
-        _recover(session, recovery, recovered_from, adopt=adopt)
     library = ProfileLibrary(options.library)
-    for problem in library.problems:
-        print(f"library: skipped {problem}", file=sys.stderr)
-
-    resolver = BindingResolver(
+    status = StatusLines(link, shown=not interactive, extra=backend.poll)
+    # The show itself runs on the runner: the session, the console, the
+    # surfaces, feedback, the monitor and their shutdown order are LiveShow's.
+    live = LiveShow._attached(
         show,
         compiled,
-        InputSink(session),
-        live=lambda: link.compiled,
-        page=lambda: _page(link),
-        clock=clock.now,
-        report=warn,
-    )
-    try:
-        key = web_key(state_dir)
-    except OSError as exc:  # a read-only state directory must not stop the show
-        key = secrets.token_urlsafe(6)
-        print(f"web key not saved: {exc}; it changes on the next run", file=sys.stderr)
-    web = WebLink(
-        snapshot=lambda: link.snapshot,
-        compiled=lambda: link.compiled,
-        submit=session.submit,
-        clock=clock.now,
-        key=key,
-    )
-    surfaces = SurfaceManager(resolver.handle, web, say=say, warn=warn)
-    surfaces.reconcile(compiled)
-    feedback = FeedbackWorker(
-        lambda: link.compiled,
-        lambda: link.snapshot,
-        resolver.lastInput,
-        clock=clock.now,
-        senders=surfaces.senders,
-        report=warn,
+        link,
+        clock,
+        path=path,
+        library=library,
+        state_dir=state_dir,
+        dirty=recovered_from is not None,
+        stamp=stamp,
+        causes=not options.no_log,
+        iface=options.iface,
+        status=lambda: _status(link, backend),
+        about=backend.about,
+        poll=status.poll,
         say=say,
         warn=warn,
     )
-    feedback.open()  # its ports' lines print here; its thread, started later, owns them
+    session, console = live._session, live._console
+    if recovery is not None:
+        _recover(session, recovery, recovered_from, adopt=adopt)
+    for problem in library.problems:
+        print(f"library: skipped {problem}", file=sys.stderr)
+    live._open()  # the surfaces' and feedback ports' lines print here
     sys.stdout.flush()
     sys.stderr.flush()
 
@@ -678,26 +631,13 @@ def run_console(options: RunOptions, backend: Backend, *, restarted: str | None 
     # full collections then scan only what was allocated since.
     gc.collect()
     gc.freeze()
-    autosave_stop, feedback_stop = threading.Event(), threading.Event()
-    threads = [
-        threading.Thread(
-            target=autosave.run, args=(autosave_stop,), name="busk-autosave", daemon=True
-        ),
-        threading.Thread(
-            target=feedback.run, args=(feedback_stop,), name="busk-feedback", daemon=True
-        ),
-    ]
-    backend.start()
-    for thread in threads:
-        thread.start()
-    supervisor = Supervisor(link, surfaces, status_lines=not interactive, extra=backend.poll)
-    console = Console(
-        session,
-        library,
-        iface=options.iface,
-        status=lambda: _status(link, backend),
-        about=backend.about,
+    autosave_stop = threading.Event()
+    autosave_thread = threading.Thread(
+        target=autosave.run, args=(autosave_stop,), name="busk-autosave", daemon=True
     )
+    backend.start()
+    live.start()  # attached: it starts the feedback thread, and nothing else
+    autosave_thread.start()
     duration = options.duration
     end = math.inf if duration is None or not backend.ownsDuration else clock.now() + duration
     code = 0
@@ -712,32 +652,29 @@ def run_console(options: RunOptions, backend: Backend, *, restarted: str | None 
             code = 1
         if code == 0 and not console.quit_requested:
             if interactive:
-                supervisor.start()
+                live._start_monitor()
                 if not adopt:
                     print("busk console: type 'help' for the commands, 'quit' to stop.", flush=True)
                 interact(console)
             elif console_on:
-                _read_commands(console, supervisor, clock, end, waits=options.duration is not None)
+                _read_commands(console, live._poll, clock, end, waits=options.duration is not None)
             else:
                 if options.duration is None:
                     print("Running; press Ctrl+C to stop.", file=sys.stderr, flush=True)
-                _wait(supervisor, clock, end)
+                _wait(live._poll, clock, end)
     except (KeyboardInterrupt, Terminated):
         pass
     finally:
         backend.disarm()
-        # Input first (MIDI, OSC and web), so no command arrives after the
-        # engine stopped, then feedback, which closes its ports, then the
-        # engine (and, with threads, the output).
-        supervisor.stop()
-        surfaces.close()
-        feedback_stop.set()
-        threads[1].join()
-        session.stop()
+        # The show stops its input first (MIDI, OSC and web), so no command
+        # arrives after the engine stopped, then feedback, which closes its
+        # ports, then the session's worker. Then the engine (and, with
+        # threads, the output).
+        live.stop()
         backend.stop()
         autosave_stop.set()
-        threads[0].join()
-        supervisor.poll()  # report the last changes
+        autosave_thread.join()
+        live._poll()  # report the last changes
         try:
             kept = autosave.finish(clock.now())
         except OSError as exc:
@@ -877,11 +814,7 @@ def _logical_frame(path: Path, show: Show, compiled: CompiledShow) -> NDArray[np
     return frame
 
 
-# ---------------------------------------------------------------- supervisor
-
-_SUPERVISE_S: Final = 0.1
-"""How often the supervisor checks the snapshot, the routes and the surfaces."""
-
+# -------------------------------------------------------------- status lines
 
 _LEVEL_SHOWN: Final = frozenset({"master", "size", "temp"})
 """The fader functions whose level the status line shows."""
@@ -948,78 +881,47 @@ def status_line(snapshot: EngineSnapshot) -> str:
     return " | ".join(parts)
 
 
-class Supervisor:
-    """What the main thread watched in Phase 2, now also usable from a thread.
+class StatusLines:
+    """The CLI's part of each poll of the show (``LiveShow._poll``, every
+    :data:`~busk.runner.MONITOR_S` s): the :func:`status_line` when it
+    changed (if ``shown``: not at an interactive prompt, where ``status``
+    prints it), then ``extra``, the backend's :meth:`~Backend.poll` (with
+    threads the route reporter, :class:`~busk.process.report.RouteReporter`;
+    with processes the engine's news). The show then follows its surfaces."""
 
-    Every :data:`_SUPERVISE_S` seconds :meth:`poll` prints the
-    :func:`status_line` if it changed (when ``status_lines``), runs
-    ``extra`` (with threads, the route reporter:
-    :class:`~busk.process.report.RouteReporter`), opens or closes the
-    control surfaces that live edits added, changed or removed, and follows
-    MIDI devices plugged in and out (:class:`~busk.io.surfaces.SurfaceManager`).
-    """
-
-    def __init__(
-        self,
-        link: EngineLink,
-        surfaces: SurfaceManager,
-        *,
-        status_lines: bool,
-        extra: Callable[[], None] | None = None,
-    ) -> None:
+    def __init__(self, link: EngineLink, *, shown: bool, extra: Callable[[], None]) -> None:
         self._link = link
-        self._surfaces = surfaces
-        self._status_lines = status_lines
+        self._shown = shown
         self._extra = extra
-        self._shown: EngineSnapshot | None = None
+        self._last: EngineSnapshot | None = None
         self._line = ""
-        self._stop = threading.Event()
-        self._thread: threading.Thread | None = None
 
     def poll(self) -> None:
         snapshot = self._link.snapshot  # one read: published by reference assignment
-        if self._status_lines and snapshot is not None and snapshot is not self._shown:
-            self._shown = snapshot
+        if self._shown and snapshot is not None and snapshot is not self._last:
+            self._last = snapshot
             if (text := status_line(snapshot)) != self._line:
                 self._line = text
                 print(text, flush=True)
-        if self._extra is not None:
-            self._extra()
-        self._surfaces.reconcile(self._link.compiled)
-        self._surfaces.poll(time.monotonic())
-
-    def start(self) -> None:
-        """Poll on a thread (while the main thread runs the console prompt)."""
-        self._thread = threading.Thread(target=self._loop, name="busk-supervisor", daemon=True)
-        self._thread.start()
-
-    def stop(self) -> None:
-        self._stop.set()
-        if self._thread is not None:
-            self._thread.join()
-            self._thread = None
-
-    def _loop(self) -> None:
-        while not self._stop.wait(_SUPERVISE_S):
-            self.poll()
+        self._extra()
 
 
-def _wait(supervisor: Supervisor, clock: Clock, end: float) -> None:
-    """Block until ``end`` (or Ctrl+C), polling the supervisor. The short waits
+def _wait(poll: Callable[[], None], clock: Clock, end: float) -> None:
+    """Block until ``end`` (or Ctrl+C), polling the show. The short waits
     keep Ctrl+C responsive on every platform."""
     sleep = threading.Event()  # never set: an interruptible sleep
     while (remaining := end - clock.now()) > 0:
-        sleep.wait(min(_SUPERVISE_S, remaining))
-        supervisor.poll()
+        sleep.wait(min(MONITOR_S, remaining))
+        poll()
 
 
 def _read_commands(
-    console: Console, supervisor: Supervisor, clock: Clock, end: float, *, waits: bool
+    console: Console, poll: Callable[[], None], clock: Clock, end: float, *, waits: bool
 ) -> None:
     """Console commands from a non-terminal stdin, one per line.
 
-    A reader thread feeds the lines in, so the main thread keeps supervising
-    and stops at ``end``. The end of stdin (or stdin that cannot be read)
+    A reader thread feeds the lines in, so the main thread keeps polling the
+    show (``poll``) and stops at ``end``. The end of stdin (or stdin that cannot be read)
     quits, unless the run has a duration (``waits``).
     """
     lines: queue.SimpleQueue[str | None] = queue.SimpleQueue()
@@ -1036,9 +938,9 @@ def _read_commands(
     ended = False
     while not console.quit_requested and (remaining := end - clock.now()) > 0:
         try:
-            line = lines.get(timeout=min(_SUPERVISE_S, remaining))
+            line = lines.get(timeout=min(MONITOR_S, remaining))
         except queue.Empty:
-            supervisor.poll()
+            poll()
             continue
         if line is None:
             ended = True
@@ -1051,7 +953,7 @@ def _read_commands(
                 print(reply.text, flush=True)
             if console.interrupted:  # Ctrl+C during the command: stop, as between commands
                 raise KeyboardInterrupt
-        supervisor.poll()
+        poll()
 
 
 # ------------------------------------------------------------------- helpers

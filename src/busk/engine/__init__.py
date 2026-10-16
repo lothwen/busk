@@ -12,6 +12,7 @@
 ``snapshot``          the UI snapshot
 ``install``           live edits: installs, programmer frames, the programmer source
 ``loop``              the tick, stages 1–13
+``link``              how other threads read and write an engine: ``LocalEngine``
 
 The engine thread is the single owner of runtime state (§16). Other threads
 submit commands through its bus and only read the immutable frames and

@@ -50,7 +50,7 @@ import secrets
 import sys
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType, TracebackType
@@ -60,8 +60,10 @@ from busk.commands.types import Command
 from busk.compiler.compile import CompiledShow, compile_show
 from busk.console.console import Console, Reply
 from busk.engine.clock import SWITCH_INTERVAL, Clock, FakeClock, MonotonicClock
+from busk.engine.install import Stamp
+from busk.engine.link import EngineLink, LocalEngine
 from busk.engine.loop import Engine, Frame
-from busk.engine.snapshot import EngineSnapshot, Sync
+from busk.engine.snapshot import EngineSnapshot
 from busk.errors import ScriptError
 from busk.io.bindings import BindingResolver
 from busk.io.feedback import FeedbackWorker
@@ -69,26 +71,26 @@ from busk.io.surfaces import SurfaceManager
 from busk.model.show import Show
 from busk.model.validate import Issue, has_errors, validate_show
 from busk.output.artnet import ArtNetNetwork
+from busk.output.console import ConsoleOutput
 from busk.output.sacn import Sequences
 from busk.output.scheduler import OutputScheduler, build_routes
 from busk.persistence.paths import web_key
 from busk.persistence.show_file import ShowLoadError, show_json
 from busk.session.ids import IdFactory
 from busk.session.library import ProfileLibrary
-from busk.session.session import CommandResult, InputSink, Session
+from busk.session.session import CommandResult, InputSink, Report, Session
 from busk.web.api import WebLink
 
 _output_log = logging.getLogger("busk.output")
 _surfaces_log = logging.getLogger("busk.surfaces")
 
 SETTLE_S: Final = 15.0
-"""How long :meth:`LiveShow.start` waits for the engine's first snapshot
-(``busk run``'s wait)."""
+"""How long :meth:`LiveShow.start`, and ``busk run``'s console before its
+first command, wait for the engine's first snapshot."""
 
 MONITOR_S: Final = 0.1
-"""How often a :class:`LiveShow` looks at its routes and surfaces."""
-
-_SYNC_POLL_S: Final = 0.002
+"""How often a :class:`LiveShow` (and ``busk run``'s console) looks at its
+routes and surfaces."""
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -297,21 +299,36 @@ class OfflineShow(_Facade):
 
 
 class _LocalRun:
-    """An engine and its output scheduler as threads of this process: what
-    ``busk run --threads`` runs, without its prints. Route lines and route
-    failures go to the ``busk.output`` logger.
+    """An engine and its output scheduler as threads of this process: the
+    engine side of a :class:`LiveShow`, and of ``busk run --threads``
+    (``ThreadsBackend``, phase-8-plan step 10).
 
-    It is a copy of ``ThreadsBackend``'s wiring until phase-8-plan step 10
-    puts the CLI on it.
+    ``say`` gets the route lines and the output's news, ``warn`` what
+    failed; both default to the ``busk.output`` logger (INFO, WARNING). The
+    CLI passes its printers, and follows the routes' status with its own
+    reporter, not :meth:`poll`, since it prints every status change on
+    stderr.
     """
 
     def __init__(
-        self, engine: Engine, show: Show, compiled: CompiledShow, clock: Clock, *, output: bool
+        self,
+        engine: Engine,
+        show: Show,
+        compiled: CompiledShow,
+        clock: Clock,
+        *,
+        output: bool = True,
+        printer: ConsoleOutput | None = None,
+        say: Report = _output_log.info,
+        warn: Report = _output_log.warning,
     ) -> None:
-        """Open the routes of ``show`` (unless ``output`` is false) and log
-        their lines. Starts no thread."""
+        """Open the routes of ``show`` (unless ``output`` is false) and
+        report their lines. ``printer`` prints the frames too (``busk run
+        --console``). Starts no thread."""
         self.engine = engine
         self.scheduler: OutputScheduler | None = None
+        self._say = say
+        self._warn = warn
         if output:
             sequences = Sequences()
             artnet = ArtNetNetwork()
@@ -319,13 +336,14 @@ class _LocalRun:
                 show["output"], compiled.universes, sequences, artnet=artnet
             )
             for route in routes:
-                _output_log.info(f"{route.label}: {route.description}")
+                say(f"{route.label}: {route.description}")
             for notice in notices:
-                _log_notice(notice.text, failed=notice.failed)
+                self._notice(notice.text, failed=notice.failed)
             self.scheduler = OutputScheduler(
                 engine,
                 routes,
                 clock,
+                printer,
                 layout=compiled.layout,
                 sequences=sequences,
                 artnet=artnet,
@@ -333,7 +351,6 @@ class _LocalRun:
         self._reported: dict[str, tuple[bool, str]] = {}  # route id → (ok, detail)
         self._stops = (threading.Event(), threading.Event())  # engine, output
         self._threads: list[threading.Thread] = []
-        self._token = 0
 
     def start(self) -> None:
         """Start the engine thread, then the output thread."""
@@ -355,28 +372,15 @@ class _LocalRun:
         for thread in self._threads:
             thread.start()
 
-    def sync(self, timeout: float) -> bool:
-        """Wait until the engine has drained everything queued before this
-        call and published its snapshot; ``False`` after ``timeout`` s."""
-        self._token += 1
-        token = self._token
-        self.engine.bus.mark(Sync(token=token))
-        deadline = time.monotonic() + timeout
-        while self.engine.synced < token:  # set by the engine thread, after the snapshot
-            if time.monotonic() >= deadline:
-                return False
-            time.sleep(_SYNC_POLL_S)
-        return True
-
     def poll(self) -> None:
-        """Log what the output reported since the last poll: its notices,
+        """Report what the output said since the last poll: its notices,
         and each route that started or stopped failing."""
         if self.scheduler is None:
             return
         notices = self.scheduler.notices
         while not notices.empty():
             notice = notices.get()
-            _log_notice(notice.text, failed=notice.failed)
+            self._notice(notice.text, failed=notice.failed)
         for route in self.scheduler.routes:
             status = route.driver.status()
             state = (status.ok, status.detail)
@@ -384,14 +388,13 @@ class _LocalRun:
                 continue
             self._reported[route.id] = state
             if status.ok:
-                _output_log.info(f"{route.label}: sending again")
+                self._say(f"{route.label}: sending again")
             else:
-                _output_log.warning(f"{route.label}: send failed: {status.detail}")
+                self._warn(f"{route.label}: send failed: {status.detail}")
 
     def stop(self) -> None:
         """Stop the engine, then the output: its last pass sends the last
-        frame, then terminates the streams (sACN's Stream_Terminated). Then
-        log what the output reported last."""
+        frame, then terminates the streams (sACN's Stream_Terminated)."""
         engine_stop, output_stop = self._stops
         engine_stop.set()
         if self._threads:
@@ -399,14 +402,9 @@ class _LocalRun:
         output_stop.set()
         for thread in self._threads[1:]:
             thread.join()
-        self.poll()
 
-
-def _log_notice(text: str, *, failed: bool) -> None:
-    if failed:
-        _output_log.warning(text)
-    else:
-        _output_log.info(text)
+    def _notice(self, text: str, *, failed: bool) -> None:
+        (self._warn if failed else self._say)(text)
 
 
 class LiveShow(_Facade):
@@ -453,21 +451,119 @@ class LiveShow(_Facade):
         tune_interpreter: bool = False,
     ) -> None:
         show, compiled = _checked(show)
-        self._clock = MonotonicClock()
-        self._engine = Engine(compiled, self._clock)
-        engine = self._engine
-        self._session = Session(
+        clock = MonotonicClock()
+        engine = Engine(compiled, clock)
+        session = Session(
             show,
             engine.bus,
             compiled=compiled,
             path=_optional_path(path),
             engine_state=lambda: engine.snapshot,
         )
-        self._console = Console(self._session, library if library is not None else ProfileLibrary())
+        self._setup(
+            Console(session, library if library is not None else ProfileLibrary()),
+            LocalEngine(engine),
+            clock,
+            state_dir=_optional_path(state_dir),
+            say=_surfaces_log.info,
+            warn=_surfaces_log.warning,
+        )
+        self._engine: Engine | None = engine
         self._output = output
         self._open_surfaces = surfaces
-        self._state_dir = _optional_path(state_dir)
         self._tune = tune_interpreter
+
+    @classmethod
+    def _attached(
+        cls,
+        show: Show,
+        compiled: CompiledShow,
+        link: EngineLink,
+        clock: Clock,
+        *,
+        path: Path,
+        library: ProfileLibrary,
+        state_dir: Path,
+        dirty: bool,
+        stamp: Stamp,
+        causes: bool,
+        iface: str,
+        status: Callable[[], str],
+        about: Callable[[], Sequence[str]],
+        poll: Callable[[], None],
+        say: Report,
+        warn: Report,
+    ) -> Self:
+        """The show of ``busk run`` (phase-8-plan §5.5's private seam, for
+        :func:`~busk.process.console_host.run_console` only).
+
+        The engine side is the CLI's: ``link`` is the
+        :class:`~busk.engine.link.LocalEngine` of ``--threads`` or the
+        console process's :class:`~busk.process.links.RemoteBus`, already
+        made for ``compiled`` (with the ``--values`` base frame), running on
+        ``clock``. ``show`` was loaded (and validated) and ``compiled`` by
+        the CLI, so neither is done again. The session gets ``path``,
+        ``dirty`` (a recovered show), ``stamp`` and ``causes`` (the event
+        log); the console ``iface``, ``status`` and ``about``. ``say`` and
+        ``warn`` print the surface lines, the session's failures and the web
+        key's.
+
+        Such a show runs no engine and opens nothing by itself, and
+        :attr:`frame` stays ``None``. The CLI calls :meth:`_open` (the
+        surfaces and feedback), then :meth:`start` (the feedback thread
+        only). It polls with :meth:`_poll` between commands, or starts the
+        monitor thread (:meth:`_start_monitor`) for the interactive prompt;
+        each poll calls ``poll`` first (its status line and route reports).
+        It waits for the engine itself, and stops the engine after
+        :meth:`stop`.
+        """
+        session = Session(
+            show,
+            link.bus,
+            compiled=compiled,
+            path=path,
+            dirty=dirty,
+            engine_state=lambda: link.snapshot,
+            stamp=stamp,
+            causes=causes,
+            report=warn,
+        )
+        live = cls.__new__(cls)
+        live._setup(
+            Console(session, library, iface=iface, status=status, about=about),
+            link,
+            clock,
+            state_dir=state_dir,
+            say=say,
+            warn=warn,
+        )
+        live._on_poll = poll
+        return live
+
+    def _setup(
+        self,
+        console: Console,
+        link: EngineLink,
+        clock: Clock,
+        *,
+        state_dir: Path | None,
+        say: Report,
+        warn: Report,
+    ) -> None:
+        """The state both constructors share, for a show that has not
+        started; :meth:`__init__` then gives it an engine of its own."""
+        self._session = console.session
+        self._console = console
+        self._link = link
+        self._clock = clock
+        self._state_dir = state_dir
+        self._say = say  # the surfaces' lines
+        self._warn = warn  # their failures
+        self._engine = None  # the engine this show runs itself (__init__'s)
+        self._output = False
+        self._open_surfaces = False
+        self._tune = False
+        self._on_poll: Callable[[], None] | None = None  # the first part of each poll
         self._phase: Literal["new", "running", "stopped"] = "new"
         self._run: _LocalRun | None = None
         self._surfaces: SurfaceManager | None = None
@@ -483,11 +579,13 @@ class LiveShow(_Facade):
     def snapshot(self) -> EngineSnapshot | None:
         """The engine's published state: playbacks, masters, page, tempo;
         ``None`` until the engine's first tick."""
-        return self._engine.snapshot
+        return self._link.snapshot
 
     @property
     def frame(self) -> DmxFrame | None:
         """The engine's newest frame; ``None`` until its first tick."""
+        if self._engine is None:
+            return None  # attached: the CLI's engine
         latest = self._engine.latest  # one read: published by reference assignment
         if latest is None:
             return None
@@ -511,35 +609,38 @@ class LiveShow(_Facade):
         self._phase = "running"
         session = self._session
         try:
-            run = _LocalRun(
-                self._engine, session.show, session.compiled, self._clock, output=self._output
-            )
-            self._run = run
+            if self._engine is not None:
+                run = _LocalRun(
+                    self._engine,
+                    session.show,
+                    session.compiled,
+                    self._clock,
+                    output=self._output,
+                )
+                self._run = run
+                self._on_poll = run.poll
             if self._open_surfaces:
                 self._open()
             if self._tune:
                 self._switch_interval = sys.getswitchinterval()
                 sys.setswitchinterval(SWITCH_INTERVAL)
-            run.start()
-            feedback_stop = self._stops[0]
+            if self._run is not None:
+                self._run.start()
             if self._feedback is not None:
-                self._threads.append(
-                    threading.Thread(
-                        target=self._feedback.run,
-                        args=(feedback_stop,),
-                        name="busk-feedback",
-                        daemon=True,
-                    )
+                feedback = threading.Thread(
+                    target=self._feedback.run,
+                    args=(self._stops[0],),
+                    name="busk-feedback",
+                    daemon=True,
                 )
-            self._threads.append(
-                threading.Thread(target=self._monitor, name="busk-monitor", daemon=True)
-            )
-            for thread in self._threads:
-                thread.start()
+                self._threads.append(feedback)
+                feedback.start()
+            if self._run is not None:
+                self._start_monitor()
         except BaseException:
             self.stop()
             raise
-        if not run.sync(SETTLE_S):
+        if self._run is not None and not self._link.sync(SETTLE_S):
             _output_log.warning("engine: not answering; going on anyway")
 
     def stop(self) -> None:
@@ -564,6 +665,7 @@ class LiveShow(_Facade):
         self._session.stop()
         if self._run is not None:
             self._run.stop()
+            self._run.poll()  # what the output said last
         if self._switch_interval is not None:
             sys.setswitchinterval(self._switch_interval)
             self._switch_interval = None
@@ -587,36 +689,40 @@ class LiveShow(_Facade):
     def _open(self) -> None:
         """Build the input side (bindings, the web link, the surfaces) and
         feedback, and open the surfaces and their feedback ports."""
-        engine, session, clock = self._engine, self._session, self._clock
+        link, session, clock = self._link, self._session, self._clock
         compiled = session.compiled
 
         def page() -> str | None:
-            snapshot = engine.snapshot
+            snapshot = link.snapshot
             return None if snapshot is None or snapshot.page is None else snapshot.page.id
 
         resolver = BindingResolver(
             session.show,
             compiled,
             InputSink(session),
-            live=lambda: engine.bus.compiled,
+            live=lambda: link.compiled,
             page=page,
             clock=clock.now,
+            report=self._warn,
         )
         web = WebLink(
-            snapshot=lambda: engine.snapshot,
-            compiled=lambda: engine.bus.compiled,
+            snapshot=lambda: link.snapshot,
+            compiled=lambda: link.compiled,
             submit=session.submit,
             clock=clock.now,
             key=self._web_key(),
         )
-        self._surfaces = SurfaceManager(resolver.handle, web)
+        self._surfaces = SurfaceManager(resolver.handle, web, say=self._say, warn=self._warn)
         self._surfaces.reconcile(compiled)
         self._feedback = FeedbackWorker(
-            lambda: engine.bus.compiled,
-            lambda: engine.snapshot,
+            lambda: link.compiled,
+            lambda: link.snapshot,
             resolver.lastInput,
             clock=clock.now,
             senders=self._surfaces.senders,
+            report=self._warn,
+            say=self._say,
+            warn=self._warn,
         )
         self._feedback.open()
 
@@ -625,18 +731,29 @@ class LiveShow(_Facade):
         if self._state_dir is not None:
             try:
                 return web_key(self._state_dir)
-            except OSError as exc:
-                _surfaces_log.warning(f"web key not saved: {exc}; it changes on the next run")
+            except OSError as exc:  # a read-only state directory must not stop the show
+                self._warn(f"web key not saved: {exc}; it changes on the next run")
         return secrets.token_urlsafe(6)
 
-    def _monitor(self) -> None:
-        """Every :data:`MONITOR_S` s: log the output's reports, open or close
-        the surfaces live edits changed, follow MIDI devices plugged in and
-        out."""
+    def _poll(self) -> None:
+        """One look around (the monitor's, every :data:`MONITOR_S` s): the
+        output's reports (attached: the CLI's ``poll``), then the surfaces
+        live edits opened, changed or removed, and MIDI devices plugged in
+        and out."""
+        if self._on_poll is not None:
+            self._on_poll()
+        if self._surfaces is not None:
+            self._surfaces.reconcile(self._link.compiled)
+            self._surfaces.poll(time.monotonic())
+
+    def _start_monitor(self) -> None:
+        """Run :meth:`_poll` on the ``busk-monitor`` thread until :meth:`stop`."""
         stop = self._stops[1]
-        while not stop.wait(MONITOR_S):
-            if self._run is not None:
-                self._run.poll()
-            if self._surfaces is not None:
-                self._surfaces.reconcile(self._engine.bus.compiled)
-                self._surfaces.poll(time.monotonic())
+
+        def monitor() -> None:
+            while not stop.wait(MONITOR_S):
+                self._poll()
+
+        thread = threading.Thread(target=monitor, name="busk-monitor", daemon=True)
+        self._threads.append(thread)
+        thread.start()

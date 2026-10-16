@@ -26,11 +26,12 @@ from busk.commands.types import Command
 from busk.compiler.compile import CompiledShow, compile_show
 from busk.engine.clock import FakeClock, MonotonicClock
 from busk.engine.install import EMPTY_FRAME, Install, keys_remap
+from busk.engine.link import LocalEngine
 from busk.engine.loop import Engine
 from busk.engine.snapshot import EngineSnapshot
 from busk.model.show import Show
 from busk.process.engine_host import EngineHost
-from busk.process.links import QUEUE_MAX, LocalEngine, RemoteBus
+from busk.process.links import QUEUE_MAX, RemoteBus
 from busk.process.wire import Attach, Kind, dumps, receive, send
 
 TIMEOUT = 5.0

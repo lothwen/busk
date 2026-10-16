@@ -1281,6 +1281,7 @@ src/busk/
     snapshot.py          #   EngineSnapshot, PlaybackStatus, SpeedStatus (beat anchors), PageStatus
     install.py           #   Install, ProgrammerFrame, ProgrammerRuntime (fading, its effect bank), remap_lanes()
     loop.py              #   Frame, EngineStats, EngineRuntime, Engine (stages 1–13, restore, tick errors, bounded drain)
+    link.py              #   EngineLink, LocalEngine: how other threads read and write an engine (LiveShow, --threads)
   io/
     events.py            #   InputEvent, address_key()
     bindings.py          #   BindingResolver: input events → commands (page-relative by slot), lastInput
@@ -1296,8 +1297,8 @@ src/busk/
   process/               # the process split (§16, §18; phase-7-plan §5.1–§5.9)
     wire.py              #   framing, message kinds, raw frames; engine_view(), ShowEncoder/ShowDecoder (structural sharing)
     engine_host.py       #   EngineHost: the engine process (link thread, engine thread, publisher)
-    links.py             #   EngineLink, LocalEngine (--threads), RemoteBus: the console's side of the engine
-    console_host.py      #   the console process (and the --threads run): session, prompt, surfaces, status
+    links.py             #   RemoteBus: the console's side of the engine process
+    console_host.py      #   the console process (and the --threads run): a LiveShow attached to the engine, the prompt, autosave, status
     root.py              #   Root: output, watchdog, restarts, event log, --stats, signals; FrameLink
     report.py            #   RouteReporter, print_statistics(): the route and statistics lines
   replay.py              # busk replay: Replayer
