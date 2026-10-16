@@ -618,6 +618,8 @@ Step 0 is the repository. Steps 1–5 decouple without changing behaviour, 6–8
    → *verify:*
    - `gh repo view lothwen/busk --json visibility` says `PRIVATE`, and `git status` is clean;
    - a fresh clone into a scratch directory passes `uv sync && uv run pytest`: 3175 passed, which proves the ignore list dropped nothing the suite needs.
+
+   **Done** (2026-10-16). `git status` listed 290 entries, none from the ignore list; the README's links into `docs/` resolve, and a pattern search found no secrets. The commit is `busk after Phase 7 (3175 tests green), and the Phase 8 plan`, pushed to `https://github.com/lothwen/busk` (`PRIVATE`, default branch `main`). A fresh clone passed `uv sync && uv run pytest`: 3175 passed, 1 skipped, 13 deselected (141 s).
 1. **CLI transcripts.** `tests/test_cli_transcripts.py` and `tests/golden/cli/`, recorded from the CLI as it is, before any change, and reviewed by hand. It covers stdout and stderr separately, with exit codes:
    - `validate` on Appendix A and on a broken copy;
    - `new` with `--state-dir`;
@@ -629,6 +631,8 @@ Step 0 is the repository. Steps 1–5 decouple without changing behaviour, 6–8
    Masked: ids (`<prefix>-<12 hex>`), pids, times, temporary paths, and the counters of the `engine:` and route statistics lines.
 
    → *verify:* 3175 + N passed; three runs give identical transcripts; `-m perf` passes.
+
+   **Done** (2026-10-16; 3183 passed, ruff, format and mypy clean; `-m perf` 12 passed). Eight cases in `tests/golden/cli/*.txt`: `validate` of Appendix A, of a broken copy (two errors and a warning) and of a missing file; `new`, then `new` again (refused, exit 1); `import ofl --report` of the five TupperDMX files and `import gdtf --report` of `test_gdtf.spot()` plus a broken archive (exit 1), each with the sha256 of every written profile; `run --threads` and `run` in process mode. Each transcript is the command, `exit N`, then stdout and stderr with every line indented, so it reads as written; `BUSK_REGOLDEN=1` rewrites them. Five runs gave identical transcripts. Additions to the harness: `BuskRun(midi_ports=…)` sets `BUSK_TEST_MIDI_PORTS`, and `tests/process_site/sitecustomize.py` patches `midi.input_names` with it in every process of the tree. **Found:** in process mode the root prints `no output: no route is open (add --console to print frames)` only when the engine's first layout arrives before the script has added its route, which is a race in the CLI as it stands. The process case leaves that one line out, and the module docstring says why. The CLI is unchanged.
 2. **The exception base** (§5.8). Add `errors.py` (`BuskError`; `ScriptError` is defined here and raised from step 6), then re-base `ShowLoadError`, `UnsupportedFeature` and `ImportFailed` (which keeps `ValueError`). → *verify:*
    - `test_errors.py`: each class subclasses `BuskError`; `ImportFailed` is still a `ValueError`; the attributes are unchanged;
    - the transcripts are unchanged.

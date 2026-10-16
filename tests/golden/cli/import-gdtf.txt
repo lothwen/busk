@@ -1,0 +1,8 @@
+$ busk import gdtf <tmp>/spot.gdtf <tmp>/broken.gdtf --out <tmp>/profiles --report
+exit 1
+stdout:
+  <tmp>/spot.gdtf: 'Generic Spot' (modes 16ch) → <tmp>/profiles/gdtf-6e3a1f52-0d4b-4c3b-9f51-1a2b3c4d5e6f.json
+    Beam_Control1: no busk attribute (Control1); held at DMX 0
+stderr:
+  busk: <tmp>/broken.gdtf: not a GDTF description: it has no GDTF/FixtureType
+sha256 gdtf-6e3a1f52-0d4b-4c3b-9f51-1a2b3c4d5e6f.json 9321c0726d513ebd549a48a88e48e21e5897c428b1b50e6d073212cda0709ffa

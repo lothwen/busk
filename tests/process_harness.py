@@ -8,12 +8,15 @@ children in ``/proc``, and kills whatever is left when it closes.
 With ``sacn_port``, every process of the tree sends its sACN routes to that
 port (``tests/process_site/sitecustomize.py``), so a localhost receiver
 gets them, as the in-process ``receiver`` fixture arranges with
-``monkeypatch``. A :class:`Collector` timestamps what the receiver gets.
+``monkeypatch``. With ``midi_ports``, every process sees that MIDI input
+port list instead of the machine's. A :class:`Collector` timestamps what
+the receiver gets.
 """
 
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import signal
 import subprocess
@@ -36,11 +39,19 @@ ROLES = {"busk.process.engine_host": "engine", "busk.process.console_host": "con
 class BuskRun:
     """One ``busk run`` process tree (see the module docs)."""
 
-    def __init__(self, show: Path, *args: str, sacn_port: int | None = None) -> None:
+    def __init__(
+        self,
+        show: Path,
+        *args: str,
+        sacn_port: int | None = None,
+        midi_ports: list[str] | None = None,
+    ) -> None:
         paths = [str(SITE), os.environ.get("PYTHONPATH", "")]
         env = {**os.environ, "PYTHONPATH": os.pathsep.join(p for p in paths if p)}
         if sacn_port is not None:
             env["BUSK_TEST_SACN_PORT"] = str(sacn_port)
+        if midi_ports is not None:
+            env["BUSK_TEST_MIDI_PORTS"] = json.dumps(midi_ports)
         self.process = subprocess.Popen(
             [sys.executable, "-m", "busk", "run", str(show), *args],
             stdin=subprocess.PIPE,

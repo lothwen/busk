@@ -1,0 +1,130 @@
+$ busk run <tmp>/club.show --no-console --duration 1 --iface lo --script <repo>/examples/phase3-build.busk --state-dir <tmp>/state
+exit 0
+stdout:
+  12 targets selected
+  18 targets selected
+  18 targets selected
+  18 targets selected
+  18 targets selected
+  2 targets selected
+  2 targets selected
+  2 targets selected
+  4 targets selected
+  Audience: 4 values on 2 targets
+  Blue: 18 values on 18 targets
+  Centre: 4 values on 2 targets
+  GM 100% | BO off | P1 Main
+  Green: 18 values on 18 targets
+  Red: 18 values on 18 targets
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added binding b-<id>
+  added fixture 101–102: Generic Spot 16ch, 16ch
+  added fixture 201–204: Eurolite LED ML-56 RGBW, 4-channel
+  added fixture 301: Chauvet DJ COLORband PiX, 36-CH
+  added route r-<id>
+  added surface 'nanoKONTROL2'
+  added universe 'Stage'
+  color: 18 targets
+  color: 18 targets
+  color: 18 targets
+  color: 18 targets
+  color: 18 targets
+  color: 18 targets
+  color: 18 targets
+  engine: <n> ticks @ 100 Hz, <n> overruns, max tick <t> ms, <n> commands, <n> command errors
+  intensity: 18 targets
+  intensity: 18 targets
+  pan: 2 targets
+  pan: 2 targets
+  programmer cleared
+  programmer cleared
+  programmer cleared
+  programmer cleared
+  programmer cleared
+  programmer cleared
+  recorded group 1 'Heads': 2 members
+  recorded group 2 'Washes': 4 members
+  recorded group 3 'Bar': 12 members
+  recorded group 4 'All': 18 members
+  recorded preset color 1 'Blue': 1 value
+  recorded preset color 2 'Red': 1 value
+  recorded preset color 3 'Green': 1 value
+  recorded preset color 4 'Amber': 1 value
+  recorded preset position 1 'Audience': 4 values
+  recorded preset position 2 'Centre': 4 values
+  recorded slot 1: playback 1 'Warm'
+  recorded slot 2: playback 2 'Cool'
+  recorded slot 3: playback 3 'Blue'
+  recorded slot 4: playback 4 'Red'
+  recorded slot 5: playback 5 'Green'
+  recorded slot 6: playback 6 'Audience'
+  recorded slot 7: playback 7 'Centre'
+  recorded slot 8: playback 8 'Panic'
+  sACN r-<id>: <n> packets, <n> errors
+  sACN r-<id>: U1 Stage → universe 1, multicast 239.255.0.1 via lo, priority 100
+  saved <tmp>/club.show
+  set cueLists[2].cues[0].timing.fadeIn to 1
+  set cueLists[3].cues[0].timing.fadeIn to 1
+  set cueLists[4].cues[0].timing.fadeIn to 1
+  set cueLists[5].cues[0].timing.fadeIn to 2
+  set cueLists[6].cues[0].timing.fadeIn to 2
+  set playbacks[0].buttons to ["toggle", "flash", "release"]
+  set playbacks[0].exclusivity to "base"
+  set playbacks[1].buttons to ["toggle", "flash", "release"]
+  set playbacks[1].exclusivity to "base"
+  set playbacks[2].buttons to ["toggle", "flash", "release"]
+  set playbacks[2].exclusivity to "color"
+  set playbacks[3].buttons to ["toggle", "flash", "release"]
+  set playbacks[3].exclusivity to "color"
+  set playbacks[4].buttons to ["toggle", "flash", "release"]
+  set playbacks[4].exclusivity to "color"
+  set playbacks[5].buttons to ["toggle", "flash", "release"]
+  set playbacks[5].exclusivity to "position"
+  set playbacks[5].ltpFaderMode to "followFader"
+  set playbacks[5].releaseTime to 2
+  set playbacks[6].buttons to ["toggle", "flash", "release"]
+  set playbacks[6].exclusivity to "position"
+  set playbacks[6].ltpFaderMode to "followFader"
+  set playbacks[6].releaseTime to 2
+  set playbacks[7].autoRelease to false
+  set playbacks[7].autoStart to false
+  set playbacks[7].buttons to ["toggle", "flash", "release"]
+  set playbacks[7].fader to "none"
+  set playbacks[7].priority to 200
+  set playbacks[7].releaseTime to 0
+  tilt: 2 targets
+  tilt: 2 targets
+stderr:
+  MIDI s-<id>: 'nanoKONTROL2' not found; available: Midi Through:Midi Through Port-0 14:0

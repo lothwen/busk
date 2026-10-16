@@ -1,0 +1,25 @@
+$ busk import ofl <repo>/tests/fixtures/ofl/tupperdmx/blinder.json <repo>/tests/fixtures/ofl/tupperdmx/ledbar.json <repo>/tests/fixtures/ofl/tupperdmx/moving-head.json <repo>/tests/fixtures/ofl/tupperdmx/par-rgbw.json <repo>/tests/fixtures/ofl/tupperdmx/smoke-machine.json --out <tmp>/profiles --report
+exit 0
+stdout:
+  <repo>/tests/fixtures/ofl/tupperdmx/blinder.json: 'tupperdmx blinder' (modes 8ch) → <tmp>/profiles/ofl-tupperdmx-blinder.json
+    brightness: the master intensity of white-only dies; held at full
+    Built-in program: no busk attribute (NoFunction, Effect); held at DMX 0
+    Program speed: no busk attribute (EffectSpeed); held at DMX 0
+  <repo>/tests/fixtures/ofl/tupperdmx/ledbar.json: 'tupperdmx ledbar' (modes 7ch) → <tmp>/profiles/ofl-tupperdmx-ledbar.json
+    Animation: no busk attribute (Effect, NoFunction); held at DMX 0
+    Animation speed: no busk attribute (EffectSpeed); held at DMX 255
+    Animation direction: no busk attribute (Generic); held at DMX 0
+  <repo>/tests/fixtures/ofl/tupperdmx/moving-head.json: 'tupperdmx moving-head' (modes 12ch, 18ch) → <tmp>/profiles/ofl-tupperdmx-moving-head.json
+    Shutter: strobe speeds given as slow…fast taken as 1–20 Hz (an estimate)
+    Gobo Rotation: rotation speeds given as slow…fast taken as 10–360 °/s, CW positive (an estimate)
+    Prism Rotation: rotation speeds given as slow…fast taken as 10–360 °/s, CW positive (an estimate)
+    Control: no busk attribute (NoFunction, Maintenance); held at DMX 0
+  <repo>/tests/fixtures/ofl/tupperdmx/par-rgbw.json: 'tupperdmx par-rgbw' (modes 6ch) → <tmp>/profiles/ofl-tupperdmx-par-rgbw.json
+  <repo>/tests/fixtures/ofl/tupperdmx/smoke-machine.json: 'tupperdmx smoke-machine' (modes 1ch, 2ch) → <tmp>/profiles/ofl-tupperdmx-smoke-machine.json
+    Fog Type: no busk attribute (FogType); held at DMX 0
+stderr:
+sha256 ofl-tupperdmx-blinder.json 3bbb8ea8fbea186f4116bc0f95e5d974d8ca4a601484717c732c0753d33bd87e
+sha256 ofl-tupperdmx-ledbar.json 0bd839d4c8444efa762d56072279cc2678d45c93d30198ef027180a4114a77f7
+sha256 ofl-tupperdmx-moving-head.json d44a8583ba0556c74b2d812531bdfd3b23b965a31a30bf2f3efe7b59258173bd
+sha256 ofl-tupperdmx-par-rgbw.json 331a4a48fe9cb640b11fa2129bc85733ad906f8886aed54a18b58d478bdcc7b3
+sha256 ofl-tupperdmx-smoke-machine.json 30271bf5dbbd0c34485e69ffb641b36acd1964cb9a6db890de127b8253ec20ec

@@ -1,0 +1,5 @@
+$ busk validate <repo>/tests/fixtures/appendix_a.json
+exit 0
+stdout:
+  0 errors, 0 warnings
+stderr:

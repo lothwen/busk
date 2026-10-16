@@ -1,0 +1,10 @@
+$ busk new <tmp>/club.show --title 'Club Night' --state-dir <tmp>/state
+exit 0
+stdout:
+  created <tmp>/club.show
+stderr:
+$ busk new <tmp>/club.show --title 'Club Night' --state-dir <tmp>/state
+exit 1
+stdout:
+stderr:
+  busk: '<tmp>/club.show' exists; not overwriting it

@@ -1,0 +1,5 @@
+$ busk validate <tmp>/nope.json
+exit 1
+stdout:
+stderr:
+  busk: cannot read '<tmp>/nope.json': No such file or directory

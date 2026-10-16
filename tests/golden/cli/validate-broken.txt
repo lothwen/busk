@@ -1,0 +1,8 @@
+$ busk validate <tmp>/broken.json
+exit 1
+stdout:
+  warning fixtures[0].profileRevision: Patched with revision '0' of profile 'prof-mh', but the embedded profile is revision '1'
+  error   fixtures[2].patch.address: Footprint of 3 channel(s) starting at 511 ends at 513, past channel 512
+  error   playbacks[0].cueListId: Unknown cue list 'nope'
+  2 errors, 1 warning
+stderr:
