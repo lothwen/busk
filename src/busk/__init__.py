@@ -52,7 +52,9 @@ Stability
 busk follows 0.x semver: a patch release (0.1.1) only fixes; a minor release
 (0.2.0) may break the public API, after a deprecation wherever possible. No
 message text is part of the API: CLI output, :attr:`Issue.message`,
-:attr:`Reply.text` and log records may change in any release.
+:attr:`Reply.text` and log records may change in any release. ``CHANGELOG.md``
+lists the changes of each release, and ``docs/library.md`` what counts as
+breaking.
 
 Logging
 =======

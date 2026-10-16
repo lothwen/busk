@@ -6,8 +6,8 @@ deterministic pipeline. The architecture is specified in
 [`busking-console-architecture-python.md`](docs/busking-console-architecture-python.md)
 ("the spec"; section numbers such as §5.3 refer to it).
 
-**Status: Phase 7 — hardening** ([plan](docs/phase-7-plan.md)), the last phase of the spec's
-§22 roadmap, on top of Phase 6 — surfaces and network ([plan](docs/phase-6-plan.md)), Phase 5 —
+**Status: Phase 8 — busk as a library** ([plan](docs/phase-8-plan.md)), on top of Phase 7 —
+hardening ([plan](docs/phase-7-plan.md)), the last phase of the spec's §22 roadmap, Phase 6 — surfaces and network ([plan](docs/phase-6-plan.md)), Phase 5 —
 effects ([plan](docs/phase-5-plan.md)), Phase 4 — time ([plan](docs/phase-4-plan.md)), Phase 3 — programmer & recording ([plan](docs/phase-3-plan.md)),
 Phase 2 — busking core ([plan](docs/phase-2-plan.md)),
 Phase 1.5 — sACN output ([plan](docs/phase-1.5-plan.md)), Phase 1 — fixtures
@@ -44,6 +44,15 @@ to a profile's new revision. An **event log** records what the engine applied an
 `busk replay` rebuilds the run from it. A **soak harness** (`bench/soak.py`) runs the show
 for hours under fuzzed surfaces and scheduled kills, measured on the wire. Still no new
 dependency.
+
+Phase 8 makes busk a **library** as well as a command: a public API of 28 names, all
+importable from `busk`, to load, validate and save shows, import profiles, render frames
+on a clock the caller drives (`OfflineShow`) and run a show live inside another program
+(`LiveShow`). The library prints nothing (it logs), MIDI became the optional extra
+`busk[midi]`, and busk is an MIT-licensed package installed from its GitHub repository.
+The command line did not change: its transcripts are pinned byte for byte. See
+[Using busk as a library](#using-busk-as-a-library) and the guide,
+[`docs/library.md`](docs/library.md).
 
 ```
             ┌─ busk run: the ROOT (no show code) ───────────────────────────────────────────┐
@@ -195,7 +204,8 @@ uv sync --all-extras    # the same, spelled out
 ```
 
 MIDI surfaces are the optional extra `busk[midi]` (Phase 8): [`mido`](https://mido.readthedocs.io/)
-with `python-rtmidi` (wheels exist for current CPython on Linux, macOS and Windows). The
+with `python-rtmidi`. python-rtmidi 1.5.8 has wheels up to Python 3.12; on 3.13 and 3.14
+it builds from source, which needs a C++ compiler and the ALSA headers. The
 development setup includes it, because the `dev` group depends on `busk[midi]`. Without
 it, busk runs as before, except that each MIDI surface reports
 `MIDI s-…: unavailable: install busk[midi]` once and stays closed. On Linux MIDI needs the
@@ -833,6 +843,28 @@ channel's options, or a `wheel` that isn't the channel's wheel is an error (with
 such as `values[3].slot.attribute`), where a cue drops the value for that target with a
 warning (§6.3).
 
+## Using busk as a library
+
+busk is also a Python library (Phase 8). Everything public is importable from `busk`, and
+[`docs/library.md`](docs/library.md) is the guide: installing from GitHub, tested examples,
+the reference of the 28 public names, the errors, and what may change between releases
+([`CHANGELOG.md`](CHANGELOG.md) lists what did).
+
+```python
+import busk
+
+show, warnings = busk.load_show("club.show")
+offline = busk.OfflineShow(show)          # a clock you drive: no threads, no sockets
+offline.execute("fader 1 1")
+frame = offline.tick(3.0)                 # frame.universes[1]: universe 1's 512 bytes, 3 s later
+
+with busk.LiveShow(show) as live:         # real time, in your process: engine and output threads
+    live.execute("go 1")
+```
+
+`LiveShow` has none of `busk run`'s safety net: no watchdog, no process isolation, no
+autosave or crash recovery. For a show on stage, use `busk run`.
+
 ## The console
 
 The console speaks in user-facing numbers (`fixture 101`, `group 2`, `preset color 1`,
@@ -1211,6 +1243,9 @@ ports (UDP 5568 and 6454, the virtual MIDI port's name).
 
 ```
 src/busk/
+  __init__.py            # the public API (Phase 8): __all__, lazy re-exports, the NullHandler
+  errors.py              # BuskError, ScriptError (the public errors' base and the script one)
+  runner.py              # OfflineShow, LiveShow, DmxFrame; _LocalRun (engine and output threads)
   cli.py  __main__.py
   model/                 # persistent schema (§5.1–§5.17) as TypedDicts
     common.py            #   ids, EntityBase, TargetRef/TargetKey, STRICT, number aliases
@@ -1299,6 +1334,7 @@ src/busk/
     engine_host.py       #   EngineHost: the engine process (link thread, engine thread, publisher)
     links.py             #   RemoteBus: the console's side of the engine process
     console_host.py      #   the console process (and the --threads run): a LiveShow attached to the engine, the prompt, autosave, status
+    options.py           #   RunOptions: the run flags, typed (internal)
     root.py              #   Root: output, watchdog, restarts, event log, --stats, signals; FrameLink
     report.py            #   RouteReporter, print_statistics(): the route and statistics lines
   replay.py              # busk replay: Replayer
@@ -1315,6 +1351,9 @@ src/busk/
     netif.py             #   interface addresses, broadcast addresses and networks (Linux ioctls)
     scheduler.py         #   OUTPUT_HZ, ScheduledRoute, build_routes(), OutputScheduler (§14): stall output, output off, reopening, OutputStats
     console.py           #   ConsoleOutput: the --console debug sink
+LICENSE                      # MIT
+CHANGELOG.md                 # releases (Keep a Changelog); 0.1.0 is the first with a public API
+docs/library.md              # the library guide: installing, examples (doctests), reference, stability
 examples/phase1-demo.json    # three real fixtures, transcribed from their manuals
 examples/phase1-values.json
 examples/phase2-busk.json    # the busking demo: 2 spots, 4 pars, 8 playbacks, a nanoKONTROL2
@@ -1346,6 +1385,9 @@ tests/process_site/          # sitecustomize.py: points the children's sACN rout
 tests/dmx_widget.py          # a pseudo-terminal standing in for an Enttec widget
 tests/gdtf_builder.py        # synthetic GDTF files, from DIN SPEC 15800 (Phase 7)
 tests/fixtures/ofl/          # OFL files: the five TupperDMX fixtures
+tests/api_consumer.py        # a consumer of the public API, type-checked by `mypy --strict` (Phase 8)
+tests/golden/public_api.json # the public API's signatures and fields: every change is a reviewed diff
+tests/golden/cli/            # the CLI transcripts: output and exit codes, byte for byte (Phase 8)
 tests/golden/                # the shows and DMX frames of the Phase 3 build, the Phase 4 song, the Phase 5 effects, the Phase 6 surfaces and the Phase 7 safety show
 ```
 
@@ -2739,9 +2781,32 @@ sACN receiver, item 5 `test_console_restart.py` with a WebSocket client as the p
 and item 1 ran for 1 hour (pass; see the [benchmark](#development)). Watching it on a rig,
 and the 24 hours, are left.
 
+## Library checklist (Phase 8)
+
+Before tagging `v0.1.0` (phase-8-plan step 13):
+
+1. **Install from GitHub into another project.** In a new directory: `uv init`, then
+   `uv add "busk[midi] @ git+https://github.com/lothwen/busk.git@main"`.
+   `uv run busk --version` prints `busk 0.1.0`, and
+   `uv run python -c "import busk; print(busk.load_show)"` works.
+2. **The guide's examples** ([`docs/library.md`](docs/library.md)) run there unchanged, from a
+   copy of `examples/` and `tests/fixtures/`.
+3. **TupperDMX through `LiveShow`.** Start TupperDMX-Simul first (it holds port 6454). In
+   Python: `show, _ = busk.load_show("examples/tupperdmx/tupper-demo.show")`, then
+   `with busk.LiveShow(show) as live: live.execute("fader 1 1")`, and wait a few seconds in
+   the block. The simulator shows the look, and lets go when the block ends.
+4. **Without the extra.** In a second project, `uv add "busk @ git+…@main"`. `busk run` on
+   the Phase 3 show prints `MIDI s-…: unavailable: install busk[midi]` and runs on.
+5. **Read [`docs/library.md`](docs/library.md) as a newcomer would.** Fix anything unclear
+   before the tag.
+6. **Tag and push:** `git tag -a v0.1.0 -m "busk 0.1.0: the first release with a public API"`,
+   `git push origin v0.1.0`, and date the `0.1.0` entry of [`CHANGELOG.md`](CHANGELOG.md).
+   A collaborator account with read access installs `@v0.1.0`.
+
 ## Next
 
-The spec's §22 roadmap is complete. Run the Phase 7
+The spec's §22 roadmap is complete, and busk is a library (Phase 8). Run the
+[library checklist](#library-checklist-phase-8) and tag `v0.1.0`. Run the Phase 7
 [hardening checklist](#hardening-checklist-phase-7), the 24-hour soak first (and the
 earlier checklists if they have not been run). What remains is new scope, and a choice:
 
@@ -2750,6 +2815,10 @@ earlier checklists if they have not been run). What remains is new scope, and a 
   second resolve in the engine process, multi-user rules (a single writer or patches,
   §23), and a template editor.
 * **Pages per surface**, if two operators share one show.
+* **For the library** (phase-8-plan §10): CI on GitHub Actions (the suite on 3.12–3.14, ruff,
+  mypy, the doctests, the wheel), wheels attached to GitHub releases for installs without
+  git, and on request `compile_show`, route status, custom effect templates, autosave and
+  recovery in `LiveShow`.
 * **The spec gaps** listed [above](#spec-gaps), notably colour → colour wheel and
   single-emitter colour, which would let the importers map more fixtures as they are, and
   the GDTF parts the import leaves out.
