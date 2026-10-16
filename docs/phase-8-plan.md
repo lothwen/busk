@@ -674,6 +674,15 @@ Step 0 is the repository. Steps 1–5 decouple without changing behaviour, 6–8
    - `tick` going back raises `ValueError`;
    - two ticks at the same time are identical (decision 20);
    - `threading.active_count()` does not change, and nothing is written to `capsys` or `$HOME`.
+
+   **Done** (2026-10-16; 3232 passed, ruff, format and mypy clean; transcripts unchanged). `busk/runner.py` has `DmxFrame` (frozen; `universes` is a read-only mapping in universe-number order) and `OfflineShow`. `test_offline_show.py` (15 tests) covers the list above; the Phase 3 build gives the golden show apart from `meta.modified`, and its frame the golden frame. Decision 20 holds: ticks at 0.3, 0.3, 0.3 then 1.7 give the frame and playback states of ticks at 0.3 then 1.7, with the song fading and the chase stepping. **Deviations and calls the user may veto:**
+   - **The tick after each line comes from the console.** `Console(settle=)` is called after every line it runs, sourced files included, while SIGINT is still held; `OfflineShow` ticks there. A hook around `run_script` alone would miss the lines of a `source`d file.
+   - **`Console.run_lines(path, lines, write, *, failed=None)`** is split out of `run_script`, which now reads the file and calls it; `failed` is on `run_lines` only. `OfflineShow.run_script` reads the file itself, so `OSError` passes through as §5.8 says, where `run_script` would have written `error: cannot read …`.
+   - **Full validation, not `validate_edit(show, show)`**: with nothing touched, `validate_edit` skips the structural pass, so a hand-built `Show` with an out-of-range level would get through. The facades run `validate_show` on the document, which costs one more validation at construction.
+   - `ScriptError.output` is everything the script wrote, split into lines, including the `path:line: text` location line and the error reply, as `busk run --script` prints it.
+   - **Ctrl+C:** the console holds SIGINT back while a line runs, so the facade raises `KeyboardInterrupt` once the line is done, from `execute` and from `run_script` (the next line does not run). Tested with `signal.raise_signal`.
+   - `warnings` is the compiler's warnings of the current show (`session.compiled.warnings`), as the plan says; validation warnings come from `load_show`.
+   - Found: the session keeps some profile fields as tuples, so `offline.show` equals the saved file only through JSON (`show_json`). This was already so; nothing changed.
 7. **`LiveShow`** (§5.5). The in-process run is copied from `ThreadsBackend`, so it exists twice until step 10. → *verify:* `test_live_show.py`:
    - a localhost sACN route (with `tests/sacn_receiver.py`) receives the universes; after `stop()` the receiver sees Stream_Terminated;
    - an OSC surface on a free port: a message changes the snapshot, and its feedback comes back;

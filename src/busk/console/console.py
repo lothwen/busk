@@ -79,18 +79,23 @@ class Console:
         status: Callable[[], str] | None = None,
         effects: EffectLibrary | None = None,
         about: Callable[[], Sequence[str]] | None = None,
+        settle: Callable[[], None] | None = None,
     ) -> None:
         """``iface`` is used by multicast and broadcast routes; ``status``
         returns the engine's status line for the ``status`` command;
         ``effects`` is the effect library (the built-in one by default);
         ``about`` returns the lines ``info`` adds about the run (its
-        processes and restarts)."""
+        processes and restarts). ``settle`` is called after every line,
+        in scripts and sourced files too, while SIGINT is still held back:
+        :class:`~busk.runner.OfflineShow` ticks its engine there, so each
+        line takes effect before the next one runs."""
         self.session = session
         self.library = library
         self.effects = effects if effects is not None else builtin_effects()
         self.iface = iface
         self._status = status
         self._about = about
+        self._settle = settle
         self.quit_requested = False
         self.interrupted = False
         """Ctrl+C arrived while a command ran (it was held back until it finished)."""
@@ -101,7 +106,10 @@ class Console:
     def execute(self, line: str) -> Reply:
         """Run one line; never raises, not even for Ctrl+C (see the module docs)."""
         with self._interrupts_held():
-            return self._execute(line)
+            reply = self._execute(line)
+            if self._settle is not None:
+                self._settle()
+            return reply
 
     @contextlib.contextmanager
     def _interrupts_held(self) -> Iterator[None]:
@@ -180,9 +188,26 @@ class Console:
         except OSError as exc:
             write(f"error: cannot read {str(path)!r}: {exc.strerror or exc}")
             return False
+        return self.run_lines(path, lines, write)
+
+    def run_lines(
+        self,
+        path: Path,
+        lines: Sequence[str],
+        write: Callable[[str], None],
+        *,
+        failed: Callable[[int, str], None] | None = None,
+    ) -> bool:
+        """Run ``lines``, read from ``path``, as :meth:`run_script` does.
+
+        ``failed(number, line)`` is told which line failed (1-based, its
+        text stripped) before the location line is written. Returns success.
+        """
         for number, line in enumerate(lines, start=1):
             reply = self.execute(line)
             if not reply.ok:
+                if failed is not None:
+                    failed(number, line.strip())
                 write(f"{path}:{number}: {line.strip()}")
             if reply.text:
                 write(reply.text)
