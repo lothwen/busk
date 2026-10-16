@@ -1,0 +1,100 @@
+{
+  "id": "prof-tdmx-mhead",
+  "name": "TupperDMX Moving Head",
+  "manufacturer": "TupperDMX",
+  "model": "Moving Head",
+  "revision": "1",
+  "source": "user",
+  "notes": "Transcribed from TupperDMX's OFL file fixtures/moving-head.json, 12ch mode (8-bit pan and tilt). Pan 0-540 deg and tilt 0-270 deg are centred: -270..270 and -135..135. Estimates (the OFL file gives speeds as slow..fast only): strobe, pulse and random strobe 1-20 Hz, as the Appendix A spot; gobo rotation 10-360 deg/s, CW positive, CCW negative. Gobo rotation 0 is the 0-degree index, used as 'stopped'; indexed angles 1-127 have no attribute. Wheel shake and spin, and the shutter's ramp-up, are never output. The 18ch mode is not transcribed.",
+  "physical": { "panRange": 540, "tiltRange": 270, "zoomRange": [12, 30], "maxStrobeHz": 20, "powerW": 200, "weightKg": 12.5 },
+  "wheels": [
+    {
+      "id": "gobo1",
+      "kind": "gobo",
+      "slots": [
+        { "id": "open", "name": "Open" },
+        { "id": "breakup", "name": "Breakup" },
+        { "id": "dots", "name": "Dots" },
+        { "id": "lines", "name": "Lines" },
+        { "id": "star", "name": "Star" },
+        { "id": "spiral", "name": "Spiral" },
+        { "id": "triangles", "name": "Triangles" },
+        { "id": "closed", "name": "Closed" }
+      ]
+    },
+    {
+      "id": "prism1",
+      "kind": "prism",
+      "slots": [
+        { "id": "off", "name": "Open" },
+        { "id": "prism3", "name": "3-facet prism", "facets": 3 }
+      ]
+    }
+  ],
+  "modes": [
+    {
+      "id": "mode-12ch",
+      "name": "12ch",
+      "footprint": 12,
+      "intensityStrategy": "dimmerChannel",
+      "dimmerCurve": "linear",
+      "elements": [{ "index": 0, "name": "Main" }],
+      "channels": [
+        { "offset": 0, "element": 0, "attribute": "pan", "bytes": 1, "defaultDmx": 128,
+          "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [-270, 270] }] },
+        { "offset": 1, "element": 0, "attribute": "tilt", "bytes": 1, "defaultDmx": 128,
+          "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [-135, 135] }] },
+        { "offset": 2, "element": 0, "attribute": "intensity", "bytes": 1, "defaultDmx": 0,
+          "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }] },
+        { "offset": 3, "element": 0, "attribute": "shutter", "bytes": 1, "defaultDmx": 0,
+          "capabilities": [
+            { "kind": "function", "dmx": [0, 7], "fn": "closed" },
+            { "kind": "function", "dmx": [8, 15], "fn": "open" },
+            { "kind": "function", "dmx": [16, 131], "fn": "strobe",
+              "param": { "attribute": "strobeRate", "value": [1, 20] } },
+            { "kind": "function", "dmx": [132, 167], "fn": "pulse",
+              "param": { "attribute": "strobeRate", "value": [1, 20] } },
+            { "kind": "function", "dmx": [168, 203], "fn": "rampUp" },
+            { "kind": "function", "dmx": [204, 239], "fn": "random",
+              "param": { "attribute": "strobeRate", "value": [1, 20] } },
+            { "kind": "function", "dmx": [240, 255], "fn": "open" }
+          ] },
+        { "offset": 4, "element": 0, "attribute": "color", "component": "red", "bytes": 1, "defaultDmx": 0,
+          "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }] },
+        { "offset": 5, "element": 0, "attribute": "color", "component": "green", "bytes": 1, "defaultDmx": 0,
+          "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }] },
+        { "offset": 6, "element": 0, "attribute": "color", "component": "blue", "bytes": 1, "defaultDmx": 0,
+          "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }] },
+        { "offset": 7, "element": 0, "attribute": "color", "component": "white", "bytes": 1, "defaultDmx": 0,
+          "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }] },
+        { "offset": 8, "element": 0, "attribute": "gobo1", "bytes": 1, "defaultDmx": 0,
+          "capabilities": [
+            { "kind": "slot", "dmx": [0, 15], "wheel": "gobo1", "slot": "open" },
+            { "kind": "slot", "dmx": [16, 31], "wheel": "gobo1", "slot": "breakup" },
+            { "kind": "slot", "dmx": [32, 47], "wheel": "gobo1", "slot": "dots" },
+            { "kind": "slot", "dmx": [48, 63], "wheel": "gobo1", "slot": "lines" },
+            { "kind": "slot", "dmx": [64, 79], "wheel": "gobo1", "slot": "star" },
+            { "kind": "slot", "dmx": [80, 95], "wheel": "gobo1", "slot": "spiral" },
+            { "kind": "slot", "dmx": [96, 111], "wheel": "gobo1", "slot": "triangles" },
+            { "kind": "slot", "dmx": [112, 127], "wheel": "gobo1", "slot": "closed" },
+            { "kind": "function", "dmx": [128, 191], "fn": "goboShake" },
+            { "kind": "function", "dmx": [192, 255], "fn": "wheelSpinCW" }
+          ] },
+        { "offset": 9, "element": 0, "attribute": "gobo1Rotation", "bytes": 1, "defaultDmx": 0,
+          "capabilities": [
+            { "kind": "range", "dmx": [0, 0], "value": [0, 0] },
+            { "kind": "function", "dmx": [1, 127], "fn": "goboIndex" },
+            { "kind": "range", "dmx": [128, 191], "value": [10, 360] },
+            { "kind": "range", "dmx": [192, 255], "value": [-360, -10] }
+          ] },
+        { "offset": 10, "element": 0, "attribute": "prism", "bytes": 1, "defaultDmx": 0,
+          "capabilities": [
+            { "kind": "slot", "dmx": [0, 127], "wheel": "prism1", "slot": "off" },
+            { "kind": "slot", "dmx": [128, 255], "wheel": "prism1", "slot": "prism3" }
+          ] },
+        { "offset": 11, "element": 0, "attribute": "zoom", "bytes": 1, "defaultDmx": 128,
+          "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [12, 30] }] }
+      ]
+    }
+  ]
+}

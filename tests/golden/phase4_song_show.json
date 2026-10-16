@@ -1,0 +1,3595 @@
+{
+  "schemaVersion": 1,
+  "meta": {
+    "id": "show-000000000001",
+    "title": "Club Night",
+    "created": "2026-10-11T12:00:00Z",
+    "modified": "2026-10-11T12:00:00Z",
+    "app": "busk 0.1.0"
+  },
+  "profiles": [
+    {
+      "id": "prof-mh",
+      "name": "Generic Spot 16ch",
+      "manufacturer": "Generic",
+      "model": "Spot",
+      "revision": "1",
+      "source": "user",
+      "physical": {
+        "panRange": 540.0,
+        "tiltRange": 270.0,
+        "zoomRange": [
+          12.0,
+          30.0
+        ]
+      },
+      "wheels": [
+        {
+          "id": "gobo1",
+          "kind": "gobo",
+          "slots": [
+            {
+              "id": "open",
+              "name": "Open"
+            },
+            {
+              "id": "breakup",
+              "name": "Breakup"
+            }
+          ]
+        }
+      ],
+      "emitters": [
+        {
+          "id": "red",
+          "color": {
+            "r": 1.0,
+            "g": 0.0,
+            "b": 0.0
+          }
+        },
+        {
+          "id": "green",
+          "color": {
+            "r": 0.0,
+            "g": 1.0,
+            "b": 0.0
+          }
+        },
+        {
+          "id": "blue",
+          "color": {
+            "r": 0.0,
+            "g": 0.0,
+            "b": 1.0
+          }
+        },
+        {
+          "id": "white",
+          "color": {
+            "r": 1.0,
+            "g": 1.0,
+            "b": 1.0
+          }
+        }
+      ],
+      "modes": [
+        {
+          "id": "mode-16",
+          "name": "16ch",
+          "footprint": 16,
+          "elements": [
+            {
+              "index": 0,
+              "name": "Main"
+            }
+          ],
+          "intensityStrategy": "dimmerChannel",
+          "dimmerCurve": "linear",
+          "channels": [
+            {
+              "offset": 0,
+              "element": 0,
+              "attribute": "pan",
+              "bytes": 2,
+              "fineOffsets": [
+                1
+              ],
+              "defaultDmx": 32768,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    65535
+                  ],
+                  "value": [
+                    -270.0,
+                    270.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 2,
+              "element": 0,
+              "attribute": "tilt",
+              "bytes": 2,
+              "fineOffsets": [
+                3
+              ],
+              "defaultDmx": 32768,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    65535
+                  ],
+                  "value": [
+                    -135.0,
+                    135.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 4,
+              "element": 0,
+              "attribute": "color",
+              "component": "red",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 5,
+              "element": 0,
+              "attribute": "color",
+              "component": "green",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 6,
+              "element": 0,
+              "attribute": "color",
+              "component": "blue",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 7,
+              "element": 0,
+              "attribute": "color",
+              "component": "white",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 8,
+              "element": 0,
+              "attribute": "intensity",
+              "bytes": 2,
+              "fineOffsets": [
+                9
+              ],
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    65535
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 10,
+              "element": 0,
+              "attribute": "zoom",
+              "bytes": 1,
+              "defaultDmx": 128,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    12.0,
+                    30.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 11,
+              "element": 0,
+              "attribute": "gobo1",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "slot",
+                  "dmx": [
+                    0,
+                    9
+                  ],
+                  "wheel": "gobo1",
+                  "slot": "open"
+                },
+                {
+                  "kind": "slot",
+                  "dmx": [
+                    10,
+                    19
+                  ],
+                  "wheel": "gobo1",
+                  "slot": "breakup"
+                }
+              ]
+            },
+            {
+              "offset": 12,
+              "element": 0,
+              "attribute": "shutter",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "function",
+                  "dmx": [
+                    0,
+                    7
+                  ],
+                  "fn": "closed"
+                },
+                {
+                  "kind": "function",
+                  "dmx": [
+                    8,
+                    15
+                  ],
+                  "fn": "open"
+                },
+                {
+                  "kind": "function",
+                  "dmx": [
+                    16,
+                    131
+                  ],
+                  "fn": "strobe",
+                  "param": {
+                    "attribute": "strobeRate",
+                    "value": [
+                      1.0,
+                      20.0
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "prof-ml56",
+      "name": "Eurolite LED ML-56 RGBW",
+      "notes": "Transcribed from the Eurolite manual (v1.0, DMX protocol, 4-channel mode); matches OFL eurolite/led-ml-56-rgbw. Channel 4 is 'cool white'. The 4-channel mode has no dimmer, so intensity is virtual. The 6-channel mode (dimmer, strobe/sound) is not transcribed.",
+      "manufacturer": "Eurolite",
+      "model": "LED ML-56 RGBW 36x3W",
+      "revision": "1",
+      "source": "user",
+      "physical": {
+        "powerW": 150.0,
+        "weightKg": 5.0
+      },
+      "wheels": [],
+      "modes": [
+        {
+          "id": "mode-4ch",
+          "name": "4-channel",
+          "footprint": 4,
+          "elements": [
+            {
+              "index": 0,
+              "name": "Main"
+            }
+          ],
+          "intensityStrategy": "virtual",
+          "dimmerCurve": "linear",
+          "channels": [
+            {
+              "offset": 0,
+              "element": 0,
+              "attribute": "color",
+              "component": "red",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 1,
+              "element": 0,
+              "attribute": "color",
+              "component": "green",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 2,
+              "element": 0,
+              "attribute": "color",
+              "component": "blue",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 3,
+              "element": 0,
+              "attribute": "color",
+              "component": "white",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "prof-pix",
+      "name": "Chauvet DJ COLORband PiX",
+      "notes": "Transcribed from the Chauvet DJ user manual Rev. 6 (36-CH personality: 12 zones of red, green and blue); matches OFL chauvet-dj/colorband-pix. No dimmer channel in this personality, so each cell is dimmed virtually. Other personalities are not transcribed.",
+      "manufacturer": "Chauvet DJ",
+      "model": "COLORband PiX",
+      "revision": "1",
+      "source": "user",
+      "physical": {
+        "maxStrobeHz": 30.0,
+        "powerW": 86.0,
+        "weightKg": 4.0
+      },
+      "wheels": [],
+      "modes": [
+        {
+          "id": "mode-36ch",
+          "name": "36-CH",
+          "footprint": 36,
+          "elements": [
+            {
+              "index": 0,
+              "name": "Cell 1",
+              "layout": {
+                "x": 0.0,
+                "y": 0.0
+              }
+            },
+            {
+              "index": 1,
+              "name": "Cell 2",
+              "layout": {
+                "x": 1.0,
+                "y": 0.0
+              }
+            },
+            {
+              "index": 2,
+              "name": "Cell 3",
+              "layout": {
+                "x": 2.0,
+                "y": 0.0
+              }
+            },
+            {
+              "index": 3,
+              "name": "Cell 4",
+              "layout": {
+                "x": 3.0,
+                "y": 0.0
+              }
+            },
+            {
+              "index": 4,
+              "name": "Cell 5",
+              "layout": {
+                "x": 4.0,
+                "y": 0.0
+              }
+            },
+            {
+              "index": 5,
+              "name": "Cell 6",
+              "layout": {
+                "x": 5.0,
+                "y": 0.0
+              }
+            },
+            {
+              "index": 6,
+              "name": "Cell 7",
+              "layout": {
+                "x": 6.0,
+                "y": 0.0
+              }
+            },
+            {
+              "index": 7,
+              "name": "Cell 8",
+              "layout": {
+                "x": 7.0,
+                "y": 0.0
+              }
+            },
+            {
+              "index": 8,
+              "name": "Cell 9",
+              "layout": {
+                "x": 8.0,
+                "y": 0.0
+              }
+            },
+            {
+              "index": 9,
+              "name": "Cell 10",
+              "layout": {
+                "x": 9.0,
+                "y": 0.0
+              }
+            },
+            {
+              "index": 10,
+              "name": "Cell 11",
+              "layout": {
+                "x": 10.0,
+                "y": 0.0
+              }
+            },
+            {
+              "index": 11,
+              "name": "Cell 12",
+              "layout": {
+                "x": 11.0,
+                "y": 0.0
+              }
+            }
+          ],
+          "intensityStrategy": "virtual",
+          "channels": [
+            {
+              "offset": 0,
+              "element": 0,
+              "attribute": "color",
+              "component": "red",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 1,
+              "element": 0,
+              "attribute": "color",
+              "component": "green",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 2,
+              "element": 0,
+              "attribute": "color",
+              "component": "blue",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 3,
+              "element": 1,
+              "attribute": "color",
+              "component": "red",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 4,
+              "element": 1,
+              "attribute": "color",
+              "component": "green",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 5,
+              "element": 1,
+              "attribute": "color",
+              "component": "blue",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 6,
+              "element": 2,
+              "attribute": "color",
+              "component": "red",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 7,
+              "element": 2,
+              "attribute": "color",
+              "component": "green",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 8,
+              "element": 2,
+              "attribute": "color",
+              "component": "blue",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 9,
+              "element": 3,
+              "attribute": "color",
+              "component": "red",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 10,
+              "element": 3,
+              "attribute": "color",
+              "component": "green",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 11,
+              "element": 3,
+              "attribute": "color",
+              "component": "blue",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 12,
+              "element": 4,
+              "attribute": "color",
+              "component": "red",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 13,
+              "element": 4,
+              "attribute": "color",
+              "component": "green",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 14,
+              "element": 4,
+              "attribute": "color",
+              "component": "blue",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 15,
+              "element": 5,
+              "attribute": "color",
+              "component": "red",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 16,
+              "element": 5,
+              "attribute": "color",
+              "component": "green",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 17,
+              "element": 5,
+              "attribute": "color",
+              "component": "blue",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 18,
+              "element": 6,
+              "attribute": "color",
+              "component": "red",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 19,
+              "element": 6,
+              "attribute": "color",
+              "component": "green",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 20,
+              "element": 6,
+              "attribute": "color",
+              "component": "blue",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 21,
+              "element": 7,
+              "attribute": "color",
+              "component": "red",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 22,
+              "element": 7,
+              "attribute": "color",
+              "component": "green",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 23,
+              "element": 7,
+              "attribute": "color",
+              "component": "blue",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 24,
+              "element": 8,
+              "attribute": "color",
+              "component": "red",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 25,
+              "element": 8,
+              "attribute": "color",
+              "component": "green",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 26,
+              "element": 8,
+              "attribute": "color",
+              "component": "blue",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 27,
+              "element": 9,
+              "attribute": "color",
+              "component": "red",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 28,
+              "element": 9,
+              "attribute": "color",
+              "component": "green",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 29,
+              "element": 9,
+              "attribute": "color",
+              "component": "blue",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 30,
+              "element": 10,
+              "attribute": "color",
+              "component": "red",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 31,
+              "element": 10,
+              "attribute": "color",
+              "component": "green",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 32,
+              "element": 10,
+              "attribute": "color",
+              "component": "blue",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 33,
+              "element": 11,
+              "attribute": "color",
+              "component": "red",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 34,
+              "element": 11,
+              "attribute": "color",
+              "component": "green",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            },
+            {
+              "offset": 35,
+              "element": 11,
+              "attribute": "color",
+              "component": "blue",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                {
+                  "kind": "range",
+                  "dmx": [
+                    0,
+                    255
+                  ],
+                  "value": [
+                    0.0,
+                    1.0
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "universes": [
+    {
+      "id": "u-000000000004",
+      "name": "Stage",
+      "number": 1
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "fx-000000000005",
+      "name": "Spot 101",
+      "number": 101,
+      "profileId": "prof-mh",
+      "profileRevision": "1",
+      "modeId": "mode-16",
+      "patch": {
+        "universeId": "u-000000000004",
+        "address": 1
+      },
+      "orientation": {
+        "invertPan": false,
+        "invertTilt": false,
+        "swapPanTilt": false,
+        "panOffset": 0.0,
+        "tiltOffset": 0.0
+      }
+    },
+    {
+      "id": "fx-000000000006",
+      "name": "Spot 102",
+      "number": 102,
+      "profileId": "prof-mh",
+      "profileRevision": "1",
+      "modeId": "mode-16",
+      "patch": {
+        "universeId": "u-000000000004",
+        "address": 17
+      },
+      "orientation": {
+        "invertPan": false,
+        "invertTilt": false,
+        "swapPanTilt": false,
+        "panOffset": 0.0,
+        "tiltOffset": 0.0
+      }
+    },
+    {
+      "id": "fx-000000000007",
+      "name": "LED ML-56 RGBW 36x3W 201",
+      "number": 201,
+      "profileId": "prof-ml56",
+      "profileRevision": "1",
+      "modeId": "mode-4ch",
+      "patch": {
+        "universeId": "u-000000000004",
+        "address": 33
+      },
+      "orientation": {
+        "invertPan": false,
+        "invertTilt": false,
+        "swapPanTilt": false,
+        "panOffset": 0.0,
+        "tiltOffset": 0.0
+      }
+    },
+    {
+      "id": "fx-000000000008",
+      "name": "LED ML-56 RGBW 36x3W 202",
+      "number": 202,
+      "profileId": "prof-ml56",
+      "profileRevision": "1",
+      "modeId": "mode-4ch",
+      "patch": {
+        "universeId": "u-000000000004",
+        "address": 37
+      },
+      "orientation": {
+        "invertPan": false,
+        "invertTilt": false,
+        "swapPanTilt": false,
+        "panOffset": 0.0,
+        "tiltOffset": 0.0
+      }
+    },
+    {
+      "id": "fx-000000000009",
+      "name": "LED ML-56 RGBW 36x3W 203",
+      "number": 203,
+      "profileId": "prof-ml56",
+      "profileRevision": "1",
+      "modeId": "mode-4ch",
+      "patch": {
+        "universeId": "u-000000000004",
+        "address": 41
+      },
+      "orientation": {
+        "invertPan": false,
+        "invertTilt": false,
+        "swapPanTilt": false,
+        "panOffset": 0.0,
+        "tiltOffset": 0.0
+      }
+    },
+    {
+      "id": "fx-00000000000a",
+      "name": "LED ML-56 RGBW 36x3W 204",
+      "number": 204,
+      "profileId": "prof-ml56",
+      "profileRevision": "1",
+      "modeId": "mode-4ch",
+      "patch": {
+        "universeId": "u-000000000004",
+        "address": 45
+      },
+      "orientation": {
+        "invertPan": false,
+        "invertTilt": false,
+        "swapPanTilt": false,
+        "panOffset": 0.0,
+        "tiltOffset": 0.0
+      }
+    },
+    {
+      "id": "fx-00000000000b",
+      "name": "COLORband PiX 301",
+      "number": 301,
+      "profileId": "prof-pix",
+      "profileRevision": "1",
+      "modeId": "mode-36ch",
+      "patch": {
+        "universeId": "u-000000000004",
+        "address": 49
+      },
+      "orientation": {
+        "invertPan": false,
+        "invertTilt": false,
+        "swapPanTilt": false,
+        "panOffset": 0.0,
+        "tiltOffset": 0.0
+      }
+    }
+  ],
+  "groups": [
+    {
+      "id": "g-00000000000c",
+      "name": "Heads",
+      "number": 1,
+      "members": [
+        {
+          "fixtureId": "fx-000000000005",
+          "element": 0
+        },
+        {
+          "fixtureId": "fx-000000000006",
+          "element": 0
+        }
+      ]
+    },
+    {
+      "id": "g-00000000000d",
+      "name": "Washes",
+      "number": 2,
+      "members": [
+        {
+          "fixtureId": "fx-000000000007",
+          "element": 0
+        },
+        {
+          "fixtureId": "fx-000000000008",
+          "element": 0
+        },
+        {
+          "fixtureId": "fx-000000000009",
+          "element": 0
+        },
+        {
+          "fixtureId": "fx-00000000000a",
+          "element": 0
+        }
+      ]
+    },
+    {
+      "id": "g-00000000000e",
+      "name": "Bar",
+      "number": 3,
+      "members": [
+        {
+          "fixtureId": "fx-00000000000b",
+          "element": 0
+        },
+        {
+          "fixtureId": "fx-00000000000b",
+          "element": 1
+        },
+        {
+          "fixtureId": "fx-00000000000b",
+          "element": 2
+        },
+        {
+          "fixtureId": "fx-00000000000b",
+          "element": 3
+        },
+        {
+          "fixtureId": "fx-00000000000b",
+          "element": 4
+        },
+        {
+          "fixtureId": "fx-00000000000b",
+          "element": 5
+        },
+        {
+          "fixtureId": "fx-00000000000b",
+          "element": 6
+        },
+        {
+          "fixtureId": "fx-00000000000b",
+          "element": 7
+        },
+        {
+          "fixtureId": "fx-00000000000b",
+          "element": 8
+        },
+        {
+          "fixtureId": "fx-00000000000b",
+          "element": 9
+        },
+        {
+          "fixtureId": "fx-00000000000b",
+          "element": 10
+        },
+        {
+          "fixtureId": "fx-00000000000b",
+          "element": 11
+        }
+      ]
+    },
+    {
+      "id": "g-00000000000f",
+      "name": "All",
+      "number": 4,
+      "members": [
+        {
+          "fixtureId": "fx-000000000005",
+          "element": 0
+        },
+        {
+          "fixtureId": "fx-000000000006",
+          "element": 0
+        },
+        {
+          "fixtureId": "fx-000000000007",
+          "element": 0
+        },
+        {
+          "fixtureId": "fx-000000000008",
+          "element": 0
+        },
+        {
+          "fixtureId": "fx-000000000009",
+          "element": 0
+        },
+        {
+          "fixtureId": "fx-00000000000a",
+          "element": 0
+        },
+        {
+          "fixtureId": "fx-00000000000b",
+          "element": 0
+        },
+        {
+          "fixtureId": "fx-00000000000b",
+          "element": 1
+        },
+        {
+          "fixtureId": "fx-00000000000b",
+          "element": 2
+        },
+        {
+          "fixtureId": "fx-00000000000b",
+          "element": 3
+        },
+        {
+          "fixtureId": "fx-00000000000b",
+          "element": 4
+        },
+        {
+          "fixtureId": "fx-00000000000b",
+          "element": 5
+        },
+        {
+          "fixtureId": "fx-00000000000b",
+          "element": 6
+        },
+        {
+          "fixtureId": "fx-00000000000b",
+          "element": 7
+        },
+        {
+          "fixtureId": "fx-00000000000b",
+          "element": 8
+        },
+        {
+          "fixtureId": "fx-00000000000b",
+          "element": 9
+        },
+        {
+          "fixtureId": "fx-00000000000b",
+          "element": 10
+        },
+        {
+          "fixtureId": "fx-00000000000b",
+          "element": 11
+        }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "id": "pr-000000000010",
+      "name": "Blue",
+      "number": 1,
+      "pool": "color",
+      "values": [
+        {
+          "scope": {
+            "kind": "global"
+          },
+          "attribute": "color",
+          "value": {
+            "r": 0.0,
+            "g": 0.0,
+            "b": 1.0
+          }
+        }
+      ]
+    },
+    {
+      "id": "pr-000000000011",
+      "name": "Red",
+      "number": 2,
+      "pool": "color",
+      "values": [
+        {
+          "scope": {
+            "kind": "global"
+          },
+          "attribute": "color",
+          "value": {
+            "r": 1.0,
+            "g": 0.0,
+            "b": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "id": "pr-000000000012",
+      "name": "Green",
+      "number": 3,
+      "pool": "color",
+      "values": [
+        {
+          "scope": {
+            "kind": "global"
+          },
+          "attribute": "color",
+          "value": {
+            "r": 0.0,
+            "g": 1.0,
+            "b": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "id": "pr-000000000013",
+      "name": "Amber",
+      "number": 4,
+      "pool": "color",
+      "values": [
+        {
+          "scope": {
+            "kind": "global"
+          },
+          "attribute": "color",
+          "value": {
+            "r": 1.0,
+            "g": 0.5,
+            "b": 0.0
+          }
+        }
+      ]
+    },
+    {
+      "id": "pr-000000000014",
+      "name": "Audience",
+      "number": 1,
+      "pool": "position",
+      "values": [
+        {
+          "scope": {
+            "kind": "target",
+            "target": {
+              "fixtureId": "fx-000000000005",
+              "element": 0
+            }
+          },
+          "attribute": "pan",
+          "value": -30.0
+        },
+        {
+          "scope": {
+            "kind": "target",
+            "target": {
+              "fixtureId": "fx-000000000006",
+              "element": 0
+            }
+          },
+          "attribute": "pan",
+          "value": 30.0
+        },
+        {
+          "scope": {
+            "kind": "target",
+            "target": {
+              "fixtureId": "fx-000000000005",
+              "element": 0
+            }
+          },
+          "attribute": "tilt",
+          "value": 40.0
+        },
+        {
+          "scope": {
+            "kind": "target",
+            "target": {
+              "fixtureId": "fx-000000000006",
+              "element": 0
+            }
+          },
+          "attribute": "tilt",
+          "value": 40.0
+        }
+      ]
+    },
+    {
+      "id": "pr-000000000015",
+      "name": "Centre",
+      "number": 2,
+      "pool": "position",
+      "values": [
+        {
+          "scope": {
+            "kind": "target",
+            "target": {
+              "fixtureId": "fx-000000000005",
+              "element": 0
+            }
+          },
+          "attribute": "pan",
+          "value": 15.0
+        },
+        {
+          "scope": {
+            "kind": "target",
+            "target": {
+              "fixtureId": "fx-000000000006",
+              "element": 0
+            }
+          },
+          "attribute": "pan",
+          "value": -15.0
+        },
+        {
+          "scope": {
+            "kind": "target",
+            "target": {
+              "fixtureId": "fx-000000000005",
+              "element": 0
+            }
+          },
+          "attribute": "tilt",
+          "value": 10.0
+        },
+        {
+          "scope": {
+            "kind": "target",
+            "target": {
+              "fixtureId": "fx-000000000006",
+              "element": 0
+            }
+          },
+          "attribute": "tilt",
+          "value": 10.0
+        }
+      ]
+    }
+  ],
+  "effects": [],
+  "cueLists": [
+    {
+      "id": "cl-000000000016",
+      "name": "Warm",
+      "number": 1,
+      "mode": "sequence",
+      "tracking": false,
+      "wrap": false,
+      "releaseAtEnd": false,
+      "cues": [
+        {
+          "id": "c-000000000018",
+          "number": "1",
+          "name": "Warm",
+          "entries": [
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000f"
+              },
+              "attribute": "intensity",
+              "value": {
+                "kind": "literal",
+                "value": 0.8
+              }
+            },
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000f"
+              },
+              "attribute": "color",
+              "value": {
+                "kind": "literal",
+                "value": {
+                  "r": 1.0,
+                  "g": 0.75,
+                  "b": 0.45
+                }
+              }
+            }
+          ],
+          "effects": [],
+          "timing": {
+            "fadeIn": 0.0,
+            "fadeOut": 0.0,
+            "delayIn": 0.0,
+            "delayOut": 0.0,
+            "curve": "linear"
+          },
+          "trigger": {
+            "kind": "go"
+          }
+        }
+      ]
+    },
+    {
+      "id": "cl-000000000019",
+      "name": "Cool",
+      "number": 2,
+      "mode": "sequence",
+      "tracking": false,
+      "wrap": false,
+      "releaseAtEnd": false,
+      "cues": [
+        {
+          "id": "c-00000000001b",
+          "number": "1",
+          "name": "Cool",
+          "entries": [
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000f"
+              },
+              "attribute": "intensity",
+              "value": {
+                "kind": "literal",
+                "value": 0.8
+              }
+            },
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000f"
+              },
+              "attribute": "color",
+              "value": {
+                "kind": "literal",
+                "value": {
+                  "r": 0.75,
+                  "g": 0.85,
+                  "b": 1.0
+                }
+              }
+            }
+          ],
+          "effects": [],
+          "timing": {
+            "fadeIn": 0.0,
+            "fadeOut": 0.0,
+            "delayIn": 0.0,
+            "delayOut": 0.0,
+            "curve": "linear"
+          },
+          "trigger": {
+            "kind": "go"
+          }
+        }
+      ]
+    },
+    {
+      "id": "cl-00000000001c",
+      "name": "Blue",
+      "number": 3,
+      "mode": "sequence",
+      "tracking": false,
+      "wrap": false,
+      "releaseAtEnd": false,
+      "cues": [
+        {
+          "id": "c-00000000001e",
+          "number": "1",
+          "name": "Blue",
+          "entries": [
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000f"
+              },
+              "attribute": "color",
+              "value": {
+                "kind": "preset",
+                "presetId": "pr-000000000010"
+              }
+            }
+          ],
+          "effects": [],
+          "timing": {
+            "fadeIn": 1.0,
+            "fadeOut": 0.0,
+            "delayIn": 0.0,
+            "delayOut": 0.0,
+            "curve": "linear"
+          },
+          "trigger": {
+            "kind": "go"
+          }
+        }
+      ]
+    },
+    {
+      "id": "cl-00000000001f",
+      "name": "Red",
+      "number": 4,
+      "mode": "sequence",
+      "tracking": false,
+      "wrap": false,
+      "releaseAtEnd": false,
+      "cues": [
+        {
+          "id": "c-000000000021",
+          "number": "1",
+          "name": "Red",
+          "entries": [
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000f"
+              },
+              "attribute": "color",
+              "value": {
+                "kind": "preset",
+                "presetId": "pr-000000000011"
+              }
+            }
+          ],
+          "effects": [],
+          "timing": {
+            "fadeIn": 1.0,
+            "fadeOut": 0.0,
+            "delayIn": 0.0,
+            "delayOut": 0.0,
+            "curve": "linear"
+          },
+          "trigger": {
+            "kind": "go"
+          }
+        }
+      ]
+    },
+    {
+      "id": "cl-000000000022",
+      "name": "Green",
+      "number": 5,
+      "mode": "sequence",
+      "tracking": false,
+      "wrap": false,
+      "releaseAtEnd": false,
+      "cues": [
+        {
+          "id": "c-000000000024",
+          "number": "1",
+          "name": "Green",
+          "entries": [
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000f"
+              },
+              "attribute": "color",
+              "value": {
+                "kind": "preset",
+                "presetId": "pr-000000000012"
+              }
+            }
+          ],
+          "effects": [],
+          "timing": {
+            "fadeIn": 1.0,
+            "fadeOut": 0.0,
+            "delayIn": 0.0,
+            "delayOut": 0.0,
+            "curve": "linear"
+          },
+          "trigger": {
+            "kind": "go"
+          }
+        }
+      ]
+    },
+    {
+      "id": "cl-000000000025",
+      "name": "Audience",
+      "number": 6,
+      "mode": "sequence",
+      "tracking": false,
+      "wrap": false,
+      "releaseAtEnd": false,
+      "cues": [
+        {
+          "id": "c-000000000027",
+          "number": "1",
+          "name": "Audience",
+          "entries": [
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000c"
+              },
+              "attribute": "pan",
+              "value": {
+                "kind": "preset",
+                "presetId": "pr-000000000014"
+              }
+            },
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000c"
+              },
+              "attribute": "tilt",
+              "value": {
+                "kind": "preset",
+                "presetId": "pr-000000000014"
+              }
+            }
+          ],
+          "effects": [],
+          "timing": {
+            "fadeIn": 2.0,
+            "fadeOut": 0.0,
+            "delayIn": 0.0,
+            "delayOut": 0.0,
+            "curve": "linear"
+          },
+          "trigger": {
+            "kind": "go"
+          }
+        }
+      ]
+    },
+    {
+      "id": "cl-000000000028",
+      "name": "Centre",
+      "number": 7,
+      "mode": "sequence",
+      "tracking": false,
+      "wrap": false,
+      "releaseAtEnd": false,
+      "cues": [
+        {
+          "id": "c-00000000002a",
+          "number": "1",
+          "name": "Centre",
+          "entries": [
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000c"
+              },
+              "attribute": "pan",
+              "value": {
+                "kind": "preset",
+                "presetId": "pr-000000000015"
+              }
+            },
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000c"
+              },
+              "attribute": "tilt",
+              "value": {
+                "kind": "preset",
+                "presetId": "pr-000000000015"
+              }
+            }
+          ],
+          "effects": [],
+          "timing": {
+            "fadeIn": 2.0,
+            "fadeOut": 0.0,
+            "delayIn": 0.0,
+            "delayOut": 0.0,
+            "curve": "linear"
+          },
+          "trigger": {
+            "kind": "go"
+          }
+        }
+      ]
+    },
+    {
+      "id": "cl-00000000002b",
+      "name": "Panic",
+      "number": 8,
+      "mode": "sequence",
+      "tracking": false,
+      "wrap": false,
+      "releaseAtEnd": false,
+      "cues": [
+        {
+          "id": "c-00000000002d",
+          "number": "1",
+          "name": "Panic",
+          "entries": [
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000f"
+              },
+              "attribute": "intensity",
+              "value": {
+                "kind": "literal",
+                "value": 1.0
+              }
+            },
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000f"
+              },
+              "attribute": "color",
+              "value": {
+                "kind": "literal",
+                "value": {
+                  "r": 1.0,
+                  "g": 1.0,
+                  "b": 1.0
+                }
+              }
+            }
+          ],
+          "effects": [],
+          "timing": {
+            "fadeIn": 0.0,
+            "fadeOut": 0.0,
+            "delayIn": 0.0,
+            "delayOut": 0.0,
+            "curve": "linear"
+          },
+          "trigger": {
+            "kind": "go"
+          }
+        }
+      ]
+    },
+    {
+      "id": "cl-000000000053",
+      "name": "Song",
+      "number": 9,
+      "mode": "sequence",
+      "tracking": true,
+      "wrap": false,
+      "releaseAtEnd": false,
+      "cues": [
+        {
+          "id": "c-000000000055",
+          "number": "1",
+          "name": "Intro",
+          "entries": [
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000d"
+              },
+              "attribute": "intensity",
+              "value": {
+                "kind": "literal",
+                "value": 0.6
+              }
+            },
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000d"
+              },
+              "attribute": "color",
+              "value": {
+                "kind": "preset",
+                "presetId": "pr-000000000010"
+              }
+            }
+          ],
+          "effects": [],
+          "timing": {
+            "fadeIn": 3.0,
+            "fadeOut": 3.0,
+            "delayIn": 0.0,
+            "delayOut": 0.0,
+            "curve": "easeInOut"
+          },
+          "trigger": {
+            "kind": "go"
+          }
+        },
+        {
+          "id": "c-000000000056",
+          "number": "2",
+          "name": "Verse",
+          "entries": [
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000c"
+              },
+              "attribute": "intensity",
+              "value": {
+                "kind": "literal",
+                "value": 0.7
+              }
+            },
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000c"
+              },
+              "attribute": "pan",
+              "value": {
+                "kind": "preset",
+                "presetId": "pr-000000000014"
+              }
+            },
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000c"
+              },
+              "attribute": "tilt",
+              "value": {
+                "kind": "preset",
+                "presetId": "pr-000000000014"
+              }
+            },
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000c"
+              },
+              "attribute": "color",
+              "value": {
+                "kind": "literal",
+                "value": {
+                  "r": 1.0,
+                  "g": 0.75,
+                  "b": 0.45
+                }
+              }
+            }
+          ],
+          "effects": [],
+          "timing": {
+            "fadeIn": 2.0,
+            "fadeOut": 2.0,
+            "delayIn": 0.0,
+            "delayOut": 0.0,
+            "curve": "linear",
+            "perFamily": {
+              "position": {
+                "fade": 4.0,
+                "delay": 0.0
+              }
+            }
+          },
+          "trigger": {
+            "kind": "go"
+          }
+        },
+        {
+          "id": "c-000000000057",
+          "number": "3",
+          "name": "Pre",
+          "entries": [
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000e"
+              },
+              "attribute": "intensity",
+              "value": {
+                "kind": "literal",
+                "value": 1.0
+              }
+            },
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000d"
+              },
+              "attribute": "intensity",
+              "value": {
+                "kind": "literal",
+                "value": 0.3
+              }
+            },
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000e"
+              },
+              "attribute": "color",
+              "value": {
+                "kind": "preset",
+                "presetId": "pr-000000000013"
+              }
+            }
+          ],
+          "effects": [],
+          "timing": {
+            "fadeIn": 1.0,
+            "fadeOut": 3.0,
+            "delayIn": 0.0,
+            "delayOut": 0.0,
+            "curve": "linear"
+          },
+          "trigger": {
+            "kind": "wait",
+            "delay": 8.0
+          }
+        },
+        {
+          "id": "c-000000000058",
+          "number": "4",
+          "name": "Chorus",
+          "entries": [
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000d"
+              },
+              "attribute": "intensity",
+              "value": {
+                "kind": "literal",
+                "value": 1.0
+              }
+            },
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000c"
+              },
+              "attribute": "intensity",
+              "value": {
+                "kind": "literal",
+                "value": 1.0
+              }
+            },
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000f"
+              },
+              "attribute": "color",
+              "value": {
+                "kind": "literal",
+                "value": {
+                  "r": 1.0,
+                  "g": 1.0,
+                  "b": 1.0
+                }
+              }
+            }
+          ],
+          "effects": [],
+          "timing": {
+            "fadeIn": 0.5,
+            "fadeOut": 2.0,
+            "delayIn": 0.0,
+            "delayOut": 0.0,
+            "curve": "linear"
+          },
+          "trigger": {
+            "kind": "go"
+          }
+        },
+        {
+          "id": "c-000000000059",
+          "number": "5",
+          "name": "Outro",
+          "entries": [
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000c"
+              },
+              "attribute": "intensity",
+              "value": {
+                "kind": "literal",
+                "value": 0.2
+              }
+            }
+          ],
+          "effects": [],
+          "releases": [
+            {
+              "targets": {
+                "kind": "group",
+                "groupId": "g-00000000000c"
+              },
+              "attributes": [
+                "pan",
+                "tilt"
+              ]
+            }
+          ],
+          "timing": {
+            "fadeIn": 6.0,
+            "fadeOut": 6.0,
+            "delayIn": 0.0,
+            "delayOut": 0.0,
+            "curve": "linear"
+          },
+          "trigger": {
+            "kind": "follow",
+            "delay": 4.0
+          }
+        }
+      ]
+    },
+    {
+      "id": "cl-00000000005a",
+      "name": "Chase",
+      "number": 10,
+      "mode": "chase",
+      "tracking": false,
+      "wrap": false,
+      "releaseAtEnd": false,
+      "chase": {
+        "rate": {
+          "kind": "bpm",
+          "masterId": "m-000000000052",
+          "multiplier": 1.0
+        },
+        "direction": "bounce",
+        "crossfade": 0.25
+      },
+      "cues": [
+        {
+          "id": "c-00000000005c",
+          "number": "1",
+          "name": "Chase",
+          "entries": [
+            {
+              "targets": {
+                "kind": "targets",
+                "refs": [
+                  {
+                    "fixtureId": "fx-000000000007",
+                    "element": 0
+                  }
+                ]
+              },
+              "attribute": "intensity",
+              "value": {
+                "kind": "literal",
+                "value": 1.0
+              }
+            },
+            {
+              "targets": {
+                "kind": "targets",
+                "refs": [
+                  {
+                    "fixtureId": "fx-000000000007",
+                    "element": 0
+                  }
+                ]
+              },
+              "attribute": "color",
+              "value": {
+                "kind": "preset",
+                "presetId": "pr-000000000011"
+              }
+            }
+          ],
+          "effects": [],
+          "timing": {
+            "fadeIn": 0.0,
+            "fadeOut": 0.0,
+            "delayIn": 0.0,
+            "delayOut": 0.0,
+            "curve": "linear"
+          },
+          "trigger": {
+            "kind": "go"
+          }
+        },
+        {
+          "id": "c-00000000005d",
+          "number": "2",
+          "name": "Cue 2",
+          "entries": [
+            {
+              "targets": {
+                "kind": "targets",
+                "refs": [
+                  {
+                    "fixtureId": "fx-000000000008",
+                    "element": 0
+                  }
+                ]
+              },
+              "attribute": "intensity",
+              "value": {
+                "kind": "literal",
+                "value": 1.0
+              }
+            },
+            {
+              "targets": {
+                "kind": "targets",
+                "refs": [
+                  {
+                    "fixtureId": "fx-000000000008",
+                    "element": 0
+                  }
+                ]
+              },
+              "attribute": "color",
+              "value": {
+                "kind": "preset",
+                "presetId": "pr-000000000011"
+              }
+            }
+          ],
+          "effects": [],
+          "timing": {
+            "fadeIn": 0.0,
+            "fadeOut": 0.0,
+            "delayIn": 0.0,
+            "delayOut": 0.0,
+            "curve": "linear"
+          },
+          "trigger": {
+            "kind": "go"
+          }
+        },
+        {
+          "id": "c-00000000005e",
+          "number": "3",
+          "name": "Cue 3",
+          "entries": [
+            {
+              "targets": {
+                "kind": "targets",
+                "refs": [
+                  {
+                    "fixtureId": "fx-000000000009",
+                    "element": 0
+                  }
+                ]
+              },
+              "attribute": "intensity",
+              "value": {
+                "kind": "literal",
+                "value": 1.0
+              }
+            },
+            {
+              "targets": {
+                "kind": "targets",
+                "refs": [
+                  {
+                    "fixtureId": "fx-000000000009",
+                    "element": 0
+                  }
+                ]
+              },
+              "attribute": "color",
+              "value": {
+                "kind": "preset",
+                "presetId": "pr-000000000011"
+              }
+            }
+          ],
+          "effects": [],
+          "timing": {
+            "fadeIn": 0.0,
+            "fadeOut": 0.0,
+            "delayIn": 0.0,
+            "delayOut": 0.0,
+            "curve": "linear"
+          },
+          "trigger": {
+            "kind": "go"
+          }
+        },
+        {
+          "id": "c-00000000005f",
+          "number": "4",
+          "name": "Cue 4",
+          "entries": [
+            {
+              "targets": {
+                "kind": "targets",
+                "refs": [
+                  {
+                    "fixtureId": "fx-00000000000a",
+                    "element": 0
+                  }
+                ]
+              },
+              "attribute": "intensity",
+              "value": {
+                "kind": "literal",
+                "value": 1.0
+              }
+            },
+            {
+              "targets": {
+                "kind": "targets",
+                "refs": [
+                  {
+                    "fixtureId": "fx-00000000000a",
+                    "element": 0
+                  }
+                ]
+              },
+              "attribute": "color",
+              "value": {
+                "kind": "preset",
+                "presetId": "pr-000000000011"
+              }
+            }
+          ],
+          "effects": [],
+          "timing": {
+            "fadeIn": 0.0,
+            "fadeOut": 0.0,
+            "delayIn": 0.0,
+            "delayOut": 0.0,
+            "curve": "linear"
+          },
+          "trigger": {
+            "kind": "go"
+          }
+        }
+      ]
+    }
+  ],
+  "playbacks": [
+    {
+      "id": "pb-000000000017",
+      "name": "Warm",
+      "number": 1,
+      "cueListId": "cl-000000000016",
+      "priority": 50,
+      "fader": "master",
+      "buttons": [
+        "toggle",
+        "flash",
+        "release"
+      ],
+      "ltpFaderMode": "threshold",
+      "ltpThreshold": 0.02,
+      "autoStart": true,
+      "autoRelease": true,
+      "flash": {
+        "level": 1.0,
+        "includeLtp": true
+      },
+      "exclusivity": "base",
+      "protectFromSwop": false,
+      "releaseTime": 1.0
+    },
+    {
+      "id": "pb-00000000001a",
+      "name": "Cool",
+      "number": 2,
+      "cueListId": "cl-000000000019",
+      "priority": 50,
+      "fader": "master",
+      "buttons": [
+        "toggle",
+        "flash",
+        "release"
+      ],
+      "ltpFaderMode": "threshold",
+      "ltpThreshold": 0.02,
+      "autoStart": true,
+      "autoRelease": true,
+      "flash": {
+        "level": 1.0,
+        "includeLtp": true
+      },
+      "exclusivity": "base",
+      "protectFromSwop": false,
+      "releaseTime": 1.0
+    },
+    {
+      "id": "pb-00000000001d",
+      "name": "Blue",
+      "number": 3,
+      "cueListId": "cl-00000000001c",
+      "priority": 50,
+      "fader": "master",
+      "buttons": [
+        "toggle",
+        "flash",
+        "release"
+      ],
+      "ltpFaderMode": "threshold",
+      "ltpThreshold": 0.02,
+      "autoStart": true,
+      "autoRelease": true,
+      "flash": {
+        "level": 1.0,
+        "includeLtp": true
+      },
+      "exclusivity": "color",
+      "protectFromSwop": false,
+      "releaseTime": 1.0
+    },
+    {
+      "id": "pb-000000000020",
+      "name": "Red",
+      "number": 4,
+      "cueListId": "cl-00000000001f",
+      "priority": 50,
+      "fader": "master",
+      "buttons": [
+        "toggle",
+        "flash",
+        "release"
+      ],
+      "ltpFaderMode": "threshold",
+      "ltpThreshold": 0.02,
+      "autoStart": true,
+      "autoRelease": true,
+      "flash": {
+        "level": 1.0,
+        "includeLtp": true
+      },
+      "exclusivity": "color",
+      "protectFromSwop": false,
+      "releaseTime": 1.0
+    },
+    {
+      "id": "pb-000000000023",
+      "name": "Green",
+      "number": 5,
+      "cueListId": "cl-000000000022",
+      "priority": 50,
+      "fader": "master",
+      "buttons": [
+        "toggle",
+        "flash",
+        "release"
+      ],
+      "ltpFaderMode": "threshold",
+      "ltpThreshold": 0.02,
+      "autoStart": true,
+      "autoRelease": true,
+      "flash": {
+        "level": 1.0,
+        "includeLtp": true
+      },
+      "exclusivity": "color",
+      "protectFromSwop": false,
+      "releaseTime": 1.0
+    },
+    {
+      "id": "pb-000000000026",
+      "name": "Audience",
+      "number": 6,
+      "cueListId": "cl-000000000025",
+      "priority": 50,
+      "fader": "master",
+      "buttons": [
+        "toggle",
+        "flash",
+        "release"
+      ],
+      "ltpFaderMode": "followFader",
+      "ltpThreshold": 0.02,
+      "autoStart": true,
+      "autoRelease": true,
+      "flash": {
+        "level": 1.0,
+        "includeLtp": true
+      },
+      "exclusivity": "position",
+      "protectFromSwop": false,
+      "releaseTime": 2.0
+    },
+    {
+      "id": "pb-000000000029",
+      "name": "Centre",
+      "number": 7,
+      "cueListId": "cl-000000000028",
+      "priority": 50,
+      "fader": "master",
+      "buttons": [
+        "toggle",
+        "flash",
+        "release"
+      ],
+      "ltpFaderMode": "followFader",
+      "ltpThreshold": 0.02,
+      "autoStart": true,
+      "autoRelease": true,
+      "flash": {
+        "level": 1.0,
+        "includeLtp": true
+      },
+      "exclusivity": "position",
+      "protectFromSwop": false,
+      "releaseTime": 2.0
+    },
+    {
+      "id": "pb-00000000002c",
+      "name": "Panic",
+      "number": 8,
+      "cueListId": "cl-00000000002b",
+      "priority": 200,
+      "fader": "none",
+      "buttons": [
+        "toggle",
+        "flash",
+        "release"
+      ],
+      "ltpFaderMode": "threshold",
+      "ltpThreshold": 0.02,
+      "autoStart": false,
+      "autoRelease": false,
+      "flash": {
+        "level": 1.0,
+        "includeLtp": true
+      },
+      "protectFromSwop": false,
+      "releaseTime": 0.0
+    },
+    {
+      "id": "pb-000000000054",
+      "name": "Song",
+      "number": 9,
+      "cueListId": "cl-000000000053",
+      "priority": 50,
+      "fader": "master",
+      "buttons": [
+        "go",
+        "back",
+        "release"
+      ],
+      "ltpFaderMode": "threshold",
+      "ltpThreshold": 0.02,
+      "autoStart": true,
+      "autoRelease": true,
+      "flash": {
+        "level": 1.0,
+        "includeLtp": true
+      },
+      "exclusivity": "base",
+      "protectFromSwop": false,
+      "releaseTime": 3.0
+    },
+    {
+      "id": "pb-00000000005b",
+      "name": "Chase",
+      "number": 10,
+      "cueListId": "cl-00000000005a",
+      "priority": 50,
+      "fader": "master",
+      "buttons": [
+        "toggle",
+        "flash"
+      ],
+      "ltpFaderMode": "threshold",
+      "ltpThreshold": 0.02,
+      "autoStart": true,
+      "autoRelease": true,
+      "flash": {
+        "level": 1.0,
+        "includeLtp": true
+      },
+      "protectFromSwop": false,
+      "releaseTime": 1.0
+    }
+  ],
+  "pages": [
+    {
+      "id": "page-000000000002",
+      "name": "Main",
+      "number": 1,
+      "slots": [
+        "pb-000000000017",
+        "pb-00000000001a",
+        "pb-00000000001d",
+        "pb-000000000020",
+        "pb-000000000023",
+        "pb-000000000026",
+        "pb-000000000029",
+        "pb-00000000002c",
+        "pb-000000000054",
+        "pb-00000000005b"
+      ]
+    }
+  ],
+  "masters": [
+    {
+      "id": "m-000000000003",
+      "name": "Grand Master",
+      "kind": "grand"
+    },
+    {
+      "id": "m-000000000052",
+      "name": "Speed 1",
+      "kind": "speed",
+      "defaultBpm": 120.0,
+      "tap": true,
+      "multiplierSteps": [
+        0.25,
+        0.5,
+        1.0,
+        2.0,
+        4.0
+      ]
+    }
+  ],
+  "surfaces": [
+    {
+      "id": "s-00000000002f",
+      "name": "nanoKONTROL2",
+      "kind": "midi",
+      "match": {
+        "deviceName": "nanoKONTROL2"
+      },
+      "faderPickup": "jump"
+    }
+  ],
+  "bindings": [
+    {
+      "id": "b-000000000030",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 0
+      },
+      "action": {
+        "kind": "playbackFader",
+        "slot": 0
+      }
+    },
+    {
+      "id": "b-000000000031",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 1
+      },
+      "action": {
+        "kind": "playbackFader",
+        "slot": 1
+      }
+    },
+    {
+      "id": "b-000000000032",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 2
+      },
+      "action": {
+        "kind": "playbackFader",
+        "slot": 2
+      }
+    },
+    {
+      "id": "b-000000000033",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 3
+      },
+      "action": {
+        "kind": "playbackFader",
+        "slot": 3
+      }
+    },
+    {
+      "id": "b-000000000034",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 4
+      },
+      "action": {
+        "kind": "playbackFader",
+        "slot": 4
+      }
+    },
+    {
+      "id": "b-000000000035",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 5
+      },
+      "action": {
+        "kind": "playbackFader",
+        "slot": 5
+      }
+    },
+    {
+      "id": "b-000000000036",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 6
+      },
+      "action": {
+        "kind": "playbackFader",
+        "slot": 6
+      }
+    },
+    {
+      "id": "b-000000000037",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 7
+      },
+      "action": {
+        "kind": "playbackFader",
+        "slot": 7
+      }
+    },
+    {
+      "id": "b-000000000038",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 32
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 0,
+        "button": 0
+      }
+    },
+    {
+      "id": "b-000000000039",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 33
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 1,
+        "button": 0
+      }
+    },
+    {
+      "id": "b-00000000003a",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 34
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 2,
+        "button": 0
+      }
+    },
+    {
+      "id": "b-00000000003b",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 35
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 3,
+        "button": 0
+      }
+    },
+    {
+      "id": "b-00000000003c",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 36
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 4,
+        "button": 0
+      }
+    },
+    {
+      "id": "b-00000000003d",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 37
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 5,
+        "button": 0
+      }
+    },
+    {
+      "id": "b-00000000003e",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 38
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 6,
+        "button": 0
+      }
+    },
+    {
+      "id": "b-00000000003f",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 39
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 7,
+        "button": 0
+      }
+    },
+    {
+      "id": "b-000000000040",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 48
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 0,
+        "button": 1
+      }
+    },
+    {
+      "id": "b-000000000041",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 49
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 1,
+        "button": 1
+      }
+    },
+    {
+      "id": "b-000000000042",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 50
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 2,
+        "button": 1
+      }
+    },
+    {
+      "id": "b-000000000043",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 51
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 3,
+        "button": 1
+      }
+    },
+    {
+      "id": "b-000000000044",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 52
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 4,
+        "button": 1
+      }
+    },
+    {
+      "id": "b-000000000045",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 53
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 5,
+        "button": 1
+      }
+    },
+    {
+      "id": "b-000000000046",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 54
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 6,
+        "button": 1
+      }
+    },
+    {
+      "id": "b-000000000047",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 55
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 7,
+        "button": 1
+      }
+    },
+    {
+      "id": "b-000000000048",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 64
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 0,
+        "button": 2
+      }
+    },
+    {
+      "id": "b-000000000049",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 65
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 1,
+        "button": 2
+      }
+    },
+    {
+      "id": "b-00000000004a",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 66
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 2,
+        "button": 2
+      }
+    },
+    {
+      "id": "b-00000000004b",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 67
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 3,
+        "button": 2
+      }
+    },
+    {
+      "id": "b-00000000004c",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 68
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 4,
+        "button": 2
+      }
+    },
+    {
+      "id": "b-00000000004d",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 69
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 5,
+        "button": 2
+      }
+    },
+    {
+      "id": "b-00000000004e",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 70
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 6,
+        "button": 2
+      }
+    },
+    {
+      "id": "b-00000000004f",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 71
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 7,
+        "button": 2
+      }
+    },
+    {
+      "id": "b-000000000050",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 23
+      },
+      "action": {
+        "kind": "master",
+        "masterId": "m-000000000003"
+      }
+    },
+    {
+      "id": "b-000000000051",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 42
+      },
+      "action": {
+        "kind": "blackout"
+      }
+    },
+    {
+      "id": "b-000000000060",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 16
+      },
+      "action": {
+        "kind": "playbackFader",
+        "slot": 8
+      }
+    },
+    {
+      "id": "b-000000000061",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 17
+      },
+      "action": {
+        "kind": "playbackFader",
+        "slot": 9
+      }
+    },
+    {
+      "id": "b-000000000062",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 41
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 8,
+        "button": 0
+      }
+    },
+    {
+      "id": "b-000000000063",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 43
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 8,
+        "button": 1
+      }
+    },
+    {
+      "id": "b-000000000064",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 45
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 8,
+        "button": 2
+      }
+    },
+    {
+      "id": "b-000000000065",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 44
+      },
+      "action": {
+        "kind": "playbackButton",
+        "slot": 9,
+        "button": 0
+      }
+    },
+    {
+      "id": "b-000000000066",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 46
+      },
+      "action": {
+        "kind": "tap",
+        "masterId": "m-000000000052"
+      }
+    },
+    {
+      "id": "b-000000000067",
+      "surfaceId": "s-00000000002f",
+      "input": {
+        "kind": "midiCC",
+        "channel": 1,
+        "cc": 18
+      },
+      "action": {
+        "kind": "master",
+        "masterId": "m-000000000052"
+      }
+    }
+  ],
+  "output": {
+    "engineHz": 100.0,
+    "sacnSourceName": "Busk Console",
+    "sacnCid": "0f6c1b9e-3d2a-4f7b-8e5c-1a2b3c4d5e6f",
+    "holdLastFrameOnEngineStall": true,
+    "routes": [
+      {
+        "id": "r-00000000002e",
+        "universeId": "u-000000000004",
+        "enabled": true,
+        "protocol": "sacn",
+        "universe": 1,
+        "priority": 100,
+        "destination": {
+          "kind": "multicast",
+          "iface": "eth0"
+        }
+      }
+    ]
+  },
+  "park": []
+}

@@ -1,0 +1,25 @@
+{
+  "id": "prof-tdmx-smoke",
+  "name": "TupperDMX Smoke Machine",
+  "manufacturer": "TupperDMX",
+  "model": "Smoke Machine",
+  "revision": "1",
+  "source": "user",
+  "notes": "Transcribed from TupperDMX's OFL file fixtures/smoke-machine.json, 1ch mode. busk has no fog attribute, so Fog Output is the intensity: a playback's level is the fog amount (DMX 0-7 is no fog), and the grand master and blackout apply to it. The 2ch mode (fog/haze type) is not transcribed.",
+  "physical": {},
+  "wheels": [],
+  "modes": [
+    {
+      "id": "mode-1ch",
+      "name": "1ch",
+      "footprint": 1,
+      "intensityStrategy": "dimmerChannel",
+      "dimmerCurve": "linear",
+      "elements": [{ "index": 0, "name": "Main" }],
+      "channels": [
+        { "offset": 0, "element": 0, "attribute": "intensity", "bytes": 1, "defaultDmx": 0,
+          "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }] }
+      ]
+    }
+  ]
+}

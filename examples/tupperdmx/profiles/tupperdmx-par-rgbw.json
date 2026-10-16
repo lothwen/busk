@@ -1,0 +1,39 @@
+{
+  "id": "prof-tdmx-par",
+  "name": "TupperDMX PAR RGBW",
+  "manufacturer": "TupperDMX",
+  "model": "PAR RGBW",
+  "revision": "1",
+  "source": "user",
+  "notes": "Transcribed from TupperDMX's OFL file fixtures/par-rgbw.json, 6ch mode. Strobe 8-255 is 0.5-20 Hz, mapped linearly.",
+  "physical": { "maxStrobeHz": 20 },
+  "wheels": [],
+  "modes": [
+    {
+      "id": "mode-6ch",
+      "name": "6ch",
+      "footprint": 6,
+      "intensityStrategy": "dimmerChannel",
+      "dimmerCurve": "linear",
+      "elements": [{ "index": 0, "name": "Main" }],
+      "channels": [
+        { "offset": 0, "element": 0, "attribute": "intensity", "bytes": 1, "defaultDmx": 0,
+          "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }] },
+        { "offset": 1, "element": 0, "attribute": "color", "component": "red", "bytes": 1, "defaultDmx": 0,
+          "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }] },
+        { "offset": 2, "element": 0, "attribute": "color", "component": "green", "bytes": 1, "defaultDmx": 0,
+          "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }] },
+        { "offset": 3, "element": 0, "attribute": "color", "component": "blue", "bytes": 1, "defaultDmx": 0,
+          "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }] },
+        { "offset": 4, "element": 0, "attribute": "color", "component": "white", "bytes": 1, "defaultDmx": 0,
+          "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }] },
+        { "offset": 5, "element": 0, "attribute": "shutter", "bytes": 1, "defaultDmx": 0,
+          "capabilities": [
+            { "kind": "function", "dmx": [0, 7], "fn": "open" },
+            { "kind": "function", "dmx": [8, 255], "fn": "strobe",
+              "param": { "attribute": "strobeRate", "value": [0.5, 20] } }
+          ] }
+      ]
+    }
+  ]
+}

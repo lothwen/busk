@@ -1,0 +1,323 @@
+{
+  "id": "prof-mh",
+  "name": "Generic Spot 16ch",
+  "manufacturer": "Generic",
+  "model": "Spot",
+  "revision": "1",
+  "source": "user",
+  "physical": {
+    "panRange": 540,
+    "tiltRange": 270,
+    "zoomRange": [
+      12,
+      30
+    ]
+  },
+  "wheels": [
+    {
+      "id": "gobo1",
+      "kind": "gobo",
+      "slots": [
+        {
+          "id": "open",
+          "name": "Open"
+        },
+        {
+          "id": "breakup",
+          "name": "Breakup"
+        }
+      ]
+    }
+  ],
+  "emitters": [
+    {
+      "id": "red",
+      "color": {
+        "r": 1,
+        "g": 0,
+        "b": 0
+      }
+    },
+    {
+      "id": "green",
+      "color": {
+        "r": 0,
+        "g": 1,
+        "b": 0
+      }
+    },
+    {
+      "id": "blue",
+      "color": {
+        "r": 0,
+        "g": 0,
+        "b": 1
+      }
+    },
+    {
+      "id": "white",
+      "color": {
+        "r": 1,
+        "g": 1,
+        "b": 1
+      }
+    }
+  ],
+  "modes": [
+    {
+      "id": "mode-16",
+      "name": "16ch",
+      "footprint": 16,
+      "intensityStrategy": "dimmerChannel",
+      "dimmerCurve": "linear",
+      "elements": [
+        {
+          "index": 0,
+          "name": "Main"
+        }
+      ],
+      "channels": [
+        {
+          "offset": 0,
+          "element": 0,
+          "attribute": "pan",
+          "bytes": 2,
+          "fineOffsets": [
+            1
+          ],
+          "defaultDmx": 32768,
+          "capabilities": [
+            {
+              "kind": "range",
+              "dmx": [
+                0,
+                65535
+              ],
+              "value": [
+                -270,
+                270
+              ]
+            }
+          ]
+        },
+        {
+          "offset": 2,
+          "element": 0,
+          "attribute": "tilt",
+          "bytes": 2,
+          "fineOffsets": [
+            3
+          ],
+          "defaultDmx": 32768,
+          "capabilities": [
+            {
+              "kind": "range",
+              "dmx": [
+                0,
+                65535
+              ],
+              "value": [
+                -135,
+                135
+              ]
+            }
+          ]
+        },
+        {
+          "offset": 4,
+          "element": 0,
+          "attribute": "color",
+          "component": "red",
+          "bytes": 1,
+          "defaultDmx": 0,
+          "capabilities": [
+            {
+              "kind": "range",
+              "dmx": [
+                0,
+                255
+              ],
+              "value": [
+                0,
+                1
+              ]
+            }
+          ]
+        },
+        {
+          "offset": 5,
+          "element": 0,
+          "attribute": "color",
+          "component": "green",
+          "bytes": 1,
+          "defaultDmx": 0,
+          "capabilities": [
+            {
+              "kind": "range",
+              "dmx": [
+                0,
+                255
+              ],
+              "value": [
+                0,
+                1
+              ]
+            }
+          ]
+        },
+        {
+          "offset": 6,
+          "element": 0,
+          "attribute": "color",
+          "component": "blue",
+          "bytes": 1,
+          "defaultDmx": 0,
+          "capabilities": [
+            {
+              "kind": "range",
+              "dmx": [
+                0,
+                255
+              ],
+              "value": [
+                0,
+                1
+              ]
+            }
+          ]
+        },
+        {
+          "offset": 7,
+          "element": 0,
+          "attribute": "color",
+          "component": "white",
+          "bytes": 1,
+          "defaultDmx": 0,
+          "capabilities": [
+            {
+              "kind": "range",
+              "dmx": [
+                0,
+                255
+              ],
+              "value": [
+                0,
+                1
+              ]
+            }
+          ]
+        },
+        {
+          "offset": 8,
+          "element": 0,
+          "attribute": "intensity",
+          "bytes": 2,
+          "fineOffsets": [
+            9
+          ],
+          "defaultDmx": 0,
+          "capabilities": [
+            {
+              "kind": "range",
+              "dmx": [
+                0,
+                65535
+              ],
+              "value": [
+                0,
+                1
+              ]
+            }
+          ]
+        },
+        {
+          "offset": 10,
+          "element": 0,
+          "attribute": "zoom",
+          "bytes": 1,
+          "defaultDmx": 128,
+          "capabilities": [
+            {
+              "kind": "range",
+              "dmx": [
+                0,
+                255
+              ],
+              "value": [
+                12,
+                30
+              ]
+            }
+          ]
+        },
+        {
+          "offset": 11,
+          "element": 0,
+          "attribute": "gobo1",
+          "bytes": 1,
+          "defaultDmx": 0,
+          "capabilities": [
+            {
+              "kind": "slot",
+              "dmx": [
+                0,
+                9
+              ],
+              "wheel": "gobo1",
+              "slot": "open"
+            },
+            {
+              "kind": "slot",
+              "dmx": [
+                10,
+                19
+              ],
+              "wheel": "gobo1",
+              "slot": "breakup"
+            }
+          ]
+        },
+        {
+          "offset": 12,
+          "element": 0,
+          "attribute": "shutter",
+          "bytes": 1,
+          "defaultDmx": 0,
+          "capabilities": [
+            {
+              "kind": "function",
+              "dmx": [
+                0,
+                7
+              ],
+              "fn": "closed"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                8,
+                15
+              ],
+              "fn": "open"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                16,
+                131
+              ],
+              "fn": "strobe",
+              "param": {
+                "attribute": "strobeRate",
+                "value": [
+                  1,
+                  20
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

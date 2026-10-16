@@ -1,0 +1,1040 @@
+{
+  "schemaVersion": 1,
+
+  "meta": {
+    "id": "phase2-busk",
+    "title": "Phase 2 Demo: busking from a MIDI controller",
+    "created": "2026-10-11T00:00:00Z",
+    "modified": "2026-10-11T00:00:00Z",
+    "app": "busk 0.1"
+  },
+
+  "profiles": [
+    {
+      "id": "prof-mh",
+      "name": "Generic Spot 16ch",
+      "manufacturer": "Generic",
+      "model": "Spot",
+      "revision": "1",
+      "source": "user",
+      "physical": { "panRange": 540, "tiltRange": 270, "zoomRange": [12, 30] },
+      "wheels": [
+        {
+          "id": "gobo1",
+          "kind": "gobo",
+          "slots": [{ "id": "open", "name": "Open" }, { "id": "breakup", "name": "Breakup" }]
+        }
+      ],
+      "emitters": [
+        { "id": "red", "color": { "r": 1, "g": 0, "b": 0 } },
+        { "id": "green", "color": { "r": 0, "g": 1, "b": 0 } },
+        { "id": "blue", "color": { "r": 0, "g": 0, "b": 1 } },
+        { "id": "white", "color": { "r": 1, "g": 1, "b": 1 } }
+      ],
+      "modes": [
+        {
+          "id": "mode-16",
+          "name": "16ch",
+          "footprint": 16,
+          "intensityStrategy": "dimmerChannel",
+          "dimmerCurve": "linear",
+          "elements": [{ "index": 0, "name": "Main" }],
+          "channels": [
+            {
+              "offset": 0,
+              "element": 0,
+              "attribute": "pan",
+              "bytes": 2,
+              "fineOffsets": [1],
+              "defaultDmx": 32768,
+              "capabilities": [{ "kind": "range", "dmx": [0, 65535], "value": [-270, 270] }]
+            },
+            {
+              "offset": 2,
+              "element": 0,
+              "attribute": "tilt",
+              "bytes": 2,
+              "fineOffsets": [3],
+              "defaultDmx": 32768,
+              "capabilities": [{ "kind": "range", "dmx": [0, 65535], "value": [-135, 135] }]
+            },
+            {
+              "offset": 4,
+              "element": 0,
+              "attribute": "color",
+              "component": "red",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }]
+            },
+            {
+              "offset": 5,
+              "element": 0,
+              "attribute": "color",
+              "component": "green",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }]
+            },
+            {
+              "offset": 6,
+              "element": 0,
+              "attribute": "color",
+              "component": "blue",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }]
+            },
+            {
+              "offset": 7,
+              "element": 0,
+              "attribute": "color",
+              "component": "white",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }]
+            },
+            {
+              "offset": 8,
+              "element": 0,
+              "attribute": "intensity",
+              "bytes": 2,
+              "fineOffsets": [9],
+              "defaultDmx": 0,
+              "capabilities": [{ "kind": "range", "dmx": [0, 65535], "value": [0, 1] }]
+            },
+            {
+              "offset": 10,
+              "element": 0,
+              "attribute": "zoom",
+              "bytes": 1,
+              "defaultDmx": 128,
+              "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [12, 30] }]
+            },
+            {
+              "offset": 11,
+              "element": 0,
+              "attribute": "gobo1",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                { "kind": "slot", "dmx": [0, 9], "wheel": "gobo1", "slot": "open" },
+                { "kind": "slot", "dmx": [10, 19], "wheel": "gobo1", "slot": "breakup" }
+              ]
+            },
+            {
+              "offset": 12,
+              "element": 0,
+              "attribute": "shutter",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                { "kind": "function", "dmx": [0, 7], "fn": "closed" },
+                { "kind": "function", "dmx": [8, 15], "fn": "open" },
+                {
+                  "kind": "function",
+                  "dmx": [16, 131],
+                  "fn": "strobe",
+                  "param": { "attribute": "strobeRate", "value": [1, 20] }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "prof-par",
+      "name": "RGB Par 3ch",
+      "manufacturer": "Generic",
+      "model": "Par",
+      "revision": "1",
+      "source": "user",
+      "physical": {},
+      "wheels": [],
+      "modes": [
+        {
+          "id": "mode-3",
+          "name": "3ch",
+          "footprint": 3,
+          "intensityStrategy": "virtual",
+          "elements": [{ "index": 0, "name": "Main" }],
+          "channels": [
+            {
+              "offset": 0,
+              "element": 0,
+              "attribute": "color",
+              "component": "red",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }]
+            },
+            {
+              "offset": 1,
+              "element": 0,
+              "attribute": "color",
+              "component": "green",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }]
+            },
+            {
+              "offset": 2,
+              "element": 0,
+              "attribute": "color",
+              "component": "blue",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+
+  "universes": [{ "id": "u1", "name": "Stage", "number": 1 }],
+
+  "fixtures": [
+    {
+      "id": "fx-mh1",
+      "number": 101,
+      "name": "MH 1",
+      "profileId": "prof-mh",
+      "profileRevision": "1",
+      "modeId": "mode-16",
+      "patch": { "universeId": "u1", "address": 1 },
+      "orientation": {
+        "invertPan": false,
+        "invertTilt": false,
+        "swapPanTilt": false,
+        "panOffset": 0,
+        "tiltOffset": 0
+      }
+    },
+    {
+      "id": "fx-mh2",
+      "number": 102,
+      "name": "MH 2",
+      "profileId": "prof-mh",
+      "profileRevision": "1",
+      "modeId": "mode-16",
+      "patch": { "universeId": "u1", "address": 17 },
+      "orientation": {
+        "invertPan": false,
+        "invertTilt": false,
+        "swapPanTilt": false,
+        "panOffset": 0,
+        "tiltOffset": 0
+      }
+    },
+    {
+      "id": "fx-par1",
+      "number": 201,
+      "name": "Par 1",
+      "profileId": "prof-par",
+      "profileRevision": "1",
+      "modeId": "mode-3",
+      "patch": { "universeId": "u1", "address": 33 },
+      "orientation": {
+        "invertPan": false,
+        "invertTilt": false,
+        "swapPanTilt": false,
+        "panOffset": 0,
+        "tiltOffset": 0
+      }
+    },
+    {
+      "id": "fx-par2",
+      "number": 202,
+      "name": "Par 2",
+      "profileId": "prof-par",
+      "profileRevision": "1",
+      "modeId": "mode-3",
+      "patch": { "universeId": "u1", "address": 36 },
+      "orientation": {
+        "invertPan": false,
+        "invertTilt": false,
+        "swapPanTilt": false,
+        "panOffset": 0,
+        "tiltOffset": 0
+      }
+    },
+    {
+      "id": "fx-par3",
+      "number": 203,
+      "name": "Par 3",
+      "profileId": "prof-par",
+      "profileRevision": "1",
+      "modeId": "mode-3",
+      "patch": { "universeId": "u1", "address": 39 },
+      "orientation": {
+        "invertPan": false,
+        "invertTilt": false,
+        "swapPanTilt": false,
+        "panOffset": 0,
+        "tiltOffset": 0
+      }
+    },
+    {
+      "id": "fx-par4",
+      "number": 204,
+      "name": "Par 4",
+      "profileId": "prof-par",
+      "profileRevision": "1",
+      "modeId": "mode-3",
+      "patch": { "universeId": "u1", "address": 42 },
+      "orientation": {
+        "invertPan": false,
+        "invertTilt": false,
+        "swapPanTilt": false,
+        "panOffset": 0,
+        "tiltOffset": 0
+      }
+    }
+  ],
+
+  "groups": [
+    {
+      "id": "g-heads",
+      "number": 1,
+      "name": "Heads",
+      "members": [{ "fixtureId": "fx-mh1", "element": 0 }, { "fixtureId": "fx-mh2", "element": 0 }]
+    },
+    {
+      "id": "g-pars",
+      "number": 2,
+      "name": "Pars",
+      "members": [
+        { "fixtureId": "fx-par1", "element": 0 },
+        { "fixtureId": "fx-par2", "element": 0 },
+        { "fixtureId": "fx-par3", "element": 0 },
+        { "fixtureId": "fx-par4", "element": 0 }
+      ]
+    },
+    {
+      "id": "g-all",
+      "number": 3,
+      "name": "All",
+      "members": [
+        { "fixtureId": "fx-mh1", "element": 0 },
+        { "fixtureId": "fx-mh2", "element": 0 },
+        { "fixtureId": "fx-par1", "element": 0 },
+        { "fixtureId": "fx-par2", "element": 0 },
+        { "fixtureId": "fx-par3", "element": 0 },
+        { "fixtureId": "fx-par4", "element": 0 }
+      ]
+    }
+  ],
+
+  "presets": [
+    {
+      "id": "pr-blue",
+      "number": 1,
+      "name": "Blue",
+      "pool": "color",
+      "values": [{ "scope": { "kind": "global" }, "attribute": "color", "value": { "r": 0, "g": 0, "b": 1 } }]
+    },
+    {
+      "id": "pr-red",
+      "number": 2,
+      "name": "Red",
+      "pool": "color",
+      "values": [{ "scope": { "kind": "global" }, "attribute": "color", "value": { "r": 1, "g": 0, "b": 0 } }]
+    },
+    {
+      "id": "pr-green",
+      "number": 3,
+      "name": "Green",
+      "pool": "color",
+      "values": [{ "scope": { "kind": "global" }, "attribute": "color", "value": { "r": 0, "g": 1, "b": 0 } }]
+    },
+    {
+      "id": "pr-amber",
+      "number": 4,
+      "name": "Amber",
+      "pool": "color",
+      "values": [{ "scope": { "kind": "global" }, "attribute": "color", "value": { "r": 1, "g": 0.5, "b": 0 } }]
+    },
+    {
+      "id": "pr-audience",
+      "number": 1,
+      "name": "Audience",
+      "pool": "position",
+      "values": [
+        {
+          "scope": { "kind": "target", "target": { "fixtureId": "fx-mh1", "element": 0 } },
+          "attribute": "pan",
+          "value": -30
+        },
+        {
+          "scope": { "kind": "target", "target": { "fixtureId": "fx-mh1", "element": 0 } },
+          "attribute": "tilt",
+          "value": 40
+        },
+        {
+          "scope": { "kind": "target", "target": { "fixtureId": "fx-mh2", "element": 0 } },
+          "attribute": "pan",
+          "value": 30
+        },
+        {
+          "scope": { "kind": "target", "target": { "fixtureId": "fx-mh2", "element": 0 } },
+          "attribute": "tilt",
+          "value": 40
+        }
+      ]
+    },
+    {
+      "id": "pr-centre",
+      "number": 2,
+      "name": "Centre",
+      "pool": "position",
+      "values": [
+        {
+          "scope": { "kind": "target", "target": { "fixtureId": "fx-mh1", "element": 0 } },
+          "attribute": "pan",
+          "value": 15
+        },
+        {
+          "scope": { "kind": "target", "target": { "fixtureId": "fx-mh1", "element": 0 } },
+          "attribute": "tilt",
+          "value": 10
+        },
+        {
+          "scope": { "kind": "target", "target": { "fixtureId": "fx-mh2", "element": 0 } },
+          "attribute": "pan",
+          "value": -15
+        },
+        {
+          "scope": { "kind": "target", "target": { "fixtureId": "fx-mh2", "element": 0 } },
+          "attribute": "tilt",
+          "value": 10
+        }
+      ]
+    }
+  ],
+
+  "effects": [],
+
+  "cueLists": [
+    {
+      "id": "cl-warm",
+      "number": 1,
+      "name": "Warm",
+      "mode": "sequence",
+      "tracking": false,
+      "wrap": false,
+      "releaseAtEnd": false,
+      "cues": [
+        {
+          "id": "c-warm",
+          "number": "1",
+          "name": "Warm",
+          "entries": [
+            {
+              "targets": { "kind": "group", "groupId": "g-all" },
+              "attribute": "intensity",
+              "value": { "kind": "literal", "value": 0.8 }
+            },
+            {
+              "targets": { "kind": "group", "groupId": "g-all" },
+              "attribute": "color",
+              "value": { "kind": "literal", "value": { "r": 1, "g": 0.75, "b": 0.45 } }
+            }
+          ],
+          "effects": [],
+          "timing": { "fadeIn": 0, "fadeOut": 0, "delayIn": 0.0, "delayOut": 0.0, "curve": "linear" },
+          "trigger": { "kind": "go" }
+        }
+      ]
+    },
+    {
+      "id": "cl-cool",
+      "number": 2,
+      "name": "Cool",
+      "mode": "sequence",
+      "tracking": false,
+      "wrap": false,
+      "releaseAtEnd": false,
+      "cues": [
+        {
+          "id": "c-cool",
+          "number": "1",
+          "name": "Cool",
+          "entries": [
+            {
+              "targets": { "kind": "group", "groupId": "g-all" },
+              "attribute": "intensity",
+              "value": { "kind": "literal", "value": 0.8 }
+            },
+            {
+              "targets": { "kind": "group", "groupId": "g-all" },
+              "attribute": "color",
+              "value": { "kind": "literal", "value": { "r": 0.75, "g": 0.85, "b": 1 } }
+            }
+          ],
+          "effects": [],
+          "timing": { "fadeIn": 0, "fadeOut": 0, "delayIn": 0.0, "delayOut": 0.0, "curve": "linear" },
+          "trigger": { "kind": "go" }
+        }
+      ]
+    },
+    {
+      "id": "cl-blue",
+      "number": 3,
+      "name": "Blue",
+      "mode": "sequence",
+      "tracking": false,
+      "wrap": false,
+      "releaseAtEnd": false,
+      "cues": [
+        {
+          "id": "c-blue",
+          "number": "1",
+          "name": "Blue",
+          "entries": [
+            {
+              "targets": { "kind": "group", "groupId": "g-all" },
+              "attribute": "color",
+              "value": { "kind": "preset", "presetId": "pr-blue" }
+            }
+          ],
+          "effects": [],
+          "timing": { "fadeIn": 1, "fadeOut": 1, "delayIn": 0.0, "delayOut": 0.0, "curve": "linear" },
+          "trigger": { "kind": "go" }
+        }
+      ]
+    },
+    {
+      "id": "cl-red",
+      "number": 4,
+      "name": "Red",
+      "mode": "sequence",
+      "tracking": false,
+      "wrap": false,
+      "releaseAtEnd": false,
+      "cues": [
+        {
+          "id": "c-red",
+          "number": "1",
+          "name": "Red",
+          "entries": [
+            {
+              "targets": { "kind": "group", "groupId": "g-all" },
+              "attribute": "color",
+              "value": { "kind": "preset", "presetId": "pr-red" }
+            }
+          ],
+          "effects": [],
+          "timing": { "fadeIn": 1, "fadeOut": 1, "delayIn": 0.0, "delayOut": 0.0, "curve": "linear" },
+          "trigger": { "kind": "go" }
+        }
+      ]
+    },
+    {
+      "id": "cl-green",
+      "number": 5,
+      "name": "Green",
+      "mode": "sequence",
+      "tracking": false,
+      "wrap": false,
+      "releaseAtEnd": false,
+      "cues": [
+        {
+          "id": "c-green",
+          "number": "1",
+          "name": "Green",
+          "entries": [
+            {
+              "targets": { "kind": "group", "groupId": "g-all" },
+              "attribute": "color",
+              "value": { "kind": "preset", "presetId": "pr-green" }
+            }
+          ],
+          "effects": [],
+          "timing": { "fadeIn": 1, "fadeOut": 1, "delayIn": 0.0, "delayOut": 0.0, "curve": "linear" },
+          "trigger": { "kind": "go" }
+        }
+      ]
+    },
+    {
+      "id": "cl-audience",
+      "number": 6,
+      "name": "Audience",
+      "mode": "sequence",
+      "tracking": false,
+      "wrap": false,
+      "releaseAtEnd": false,
+      "cues": [
+        {
+          "id": "c-audience",
+          "number": "1",
+          "name": "Audience",
+          "entries": [
+            {
+              "targets": { "kind": "group", "groupId": "g-heads" },
+              "attribute": "pan",
+              "value": { "kind": "preset", "presetId": "pr-audience" }
+            },
+            {
+              "targets": { "kind": "group", "groupId": "g-heads" },
+              "attribute": "tilt",
+              "value": { "kind": "preset", "presetId": "pr-audience" }
+            }
+          ],
+          "effects": [],
+          "timing": { "fadeIn": 2, "fadeOut": 2, "delayIn": 0.0, "delayOut": 0.0, "curve": "linear" },
+          "trigger": { "kind": "go" }
+        }
+      ]
+    },
+    {
+      "id": "cl-centre",
+      "number": 7,
+      "name": "Centre",
+      "mode": "sequence",
+      "tracking": false,
+      "wrap": false,
+      "releaseAtEnd": false,
+      "cues": [
+        {
+          "id": "c-centre",
+          "number": "1",
+          "name": "Centre",
+          "entries": [
+            {
+              "targets": { "kind": "group", "groupId": "g-heads" },
+              "attribute": "pan",
+              "value": { "kind": "preset", "presetId": "pr-centre" }
+            },
+            {
+              "targets": { "kind": "group", "groupId": "g-heads" },
+              "attribute": "tilt",
+              "value": { "kind": "preset", "presetId": "pr-centre" }
+            }
+          ],
+          "effects": [],
+          "timing": { "fadeIn": 2, "fadeOut": 2, "delayIn": 0.0, "delayOut": 0.0, "curve": "linear" },
+          "trigger": { "kind": "go" }
+        }
+      ]
+    },
+    {
+      "id": "cl-panic",
+      "number": 8,
+      "name": "Panic",
+      "mode": "sequence",
+      "tracking": false,
+      "wrap": false,
+      "releaseAtEnd": false,
+      "cues": [
+        {
+          "id": "c-panic",
+          "number": "1",
+          "name": "Panic",
+          "entries": [
+            {
+              "targets": { "kind": "group", "groupId": "g-all" },
+              "attribute": "intensity",
+              "value": { "kind": "literal", "value": 1.0 }
+            },
+            {
+              "targets": { "kind": "group", "groupId": "g-all" },
+              "attribute": "color",
+              "value": { "kind": "literal", "value": { "r": 1, "g": 1, "b": 1 } }
+            }
+          ],
+          "effects": [],
+          "timing": { "fadeIn": 0, "fadeOut": 0, "delayIn": 0.0, "delayOut": 0.0, "curve": "linear" },
+          "trigger": { "kind": "go" }
+        }
+      ]
+    }
+  ],
+
+  "playbacks": [
+    {
+      "id": "pb-warm",
+      "number": 1,
+      "name": "Warm",
+      "cueListId": "cl-warm",
+      "priority": 50,
+      "fader": "master",
+      "buttons": ["toggle", "flash", "release"],
+      "ltpFaderMode": "threshold",
+      "ltpThreshold": 0.02,
+      "autoStart": true,
+      "autoRelease": true,
+      "flash": { "level": 1.0, "includeLtp": false },
+      "protectFromSwop": false,
+      "releaseTime": 1,
+      "exclusivity": "base"
+    },
+    {
+      "id": "pb-cool",
+      "number": 2,
+      "name": "Cool",
+      "cueListId": "cl-cool",
+      "priority": 50,
+      "fader": "master",
+      "buttons": ["toggle", "flash", "release"],
+      "ltpFaderMode": "threshold",
+      "ltpThreshold": 0.02,
+      "autoStart": true,
+      "autoRelease": true,
+      "flash": { "level": 1.0, "includeLtp": false },
+      "protectFromSwop": false,
+      "releaseTime": 1,
+      "exclusivity": "base"
+    },
+    {
+      "id": "pb-blue",
+      "number": 3,
+      "name": "Blue",
+      "cueListId": "cl-blue",
+      "priority": 50,
+      "fader": "master",
+      "buttons": ["toggle", "flash", "release"],
+      "ltpFaderMode": "threshold",
+      "ltpThreshold": 0.02,
+      "autoStart": true,
+      "autoRelease": true,
+      "flash": { "level": 1.0, "includeLtp": true },
+      "protectFromSwop": false,
+      "releaseTime": 1,
+      "exclusivity": "color"
+    },
+    {
+      "id": "pb-red",
+      "number": 4,
+      "name": "Red",
+      "cueListId": "cl-red",
+      "priority": 50,
+      "fader": "master",
+      "buttons": ["toggle", "flash", "release"],
+      "ltpFaderMode": "threshold",
+      "ltpThreshold": 0.02,
+      "autoStart": true,
+      "autoRelease": true,
+      "flash": { "level": 1.0, "includeLtp": true },
+      "protectFromSwop": false,
+      "releaseTime": 1,
+      "exclusivity": "color"
+    },
+    {
+      "id": "pb-green",
+      "number": 5,
+      "name": "Green",
+      "cueListId": "cl-green",
+      "priority": 50,
+      "fader": "master",
+      "buttons": ["toggle", "flash", "release"],
+      "ltpFaderMode": "threshold",
+      "ltpThreshold": 0.02,
+      "autoStart": true,
+      "autoRelease": true,
+      "flash": { "level": 1.0, "includeLtp": true },
+      "protectFromSwop": false,
+      "releaseTime": 1,
+      "exclusivity": "color"
+    },
+    {
+      "id": "pb-audience",
+      "number": 6,
+      "name": "Audience",
+      "cueListId": "cl-audience",
+      "priority": 50,
+      "fader": "master",
+      "buttons": ["toggle", "flash", "release"],
+      "ltpFaderMode": "followFader",
+      "ltpThreshold": 0.02,
+      "autoStart": true,
+      "autoRelease": true,
+      "flash": { "level": 1.0, "includeLtp": true },
+      "protectFromSwop": false,
+      "releaseTime": 2,
+      "exclusivity": "position"
+    },
+    {
+      "id": "pb-centre",
+      "number": 7,
+      "name": "Centre",
+      "cueListId": "cl-centre",
+      "priority": 50,
+      "fader": "master",
+      "buttons": ["toggle", "flash", "release"],
+      "ltpFaderMode": "followFader",
+      "ltpThreshold": 0.02,
+      "autoStart": true,
+      "autoRelease": true,
+      "flash": { "level": 1.0, "includeLtp": true },
+      "protectFromSwop": false,
+      "releaseTime": 2,
+      "exclusivity": "position"
+    },
+    {
+      "id": "pb-panic",
+      "number": 8,
+      "name": "Panic",
+      "cueListId": "cl-panic",
+      "priority": 200,
+      "fader": "none",
+      "buttons": ["toggle", "flash", "release"],
+      "ltpFaderMode": "threshold",
+      "ltpThreshold": 0.02,
+      "autoStart": false,
+      "autoRelease": false,
+      "flash": { "level": 1.0, "includeLtp": true },
+      "protectFromSwop": false,
+      "releaseTime": 0
+    }
+  ],
+
+  "pages": [
+    {
+      "id": "page-1",
+      "number": 1,
+      "name": "Main",
+      "slots": ["pb-warm", "pb-cool", "pb-blue", "pb-red", "pb-green", "pb-audience", "pb-centre", "pb-panic"]
+    }
+  ],
+
+  "masters": [{ "id": "m-gm", "kind": "grand", "name": "Grand Master" }],
+
+  "surfaces": [
+    {
+      "id": "s-nano",
+      "name": "nanoKONTROL2",
+      "kind": "midi",
+      "match": { "deviceName": "nanoKONTROL2" },
+      "faderPickup": "jump"
+    }
+  ],
+
+  "bindings": [
+    {
+      "id": "b-fader1",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 0 },
+      "action": { "kind": "playbackFader", "slot": 0 }
+    },
+    {
+      "id": "b-s1",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 32 },
+      "action": { "kind": "playbackButton", "slot": 0, "button": 0 }
+    },
+    {
+      "id": "b-m1",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 48 },
+      "action": { "kind": "playbackButton", "slot": 0, "button": 1 }
+    },
+    {
+      "id": "b-r1",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 64 },
+      "action": { "kind": "playbackButton", "slot": 0, "button": 2 }
+    },
+    {
+      "id": "b-fader2",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 1 },
+      "action": { "kind": "playbackFader", "slot": 1 }
+    },
+    {
+      "id": "b-s2",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 33 },
+      "action": { "kind": "playbackButton", "slot": 1, "button": 0 }
+    },
+    {
+      "id": "b-m2",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 49 },
+      "action": { "kind": "playbackButton", "slot": 1, "button": 1 }
+    },
+    {
+      "id": "b-r2",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 65 },
+      "action": { "kind": "playbackButton", "slot": 1, "button": 2 }
+    },
+    {
+      "id": "b-fader3",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 2 },
+      "action": { "kind": "playbackFader", "slot": 2 }
+    },
+    {
+      "id": "b-s3",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 34 },
+      "action": { "kind": "playbackButton", "slot": 2, "button": 0 }
+    },
+    {
+      "id": "b-m3",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 50 },
+      "action": { "kind": "playbackButton", "slot": 2, "button": 1 }
+    },
+    {
+      "id": "b-r3",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 66 },
+      "action": { "kind": "playbackButton", "slot": 2, "button": 2 }
+    },
+    {
+      "id": "b-fader4",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 3 },
+      "action": { "kind": "playbackFader", "slot": 3 }
+    },
+    {
+      "id": "b-s4",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 35 },
+      "action": { "kind": "playbackButton", "slot": 3, "button": 0 }
+    },
+    {
+      "id": "b-m4",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 51 },
+      "action": { "kind": "playbackButton", "slot": 3, "button": 1 }
+    },
+    {
+      "id": "b-r4",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 67 },
+      "action": { "kind": "playbackButton", "slot": 3, "button": 2 }
+    },
+    {
+      "id": "b-fader5",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 4 },
+      "action": { "kind": "playbackFader", "slot": 4 }
+    },
+    {
+      "id": "b-s5",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 36 },
+      "action": { "kind": "playbackButton", "slot": 4, "button": 0 }
+    },
+    {
+      "id": "b-m5",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 52 },
+      "action": { "kind": "playbackButton", "slot": 4, "button": 1 }
+    },
+    {
+      "id": "b-r5",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 68 },
+      "action": { "kind": "playbackButton", "slot": 4, "button": 2 }
+    },
+    {
+      "id": "b-fader6",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 5 },
+      "action": { "kind": "playbackFader", "slot": 5 }
+    },
+    {
+      "id": "b-s6",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 37 },
+      "action": { "kind": "playbackButton", "slot": 5, "button": 0 }
+    },
+    {
+      "id": "b-m6",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 53 },
+      "action": { "kind": "playbackButton", "slot": 5, "button": 1 }
+    },
+    {
+      "id": "b-r6",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 69 },
+      "action": { "kind": "playbackButton", "slot": 5, "button": 2 }
+    },
+    {
+      "id": "b-fader7",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 6 },
+      "action": { "kind": "playbackFader", "slot": 6 }
+    },
+    {
+      "id": "b-s7",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 38 },
+      "action": { "kind": "playbackButton", "slot": 6, "button": 0 }
+    },
+    {
+      "id": "b-m7",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 54 },
+      "action": { "kind": "playbackButton", "slot": 6, "button": 1 }
+    },
+    {
+      "id": "b-r7",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 70 },
+      "action": { "kind": "playbackButton", "slot": 6, "button": 2 }
+    },
+    {
+      "id": "b-fader8",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 7 },
+      "action": { "kind": "playbackFader", "slot": 7 }
+    },
+    {
+      "id": "b-s8",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 39 },
+      "action": { "kind": "playbackButton", "slot": 7, "button": 0 }
+    },
+    {
+      "id": "b-m8",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 55 },
+      "action": { "kind": "playbackButton", "slot": 7, "button": 1 }
+    },
+    {
+      "id": "b-r8",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 71 },
+      "action": { "kind": "playbackButton", "slot": 7, "button": 2 }
+    },
+    {
+      "id": "b-gm",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 23 },
+      "action": { "kind": "master", "masterId": "m-gm" }
+    },
+    {
+      "id": "b-blackout",
+      "surfaceId": "s-nano",
+      "input": { "kind": "midiCC", "channel": 1, "cc": 42 },
+      "action": { "kind": "blackout" }
+    }
+  ],
+
+  "output": {
+    "engineHz": 100,
+    "sacnSourceName": "Busk Console",
+    "sacnCid": "0f6c1b9e-3d2a-4f7b-8e5c-1a2b3c4d5e6f",
+    "holdLastFrameOnEngineStall": true,
+    "routes": [
+      {
+        "id": "r1",
+        "universeId": "u1",
+        "enabled": true,
+        "protocol": "sacn",
+        "universe": 1,
+        "priority": 100,
+        "destination": { "kind": "multicast", "iface": "eth0" }
+      }
+    ]
+  },
+
+  "park": []
+}

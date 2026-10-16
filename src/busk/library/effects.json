@@ -1,0 +1,88 @@
+[
+  {
+    "template": {
+      "id": "ef-circle",
+      "name": "Circle",
+      "layers": [
+        {"attribute": "pan", "waveform": {"kind": "sine"}, "phaseOffset": 0, "mode": "add"},
+        {"attribute": "tilt", "waveform": {"kind": "sine"}, "phaseOffset": 90, "mode": "add"}
+      ]
+    },
+    "defaults": {"size": 20}
+  },
+  {
+    "template": {
+      "id": "ef-pulse",
+      "name": "Pulse",
+      "layers": [
+        {"attribute": "intensity", "waveform": {"kind": "sine"}, "phaseOffset": 0, "mode": "multiply"}
+      ]
+    },
+    "defaults": {"size": 0.7}
+  },
+  {
+    "template": {
+      "id": "ef-wave",
+      "name": "Wave",
+      "layers": [
+        {"attribute": "intensity", "waveform": {"kind": "sine"}, "phaseOffset": 0, "mode": "absolute"}
+      ]
+    },
+    "defaults": {"low": 0, "high": 1}
+  },
+  {
+    "template": {
+      "id": "ef-chase",
+      "name": "Chase",
+      "layers": [
+        {"attribute": "intensity", "waveform": {"kind": "square", "duty": 0.25}, "phaseOffset": 0, "mode": "absolute"}
+      ]
+    },
+    "defaults": {"phase": {"start": 0, "end": 360}}
+  },
+  {
+    "template": {
+      "id": "ef-saw",
+      "name": "Saw",
+      "layers": [
+        {"attribute": "intensity", "waveform": {"kind": "sawDown"}, "phaseOffset": 0, "mode": "absolute"}
+      ]
+    },
+    "defaults": {"phase": {"start": 0, "end": 360}}
+  },
+  {
+    "template": {
+      "id": "ef-sweep",
+      "name": "Sweep",
+      "layers": [
+        {"attribute": "pan", "waveform": {"kind": "triangle"}, "phaseOffset": 0, "mode": "add"}
+      ]
+    },
+    "defaults": {"size": 30}
+  },
+  {
+    "template": {
+      "id": "ef-flicker",
+      "name": "Flicker",
+      "layers": [
+        {"attribute": "intensity", "waveform": {"kind": "random", "smooth": true, "seed": 1}, "phaseOffset": 0, "mode": "multiply"}
+      ]
+    },
+    "defaults": {"size": 0.5}
+  },
+  {
+    "template": {
+      "id": "ef-rainbow",
+      "name": "Rainbow",
+      "layers": [
+        {
+          "attribute": "color",
+          "palette": [{"r": 1, "g": 0, "b": 0}, {"r": 0, "g": 1, "b": 0}, {"r": 0, "g": 0, "b": 1}],
+          "blend": "fade",
+          "mode": "absolute"
+        }
+      ]
+    },
+    "defaults": {"phase": {"start": 0, "end": 360}}
+  }
+]

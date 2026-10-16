@@ -1,0 +1,44 @@
+# Phase 7 done criterion A: the safety features on the surfaces show, built
+# with console commands only on the show that phase3-build.busk,
+# phase4-song.busk, phase5-effects.busk and phase6-surfaces.busk saved. Run it
+# with
+#
+#   busk new club.show --title "Club Night"
+#   busk run club.show --script examples/phase3-build.busk --duration 1
+#   busk run club.show --script examples/phase4-song.busk --duration 1
+#   busk run club.show --script examples/phase5-effects.busk --duration 1
+#   busk run club.show --script examples/phase6-surfaces.busk --duration 1
+#   busk run club.show --script examples/phase7-safety.busk [--iface eth0]
+#
+# then play it as in Phase 6. Whatever the playbacks do, the heads never tilt
+# above 10°, the bar never runs above half, wash 4 stays dark, wash 3 stays
+# red, and nothing flashes faster than 3 times a second: the strobe look on
+# page 2, fader 5, asks for 10 Hz and gets 3; the pulse on fader 6 asks for
+# 8 Hz and gets 3. Marker SET now releases every playback (it no longer
+# toggles the bar wave). At the prompt, `sel fixture 102` and
+# `highlight on` find a head at full white whatever the show says;
+# `output off` (it asks first) stops all DMX, `output on` brings it back.
+
+# ------------------------------------------------ limits and park
+fixture 101 thru 102 limits tilt -90 10      # a low truss: the heads never tilt above 10°
+fixture 301 limits intensity 0.5             # the bar runs at half at most
+park fixture 204 intensity 0                 # wash 4 is broken: held dark
+park fixture 203 color 1 0 0                 # wash 3's colour is stuck on red
+safety strobe 3                              # at most 3 flashes per second
+
+# ------------------------------------------------ page 2: a strobe look and a fast pulse
+sel group 1
+set intensity 100%
+set shutter strobe
+set strobeRate 10
+record slot 2.5 "Strobe"
+clear
+sel group 2
+effect add "Pulse" hz 8 size 1
+record slot 2.6 "Fast pulse"
+clear
+
+# ------------------------------------------------ panic on the marker SET button
+unbind "nanoKONTROL2" cc 1 60                 # it toggled the bar wave (Phase 5)
+bind "nanoKONTROL2" cc 1 60 release all
+save

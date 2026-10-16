@@ -1,0 +1,44 @@
+{
+  "id": "prof-tdmx-ledbar",
+  "name": "TupperDMX LED Bar",
+  "manufacturer": "TupperDMX",
+  "model": "LED Bar",
+  "revision": "1",
+  "source": "user",
+  "notes": "Transcribed from TupperDMX's OFL file fixtures/ledbar.json, 7ch mode. The eight physical bars mirror one 7-channel slice, so it is one fixture with one element; the OFL 8x40 matrix is unused by every mode. Animation, animation speed and direction have no busk attribute: they are control channels held at their OFL defaults (animation 0 'On', the static colour; speed 255; direction forward), so busk drives brightness and RGB only.",
+  "physical": {},
+  "wheels": [],
+  "modes": [
+    {
+      "id": "mode-7ch",
+      "name": "7ch",
+      "footprint": 7,
+      "intensityStrategy": "dimmerChannel",
+      "dimmerCurve": "linear",
+      "elements": [{ "index": 0, "name": "Main" }],
+      "channels": [
+        { "offset": 0, "element": 0, "attribute": "intensity", "bytes": 1, "defaultDmx": 0,
+          "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }] },
+        { "offset": 1, "element": 0, "attribute": "color", "component": "blue", "bytes": 1, "defaultDmx": 0,
+          "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }] },
+        { "offset": 2, "element": 0, "attribute": "color", "component": "green", "bytes": 1, "defaultDmx": 0,
+          "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }] },
+        { "offset": 3, "element": 0, "attribute": "color", "component": "red", "bytes": 1, "defaultDmx": 0,
+          "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }] },
+        { "offset": 4, "element": 0, "attribute": "control", "bytes": 1, "defaultDmx": 0,
+          "capabilities": [
+            { "kind": "function", "dmx": [0, 3], "fn": "on" },
+            { "kind": "function", "dmx": [4, 139], "fn": "animation" },
+            { "kind": "function", "dmx": [140, 255], "fn": "none" }
+          ] },
+        { "offset": 5, "element": 0, "attribute": "control", "bytes": 1, "defaultDmx": 255,
+          "capabilities": [{ "kind": "function", "dmx": [0, 255], "fn": "animationSpeed" }] },
+        { "offset": 6, "element": 0, "attribute": "control", "bytes": 1, "defaultDmx": 0,
+          "capabilities": [
+            { "kind": "function", "dmx": [0, 127], "fn": "forward" },
+            { "kind": "function", "dmx": [128, 255], "fn": "reverse" }
+          ] }
+      ]
+    }
+  ]
+}

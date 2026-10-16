@@ -1,0 +1,105 @@
+# Phase 4 done criterion: a song as a tracking cue stack and a BPM-locked
+# chase, built with console commands only on the show phase3-build.busk
+# saved. Run it with
+#
+#   busk new club.show --title "Club Night"
+#   busk run club.show --script examples/phase3-build.busk --duration 1
+#   busk run club.show --script examples/phase4-song.busk [--iface eth0]
+#
+# then play it from the Korg nanoKONTROL2 (factory CC mode): knob 1 brings
+# the song up, ▶ GOes, ◀◀ goes back, ● releases the song; knob 2 brings the
+# chase up, ▶▶ toggles it, cycle taps the tempo and knob 3 picks the
+# multiplier of "Speed 1" (×¼ … ×4).
+
+master add speed "Speed 1" bpm 120
+
+# ---------------------------------------------- song stack (tracking)
+# Intro: the washes in blue, easing in over 3 s.
+sel group 2
+set intensity 60%
+preset color 1
+record slot 9 "Song"
+rename cue 9/1 "Intro"
+cuelist 9 tracking true
+cue 9/1 time 3 easeInOut
+
+# Verse: the heads come in warm on the audience; their position takes 4 s.
+# The washes' values in the programmer equal the Intro's: tracked, not stored.
+sel group 1
+set intensity 70%
+set color 1 0.75 0.45
+preset position 1
+record cue 9/2 "Verse"
+cue 9/2 time 2
+cue 9/2 time position 4
+clear
+
+# Pre: 8 s after the Verse, the bar rises fast in amber while the washes dim
+# slowly (fade in 1 s, out 3 s).
+sel group 3
+set intensity 100%
+preset color 4
+sel group 2
+set intensity 30%
+record cue 9/3 "Pre"
+cue 9/3 time 1/3
+cue 9/3 wait 8
+clear
+
+# Chorus: everything at full white.
+sel group 4
+set intensity 100%
+set color 1 1 1
+record cue 9/4 "Chorus"
+cue 9/4 time 0.5/2
+clear
+
+# Outro: 4 s after the Chorus lands, the heads dim over 6 s and drift back
+# to their default position (released).
+sel group 1
+set intensity 20%
+record cue 9/5 "Outro"
+cue 9/5 time 6
+cue 9/5 follow 4
+cue 9/5 release group 1 only pan tilt
+clear
+
+playback 9 buttons ["go", "back", "release"]
+playback 9 exclusivity base
+playback 9 releaseTime 3
+
+# ------------------------------------------------- chase (BPM-locked)
+# One red wash per step, bouncing on the beat of "Speed 1".
+sel fixture 201
+set intensity 100%
+preset color 2
+record slot 10 "Chase"
+clear
+sel fixture 202
+set intensity 100%
+preset color 2
+record cue 10/2
+clear
+sel fixture 203
+set intensity 100%
+preset color 2
+record cue 10/3
+clear
+sel fixture 204
+set intensity 100%
+preset color 2
+record cue 10/4
+clear
+cuelist 10 chase bpm x 1 bounce crossfade 0.25
+
+# ------------------------------------------------- nanoKONTROL2 (CC mode)
+bind "nanoKONTROL2" cc 1 16 fader 9
+bind "nanoKONTROL2" cc 1 17 fader 10
+bind "nanoKONTROL2" cc 1 41 button 9 1
+bind "nanoKONTROL2" cc 1 43 button 9 2
+bind "nanoKONTROL2" cc 1 45 button 9 3
+bind "nanoKONTROL2" cc 1 44 button 10 1
+bind "nanoKONTROL2" cc 1 46 tap
+bind "nanoKONTROL2" cc 1 18 master "Speed 1"
+
+save

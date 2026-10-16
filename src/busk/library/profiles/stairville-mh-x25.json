@@ -1,0 +1,976 @@
+{
+  "id": "prof-mhx25",
+  "name": "Stairville MH-X25 LED Spot",
+  "manufacturer": "Stairville",
+  "model": "MH-X25 LED Spot",
+  "revision": "1",
+  "source": "user",
+  "notes": "Transcribed from the Thomann user manual (DMX chart 7.6, 12-channel mode) and cross-checked against OFL stairville/mh-x25. Disagreements, manual wins unless it is self-contradictory: (1) the manual gives the colour wheel's white as 0-7, overlapping yellow at 5-9, a typo; 0-4 is used, as in OFL. (2) The manual describes gobo wheel 128-255 as a 'rainbow effect', copied from the colour wheel; it is gobo wheel spin, as in OFL. (3) Sound-control programmes follow the manual's 16-value ranges (136-151 ... 248-255); OFL has 15-value ranges. (4) Pan/tilt speed: the manual gives no direction; OFL says DMX 0 is fastest. Estimates: strobeRate 0-13 Hz across 8-215 is the manual's spec-sheet shutter frequency mapped linearly (unmeasured); gobo1Rotation 10-360 deg/s (CW positive, CCW negative) is a guess, the chart only says 'increasing speed'. Gobo rotation DMX 0 is the 0-degree index position, used as 'stopped'; indexed angles 1-63 have no attribute yet. Pan/tilt ranges assume the fixture menu is set to 540/270 degrees. Colour wheel slot colours are OFL's sRGB, linearised. The manual's 6-channel mode is not transcribed.",
+  "physical": {
+    "panRange": 540,
+    "tiltRange": 270,
+    "maxStrobeHz": 13,
+    "powerW": 102,
+    "weightKg": 10.3
+  },
+  "wheels": [
+    {
+      "id": "color1",
+      "kind": "color",
+      "slots": [
+        {
+          "id": "open",
+          "name": "White"
+        },
+        {
+          "id": "yellow",
+          "name": "Yellow",
+          "color": {
+            "r": 1,
+            "g": 1,
+            "b": 0
+          }
+        },
+        {
+          "id": "pink",
+          "name": "Pink",
+          "color": {
+            "r": 1,
+            "g": 0,
+            "b": 1
+          }
+        },
+        {
+          "id": "green",
+          "name": "Green",
+          "color": {
+            "r": 0,
+            "g": 1,
+            "b": 0
+          }
+        },
+        {
+          "id": "peachblow",
+          "name": "Peachblow",
+          "color": {
+            "r": 0.68,
+            "g": 0.171,
+            "b": 0.105
+          }
+        },
+        {
+          "id": "lightBlue",
+          "name": "Light blue",
+          "color": {
+            "r": 0.418,
+            "g": 0.687,
+            "b": 0.791
+          }
+        },
+        {
+          "id": "yellowGreen",
+          "name": "Yellow green",
+          "color": {
+            "r": 0.604,
+            "g": 0.991,
+            "b": 0.08
+          }
+        },
+        {
+          "id": "red",
+          "name": "Red",
+          "color": {
+            "r": 1,
+            "g": 0,
+            "b": 0
+          }
+        },
+        {
+          "id": "darkBlue",
+          "name": "Dark blue",
+          "color": {
+            "r": 0,
+            "g": 0,
+            "b": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "gobo1",
+      "kind": "gobo",
+      "slots": [
+        {
+          "id": "open",
+          "name": "Open"
+        },
+        {
+          "id": "gobo2",
+          "name": "Gobo 2"
+        },
+        {
+          "id": "gobo3",
+          "name": "Gobo 3"
+        },
+        {
+          "id": "gobo4",
+          "name": "Gobo 4"
+        },
+        {
+          "id": "gobo5",
+          "name": "Gobo 5"
+        },
+        {
+          "id": "gobo6",
+          "name": "Gobo 6"
+        },
+        {
+          "id": "gobo7",
+          "name": "Gobo 7"
+        },
+        {
+          "id": "gobo8",
+          "name": "Gobo 8"
+        }
+      ]
+    }
+  ],
+  "modes": [
+    {
+      "id": "mode-12ch",
+      "name": "12-channel",
+      "footprint": 12,
+      "intensityStrategy": "dimmerChannel",
+      "elements": [
+        {
+          "index": 0,
+          "name": "Main"
+        }
+      ],
+      "channels": [
+        {
+          "offset": 0,
+          "element": 0,
+          "attribute": "pan",
+          "bytes": 2,
+          "fineOffsets": [
+            2
+          ],
+          "defaultDmx": 32768,
+          "capabilities": [
+            {
+              "kind": "range",
+              "dmx": [
+                0,
+                65535
+              ],
+              "value": [
+                -270,
+                270
+              ]
+            }
+          ]
+        },
+        {
+          "offset": 1,
+          "element": 0,
+          "attribute": "tilt",
+          "bytes": 2,
+          "fineOffsets": [
+            3
+          ],
+          "defaultDmx": 32768,
+          "capabilities": [
+            {
+              "kind": "range",
+              "dmx": [
+                0,
+                65535
+              ],
+              "value": [
+                -135,
+                135
+              ]
+            }
+          ]
+        },
+        {
+          "offset": 4,
+          "element": 0,
+          "attribute": "positionSpeed",
+          "bytes": 1,
+          "defaultDmx": 0,
+          "capabilities": [
+            {
+              "kind": "range",
+              "dmx": [
+                0,
+                255
+              ],
+              "value": [
+                0,
+                1
+              ]
+            }
+          ]
+        },
+        {
+          "offset": 5,
+          "element": 0,
+          "attribute": "colorWheel",
+          "bytes": 1,
+          "defaultDmx": 0,
+          "capabilities": [
+            {
+              "kind": "slot",
+              "dmx": [
+                0,
+                4
+              ],
+              "wheel": "color1",
+              "slot": "open"
+            },
+            {
+              "kind": "slot",
+              "dmx": [
+                5,
+                9
+              ],
+              "wheel": "color1",
+              "slot": "yellow"
+            },
+            {
+              "kind": "slot",
+              "dmx": [
+                10,
+                14
+              ],
+              "wheel": "color1",
+              "slot": "pink"
+            },
+            {
+              "kind": "slot",
+              "dmx": [
+                15,
+                19
+              ],
+              "wheel": "color1",
+              "slot": "green"
+            },
+            {
+              "kind": "slot",
+              "dmx": [
+                20,
+                24
+              ],
+              "wheel": "color1",
+              "slot": "peachblow"
+            },
+            {
+              "kind": "slot",
+              "dmx": [
+                25,
+                29
+              ],
+              "wheel": "color1",
+              "slot": "lightBlue"
+            },
+            {
+              "kind": "slot",
+              "dmx": [
+                30,
+                34
+              ],
+              "wheel": "color1",
+              "slot": "yellowGreen"
+            },
+            {
+              "kind": "slot",
+              "dmx": [
+                35,
+                39
+              ],
+              "wheel": "color1",
+              "slot": "red"
+            },
+            {
+              "kind": "slot",
+              "dmx": [
+                40,
+                44
+              ],
+              "wheel": "color1",
+              "slot": "darkBlue"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                45,
+                54
+              ],
+              "fn": "splitOpenYellow"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                55,
+                64
+              ],
+              "fn": "splitYellowPink"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                65,
+                73
+              ],
+              "fn": "splitPinkGreen"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                74,
+                83
+              ],
+              "fn": "splitGreenPeachblow"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                84,
+                92
+              ],
+              "fn": "splitPeachblowLightBlue"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                93,
+                101
+              ],
+              "fn": "splitLightBlueYellowGreen"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                102,
+                110
+              ],
+              "fn": "splitYellowGreenRed"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                111,
+                119
+              ],
+              "fn": "splitRedDarkBlue"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                120,
+                127
+              ],
+              "fn": "splitDarkBlueOpen"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                128,
+                191
+              ],
+              "fn": "rainbowCW"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                192,
+                255
+              ],
+              "fn": "rainbowCCW"
+            }
+          ]
+        },
+        {
+          "offset": 6,
+          "element": 0,
+          "attribute": "shutter",
+          "bytes": 1,
+          "defaultDmx": 0,
+          "capabilities": [
+            {
+              "kind": "function",
+              "dmx": [
+                0,
+                3
+              ],
+              "fn": "closed"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                4,
+                7
+              ],
+              "fn": "open"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                8,
+                215
+              ],
+              "fn": "strobe",
+              "param": {
+                "attribute": "strobeRate",
+                "value": [
+                  0,
+                  13
+                ]
+              }
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                216,
+                255
+              ],
+              "fn": "open"
+            }
+          ]
+        },
+        {
+          "offset": 7,
+          "element": 0,
+          "attribute": "intensity",
+          "bytes": 1,
+          "defaultDmx": 0,
+          "capabilities": [
+            {
+              "kind": "range",
+              "dmx": [
+                0,
+                255
+              ],
+              "value": [
+                0,
+                1
+              ]
+            }
+          ]
+        },
+        {
+          "offset": 8,
+          "element": 0,
+          "attribute": "gobo1",
+          "bytes": 1,
+          "defaultDmx": 0,
+          "capabilities": [
+            {
+              "kind": "slot",
+              "dmx": [
+                0,
+                7
+              ],
+              "wheel": "gobo1",
+              "slot": "open"
+            },
+            {
+              "kind": "slot",
+              "dmx": [
+                8,
+                15
+              ],
+              "wheel": "gobo1",
+              "slot": "gobo2"
+            },
+            {
+              "kind": "slot",
+              "dmx": [
+                16,
+                23
+              ],
+              "wheel": "gobo1",
+              "slot": "gobo3"
+            },
+            {
+              "kind": "slot",
+              "dmx": [
+                24,
+                31
+              ],
+              "wheel": "gobo1",
+              "slot": "gobo4"
+            },
+            {
+              "kind": "slot",
+              "dmx": [
+                32,
+                39
+              ],
+              "wheel": "gobo1",
+              "slot": "gobo5"
+            },
+            {
+              "kind": "slot",
+              "dmx": [
+                40,
+                47
+              ],
+              "wheel": "gobo1",
+              "slot": "gobo6"
+            },
+            {
+              "kind": "slot",
+              "dmx": [
+                48,
+                55
+              ],
+              "wheel": "gobo1",
+              "slot": "gobo7"
+            },
+            {
+              "kind": "slot",
+              "dmx": [
+                56,
+                63
+              ],
+              "wheel": "gobo1",
+              "slot": "gobo8"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                64,
+                71
+              ],
+              "fn": "shakeGobo8"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                72,
+                79
+              ],
+              "fn": "shakeGobo7"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                80,
+                87
+              ],
+              "fn": "shakeGobo6"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                88,
+                95
+              ],
+              "fn": "shakeGobo5"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                96,
+                103
+              ],
+              "fn": "shakeGobo4"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                104,
+                111
+              ],
+              "fn": "shakeGobo3"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                112,
+                119
+              ],
+              "fn": "shakeGobo2"
+            },
+            {
+              "kind": "slot",
+              "dmx": [
+                120,
+                127
+              ],
+              "wheel": "gobo1",
+              "slot": "open"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                128,
+                191
+              ],
+              "fn": "wheelSpinCW"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                192,
+                255
+              ],
+              "fn": "wheelSpinCCW"
+            }
+          ]
+        },
+        {
+          "offset": 9,
+          "element": 0,
+          "attribute": "gobo1Rotation",
+          "bytes": 1,
+          "defaultDmx": 0,
+          "capabilities": [
+            {
+              "kind": "range",
+              "dmx": [
+                0,
+                0
+              ],
+              "value": [
+                0,
+                0
+              ]
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                1,
+                63
+              ],
+              "fn": "goboIndex"
+            },
+            {
+              "kind": "range",
+              "dmx": [
+                64,
+                147
+              ],
+              "value": [
+                10,
+                360
+              ]
+            },
+            {
+              "kind": "range",
+              "dmx": [
+                148,
+                231
+              ],
+              "value": [
+                -10,
+                -360
+              ]
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                232,
+                255
+              ],
+              "fn": "goboYoyo"
+            }
+          ]
+        },
+        {
+          "offset": 10,
+          "element": 0,
+          "attribute": "control",
+          "bytes": 1,
+          "defaultDmx": 0,
+          "capabilities": [
+            {
+              "kind": "function",
+              "dmx": [
+                0,
+                7
+              ],
+              "fn": "none"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                8,
+                15
+              ],
+              "fn": "blackoutOnPanTilt"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                16,
+                23
+              ],
+              "fn": "noBlackoutOnPanTilt"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                24,
+                31
+              ],
+              "fn": "blackoutOnColorWheel"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                32,
+                39
+              ],
+              "fn": "noBlackoutOnColorWheel"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                40,
+                47
+              ],
+              "fn": "blackoutOnGoboWheel"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                48,
+                55
+              ],
+              "fn": "noBlackoutOnGoboWheel"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                56,
+                87
+              ],
+              "fn": "none"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                88,
+                95
+              ],
+              "fn": "blackoutOnMovement"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                96,
+                103
+              ],
+              "fn": "resetPanTilt"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                104,
+                111
+              ],
+              "fn": "none"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                112,
+                119
+              ],
+              "fn": "resetColorWheel"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                120,
+                127
+              ],
+              "fn": "resetGoboWheel"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                128,
+                135
+              ],
+              "fn": "resetGoboRotation"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                136,
+                151
+              ],
+              "fn": "none"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                152,
+                159
+              ],
+              "fn": "reset"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                160,
+                255
+              ],
+              "fn": "none"
+            }
+          ]
+        },
+        {
+          "offset": 11,
+          "element": 0,
+          "attribute": "control",
+          "bytes": 1,
+          "defaultDmx": 0,
+          "capabilities": [
+            {
+              "kind": "function",
+              "dmx": [
+                0,
+                7
+              ],
+              "fn": "none"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                8,
+                23
+              ],
+              "fn": "program1"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                24,
+                39
+              ],
+              "fn": "program2"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                40,
+                55
+              ],
+              "fn": "program3"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                56,
+                71
+              ],
+              "fn": "program4"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                72,
+                87
+              ],
+              "fn": "program5"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                88,
+                103
+              ],
+              "fn": "program6"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                104,
+                119
+              ],
+              "fn": "program7"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                120,
+                135
+              ],
+              "fn": "program8"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                136,
+                151
+              ],
+              "fn": "soundControl1"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                152,
+                167
+              ],
+              "fn": "soundControl2"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                168,
+                183
+              ],
+              "fn": "soundControl3"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                184,
+                199
+              ],
+              "fn": "soundControl4"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                200,
+                215
+              ],
+              "fn": "soundControl5"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                216,
+                231
+              ],
+              "fn": "soundControl6"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                232,
+                247
+              ],
+              "fn": "soundControl7"
+            },
+            {
+              "kind": "function",
+              "dmx": [
+                248,
+                255
+              ],
+              "fn": "soundControl8"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

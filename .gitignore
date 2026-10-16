@@ -1,0 +1,16 @@
+# Python and tool caches
+__pycache__/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+
+# The virtual environment and build output (`uv build` writes dist/)
+.venv/
+dist/
+
+# Show backups written by `save` and autosave, next to the show
+*.backups/
+
+# Soak output (`uv run python bench/soak.py`)
+soak-*/

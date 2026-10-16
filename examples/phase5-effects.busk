@@ -1,0 +1,56 @@
+# Phase 5 done criterion: effects on the song show, built with console
+# commands only on the show phase3-build.busk and phase4-song.busk saved.
+# Run it with
+#
+#   busk new club.show --title "Club Night"
+#   busk run club.show --script examples/phase3-build.busk --duration 1
+#   busk run club.show --script examples/phase4-song.busk --duration 1
+#   busk run club.show --script examples/phase5-effects.busk [--iface eth0]
+#
+# then play it from the Korg nanoKONTROL2 (factory CC mode): knobs 4–6 bring
+# the circle, the pulse and the bar wave up (their faders scale the effect's
+# size), knob 7 is the "FX" size master, and track ◀, track ▶ and marker set
+# turn them on and off. Tap the tempo with cycle, as in Phase 4: the effects
+# lock to it.
+
+master add size "FX"
+master add group "Wash level" group 2
+
+# ------------------------------------------------ circle on the heads
+# Half the beat (a circle every two beats), MH 2 a quarter turn behind MH 1,
+# growing over 1 s when it starts.
+sel group 1
+effect add "Circle" size 15 bpm x 0.5 phase 0 180 fadein 1 sizemaster "FX"
+record slot 11 "Circle"                        # an effect-only cue: a size fader
+clear
+
+# ------------------------------------------------ pulse on the washes
+# Dims the washes' own level on the beat, in a wave across the four.
+sel group 2
+effect add "Pulse" size 0.8 phase 0 360 sizemaster "FX"
+record slot 12 "Pulse"
+clear
+
+# ------------------------------------------------ wave across the bar
+# A crest from both ends to the middle and back, once per beat.
+sel group 3
+effect add "Wave" phase 0 360 wings 2
+record slot 13 "Bar wave"
+clear
+
+# ------------------------------------------------ the Chorus gets a colour cycle on the bar
+# Red, green and blue around the bar every 4 s; it tracks into the Outro.
+sel group 3
+effect add "Rainbow" id rainbow hz 0.25 phase 0 360
+record cue 9/4 merge
+clear
+
+# ------------------------------------------------ nanoKONTROL2
+bind "nanoKONTROL2" cc 1 19 fader 11           # knob 4: circle size
+bind "nanoKONTROL2" cc 1 20 fader 12           # knob 5: pulse size
+bind "nanoKONTROL2" cc 1 21 fader 13           # knob 6: bar wave
+bind "nanoKONTROL2" cc 1 22 master "FX"        # knob 7: size master
+bind "nanoKONTROL2" cc 1 58 button 11 1        # track ◀: circle on/off
+bind "nanoKONTROL2" cc 1 59 button 12 1        # track ▶: pulse on/off
+bind "nanoKONTROL2" cc 1 60 button 13 1        # marker set: wave on/off
+save

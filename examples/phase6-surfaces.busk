@@ -1,0 +1,80 @@
+# Phase 6 done criterion: pages, a phone remote and controller LEDs on the
+# effects show, built with console commands only on the show that
+# phase3-build.busk, phase4-song.busk and phase5-effects.busk saved. Run it
+# with
+#
+#   busk new club.show --title "Club Night"
+#   busk run club.show --script examples/phase3-build.busk --duration 1
+#   busk run club.show --script examples/phase4-song.busk --duration 1
+#   busk run club.show --script examples/phase5-effects.busk --duration 1
+#   busk run club.show --script examples/phase6-surfaces.busk [--iface eth0]
+#
+# then play it from the Korg nanoKONTROL2 (set its LED mode to "external" in
+# the Korg Kontrol Editor, so the LEDs follow the show) and from a phone on the
+# same network: open the "Web s-…" address busk prints. Marker ◀ and ▶ turn
+# the pages: page 2 holds four wash looks on faders 1–4 (M swops one), a
+# manual crossfade on fader 8 and, on the knobs, the playbacks of page 1.
+# The faders take over softly: after a page change a fader does nothing until
+# it passes the playback's level. The phone's GOTO button jumps the song to
+# its Chorus, over the time the "Fade" master sets (knob or phone).
+
+surface "nanoKONTROL2" pickup soft
+surface add web "Phone"
+master add fadetime "Fade"
+
+# ------------------------------------------------ page 2: wash looks
+page add 2 "Washes"
+sel group 2
+set intensity 100%
+preset color 1
+record slot 2.1 "Wash Blue"
+preset color 2
+record slot 2.2 "Wash Red"
+preset color 3
+record slot 2.3 "Wash Green"
+preset color 4
+record slot 2.4 "Wash Amber"
+clear
+playback 14 exclusivity wash                  # one wash look at a time
+playback 15 exclusivity wash
+playback 16 exclusivity wash
+playback 17 exclusivity wash
+playback 14 buttons ["toggle", "swop", "release"]   # M swops: only that wash
+playback 15 buttons ["toggle", "swop", "release"]
+playback 16 buttons ["toggle", "swop", "release"]
+playback 17 buttons ["toggle", "swop", "release"]
+
+# ------------------------------------------------ page 2: a manual crossfade on fader 8
+sel group 3
+set intensity 100%
+preset color 1
+record slot 2.8 "Manual"
+preset color 2
+record cue 18/2
+preset color 3
+record cue 18/3
+clear
+cuelist 18 wrap true
+playback 18 fader crossfade                   # the fader runs each cue by hand
+playback 18 buttons ["go", "back", "release"]
+
+# ------------------------------------------------ the knob playbacks on page 2 too
+page 2 slot 9 playback 9
+page 2 slot 10 playback 10
+page 2 slot 11 playback 11
+page 2 slot 12 playback 12
+page 2 slot 13 playback 13
+
+# ------------------------------------------------ the song: a goto button for the phone
+playback 9 goto 4                             # the Chorus
+playback 9 buttons ["go", "back", "release", "goto"]
+
+# ------------------------------------------------ nanoKONTROL2: pages and LEDs (LED mode: external)
+bind "nanoKONTROL2" cc 1 61 page -1           # marker ◀
+bind "nanoKONTROL2" cc 1 62 page +1           # marker ▶
+feedback "nanoKONTROL2" cc 1 32 thru 39 led   # S: the slot's playback is active
+feedback "nanoKONTROL2" cc 1 48 thru 55 led   # M: flash or swop held
+feedback "nanoKONTROL2" cc 1 64 thru 71 led   # R: active
+feedback "nanoKONTROL2" cc 1 41 thru 45 led   # play, stop (blackout), rewind, fast-forward, record
+feedback "nanoKONTROL2" cc 1 46 led           # cycle: the beat
+save

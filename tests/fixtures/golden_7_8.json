@@ -1,0 +1,507 @@
+{
+  "schemaVersion": 1,
+
+  "meta": {
+    "id": "golden-7-8",
+    "title": "Spec §7.8 worked example",
+    "created": "2026-10-11T00:00:00Z",
+    "modified": "2026-10-11T00:00:00Z",
+    "app": "busk 0.1"
+  },
+
+  "profiles": [
+    {
+      "id": "prof-mh",
+      "name": "Generic Spot 16ch",
+      "manufacturer": "Generic",
+      "model": "Spot",
+      "revision": "1",
+      "source": "user",
+      "physical": { "panRange": 540, "tiltRange": 270, "zoomRange": [12, 30] },
+      "wheels": [
+        {
+          "id": "gobo1",
+          "kind": "gobo",
+          "slots": [{ "id": "open", "name": "Open" }, { "id": "breakup", "name": "Breakup" }]
+        }
+      ],
+      "emitters": [
+        { "id": "red", "color": { "r": 1, "g": 0, "b": 0 } },
+        { "id": "green", "color": { "r": 0, "g": 1, "b": 0 } },
+        { "id": "blue", "color": { "r": 0, "g": 0, "b": 1 } },
+        { "id": "white", "color": { "r": 1, "g": 1, "b": 1 } }
+      ],
+      "modes": [
+        {
+          "id": "mode-16",
+          "name": "16ch",
+          "footprint": 16,
+          "intensityStrategy": "dimmerChannel",
+          "dimmerCurve": "linear",
+          "elements": [{ "index": 0, "name": "Main" }],
+          "channels": [
+            {
+              "offset": 0,
+              "element": 0,
+              "attribute": "pan",
+              "bytes": 2,
+              "fineOffsets": [1],
+              "defaultDmx": 32768,
+              "capabilities": [{ "kind": "range", "dmx": [0, 65535], "value": [-270, 270] }]
+            },
+            {
+              "offset": 2,
+              "element": 0,
+              "attribute": "tilt",
+              "bytes": 2,
+              "fineOffsets": [3],
+              "defaultDmx": 32768,
+              "capabilities": [{ "kind": "range", "dmx": [0, 65535], "value": [-135, 135] }]
+            },
+            {
+              "offset": 4,
+              "element": 0,
+              "attribute": "color",
+              "component": "red",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }]
+            },
+            {
+              "offset": 5,
+              "element": 0,
+              "attribute": "color",
+              "component": "green",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }]
+            },
+            {
+              "offset": 6,
+              "element": 0,
+              "attribute": "color",
+              "component": "blue",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }]
+            },
+            {
+              "offset": 7,
+              "element": 0,
+              "attribute": "color",
+              "component": "white",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }]
+            },
+            {
+              "offset": 8,
+              "element": 0,
+              "attribute": "intensity",
+              "bytes": 2,
+              "fineOffsets": [9],
+              "defaultDmx": 0,
+              "capabilities": [{ "kind": "range", "dmx": [0, 65535], "value": [0, 1] }]
+            },
+            {
+              "offset": 10,
+              "element": 0,
+              "attribute": "zoom",
+              "bytes": 1,
+              "defaultDmx": 128,
+              "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [12, 30] }]
+            },
+            {
+              "offset": 11,
+              "element": 0,
+              "attribute": "gobo1",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                { "kind": "slot", "dmx": [0, 9], "wheel": "gobo1", "slot": "open" },
+                { "kind": "slot", "dmx": [10, 19], "wheel": "gobo1", "slot": "breakup" }
+              ]
+            },
+            {
+              "offset": 12,
+              "element": 0,
+              "attribute": "shutter",
+              "bytes": 1,
+              "defaultDmx": 0,
+              "capabilities": [
+                { "kind": "function", "dmx": [0, 7], "fn": "closed" },
+                { "kind": "function", "dmx": [8, 15], "fn": "open" },
+                {
+                  "kind": "function",
+                  "dmx": [16, 131],
+                  "fn": "strobe",
+                  "param": { "attribute": "strobeRate", "value": [1, 20] }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+
+  "universes": [{ "id": "u1", "name": "U1", "number": 1 }],
+
+  "fixtures": [
+    {
+      "id": "fx-mh1",
+      "number": 101,
+      "name": "MH 1",
+      "profileId": "prof-mh",
+      "profileRevision": "1",
+      "modeId": "mode-16",
+      "patch": { "universeId": "u1", "address": 1 },
+      "orientation": {
+        "invertPan": false,
+        "invertTilt": false,
+        "swapPanTilt": false,
+        "panOffset": 0,
+        "tiltOffset": 0
+      }
+    },
+    {
+      "id": "fx-mh2",
+      "number": 102,
+      "name": "MH 2",
+      "profileId": "prof-mh",
+      "profileRevision": "1",
+      "modeId": "mode-16",
+      "patch": { "universeId": "u1", "address": 17 },
+      "orientation": {
+        "invertPan": false,
+        "invertTilt": false,
+        "swapPanTilt": false,
+        "panOffset": 0,
+        "tiltOffset": 0
+      }
+    },
+    {
+      "id": "fx-mh3",
+      "number": 103,
+      "name": "MH 3",
+      "profileId": "prof-mh",
+      "profileRevision": "1",
+      "modeId": "mode-16",
+      "patch": { "universeId": "u1", "address": 33 },
+      "orientation": {
+        "invertPan": false,
+        "invertTilt": false,
+        "swapPanTilt": false,
+        "panOffset": 0,
+        "tiltOffset": 0
+      }
+    },
+    {
+      "id": "fx-mh4",
+      "number": 104,
+      "name": "MH 4",
+      "profileId": "prof-mh",
+      "profileRevision": "1",
+      "modeId": "mode-16",
+      "patch": { "universeId": "u1", "address": 49 },
+      "orientation": {
+        "invertPan": false,
+        "invertTilt": false,
+        "swapPanTilt": false,
+        "panOffset": 0,
+        "tiltOffset": 0
+      }
+    }
+  ],
+
+  "groups": [
+    {
+      "id": "g-mh",
+      "number": 1,
+      "name": "Moving Heads",
+      "members": [
+        { "fixtureId": "fx-mh1", "element": 0 },
+        { "fixtureId": "fx-mh2", "element": 0 },
+        { "fixtureId": "fx-mh3", "element": 0 },
+        { "fixtureId": "fx-mh4", "element": 0 }
+      ]
+    }
+  ],
+
+  "presets": [
+    {
+      "id": "pr-blue",
+      "number": 1,
+      "name": "Blue",
+      "pool": "color",
+      "values": [{ "scope": { "kind": "global" }, "attribute": "color", "value": { "r": 0, "g": 0, "b": 1 } }]
+    },
+    {
+      "id": "pr-red",
+      "number": 2,
+      "name": "Red",
+      "pool": "color",
+      "values": [{ "scope": { "kind": "global" }, "attribute": "color", "value": { "r": 1, "g": 0, "b": 0 } }]
+    }
+  ],
+
+  "effects": [],
+
+  "cueLists": [
+    {
+      "id": "cl-verse",
+      "number": 1,
+      "name": "Verse",
+      "mode": "sequence",
+      "tracking": false,
+      "wrap": false,
+      "releaseAtEnd": false,
+      "cues": [
+        {
+          "id": "c-verse",
+          "number": "1",
+          "name": "Verse",
+          "entries": [
+            {
+              "targets": { "kind": "group", "groupId": "g-mh" },
+              "attribute": "intensity",
+              "value": { "kind": "literal", "value": 0.4 }
+            },
+            {
+              "targets": { "kind": "group", "groupId": "g-mh" },
+              "attribute": "color",
+              "value": { "kind": "literal", "value": { "r": 1, "g": 0.8, "b": 0.6 } }
+            },
+            {
+              "targets": { "kind": "group", "groupId": "g-mh" },
+              "attribute": "pan",
+              "value": { "kind": "literal", "value": 0 }
+            }
+          ],
+          "effects": [],
+          "timing": { "fadeIn": 2, "fadeOut": 2, "delayIn": 0.0, "delayOut": 0.0, "curve": "linear" },
+          "trigger": { "kind": "go" }
+        }
+      ]
+    },
+    {
+      "id": "cl-chorus",
+      "number": 2,
+      "name": "Chorus",
+      "mode": "sequence",
+      "tracking": false,
+      "wrap": false,
+      "releaseAtEnd": false,
+      "cues": [
+        {
+          "id": "c-chorus",
+          "number": "1",
+          "name": "Chorus",
+          "entries": [
+            {
+              "targets": { "kind": "group", "groupId": "g-mh" },
+              "attribute": "intensity",
+              "value": { "kind": "literal", "value": 1.0 }
+            },
+            {
+              "targets": { "kind": "group", "groupId": "g-mh" },
+              "attribute": "color",
+              "value": { "kind": "literal", "value": { "r": 1, "g": 1, "b": 1 } }
+            }
+          ],
+          "effects": [],
+          "timing": { "fadeIn": 0.5, "fadeOut": 0.5, "delayIn": 0.0, "delayOut": 0.0, "curve": "linear" },
+          "trigger": { "kind": "go" }
+        }
+      ]
+    },
+    {
+      "id": "cl-blue",
+      "number": 3,
+      "name": "Blue",
+      "mode": "sequence",
+      "tracking": false,
+      "wrap": false,
+      "releaseAtEnd": false,
+      "cues": [
+        {
+          "id": "c-blue",
+          "number": "1",
+          "name": "Blue",
+          "entries": [
+            {
+              "targets": { "kind": "group", "groupId": "g-mh" },
+              "attribute": "color",
+              "value": { "kind": "preset", "presetId": "pr-blue" }
+            }
+          ],
+          "effects": [],
+          "timing": { "fadeIn": 2, "fadeOut": 2, "delayIn": 0.0, "delayOut": 0.0, "curve": "linear" },
+          "trigger": { "kind": "go" }
+        }
+      ]
+    },
+    {
+      "id": "cl-red",
+      "number": 4,
+      "name": "Red",
+      "mode": "sequence",
+      "tracking": false,
+      "wrap": false,
+      "releaseAtEnd": false,
+      "cues": [
+        {
+          "id": "c-red",
+          "number": "1",
+          "name": "Red",
+          "entries": [
+            {
+              "targets": { "kind": "group", "groupId": "g-mh" },
+              "attribute": "color",
+              "value": { "kind": "preset", "presetId": "pr-red" }
+            }
+          ],
+          "effects": [],
+          "timing": { "fadeIn": 2, "fadeOut": 2, "delayIn": 0.0, "delayOut": 0.0, "curve": "linear" },
+          "trigger": { "kind": "go" }
+        }
+      ]
+    },
+    {
+      "id": "cl-aud",
+      "number": 5,
+      "name": "Audience",
+      "mode": "sequence",
+      "tracking": false,
+      "wrap": false,
+      "releaseAtEnd": false,
+      "cues": [
+        {
+          "id": "c-aud",
+          "number": "1",
+          "name": "Audience",
+          "entries": [
+            {
+              "targets": { "kind": "targets", "refs": [{ "fixtureId": "fx-mh1", "element": 0 }] },
+              "attribute": "pan",
+              "value": { "kind": "literal", "value": 45 }
+            }
+          ],
+          "effects": [],
+          "timing": { "fadeIn": 0.0, "fadeOut": 0.0, "delayIn": 0.0, "delayOut": 0.0, "curve": "linear" },
+          "trigger": { "kind": "go" }
+        }
+      ]
+    }
+  ],
+
+  "playbacks": [
+    {
+      "id": "pb-verse",
+      "number": 1,
+      "name": "Verse",
+      "cueListId": "cl-verse",
+      "priority": 50,
+      "fader": "master",
+      "buttons": ["toggle", "flash", "release"],
+      "ltpFaderMode": "threshold",
+      "ltpThreshold": 0.02,
+      "autoStart": true,
+      "autoRelease": true,
+      "flash": { "level": 1.0, "includeLtp": false },
+      "protectFromSwop": false,
+      "releaseTime": 2
+    },
+    {
+      "id": "pb-chorus",
+      "number": 2,
+      "name": "Chorus",
+      "cueListId": "cl-chorus",
+      "priority": 50,
+      "fader": "master",
+      "buttons": ["toggle", "flash", "release"],
+      "ltpFaderMode": "threshold",
+      "ltpThreshold": 0.02,
+      "autoStart": true,
+      "autoRelease": true,
+      "flash": { "level": 1.0, "includeLtp": false },
+      "protectFromSwop": false,
+      "releaseTime": 2
+    },
+    {
+      "id": "pb-blue",
+      "number": 3,
+      "name": "Blue",
+      "cueListId": "cl-blue",
+      "priority": 50,
+      "fader": "master",
+      "buttons": ["toggle", "flash", "release"],
+      "ltpFaderMode": "threshold",
+      "ltpThreshold": 0.02,
+      "autoStart": true,
+      "autoRelease": true,
+      "flash": { "level": 1.0, "includeLtp": false },
+      "protectFromSwop": false,
+      "releaseTime": 1,
+      "exclusivity": "color"
+    },
+    {
+      "id": "pb-red",
+      "number": 4,
+      "name": "Red",
+      "cueListId": "cl-red",
+      "priority": 50,
+      "fader": "master",
+      "buttons": ["toggle", "flash", "release"],
+      "ltpFaderMode": "threshold",
+      "ltpThreshold": 0.02,
+      "autoStart": true,
+      "autoRelease": true,
+      "flash": { "level": 1.0, "includeLtp": false },
+      "protectFromSwop": false,
+      "releaseTime": 1,
+      "exclusivity": "color"
+    },
+    {
+      "id": "pb-aud",
+      "number": 5,
+      "name": "Audience",
+      "cueListId": "cl-aud",
+      "priority": 50,
+      "fader": "master",
+      "buttons": ["toggle", "flash", "release"],
+      "ltpFaderMode": "followFader",
+      "ltpThreshold": 0.02,
+      "autoStart": true,
+      "autoRelease": true,
+      "flash": { "level": 1.0, "includeLtp": false },
+      "protectFromSwop": false,
+      "releaseTime": 1
+    }
+  ],
+
+  "pages": [
+    {
+      "id": "page-1",
+      "number": 1,
+      "name": "Main",
+      "slots": ["pb-verse", "pb-chorus", "pb-blue", "pb-red", "pb-aud"]
+    }
+  ],
+
+  "masters": [{ "id": "m-gm", "kind": "grand", "name": "Grand Master" }],
+
+  "surfaces": [],
+
+  "bindings": [],
+
+  "output": {
+    "engineHz": 100,
+    "sacnSourceName": "Busk Console",
+    "sacnCid": "00000000-0000-0000-0000-000000000000",
+    "holdLastFrameOnEngineStall": true,
+    "routes": []
+  },
+
+  "park": []
+}

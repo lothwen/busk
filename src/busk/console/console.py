@@ -1,0 +1,750 @@
+"""The console: run lines and scripts against a session (phase-3-plan §5.10).
+
+:meth:`Console.execute` runs one line and returns the text to print as a
+:class:`Reply`; :meth:`Console.run_script` runs a file and stops at the first
+error. Command results print their one-line message, then any warnings with
+their paths; errors print as ``error: …`` followed by the validator's issues,
+each with its path, so deleting a fixture that is still in use lists every
+place that uses it.
+
+:func:`interact` is the interactive loop of ``busk run`` on a terminal, with
+``readline`` history: Ctrl+C clears the line instead of stopping the output,
+``quit`` or Ctrl+D asks whether to save unsaved edits, and a line that needs
+confirmation (``output off``) asks first. Scripts and piped input never ask.
+
+**Ctrl+C never splits a command.** Python raises ``KeyboardInterrupt`` in the
+main thread wherever it happens to be; inside an edit, between queueing the
+engine's install and committing the session, it would leave the engine and
+the session with different shows. So while a command runs, SIGINT is held
+back: :attr:`Console.interrupted` records it, and the caller acts on it once
+the command is done (the prompt clears the line, a script stops, piped input
+ends the run).
+"""
+
+from __future__ import annotations
+
+import contextlib
+import json
+import signal
+import threading
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from types import FrameType
+from typing import Any, Final, cast
+
+from busk.console.parser import (
+    HELP,
+    Context,
+    Nothing,
+    ParseError,
+    Query,
+    Quit,
+    Save,
+    Source,
+    Submit,
+    SubmitAll,
+    parse,
+)
+from busk.io.osc import feedback_target
+from busk.model.common import TargetRef
+from busk.model.effect import ColorLayer, EffectInstance, EffectLayer
+from busk.model.entry import TargetSpec
+from busk.model.show import Show
+from busk.session.library import EffectDefaults, EffectLibrary, ProfileLibrary, builtin_effects
+from busk.session.programmer import split_slot_key
+from busk.session.session import CommandResult, Session
+
+MAX_DEPTH: Final = 8
+"""How deeply ``source`` may nest (a script sourcing itself stops here)."""
+
+
+@dataclass(frozen=True)
+class Reply:
+    """What a line printed, and whether it succeeded."""
+
+    text: str
+    ok: bool = True
+
+
+class Console:
+    """Runs console lines against one session."""
+
+    def __init__(
+        self,
+        session: Session,
+        library: ProfileLibrary,
+        *,
+        iface: str = "eth0",
+        status: Callable[[], str] | None = None,
+        effects: EffectLibrary | None = None,
+        about: Callable[[], Sequence[str]] | None = None,
+    ) -> None:
+        """``iface`` is used by multicast and broadcast routes; ``status``
+        returns the engine's status line for the ``status`` command;
+        ``effects`` is the effect library (the built-in one by default);
+        ``about`` returns the lines ``info`` adds about the run (its
+        processes and restarts)."""
+        self.session = session
+        self.library = library
+        self.effects = effects if effects is not None else builtin_effects()
+        self.iface = iface
+        self._status = status
+        self._about = about
+        self.quit_requested = False
+        self.interrupted = False
+        """Ctrl+C arrived while a command ran (it was held back until it finished)."""
+        self._depth = 0
+
+    # ---------------------------------------------------------- running
+
+    def execute(self, line: str) -> Reply:
+        """Run one line; never raises, not even for Ctrl+C (see the module docs)."""
+        with self._interrupts_held():
+            return self._execute(line)
+
+    @contextlib.contextmanager
+    def _interrupts_held(self) -> Iterator[None]:
+        """Record SIGINT in :attr:`interrupted` instead of raising, while the
+        block runs. Only the main thread can set signal handlers; elsewhere
+        nothing changes (and no SIGINT arrives there anyway)."""
+        if threading.current_thread() is not threading.main_thread():
+            yield
+            return
+
+        def held(signum: int, frame: FrameType | None) -> None:
+            self.interrupted = True
+
+        previous = signal.signal(signal.SIGINT, held)
+        try:
+            yield
+        finally:
+            signal.signal(signal.SIGINT, previous)
+
+    def confirmation(self, line: str) -> str | None:
+        """The question to ask before running ``line`` at a prompt (``output
+        off``), or ``None``: also for a line that does not parse, whose error
+        :meth:`execute` reports."""
+        try:
+            action = parse(line, self._context())
+        except ParseError:
+            return None
+        return action.confirm if isinstance(action, Submit) else None
+
+    def _context(self) -> Context:
+        session = self.session
+        return Context(
+            session.show,
+            self.library,
+            session.ids,
+            self.iface,
+            effects=self.effects,
+            programmer=session.programmer,
+            page=self._page(),
+        )
+
+    def _execute(self, line: str) -> Reply:
+        session = self.session
+        try:
+            action = parse(line, self._context())
+        except ParseError as exc:
+            return Reply(f"error: {exc.message}", ok=False)
+        if isinstance(action, Nothing):
+            return Reply("")
+        if isinstance(action, Submit):
+            result = session.submit(action.command)
+            return _join(*action.notes, render_result(result), ok=result.ok)
+        if isinstance(action, SubmitAll):
+            texts = list(action.notes)
+            for command in action.commands:
+                result = session.submit(command)
+                texts.append(render_result(result))
+                if not result.ok:
+                    return _join(*texts, ok=False)
+            return _join(*texts, ok=True)
+        if isinstance(action, Save):
+            result = session.save(action.path)
+            return Reply(render_result(result), ok=result.ok)
+        if isinstance(action, Source):
+            return self._source(action.path)
+        if isinstance(action, Quit):
+            self.quit_requested = True
+            return Reply("")
+        return Reply(self._query(action))
+
+    def run_script(self, path: Path, write: Callable[[str], None]) -> bool:
+        """Run every line of ``path``, writing each non-empty reply; stop at the
+        first error (after writing where it happened). Returns success."""
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError as exc:
+            write(f"error: cannot read {str(path)!r}: {exc.strerror or exc}")
+            return False
+        for number, line in enumerate(lines, start=1):
+            reply = self.execute(line)
+            if not reply.ok:
+                write(f"{path}:{number}: {line.strip()}")
+            if reply.text:
+                write(reply.text)
+            if not reply.ok:
+                return False
+            if self.interrupted:
+                write(f"{path}:{number}: interrupted")
+                return False
+            if self.quit_requested:
+                break
+        return True
+
+    def _source(self, path: Path) -> Reply:
+        if self._depth >= MAX_DEPTH:
+            return Reply(f"error: source nests more than {MAX_DEPTH} deep", ok=False)
+        written: list[str] = []
+        self._depth += 1
+        try:
+            ok = self.run_script(path, written.append)
+        finally:
+            self._depth -= 1
+        return Reply("\n".join(written), ok=ok)
+
+    # ------------------------------------------------------------ queries
+
+    def _query(self, query: Query) -> str:
+        if query.kind == "programmer":
+            return self._programmer()
+        if query.kind == "list" and query.arg == "cues" and query.number is not None:
+            return self._list_cues(query.number)
+        if query.kind == "list":
+            return self._list(query.arg)
+        if query.kind == "library":
+            return self._library()
+        if query.kind == "info":
+            return self._info()
+        if query.kind == "status":
+            return self._status() if self._status is not None else "no engine is running"
+        return "\n".join(HELP)
+
+    def target(self, target: TargetRef) -> str:
+        """A target as the operator types it: ``101``, or ``301.3`` for an element."""
+        fixture = next(
+            (f for f in self.session.show["fixtures"] if f["id"] == target["fixtureId"]), None
+        )
+        if fixture is None:
+            return f"{target['fixtureId']} (gone)"
+        if self.session.state.elements.get(fixture["id"], 1) > 1:
+            return f"{fixture['number']}.{target['element'] + 1}"
+        return str(fixture["number"])
+
+    def _programmer(self) -> str:
+        programmer = self.session.programmer
+        selection = ", ".join(self.target(t) for t in programmer.selection) or "nothing"
+        lines = [
+            f"selection: {selection}",
+            f"blind: {'on' if programmer.blind else 'off'}",
+            f"highlight: {'on' if programmer.highlight else 'off'}",
+            f"fade: {programmer.fadeTime:g} s",
+        ]
+        for key, source in programmer.values.items():
+            split = split_slot_key(key)
+            if split is None:
+                continue
+            target, attribute = split
+            if source["kind"] == "preset":
+                shown = self._preset_name(source["presetId"])
+            else:
+                shown = format_value(source["value"])
+            lines.append(f"  {self.target(target)} {attribute} = {shown}")
+        lines += [f"  effect {self._effect(effect)}" for effect in programmer.effects]
+        return "\n".join(lines)
+
+    def _effect(self, effect: EffectInstance) -> str:
+        """An effect instance in one line: ``fx1 'Circle' on group 1, bpm
+        'Speed 1' ×0.5, size 15``."""
+        show = self.session.show
+        template = next((t for t in show["effects"] if t["id"] == effect["templateId"]), None)
+        name = repr(template["name"]) if template is not None else f"{effect['templateId']} (gone)"
+        rate = effect["rate"]
+        if rate["kind"] == "hz":
+            speed = f"{rate['value']:g} Hz"
+        else:
+            master = next((m for m in show["masters"] if m["id"] == rate["masterId"]), None)
+            label = repr(master["name"]) if master is not None else f"{rate['masterId']} (gone)"
+            speed = f"bpm {label} ×{rate['multiplier']:g}"
+        targets = self._targets(effect["targets"])
+        return f"{effect['id']} {name} on {targets}, {speed}, size {effect['size']:g}"
+
+    def _targets(self, spec: TargetSpec) -> str:
+        """A target spec as the operator types it: ``group 1`` or ``101, 102``."""
+        if spec["kind"] == "group":
+            group = next(
+                (g for g in self.session.show["groups"] if g["id"] == spec["groupId"]), None
+            )
+            return f"group {group['number']}" if group is not None else f"{spec['groupId']} (gone)"
+        return ", ".join(self.target(target) for target in spec["refs"]) or "nothing"
+
+    def _preset_name(self, ident: str) -> str:
+        preset = next((p for p in self.session.show["presets"] if p["id"] == ident), None)
+        if preset is None:
+            return f"preset {ident} (gone)"
+        return f"preset {preset['pool']} {preset['number']} {preset['name']!r}"
+
+    def _list(self, kind: str) -> str:
+        lines = getattr(self, f"_list_{kind}")(self.session.show)
+        return "\n".join(lines) or ("nothing is parked" if kind == "park" else f"no {kind}")
+
+    def _list_park(self, show: Show) -> list[str]:
+        """Each parked slot as ``park`` takes it: ``204 intensity 0``."""
+        return [
+            f"{self.target(entry['slot']['target'])} {entry['slot']['attribute']} "
+            f"{format_value(entry['value'])}"
+            for entry in show["park"]
+        ]
+
+    def _list_fixtures(self, show: Show) -> list[str]:
+        universes = {u["id"]: u["number"] for u in show["universes"]}
+        profiles = {p["id"]: p for p in show["profiles"]}
+        lines = []
+        for fixture in sorted(show["fixtures"], key=lambda f: f["number"]):
+            profile = profiles[fixture["profileId"]]
+            mode = next(m["name"] for m in profile["modes"] if m["id"] == fixture["modeId"])
+            patch = fixture["patch"]
+            where = "unpatched"
+            if patch is not None:
+                where = f"{universes[patch['universeId']]}.{patch['address']}"
+            name = fixture["name"]
+            lines.append(f"{fixture['number']:>5}  {name:<20} {profile['name']} / {mode}  {where}")
+        return lines
+
+    def _list_groups(self, show: Show) -> list[str]:
+        return [
+            f"{group['number']:>5}  {group['name']:<20} "
+            + ", ".join(self.target(member) for member in group["members"])
+            for group in sorted(show["groups"], key=lambda g: g["number"])
+        ]
+
+    def _list_presets(self, show: Show) -> list[str]:
+        return [
+            f"{preset['pool']:>9} {preset['number']:<4} {preset['name']:<20} "
+            f"{_count(len(preset['values']), 'value')}"
+            for preset in sorted(show["presets"], key=lambda p: (p["pool"], p["number"]))
+        ]
+
+    def _list_cuelists(self, show: Show) -> list[str]:
+        lines = []
+        for cue_list in sorted(show["cueLists"], key=lambda cl: cl["number"]):
+            cues = ", ".join(f"{c['number']} {c['name']!r}" for c in cue_list["cues"])
+            lines.append(f"{cue_list['number']:>5}  {cue_list['name']:<20} {cues or 'no cues'}")
+        return lines
+
+    def _list_cues(self, number: int) -> str:
+        """``list cues L``: each cue's number, name, timing and trigger, in the
+        console's own syntax (``time 3/1 delay 0/2 easeIn, color 3  follow 0``)."""
+        cue_list = next(cl for cl in self.session.show["cueLists"] if cl["number"] == number)
+        lines = [
+            f"{cue['number']:>5}  {cue['name']:<20} {_timing(cue['timing'])}  "
+            f"{_trigger(cue['trigger'])}"
+            + (f"  {_count(len(cue['effects']), 'effect')}" if cue["effects"] else "")
+            for cue in cue_list["cues"]
+        ]
+        return "\n".join(lines) or "no cues"
+
+    def _list_masters(self, show: Show) -> list[str]:
+        """Each master's kind and level, and a speed master's tempo: the
+        engine's when it runs, else the show's initial values."""
+        compiled = self.session.state.compiled
+        snapshot = self.session.engine_snapshot()
+        levels = dict(snapshot.masterLevels) if snapshot is not None else {}
+        tempos = {s.id: s for s in snapshot.speed} if snapshot is not None else {}
+        lines = []
+        for master in show["masters"]:
+            ident = master["id"]
+            level = levels.get(ident, compiled.masters[ident].initialLevel)
+            line = f"{master['name']:<20} {master['kind']:<6} {level:>5.0%}"
+            if master["kind"] == "speed":
+                bpm = tempos[ident].bpm if ident in tempos else compiled.masters[ident].defaultBpm
+                multiplier = compiled.masters[ident].multiplier(level)
+                line += f"  {round(bpm, 1):g} BPM ×{multiplier:g}"
+            lines.append(line)
+        return lines
+
+    def _list_playbacks(self, show: Show) -> list[str]:
+        lists = {cue_list["id"]: cue_list["number"] for cue_list in show["cueLists"]}
+        lines = []
+        for playback in sorted(show["playbacks"], key=lambda p: p["number"]):
+            extra = f", exclusivity {playback['exclusivity']}" if "exclusivity" in playback else ""
+            lines.append(
+                f"{playback['number']:>5}  {playback['name']:<20} "
+                f"cue list {lists.get(playback['cueListId'], '?')}, band {playback['priority']}, "
+                f"{playback['fader']} fader{extra}"
+            )
+        return lines
+
+    def _page(self) -> str | None:
+        """The id of the engine's current page (``None`` without an engine)."""
+        snapshot = self.session.engine_snapshot()
+        return None if snapshot is None or snapshot.page is None else snapshot.page.id
+
+    def _list_pages(self, show: Show) -> list[str]:
+        """Each page's slots, ``*`` marking the current page: the engine's,
+        else the first, where the engine starts."""
+        numbers = {playback["id"]: playback["number"] for playback in show["playbacks"]}
+        pages = sorted(show["pages"], key=lambda p: p["number"])
+        current = self._page()
+        if all(page["id"] != current for page in pages):
+            current = pages[0]["id"] if pages else None
+        lines = []
+        for page in pages:
+            slots = " ".join(
+                f"{k + 1}:{'-' if slot is None else numbers.get(slot, '?')}"
+                for k, slot in enumerate(page["slots"])
+            )
+            mark = "*" if page["id"] == current else " "
+            lines.append(f"{mark}{page['number']:>4}  {page['name']:<20} {slots or 'empty'}")
+        return lines
+
+    def _list_universes(self, show: Show) -> list[str]:
+        return [
+            f"{u['number']:>5}  {u['name']}"
+            for u in sorted(show["universes"], key=lambda u: u["number"])
+        ]
+
+    def _list_routes(self, show: Show) -> list[str]:
+        universes = {u["id"]: u["number"] for u in show["universes"]}
+        return [
+            f"{route['id']}  U{universes[route['universeId']]} → {_route(route)}"
+            for route in show["output"]["routes"]
+        ]
+
+    def _list_surfaces(self, show: Show) -> list[str]:
+        """Each surface's kind, its device or port, and its fader pickup."""
+        return [f"{s['id']}  {s['kind']} {s['name']!r}{_surface(s)}" for s in show["surfaces"]]
+
+    def _list_bindings(self, show: Show) -> list[str]:
+        """Each binding's input and action, masters, pages and playbacks by
+        name, and its feedback in brackets (its address only when it is not
+        the input's)."""
+        surfaces = {surface["id"]: surface["name"] for surface in show["surfaces"]}
+        names: dict[str, Mapping[Any, Any]] = {
+            "masterId": {master["id"]: master["name"] for master in show["masters"]},
+            "number": {page["number"]: page["name"] for page in show["pages"]},
+            "playbackId": {p["id"]: (p["number"], p["name"]) for p in show["playbacks"]},
+        }
+        lines = []
+        for binding in show["bindings"]:
+            line = (
+                f"{binding['id']}  {surfaces.get(binding['surfaceId'], '?')} "
+                f"{_input(binding['input'])} → {_action(binding['action'], names)}"
+            )
+            feedback = binding.get("feedback")
+            if feedback is not None:
+                kind = "motor" if feedback["kind"] == "motorFader" else feedback["kind"]
+                own = feedback["address"] == binding["input"]
+                line += f" [{kind}]" if own else f" [{kind} {_input(feedback['address'])}]"
+            lines.append(line)
+        return lines
+
+    def _list_effects(self, show: Show) -> list[str]:
+        """The show's effect templates and their layers."""
+        return [f"{t['name']:<20} {_layers(t['layers'])}" for t in show["effects"]]
+
+    def _list_profiles(self, show: Show) -> list[str]:
+        """Each embedded profile, its revision (``→ <revision> in the library``
+        when the library has another one: ``profile update`` takes it) and
+        its modes."""
+        lines = []
+        for profile in show["profiles"]:
+            revision = profile["revision"]
+            library = self.library.get(profile["id"])
+            if library is not None and library["revision"] != revision:
+                revision += f" → {library['revision']} in the library"
+            modes = ", ".join(mode["name"] for mode in profile["modes"])
+            lines.append(f"{profile['name']} (revision {revision}): {modes}")
+        return lines
+
+    def _library(self) -> str:
+        lines = [
+            f"{p['name']} ({p['manufacturer']}, revision {p['revision']}): "
+            + ", ".join(m["name"] for m in p["modes"])
+            for p in self.library
+        ]
+        lines += [f"skipped {problem}" for problem in self.library.problems]
+        lines += [
+            f"effect {e.template['name']}: {_layers(e.template['layers'])}{_defaults(e.defaults)}"
+            for e in self.effects
+        ]
+        lines += [f"skipped {problem}" for problem in self.effects.problems]
+        return "\n".join(lines) or "the library is empty"
+
+    def _info(self) -> str:
+        snapshot = self.session.snapshot
+        show = snapshot.show
+        counts = ", ".join(
+            _count(len(show[key]), word)  # type: ignore[literal-required]
+            for key, word in (
+                ("universes", "universe"), ("fixtures", "fixture"), ("groups", "group"),
+                ("presets", "preset"), ("cueLists", "cue list"), ("playbacks", "playback"),
+                ("bindings", "binding"),
+            )
+        )  # fmt: skip
+        timeline = self.session.timeline
+        programmer = snapshot.programmer
+        where = str(snapshot.path) if snapshot.path is not None else "no file"
+        return "\n".join(
+            [
+                f"show: {show['meta']['title']} ({show['meta']['id']})",
+                f"file: {where}, {'unsaved edits' if snapshot.dirty else 'saved'}",
+                counts,
+                f"undo: {_count(timeline.undo_count, 'step')}, "
+                f"redo: {_count(timeline.redo_count, 'step')}",
+                f"programmer: {len(programmer.selection)} selected, "
+                f"{_count(len(programmer.values), 'value')}, "
+                f"blind {'on' if programmer.blind else 'off'}",
+                *(self._about() if self._about is not None else ()),
+            ]
+        )
+
+
+# ------------------------------------------------------------------ formatting
+
+
+def render_result(result: CommandResult) -> str:
+    """A command result as console text."""
+    if result.ok:
+        lines = [result.message] if result.message else []
+        lines += [f"{issue.severity} {issue}" for issue in result.issues]
+        return "\n".join(lines)
+    return "\n".join([f"error: {result.message}", *(f"  {issue}" for issue in result.issues)])
+
+
+def format_value(value: Any) -> str:
+    """An attribute value as the console writes it."""
+    if isinstance(value, dict):
+        if "slot" in value:
+            return str(value["slot"])
+        parts = [f"{value[c]:g}" for c in ("r", "g", "b")]
+        parts += [f"{c} {value[c]:g}" for c in ("w", "a", "uv") if c in value]
+        return " ".join(parts)
+    return f"{value:g}" if isinstance(value, int | float) else json.dumps(value)
+
+
+def _layers(layers: Iterable[EffectLayer]) -> str:
+    """Effect layers in one line: ``pan add sine, tilt add sine +90°``."""
+    parts = []
+    for layer in layers:
+        if "palette" in layer:
+            colour = cast(ColorLayer, layer)
+            parts.append(f"color {colour['blend']} {_count(len(colour['palette']), 'colour')}")
+            continue
+        offset = layer["phaseOffset"]
+        shift = f" {offset:+g}°" if offset else ""
+        parts.append(f"{layer['attribute']} {layer['mode']} {layer['waveform']['kind']}{shift}")
+    return ", ".join(parts)
+
+
+def _defaults(defaults: EffectDefaults) -> str:
+    """A library template's console defaults: `` (size 20)``, or nothing."""
+    parts = []
+    if "size" in defaults:
+        parts.append(f"size {defaults['size']:g}")
+    bounds = [(k, v) for k, v in (("low", defaults.get("low")), ("high", defaults.get("high")))]
+    if any(v is not None for _, v in bounds):
+        parts.append(" ".join(f"{k} {v:g}" for k, v in bounds if v is not None))
+    if "phase" in defaults:
+        parts.append(f"phase {defaults['phase']['start']:g} {defaults['phase']['end']:g}")
+    return f" ({', '.join(parts)})" if parts else ""
+
+
+def _join(*parts: str, ok: bool) -> Reply:
+    return Reply("\n".join(part for part in parts if part), ok=ok)
+
+
+def _count(count: int, word: str) -> str:
+    return f"{count} {word}{'' if count == 1 else 's'}"
+
+
+def _route(route: Mapping[str, Any]) -> str:
+    state = "" if route["enabled"] else " (disabled)"
+    if route["protocol"] == "dmxUsb":
+        device = route["device"]
+        return f"DMX-USB {device['driver']} {device['port']} {route['refreshHz']:g} Hz{state}"
+    destination = route["destination"]
+    where = destination.get("host") or destination.get("iface")
+    if route["protocol"] == "sacn":
+        what = f"sACN {route['universe']}"
+    elif route["protocol"] == "artnet":
+        address = route["portAddress"]
+        what = f"Art-Net {address['net']}.{address['subNet']}.{address['universe']}"
+    else:
+        what = route["protocol"]
+    return f"{what} {destination['kind']} {where}{state}"
+
+
+def _surface(surface: Mapping[str, Any]) -> str:
+    """`` device '…'`` or `` port N``, then the pickup (not for a web
+    remote, whose faders move relative to the level)."""
+    match = surface["match"]
+    kind = surface["kind"]
+    text = ""
+    if "deviceName" in match:
+        text = f" device {match['deviceName']!r}"
+    elif "port" in match:
+        text = f" port {match['port']}"
+    if kind == "osc":
+        text += f", feedback to {feedback_target(match)}"
+    if kind == "web":
+        return text + (f" on {match['host']}" if "host" in match else "")
+    return f"{text}, {surface['faderPickup']} pickup"
+
+
+def _input(address: Mapping[str, Any]) -> str:
+    kind = address["kind"]
+    if kind == "midiCC":
+        return f"cc {address['channel']} {address['cc']}"
+    if kind == "midiNote":
+        return f"note {address['channel']} {address['note']}"
+    if kind == "osc":
+        return f"osc {json.dumps(address['path'])}"
+    if kind == "midiClock":
+        return "clock"
+    return " ".join(str(v) for v in address.values())
+
+
+def _timing(timing: Mapping[str, Any]) -> str:
+    """A cue's timing as ``cue L/C time`` takes it, per-family timing after commas."""
+    words = [f"time {_pair(timing['fadeIn'], timing['fadeOut'])}"]
+    if timing["delayIn"] or timing["delayOut"]:
+        words.append(f"delay {_pair(timing['delayIn'], timing['delayOut'])}")
+    if timing["curve"] != "linear":
+        words.append(_curve(timing["curve"]))
+    text = " ".join(words)
+    for family, own in timing.get("perFamily", {}).items():
+        text += f", {family} {own['fade']:g}"
+        if own["delay"]:
+            text += f" delay {own['delay']:g}"
+        if "curve" in own:
+            text += f" {_curve(own['curve'])}"
+    return text
+
+
+def _pair(first: float, second: float) -> str:
+    """``3`` for equal values, else ``3/1``."""
+    return f"{first:g}" if first == second else f"{first:g}/{second:g}"
+
+
+def _curve(curve: str | Mapping[str, Any]) -> str:
+    if isinstance(curve, str):
+        return curve
+    return "bezier " + " ".join(f"{value:g}" for value in curve["bezier"])
+
+
+def _trigger(trigger: Mapping[str, Any]) -> str:
+    """``go``, ``wait 8`` or ``follow 0``."""
+    return trigger["kind"] if trigger["kind"] == "go" else f"{trigger['kind']} {trigger['delay']:g}"
+
+
+def _action(action: Mapping[str, Any], names: Mapping[str, Mapping[Any, Any]]) -> str:
+    """An action as ``bind`` takes it, with the names of the master, page or
+    playback it drives (``names``: id or page number → name, by field)."""
+    kind = action["kind"]
+    if kind == "playbackFader":
+        return f"fader {action['slot'] + 1}"
+    if kind == "playbackButton":
+        return f"button {action['slot'] + 1} {action['button'] + 1}"
+    if kind == "command":
+        return f"command {action['command']['type']}"
+    if kind in ("master", "tap"):
+        return f"{kind} {names['masterId'].get(action['masterId'], action['masterId'])!r}"
+    if kind == "page":
+        return f"page {action['delta']:+d}"
+    if kind == "pageAbs":
+        name = names["number"].get(action["number"])
+        return f"page {action['number']}" + ("" if name is None else f" {name!r}")
+    if kind == "playbackFaderAbs":
+        number, name = names["playbackId"].get(action["playbackId"], ("?", "?"))
+        return f"fader playback {number} {name!r}"
+    if kind == "blackout":
+        return "blackout momentary" if action.get("momentary") else "blackout"
+    return " ".join(str(v) for v in action.values())
+
+
+# --------------------------------------------------------------- interactive
+
+PROMPT: Final = "busk> "
+
+
+def interact(
+    console: Console, ask: Callable[[str], str] = input, write: Callable[[str], None] = print
+) -> None:
+    """The interactive loop on a terminal, until ``quit`` or Ctrl+D.
+
+    Ctrl+C clears the line and never stops the show. At ``quit`` with unsaved
+    edits, it asks whether to save first.
+    """
+    _enable_history()
+    while not console.quit_requested:
+        try:
+            line = ask(PROMPT)
+        except KeyboardInterrupt:
+            write("")  # a new, empty prompt: the output keeps running
+            continue
+        except EOFError:
+            write("")
+            console.quit_requested = True
+            break
+        question = console.confirmation(line)
+        if question is not None and not _confirmed(question, ask, write):
+            continue
+        reply = console.execute(line)
+        if reply.text:
+            write(reply.text)
+        console.interrupted = False  # Ctrl+C at the prompt only ever clears the line
+    if console.session.dirty:
+        _offer_save(console, ask, write)
+
+
+def _confirmed(question: str, ask: Callable[[str], str], write: Callable[[str], None]) -> bool:
+    """Ask ``question``: only ``y`` or ``yes`` confirms; anything else (Ctrl+C
+    and Ctrl+D too) cancels the line."""
+    try:
+        answer = ask(question).strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        write("")
+        answer = ""
+    if answer in ("y", "yes"):
+        return True
+    write("cancelled")
+    return False
+
+
+def _offer_save(console: Console, ask: Callable[[str], str], write: Callable[[str], None]) -> None:
+    where = console.session.path
+    question = (
+        f"save unsaved edits to {where}? [y/n] "
+        if where
+        else "unsaved edits: save to (path, or empty to skip)? "
+    )
+    while True:
+        try:
+            answer = ask(question).strip()
+        except (EOFError, KeyboardInterrupt):
+            write("")
+            return
+        if where is None:
+            if answer:
+                write(render_result(console.session.save(Path(answer))))
+            return
+        if answer.lower() in ("y", "yes"):
+            write(render_result(console.session.save()))
+            return
+        if answer.lower() in ("n", "no"):
+            return
+
+
+def _enable_history() -> None:
+    """Line editing and history, where :mod:`readline` exists."""
+    with contextlib.suppress(ImportError):
+        import readline  # noqa: F401 - importing it enables editing for input()
+
+
+def lines_of(texts: Iterable[str]) -> list[str]:
+    """Split replies into lines (for tests and transcripts)."""
+    return [line for text in texts for line in text.splitlines()]

@@ -1,0 +1,100 @@
+# The TupperDMX demo rig (~/Documents/TupperDMX/demo.show) as a busk show:
+# its eleven fixtures at TupperDMX's addresses, a page of looks, Art-Net to
+# TupperDMX's simulator on 127.0.0.1 (Port-Address 0.0.0, TupperDMX's
+# universe 0; Art-Net's port 6454) and a web remote. Build it with
+#
+#   busk new examples/tupperdmx/tupper-demo.show --title "TupperDMX demo"
+#   busk run examples/tupperdmx/tupper-demo.show --library examples/tupperdmx/profiles \
+#       --script examples/tupperdmx/build.busk --duration 1
+#
+# The profiles are hand transcriptions of TupperDMX's OFL files (busk has no
+# OFL import yet); the show embeds them, so running it needs no --library.
+
+# ---------------------------------------------------------------- patch
+universe add 1 "Stage"
+fixture add 101 "TupperDMX LED Bar" mode 7ch at 1.1
+fixture add 201 "TupperDMX Blinder" mode 8ch at 1.33
+fixture add 202 "TupperDMX Blinder" mode 8ch at 1.65
+fixture add 301 "TupperDMX Smoke Machine" mode 1ch at 1.73
+fixture add 401 thru 403 "TupperDMX PAR RGBW" mode 6ch at 1.74
+# The heads are two mirrored pairs sharing addresses, as in TupperDMX:
+# 501 and 502 (hanging) at 92, 503 and 504 (floor) at 116. busk warns about the
+# overlap; the looks below give both heads of a pair the same values.
+fixture add 501 "TupperDMX Moving Head" mode 12ch at 1.92
+fixture add 502 "TupperDMX Moving Head" mode 12ch at 1.92
+fixture add 503 "TupperDMX Moving Head" mode 12ch at 1.116
+fixture add 504 "TupperDMX Moving Head" mode 12ch at 1.116
+
+# --------------------------------------------------------------- groups
+sel fixture 101
+record group 1 "Bar"
+sel fixture 201 thru 202
+record group 2 "Blinders"
+sel fixture 401 thru 403
+record group 3 "Pars"
+sel fixture 501 thru 504
+record group 4 "Heads"
+sel group 1, group 3, group 4
+record group 5 "Colour"                       # everything with RGB: bar, pars, heads
+
+# -------------------------------------------- colour presets (global)
+set color 0 0 1
+record preset color 1 "Blue"
+set color 1 0 0
+record preset color 2 "Red"
+set color 0 1 0
+record preset color 3 "Green"
+set color 1 0.5 0
+record preset color 4 "Amber"
+clear
+
+# ------------------------------------------------------- base looks
+sel group 5
+set intensity 80%
+set color 1 0.75 0.45
+record slot 1 "Warm"
+set color 0.75 0.85 1
+record slot 2 "Cool"
+clear
+
+# ------------------------------------------------------- colour bumps
+sel group 5
+preset color 1
+record slot 3 "Blue"
+preset color 2
+record slot 4 "Red"
+preset color 3
+record slot 5 "Green"
+preset color 4
+record slot 6 "Amber"
+clear
+
+# ------------------------------------------------- blinders and smoke
+sel group 2
+set intensity 100%                            # all four dies of both blinders
+record slot 7 "Blinders"
+clear
+sel fixture 301
+set intensity 100%                            # the fader sets the fog output
+record slot 8 "Smoke"
+clear
+
+# ---------------------------------------------------- playback behaviour
+playback 1 exclusivity base
+playback 2 exclusivity base
+playback 3 exclusivity color
+playback 4 exclusivity color
+playback 5 exclusivity color
+playback 6 exclusivity color
+cue 3/1 timing.fadeIn 1
+cue 4/1 timing.fadeIn 1
+cue 5/1 timing.fadeIn 1
+cue 6/1 timing.fadeIn 1
+
+# -------------------------------------------------------------- output
+route add 1 artnet 0.0.0 unicast 127.0.0.1
+
+# ----------------------------------------------------------- web remote
+surface add web "Phone"                       # port 8080; busk prints the URL with its key
+
+save

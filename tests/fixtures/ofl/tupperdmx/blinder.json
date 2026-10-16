@@ -1,0 +1,155 @@
+{
+  "$schema": "https://raw.githubusercontent.com/OpenLightingProject/open-fixture-library/master/schemas/fixture.json",
+  "name": "blinder",
+  "shortName": "TDMXBLIND",
+  "categories": [
+    "Blinder",
+    "Dimmer"
+  ],
+  "meta": {
+    "authors": [
+      "TupperDMX"
+    ],
+    "createDate": "2025-06-25",
+    "lastModifyDate": "2026-07-31"
+  },
+  "comment": "In-house two-cell warm/cold white blinder.",
+  "physical": {
+    "dimensions": [
+      100,
+      200,
+      120
+    ],
+    "bulb": {
+      "type": "2x COB warm/cold white"
+    },
+    "lens": {
+      "degreesMinMax": [
+        60,
+        60
+      ]
+    }
+  },
+  "availableChannels": {
+    "brightness": {
+      "defaultValue": 0,
+      "capability": {
+        "type": "Intensity"
+      }
+    },
+    "cool1": {
+      "name": "Cold white 1",
+      "defaultValue": 0,
+      "capability": {
+        "type": "ColorIntensity",
+        "color": "Cold White"
+      }
+    },
+    "cool2": {
+      "name": "Cold white 2",
+      "defaultValue": 0,
+      "capability": {
+        "type": "ColorIntensity",
+        "color": "Cold White"
+      }
+    },
+    "warm1": {
+      "name": "Warm white 1",
+      "defaultValue": 0,
+      "capability": {
+        "type": "ColorIntensity",
+        "color": "Warm White"
+      }
+    },
+    "warm2": {
+      "name": "Warm white 2",
+      "defaultValue": 0,
+      "capability": {
+        "type": "ColorIntensity",
+        "color": "Warm White"
+      }
+    },
+    "strobe": {
+      "name": "Strobe",
+      "defaultValue": 0,
+      "capabilities": [
+        {
+          "dmxRange": [
+            0,
+            7
+          ],
+          "type": "ShutterStrobe",
+          "shutterEffect": "Open"
+        },
+        {
+          "dmxRange": [
+            8,
+            255
+          ],
+          "type": "ShutterStrobe",
+          "shutterEffect": "Strobe",
+          "speedStart": "0.5Hz",
+          "speedEnd": "10Hz"
+        }
+      ]
+    },
+    "mode": {
+      "name": "Built-in program",
+      "defaultValue": 0,
+      "capabilities": [
+        {
+          "dmxRange": [
+            0,
+            9
+          ],
+          "type": "NoFunction",
+          "comment": "Manual"
+        },
+        {
+          "dmxRange": [
+            10,
+            249
+          ],
+          "type": "Effect",
+          "effectName": "Auto program",
+          "speedStart": "slow",
+          "speedEnd": "fast"
+        },
+        {
+          "dmxRange": [
+            250,
+            255
+          ],
+          "type": "Effect",
+          "effectName": "Sound active",
+          "soundControlled": true
+        }
+      ]
+    },
+    "speed": {
+      "name": "Program speed",
+      "defaultValue": 0,
+      "capability": {
+        "type": "EffectSpeed",
+        "speedStart": "slow",
+        "speedEnd": "fast"
+      }
+    }
+  },
+  "modes": [
+    {
+      "name": "8ch",
+      "shortName": "8ch",
+      "channels": [
+        "brightness",
+        "cool1",
+        "cool2",
+        "warm1",
+        "warm2",
+        "strobe",
+        "mode",
+        "speed"
+      ]
+    }
+  ]
+}

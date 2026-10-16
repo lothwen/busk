@@ -1,0 +1,89 @@
+{
+  "id": "prof-par",
+  "name": "RGB Par 3ch",
+  "manufacturer": "Generic",
+  "model": "Par",
+  "revision": "1",
+  "source": "user",
+  "physical": {},
+  "wheels": [],
+  "modes": [
+    {
+      "id": "mode-3",
+      "name": "3ch",
+      "footprint": 3,
+      "intensityStrategy": "virtual",
+      "elements": [
+        {
+          "index": 0,
+          "name": "Main"
+        }
+      ],
+      "channels": [
+        {
+          "offset": 0,
+          "element": 0,
+          "attribute": "color",
+          "component": "red",
+          "bytes": 1,
+          "defaultDmx": 0,
+          "capabilities": [
+            {
+              "kind": "range",
+              "dmx": [
+                0,
+                255
+              ],
+              "value": [
+                0,
+                1
+              ]
+            }
+          ]
+        },
+        {
+          "offset": 1,
+          "element": 0,
+          "attribute": "color",
+          "component": "green",
+          "bytes": 1,
+          "defaultDmx": 0,
+          "capabilities": [
+            {
+              "kind": "range",
+              "dmx": [
+                0,
+                255
+              ],
+              "value": [
+                0,
+                1
+              ]
+            }
+          ]
+        },
+        {
+          "offset": 2,
+          "element": 0,
+          "attribute": "color",
+          "component": "blue",
+          "bytes": 1,
+          "defaultDmx": 0,
+          "capabilities": [
+            {
+              "kind": "range",
+              "dmx": [
+                0,
+                255
+              ],
+              "value": [
+                0,
+                1
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

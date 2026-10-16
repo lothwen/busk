@@ -1,0 +1,65 @@
+[project]
+name = "busk"
+version = "0.1.0"
+description = "Busking lighting console engine (Phase 7: hardening — three processes with a watchdog, the safety stage, reconnects, rate limits, OFL and GDTF import, an event log, soak tests)"
+readme = "README.md"
+authors = [
+    { name = "Daniel Sánchez", email = "danillo@euskai.org" }
+]
+# PEP 695 `type` statements and class type parameters need 3.12.
+requires-python = ">=3.12"
+dependencies = [
+    "mido>=1.3.3",
+    "numpy>=2.5.4",
+    "pydantic>=2.14.0",
+    "python-rtmidi>=1.5.8",
+]
+
+[project.scripts]
+busk = "busk.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.13,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.169.0",
+    "mypy>=2.4.0",
+    "pytest>=9.1.1",
+    "ruff>=0.17.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests", "bench"]
+# The spec and plans are documents: never reformat their Python snippets.
+extend-exclude = ["*.md"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "B", "UP", "SIM", "C4", "PIE", "RET", "PT", "RUF"]
+# Typographic characters used on purpose in docs and messages (the spec uses them too).
+allowed-confusables = ["×", "–", "−"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+files = ["src"]
+
+[[tool.mypy.overrides]]
+# mido ships no type information; it is imported only in busk.io.midi.
+module = ["mido", "mido.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Benchmarks and the soak are opt-in: `uv run pytest -m perf -s`, `uv run pytest -m soak -s`
+# (a later -m overrides this one).
+addopts = ["-ra", "--strict-markers", "--strict-config", "-m", "not perf and not soak"]
+markers = [
+    "perf: timing benchmarks, excluded from the default run",
+    "soak: the one-minute soak (bench/soak.py), excluded from the default run",
+    "midi: needs an ALSA sequencer (/dev/snd/seq); skipped without one",
+]
+xfail_strict = true

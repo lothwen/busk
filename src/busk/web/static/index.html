@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#111214">
+<title>busk remote</title>
+<!--
+  The busk web remote (phase-6-plan §5.12). One file, no external resources:
+  it must work in a venue without internet.
+
+  Protocol: the server sends "hello", "show", "state" and "error" messages
+  (busk/web/api.py); the page sends {"id", "command"} with performance
+  commands only. The command types it can send are listed in commands.json,
+  next to this file, and tested against the bus.
+
+  Faders drag relative to their level, so touching one never jumps it; moves
+  are sent at most once per animation frame. Buttons send PLAYBACK_BUTTON
+  down and up by playback id: what you touch is what you get. The page
+  reconnects every second when the connection drops.
+-->
+<style>
+  :root {
+    --bg: #111214; --panel: #1b1d21; --line: #2c2f35; --text: #e8e9eb; --dim: #8b9099;
+    --idle: #4a4e56; --active: #3ccf6e; --releasing: #f0a830; --flash: #ffffff;
+    --blackout: #e5484d; --accent: #4c9dff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.25 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+  body { display: flex; flex-direction: column; }
+  button { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; padding: 10px 8px; touch-action: none; }
+  button:active, button.down { background: var(--line); }
+  header { display: grid; grid-template-columns: 1fr; gap: 8px; padding: 8px 16px;
+    border-bottom: 1px solid var(--line); }
+  .row { display: flex; gap: 8px; align-items: stretch; }
+  #page { flex: 1; text-align: center; align-self: center; font-weight: 600; font-size: 16px;
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #prev, #next { width: 56px; }
+  #bo { width: 64px; font-weight: 700; }
+  #bo.on { background: var(--blackout); border-color: var(--blackout); color: #fff; }
+  #tap { width: 108px; display: flex; gap: 6px; align-items: center; justify-content: center; }
+  #dot { width: 10px; height: 10px; border-radius: 50%; background: var(--idle); }
+  #dot.lit { background: var(--accent); }
+  #status { color: var(--dim); font-size: 12px; min-height: 15px; }
+  #status .error { color: var(--blackout); }
+  .hfader { position: relative; flex: 1; min-height: 40px; border: 1px solid var(--line);
+    border-radius: 8px; background: var(--panel); overflow: hidden; touch-action: none; }
+  .hfader .fill { position: absolute; inset: 0 auto 0 0; background: #2f4f7a; }
+  .hfader .text { position: relative; display: flex; justify-content: space-between;
+    padding: 0 10px; line-height: 38px; white-space: nowrap; }
+  main { flex: 1; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(88px, 1fr);
+    gap: 8px; padding: 8px 16px; overflow-x: auto; min-height: 0; }
+  .strip { display: flex; flex-direction: column; gap: 6px; min-height: 0; padding: 6px;
+    border: 1px solid var(--line); border-top: 4px solid var(--idle); border-radius: 8px;
+    background: var(--panel); }
+  .strip.active { border-top-color: var(--active); }
+  .strip.releasing { border-top-color: var(--releasing); }
+  .strip.flash { border-top-color: var(--flash); }
+  .strip.empty { opacity: 0.35; }
+  .name { font-weight: 600; height: 2.5em; overflow: hidden; }
+  .cue { color: var(--dim); font-size: 12px; height: 1.25em; overflow: hidden; white-space: nowrap;
+    text-overflow: ellipsis; }
+  .vfader { position: relative; flex: 1; min-height: 120px; border: 1px solid var(--line);
+    border-radius: 6px; background: var(--bg); overflow: hidden; touch-action: none; }
+  .vfader .fill { position: absolute; inset: auto 0 0 0; background: #2f4f7a; }
+  .vfader .text { position: absolute; inset: auto 0 6px 0; text-align: center; font-size: 12px; }
+  .buttons { display: grid; gap: 6px; }
+  .buttons button { padding: 12px 4px; font-size: 12px; font-weight: 600; overflow: hidden;
+    white-space: nowrap; text-overflow: ellipsis; }
+  #masters { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 16px 16px;
+    border-top: 1px solid var(--line); }
+  #masters:empty { display: none; }
+  #masters .master { display: flex; gap: 6px; flex: 1 1 240px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="row">
+    <button id="prev" aria-label="previous page">&#9664;</button>
+    <div id="page">&mdash;</div>
+    <button id="next" aria-label="next page">&#9654;</button>
+  </div>
+  <div class="row">
+    <button id="bo">BO</button>
+    <div class="hfader" id="gm" hidden><div class="fill"></div>
+      <div class="text"><span class="label">GM</span><span class="value"></span></div></div>
+    <button id="tap" hidden><span>TAP</span><span id="bpm"></span><i id="dot"></i></button>
+  </div>
+  <div id="status">connecting&hellip;</div>
+</header>
+<main id="strips"></main>
+<section id="masters"></section>
+<script>
+"use strict";
+
+const LABELS = {go: "GO", back: "BACK", flash: "FLASH", swop: "SWOP", toggle: "ON/OFF",
+                release: "REL"};
+const HOLD_LOCAL_MS = 300;  // after a drag, trust the local level this long
+
+let ws = null, nextId = 1, offset = 0;  // offset: engine time − performance.now() s
+let show = null, state = null, playbacks = new Map(), levels = new Map(), statuses = new Map();
+let grand = null, tapMaster = null, errorText = "", errorUntil = 0;
+const pending = new Map();  // coalesced fader moves, sent once per frame
+let flushQueued = false;
+const faders = [];  // every fader on the page: {element, get, key, command}
+
+// ------------------------------------------------------------------ connection
+
+function connect() {
+  ws = new WebSocket("ws://" + location.host + "/ws" + location.search);
+  ws.onmessage = (event) => receive(JSON.parse(event.data));
+  ws.onopen = () => setStatus();
+  ws.onclose = () => {
+    ws = null;
+    document.querySelectorAll("button.down").forEach((b) => b.classList.remove("down"));
+    setStatus();
+    setTimeout(connect, 1000);
+  };
+}
+
+function receive(message) {
+  if (message.type === "hello") {
+    offset = message.time - performance.now() / 1000;
+  } else if (message.type === "show") {
+    show = message;
+    playbacks = new Map(show.playbacks.map((p) => [p.id, p]));
+    build();
+  } else if (message.type === "state") {
+    const page = state && state.page ? state.page.id : null;
+    state = message;
+    levels = new Map(state.masterLevels);
+    statuses = new Map(state.playbacks.map((p) => [p.id, p]));
+    if ((state.page ? state.page.id : null) !== page) build(); else update();
+  } else if (message.type === "error") {
+    errorText = message.message;
+    errorUntil = performance.now() + 4000;
+    setStatus();
+    setTimeout(setStatus, 4100);
+  }
+}
+
+function send(command) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({id: String(nextId++), command}));
+  }
+}
+
+function sendNow(command) {  // in order after the fader moves already made
+  flush();
+  send(command);
+}
+
+function queue(key, command) {
+  pending.set(key, command);
+  if (!flushQueued) {
+    flushQueued = true;
+    requestAnimationFrame(flush);
+  }
+}
+
+function flush() {
+  flushQueued = false;
+  pending.forEach((command) => send(command));
+  pending.clear();
+}
+
+// ------------------------------------------------------------------ controls
+
+const clamp = (v) => Math.min(1, Math.max(0, v));
+
+/* A fader that drags relative to its level: one touch at a time. */
+function fader(element, vertical, get, key, command) {
+  const f = {element, vertical, get, key, command, pointer: null, start: 0, from: 0,
+             local: null, holdUntil: 0};
+  element.addEventListener("pointerdown", (e) => {
+    if (f.pointer !== null) return;
+    f.pointer = e.pointerId;
+    element.setPointerCapture(e.pointerId);
+    f.start = vertical ? e.clientY : e.clientX;
+    f.from = f.local !== null ? f.local : get();
+  });
+  element.addEventListener("pointermove", (e) => {
+    if (e.pointerId !== f.pointer) return;
+    const rect = element.getBoundingClientRect();
+    const delta = vertical ? (f.start - e.clientY) / rect.height : (e.clientX - f.start) / rect.width;
+    f.local = clamp(f.from + delta);
+    queue(key, command(f.local));
+    paintFader(f);
+  });
+  const end = (e) => {
+    if (e.pointerId !== f.pointer) return;
+    f.pointer = null;
+    f.holdUntil = performance.now() + HOLD_LOCAL_MS;
+  };
+  element.addEventListener("pointerup", end);
+  element.addEventListener("pointercancel", end);
+  faders.push(f);
+  return f;
+}
+
+function faderLevel(f) {
+  if (f.local !== null && (f.pointer !== null || performance.now() < f.holdUntil)) return f.local;
+  f.local = null;
+  return f.get();
+}
+
+function paintFader(f, text) {
+  const level = faderLevel(f);
+  const fill = f.element.querySelector(".fill");
+  if (f.vertical) fill.style.height = (level * 100) + "%"; else fill.style.width = (level * 100) + "%";
+  const value = f.element.querySelector(".value");
+  if (value) value.textContent = text !== undefined ? text : Math.round(level * 100) + "%";
+}
+
+/* A button that sends a command on press and another on release. */
+function hold(button, down, up) {
+  let pointer = null;
+  button.addEventListener("pointerdown", (e) => {
+    if (pointer !== null) return;
+    pointer = e.pointerId;
+    button.setPointerCapture(e.pointerId);
+    button.classList.add("down");
+    sendNow(down);
+  });
+  const end = (e) => {
+    if (e.pointerId !== pointer) return;
+    pointer = null;
+    button.classList.remove("down");
+    if (up) sendNow(up);
+  };
+  button.addEventListener("pointerup", end);
+  button.addEventListener("pointercancel", end);
+}
+
+// ------------------------------------------------------------------ layout
+
+function currentPage() {
+  if (!show || show.pages.length === 0) return null;
+  const id = state && state.page ? state.page.id : null;
+  return show.pages.find((p) => p.id === id) || show.pages[0];
+}
+
+function el(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function hfader(label) {
+  const node = el("div", "hfader");
+  node.append(el("div", "fill"));
+  const text = el("div", "text");
+  text.append(el("span", "label", label), el("span", "value"));
+  node.append(text);
+  return node;
+}
+
+function build() {
+  faders.length = 0;
+  const strips = document.getElementById("strips");
+  const masters = document.getElementById("masters");
+  strips.replaceChildren();
+  masters.replaceChildren();
+  if (!show) return;
+  const page = currentPage();
+  document.getElementById("page").textContent = page ? "P" + page.number + " " + page.name : "—";
+  for (const id of page ? page.slots : []) strips.append(strip(id ? playbacks.get(id) : null));
+
+  grand = show.masters.find((m) => m.kind === "grand") || null;
+  const gm = document.getElementById("gm");
+  gm.hidden = grand === null;
+  if (grand) {
+    const fresh = gm.cloneNode(true);  // drop the listeners of the previous show
+    gm.replaceWith(fresh);
+    const id = grand.id;
+    fader(fresh, false, () => levels.get(id) ?? 1, "m:" + id,
+          (level) => ({type: "SET_MASTER", masterId: id, level}));
+  }
+  tapMaster = show.masters.find((m) => m.kind === "speed" && m.tap) || null;
+  document.getElementById("tap").hidden = tapMaster === null;
+
+  for (const master of show.masters) {
+    if (master === grand) continue;
+    const row = el("div", "master");
+    const node = hfader(master.name);
+    row.append(node);
+    const id = master.id;
+    fader(node, false, () => levels.get(id) ?? 0, "m:" + id,
+          (level) => ({type: "SET_MASTER", masterId: id, level}));
+    if (master.kind === "speed" && master.tap && master !== tapMaster) {
+      const tap = el("button", "", "TAP");
+      hold(tap, {type: "TAP", masterId: id}, null);
+      row.append(tap);
+    }
+    masters.append(row);
+  }
+  update();
+}
+
+function strip(playback) {
+  const node = el("div", "strip" + (playback ? "" : " empty"));
+  node.append(el("div", "name", playback ? playback.name : "—"), el("div", "cue"));
+  if (!playback) return node;
+  node.dataset.id = playback.id;
+  const id = playback.id;
+  if (playback.fader !== "none") {
+    const track = el("div", "vfader");
+    track.append(el("div", "fill"), el("div", "text value"));
+    node.append(track);
+    fader(track, true, () => (statuses.get(id) || {}).faderLevel ?? 0, "f:" + id,
+          (level) => ({type: "SET_FADER", playbackId: id, level}));
+  }
+  const buttons = el("div", "buttons");
+  playback.buttons.forEach((fn, index) => {
+    let label = LABELS[fn];
+    if (fn === "goto") {
+      const cue = playback.gotoCue;
+      label = cue ? ("GOTO " + cue.number + (cue.name ? " " + cue.name : "")) : null;
+    }
+    if (!label) return;  // select (a programmer command) and none are not shown
+    const button = el("button", "", label);
+    const command = (down) => ({type: "PLAYBACK_BUTTON", playbackId: id, button: index, down});
+    hold(button, command(true), command(false));
+    buttons.append(button);
+  });
+  node.append(buttons);
+  return node;
+}
+
+// ------------------------------------------------------------------ values
+
+function update() {
+  if (!state) return;
+  document.getElementById("bo").classList.toggle("on", state.blackout);
+  document.querySelectorAll(".strip[data-id]").forEach((node) => {
+    const status = statuses.get(node.dataset.id);
+    node.classList.remove("idle", "active", "releasing", "flash");
+    if (!status) return;
+    node.classList.add(status.flash || status.swop ? "flash" : status.state);
+    let cue = "";
+    if (status.cue !== null && (status.chase || status.cueCount > 1)) {
+      cue = status.cue + (status.cueName ? " " + status.cueName : "");
+      if (status.progress !== null) cue = "→ " + cue + " " + Math.round(status.progress * 100) + "%";
+    } else if (status.swop) {
+      cue = "swop";
+    }
+    node.querySelector(".cue").textContent = cue;
+  });
+  for (const f of faders) paintFader(f, masterText(f));
+  setStatus();
+}
+
+function masterText(f) {
+  if (!f.key.startsWith("m:") || !state) return undefined;
+  const speed = state.speed.find((s) => "m:" + s.id === f.key);
+  const percent = Math.round(faderLevel(f) * 100) + "%";
+  return speed ? "×" + speed.multiplier + " · " + Math.round(speed.bpm) + " BPM" : percent;
+}
+
+function setStatus() {
+  const node = document.getElementById("status");
+  const parts = [ws && ws.readyState === WebSocket.OPEN ? "live" : "reconnecting…"];
+  if (state && state.fadeTime !== null) parts.push("Fade " + state.fadeTime.toFixed(1) + " s");
+  node.textContent = parts.join(" · ");
+  if (errorText && performance.now() < errorUntil) {
+    node.append(" · ", el("span", "error", errorText));
+  }
+}
+
+function beat() {  // the tap LED: lit for the first quarter of every beat
+  const dot = document.getElementById("dot");
+  const speed = state && tapMaster ? state.speed.find((s) => s.id === tapMaster.id) : null;
+  if (speed) {
+    const now = performance.now() / 1000 + offset;
+    const beats = speed.beat + (now - speed.beatTime) * speed.bpm / 60;
+    dot.classList.toggle("lit", beats - Math.floor(beats) < 0.25);
+    document.getElementById("bpm").textContent = Math.round(speed.bpm);
+  }
+  for (const f of faders) if (f.local !== null && f.pointer === null) paintFader(f, masterText(f));
+  requestAnimationFrame(beat);
+}
+
+// ------------------------------------------------------------------ header
+
+document.getElementById("prev").addEventListener("click", () => sendNow({type: "PAGE", delta: -1}));
+document.getElementById("next").addEventListener("click", () => sendNow({type: "PAGE", delta: 1}));
+document.getElementById("bo").addEventListener("click", () => sendNow({type: "BLACKOUT"}));
+document.getElementById("tap").addEventListener("pointerdown", () => {
+  if (tapMaster) sendNow({type: "TAP", masterId: tapMaster.id});
+});
+
+connect();
+requestAnimationFrame(beat);
+</script>
+</body>
+</html>
