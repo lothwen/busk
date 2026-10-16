@@ -691,6 +691,14 @@ Step 0 is the repository. Steps 1–5 decouple without changing behaviour, 6–8
    - `sys.getswitchinterval()` and `gc.get_freeze_count()` are unchanged unless `tune_interpreter=True`, which is restored on stop;
    - `start()` twice raises `RuntimeError`, and `stop()` twice is fine;
    - logs are captured, and stdout and stderr stay empty.
+
+   **Done** (2026-10-16; 3241 passed, ruff, format and mypy clean; transcripts unchanged; the 24 facade tests passed 3 runs out of 3). `runner.py` now has a private base, `_Facade` (`show`, `warnings`, `submit`, `execute`, `run_script`, `save`), shared by `OfflineShow` and `LiveShow`; `_LocalRun`, `ThreadsBackend.connect`'s wiring without its prints (routes, `OutputScheduler`, engine and output threads, `sync`, and `RouteReporter`'s polling sent to logging); and `LiveShow` with a `busk-monitor` thread (the `Supervisor` loop without status lines). `test_live_show.py` has 9 tests: sACN to a localhost receiver, then Stream_Terminated; `output=False`; an OSC surface moves the grand master and its motor feedback comes back; surfaces stay closed unless asked; an exception in the block; start/stop rules; the switch interval and `gc` freeze count; commands sent before `start()`; the web key from `state_dir`. **Calls the user may veto:**
+   - **The session and console are built in the constructor**, which opens nothing and starts no thread (the engine is built too, not run). So `execute`, `submit` and `save` work before `start()`: commands queue on the bus and apply at the engine's first tick. The plan built them in `start()`, which left those calls nothing to act on.
+   - **A `LiveShow` runs once:** `start()` after `stop()` raises `RuntimeError`, like a second `start()`. `stop()` before `start()` does nothing.
+   - **Log levels:** route lines and notices INFO, failed notices WARNING; a route that fails is WARNING, one that sends again INFO (the CLI prints both to stderr).
+   - `runner.SETTLE_S` (15 s) and `runner.MONITOR_S` (0.1 s) copy `console_host.SETTLE_S` and `_SUPERVISE_S`, and `_LocalRun.sync` copies `LocalEngine.sync`: the runner must not import `busk.process` (§5.3's boundary). Step 10 removes the copies.
+   - `LiveShow` has no `iface` parameter (the plan has none), so a `route add … multicast` line without an interface uses the console's default, `eth0`.
+   - Tests patch the MIDI port lists to empty, so the Phase 3 show's nanoKONTROL2 surface stays closed whatever is plugged in.
 8. **The public namespace** (§5.3). Rewrite `busk/__init__.py` and update the `busk.commands` and `busk.model` docstrings. → *verify:*
    - `test_public_api.py`:
      - `__all__` equals the §5.1 list and every name resolves;

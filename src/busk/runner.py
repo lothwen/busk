@@ -1,16 +1,25 @@
 """Running a show from Python (phase-8-plan §5.4–§5.5).
 
-:class:`OfflineShow` is a session over an engine on a clock the caller
-drives: no threads, no sockets, and no files unless asked (a ``path`` to
-save to, a script to read). It is what ``tests/session_harness.py`` and the
-Phase 3–7 build tests wire by hand.
+Two facades over the same parts (a session, its console and an engine):
+
+* :class:`OfflineShow` runs on a clock the caller drives: no threads, no
+  sockets, and no files unless asked (a ``path`` to save to, a script to
+  read). It is what ``tests/session_harness.py`` and the Phase 3–7 build
+  tests wire by hand.
+* :class:`LiveShow` runs in real time inside the caller's process: the
+  engine and the DMX output as threads, and optionally the show's control
+  surfaces (MIDI, OSC, the web remote). It has none of ``busk run``'s
+  safety net: no watchdog, no process isolation, no autosave or crash
+  recovery, so a crash of the host process stops the output. For a show
+  on stage, use ``busk run``.
 
 **Commands happen now** (decision 20). The engine applies commands and live
-edits at its next tick, so after every :meth:`~OfflineShow.submit`, every
-:meth:`~OfflineShow.execute` and every script line the facade ticks at the
-current engine time. Time does not move, so a fade or a chase is where it
-was, and the command has taken effect when the call returns. Only
-:meth:`~OfflineShow.tick` moves time.
+edits at its next tick. :class:`OfflineShow` ticks at the current engine
+time after every :meth:`~OfflineShow.submit`, every
+:meth:`~OfflineShow.execute` and every script line, so the command has taken
+effect when the call returns; time does not move, so a fade or a chase is
+where it was. Only :meth:`~OfflineShow.tick` moves time. A
+:class:`LiveShow`'s engine ticks on its own, ``engineHz`` times a second.
 
 Frames are :class:`DmxFrame`\\ s: the engine's frame by universe *number*,
 without its compiled show and output layout, which are internal.
@@ -26,29 +35,60 @@ result whose ``ok`` is ``False``. ``run_script`` raises
 **Ctrl+C.** The console holds SIGINT back while a line runs, so a command is
 never split (see :mod:`busk.console.console`). The facade then raises
 :class:`KeyboardInterrupt` once the line is done, as Python would have.
+
+**Logging** (decision 18). Nothing here prints. A :class:`LiveShow` logs its
+route lines (``sACN r1: …``) on ``busk.output``, its surface lines (the web
+remote's URLs among them) on ``busk.surfaces`` and failed surface commands
+on ``busk.session``: INFO for news, WARNING for failures.
 """
 
 from __future__ import annotations
 
+import logging
 import os
+import secrets
+import sys
+import threading
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from types import MappingProxyType
+from types import MappingProxyType, TracebackType
+from typing import Final, Literal, Self
 
 from busk.commands.types import Command
 from busk.compiler.compile import CompiledShow, compile_show
 from busk.console.console import Console, Reply
-from busk.engine.clock import FakeClock
+from busk.engine.clock import SWITCH_INTERVAL, Clock, FakeClock, MonotonicClock
 from busk.engine.loop import Engine, Frame
-from busk.engine.snapshot import EngineSnapshot
+from busk.engine.snapshot import EngineSnapshot, Sync
 from busk.errors import ScriptError
+from busk.io.bindings import BindingResolver
+from busk.io.feedback import FeedbackWorker
+from busk.io.surfaces import SurfaceManager
 from busk.model.show import Show
 from busk.model.validate import Issue, has_errors, validate_show
+from busk.output.artnet import ArtNetNetwork
+from busk.output.sacn import Sequences
+from busk.output.scheduler import OutputScheduler, build_routes
+from busk.persistence.paths import web_key
 from busk.persistence.show_file import ShowLoadError, show_json
 from busk.session.ids import IdFactory
 from busk.session.library import ProfileLibrary
-from busk.session.session import CommandResult, Session
+from busk.session.session import CommandResult, InputSink, Session
+from busk.web.api import WebLink
+
+_output_log = logging.getLogger("busk.output")
+_surfaces_log = logging.getLogger("busk.surfaces")
+
+SETTLE_S: Final = 15.0
+"""How long :meth:`LiveShow.start` waits for the engine's first snapshot
+(``busk run``'s wait)."""
+
+MONITOR_S: Final = 0.1
+"""How often a :class:`LiveShow` looks at its routes and surfaces."""
+
+_SYNC_POLL_S: Final = 0.002
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -95,13 +135,94 @@ def _optional_path(path: str | os.PathLike[str] | None) -> Path | None:
     return None if path is None else Path(path)
 
 
-class OfflineShow:
+class _Facade:
+    """What both facades share: a session and its console, built by the
+    subclass, and the methods that only go through them."""
+
+    _session: Session
+    _console: Console
+
+    # ----------------------------------------------------------- reading
+
+    @property
+    def show(self) -> Show:
+        """The committed show document, with every edit so far."""
+        return self._session.show
+
+    @property
+    def warnings(self) -> tuple[Issue, ...]:
+        """The compiler's warnings about :attr:`show` (cue values it drops,
+        unpatched fixtures …), in document order."""
+        return self._session.compiled.warnings
+
+    # ---------------------------------------------------------- commands
+
+    def submit(self, command: Command) -> CommandResult:
+        """Carry out one command (any of :data:`~busk.commands.types.Command`).
+        Never raises: a refused command has ``ok=False`` and a message."""
+        result = self._session.submit(command)
+        self._settle()
+        return result
+
+    def execute(self, line: str) -> Reply:
+        """Run one console line (``help`` lists them). Never raises (apart
+        from :class:`KeyboardInterrupt`, see the module docs): a failed line
+        has ``ok=False`` and says why in its text."""
+        reply = self._console.execute(line)
+        self._interrupted()
+        return reply
+
+    def run_script(self, path: str | os.PathLike[str]) -> list[str]:
+        """Run the console script at ``path``, line by line, and return the
+        lines it wrote. A ``quit`` line ends it early.
+
+        Raises :class:`~busk.errors.ScriptError` at the first line that
+        fails (the lines after it do not run; the edits before it stay),
+        and :class:`OSError` if the file cannot be read.
+        """
+        path = Path(path)
+        lines = path.read_text(encoding="utf-8").splitlines()
+        output: list[str] = []
+        failure: list[tuple[int, str]] = []
+        ok = self._console.run_lines(
+            path,
+            lines,
+            lambda text: output.extend(text.splitlines()),
+            failed=lambda number, line: failure.append((number, line)),
+        )
+        self._console.quit_requested = False  # `quit` ends the script, not the show
+        self._interrupted()
+        if not ok:
+            number, line = failure[0]
+            raise ScriptError(path, number, line, output)
+        return output
+
+    def save(self, path: str | os.PathLike[str] | None = None) -> CommandResult:
+        """Save the show to ``path`` (default: the facade's ``path``, then
+        wherever it was last saved). Sets ``meta.modified`` and backs up the
+        file it replaces. Never raises: a failure has ``ok=False``."""
+        return self._session.save(_optional_path(path))
+
+    # ----------------------------------------------------------- helpers
+
+    def _settle(self) -> None:
+        """Called after each command: :class:`OfflineShow` ticks here."""
+
+    def _interrupted(self) -> None:
+        """Raise the Ctrl+C the console held back while a line ran."""
+        if self._console.interrupted:
+            self._console.interrupted = False
+            raise KeyboardInterrupt
+
+
+class OfflineShow(_Facade):
     """A show on a clock you drive: a session, its console and an engine.
 
     Use it to build shows from console lines or command dicts, and to render
     frames deterministically (tests, previews, offline rendering). It
     starts no thread and opens no socket; it writes only the files it is
-    asked to (``save``, a script's ``save`` line).
+    asked to (``save``, a script's ``save`` line). Every command takes
+    effect at the current engine time (see the module docs).
 
     ``path`` is where :meth:`save` and a ``save`` line write when they are
     given no path. ``library`` is the profile library ``fixture add`` uses
@@ -140,20 +261,7 @@ class OfflineShow:
             settle=self._settle,
         )
         self._time = 0.0
-        self._frame = self._tick(0.0)
-
-    # ----------------------------------------------------------- reading
-
-    @property
-    def show(self) -> Show:
-        """The committed show document, with every edit so far."""
-        return self._session.show
-
-    @property
-    def warnings(self) -> tuple[Issue, ...]:
-        """The compiler's warnings about :attr:`show` (cue values it drops,
-        unpatched fixtures …), in document order."""
-        return self._session.compiled.warnings
+        self._tick(0.0)
 
     @property
     def snapshot(self) -> EngineSnapshot:
@@ -167,67 +275,13 @@ class OfflineShow:
         """The engine time of the last tick, in seconds (0.0 at first)."""
         return self._time
 
-    # ---------------------------------------------------------- commands
-
-    def submit(self, command: Command) -> CommandResult:
-        """Carry out one command (any of :data:`~busk.commands.types.Command`)
-        at the current engine time. Never raises: a refused command has
-        ``ok=False``."""
-        result = self._session.submit(command)
-        self._settle()
-        return result
-
-    def execute(self, line: str) -> Reply:
-        """Run one console line at the current engine time. Never raises
-        (apart from :class:`KeyboardInterrupt`, see the module docs): a
-        failed line has ``ok=False`` and says why in its text."""
-        reply = self._console.execute(line)
-        self._interrupted()
-        return reply
-
-    def run_script(self, path: str | os.PathLike[str]) -> list[str]:
-        """Run the console script at ``path``, line by line, and return the
-        lines it wrote. A ``quit`` line ends it early.
-
-        Raises :class:`~busk.errors.ScriptError` at the first line that
-        fails (the lines after it do not run; the edits before it stay),
-        and :class:`OSError` if the file cannot be read.
-        """
-        path = Path(path)
-        lines = path.read_text(encoding="utf-8").splitlines()
-        output: list[str] = []
-        failure: list[tuple[int, str]] = []
-        ok = self._console.run_lines(
-            path,
-            lines,
-            lambda text: output.extend(text.splitlines()),
-            failed=lambda number, line: failure.append((number, line)),
-        )
-        self._console.quit_requested = False  # `quit` ends the script, not the show
-        self._interrupted()
-        if not ok:
-            number, line = failure[0]
-            raise ScriptError(path, number, line, output)
-        return output
-
-    def save(self, path: str | os.PathLike[str] | None = None) -> CommandResult:
-        """Save the show to ``path`` (default: the facade's ``path``, then
-        wherever it was last saved). Sets ``meta.modified`` and backs up the
-        file it replaces. Never raises: a failure has ``ok=False``."""
-        return self._session.save(_optional_path(path))
-
-    # -------------------------------------------------------------- time
-
     def tick(self, t: float) -> DmxFrame:
         """Move engine time to ``t`` seconds and run one tick; return its
         frame. Fades, chases and effects advance by the time that passed.
         Raises :class:`ValueError` if ``t`` is before :attr:`time`."""
         if t < self._time:
             raise ValueError(f"time cannot go back: {t} is before {self._time}")
-        self._frame = self._tick(t)
-        return self._frame
-
-    # ----------------------------------------------------------- helpers
+        return self._tick(t)
 
     def _tick(self, t: float) -> DmxFrame:
         self._clock.sleep_until(t)
@@ -239,10 +293,350 @@ class OfflineShow:
 
     def _settle(self) -> None:
         """Let the engine apply what was just submitted, without moving time."""
-        self._frame = self._tick(self._time)
+        self._tick(self._time)
 
-    def _interrupted(self) -> None:
-        """Raise the Ctrl+C the console held back while a line ran."""
-        if self._console.interrupted:
-            self._console.interrupted = False
-            raise KeyboardInterrupt
+
+class _LocalRun:
+    """An engine and its output scheduler as threads of this process: what
+    ``busk run --threads`` runs, without its prints. Route lines and route
+    failures go to the ``busk.output`` logger.
+
+    It is a copy of ``ThreadsBackend``'s wiring until phase-8-plan step 10
+    puts the CLI on it.
+    """
+
+    def __init__(
+        self, engine: Engine, show: Show, compiled: CompiledShow, clock: Clock, *, output: bool
+    ) -> None:
+        """Open the routes of ``show`` (unless ``output`` is false) and log
+        their lines. Starts no thread."""
+        self.engine = engine
+        self.scheduler: OutputScheduler | None = None
+        if output:
+            sequences = Sequences()
+            artnet = ArtNetNetwork()
+            routes, notices = build_routes(
+                show["output"], compiled.universes, sequences, artnet=artnet
+            )
+            for route in routes:
+                _output_log.info(f"{route.label}: {route.description}")
+            for notice in notices:
+                _log_notice(notice.text, failed=notice.failed)
+            self.scheduler = OutputScheduler(
+                engine,
+                routes,
+                clock,
+                layout=compiled.layout,
+                sequences=sequences,
+                artnet=artnet,
+            )
+        self._reported: dict[str, tuple[bool, str]] = {}  # route id → (ok, detail)
+        self._stops = (threading.Event(), threading.Event())  # engine, output
+        self._threads: list[threading.Thread] = []
+        self._token = 0
+
+    def start(self) -> None:
+        """Start the engine thread, then the output thread."""
+        engine_stop, output_stop = self._stops
+        self._threads = [
+            threading.Thread(
+                target=self.engine.run, args=(engine_stop,), name="busk-engine", daemon=True
+            )
+        ]
+        if self.scheduler is not None:
+            self._threads.append(
+                threading.Thread(
+                    target=self.scheduler.run,
+                    args=(output_stop,),
+                    name="busk-output",
+                    daemon=True,
+                )
+            )
+        for thread in self._threads:
+            thread.start()
+
+    def sync(self, timeout: float) -> bool:
+        """Wait until the engine has drained everything queued before this
+        call and published its snapshot; ``False`` after ``timeout`` s."""
+        self._token += 1
+        token = self._token
+        self.engine.bus.mark(Sync(token=token))
+        deadline = time.monotonic() + timeout
+        while self.engine.synced < token:  # set by the engine thread, after the snapshot
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(_SYNC_POLL_S)
+        return True
+
+    def poll(self) -> None:
+        """Log what the output reported since the last poll: its notices,
+        and each route that started or stopped failing."""
+        if self.scheduler is None:
+            return
+        notices = self.scheduler.notices
+        while not notices.empty():
+            notice = notices.get()
+            _log_notice(notice.text, failed=notice.failed)
+        for route in self.scheduler.routes:
+            status = route.driver.status()
+            state = (status.ok, status.detail)
+            if state == self._reported.get(route.id, (True, "")):
+                continue
+            self._reported[route.id] = state
+            if status.ok:
+                _output_log.info(f"{route.label}: sending again")
+            else:
+                _output_log.warning(f"{route.label}: send failed: {status.detail}")
+
+    def stop(self) -> None:
+        """Stop the engine, then the output: its last pass sends the last
+        frame, then terminates the streams (sACN's Stream_Terminated). Then
+        log what the output reported last."""
+        engine_stop, output_stop = self._stops
+        engine_stop.set()
+        if self._threads:
+            self._threads[0].join()
+        output_stop.set()
+        for thread in self._threads[1:]:
+            thread.join()
+        self.poll()
+
+
+def _log_notice(text: str, *, failed: bool) -> None:
+    if failed:
+        _output_log.warning(text)
+    else:
+        _output_log.info(text)
+
+
+class LiveShow(_Facade):
+    """A show in real time inside your own process.
+
+    :meth:`start` (or entering a ``with`` block) opens the show's output
+    routes and starts the engine and output threads; with ``surfaces=True``
+    it also opens the show's control surfaces (MIDI, OSC, the web remote)
+    and follows the changes live edits make to them. :meth:`stop` (or
+    leaving the block, whatever the exception) closes everything in
+    ``busk run``'s order.
+
+    **This is not** ``busk run``: there is no watchdog and no process
+    isolation, so a crash or a stall of the host process stops the DMX
+    output, and there is no autosave or crash recovery (save with
+    :meth:`save`). Under heavy edits one process also overruns more ticks
+    than ``busk run``'s three. For a show on stage, use ``busk run``.
+
+    ``path``, ``library`` and the commands are as in :class:`OfflineShow`;
+    commands sent before :meth:`start` apply at the engine's first tick.
+    ``output=False`` opens no route (the frames are still made: read
+    :attr:`frame`). ``state_dir`` is where the web remote's key is kept;
+    without it the key is new on every run, and nothing is written.
+    ``tune_interpreter=True`` lowers the interpreter's thread switch
+    interval while the show runs, as ``busk run`` does, so the engine thread
+    keeps its rate while edits compile; it is a process-wide setting, so it
+    is off by default, and :meth:`stop` restores it.
+
+    Raises :class:`~busk.persistence.show_file.ShowLoadError` if ``show``
+    does not validate, and :class:`~busk.compiler.compile.UnsupportedFeature`
+    if it uses a feature busk cannot run yet. Constructing opens nothing and
+    starts no thread.
+    """
+
+    def __init__(
+        self,
+        show: Show,
+        *,
+        path: str | os.PathLike[str] | None = None,
+        library: ProfileLibrary | None = None,
+        output: bool = True,
+        surfaces: bool = False,
+        state_dir: str | os.PathLike[str] | None = None,
+        tune_interpreter: bool = False,
+    ) -> None:
+        show, compiled = _checked(show)
+        self._clock = MonotonicClock()
+        self._engine = Engine(compiled, self._clock)
+        engine = self._engine
+        self._session = Session(
+            show,
+            engine.bus,
+            compiled=compiled,
+            path=_optional_path(path),
+            engine_state=lambda: engine.snapshot,
+        )
+        self._console = Console(self._session, library if library is not None else ProfileLibrary())
+        self._output = output
+        self._open_surfaces = surfaces
+        self._state_dir = _optional_path(state_dir)
+        self._tune = tune_interpreter
+        self._phase: Literal["new", "running", "stopped"] = "new"
+        self._run: _LocalRun | None = None
+        self._surfaces: SurfaceManager | None = None
+        self._feedback: FeedbackWorker | None = None
+        self._stops = (threading.Event(), threading.Event())  # feedback, monitor
+        self._threads: list[threading.Thread] = []
+        self._switch_interval: float | None = None  # to restore, when tuned
+        self._latest: tuple[Frame, DmxFrame] | None = None
+
+    # ----------------------------------------------------------- reading
+
+    @property
+    def snapshot(self) -> EngineSnapshot | None:
+        """The engine's published state: playbacks, masters, page, tempo;
+        ``None`` until the engine's first tick."""
+        return self._engine.snapshot
+
+    @property
+    def frame(self) -> DmxFrame | None:
+        """The engine's newest frame; ``None`` until its first tick."""
+        latest = self._engine.latest  # one read: published by reference assignment
+        if latest is None:
+            return None
+        cached = self._latest
+        if cached is None or cached[0] is not latest:
+            cached = (latest, _dmx_frame(latest))
+            self._latest = cached  # one assignment: other threads see the pair whole
+        return cached[1]
+
+    # ---------------------------------------------------- start and stop
+
+    def start(self) -> None:
+        """Open the routes (and the surfaces), start the threads, and return
+        once the engine has published its first snapshot (after
+        :data:`SETTLE_S` s without one, a warning is logged and it returns
+        anyway). Routes and surfaces that fail to open are logged and
+        retried, as in ``busk run``. Raises :class:`RuntimeError` if the
+        show was started before: a ``LiveShow`` runs once."""
+        if self._phase != "new":
+            raise RuntimeError("this LiveShow has been started already; make a new one")
+        self._phase = "running"
+        session = self._session
+        try:
+            run = _LocalRun(
+                self._engine, session.show, session.compiled, self._clock, output=self._output
+            )
+            self._run = run
+            if self._open_surfaces:
+                self._open()
+            if self._tune:
+                self._switch_interval = sys.getswitchinterval()
+                sys.setswitchinterval(SWITCH_INTERVAL)
+            run.start()
+            feedback_stop = self._stops[0]
+            if self._feedback is not None:
+                self._threads.append(
+                    threading.Thread(
+                        target=self._feedback.run,
+                        args=(feedback_stop,),
+                        name="busk-feedback",
+                        daemon=True,
+                    )
+                )
+            self._threads.append(
+                threading.Thread(target=self._monitor, name="busk-monitor", daemon=True)
+            )
+            for thread in self._threads:
+                thread.start()
+        except BaseException:
+            self.stop()
+            raise
+        if not run.sync(SETTLE_S):
+            _output_log.warning("engine: not answering; going on anyway")
+
+    def stop(self) -> None:
+        """Close the surfaces, then stop feedback, the session's worker, the
+        engine and the output, in that order (as ``busk run`` does): no
+        command arrives after the engine stopped, and the output's last pass
+        sends the last frame, then terminates the streams. Restores the
+        switch interval. Does nothing if the show is not running."""
+        if self._phase != "running":
+            return
+        self._phase = "stopped"
+        feedback_stop, monitor_stop = self._stops
+        monitor_stop.set()
+        for thread in self._threads:
+            if thread.name == "busk-monitor":
+                thread.join()
+        if self._surfaces is not None:
+            self._surfaces.close()
+        feedback_stop.set()
+        for thread in self._threads:
+            thread.join()
+        self._session.stop()
+        if self._run is not None:
+            self._run.stop()
+        if self._switch_interval is not None:
+            sys.setswitchinterval(self._switch_interval)
+            self._switch_interval = None
+
+    def __enter__(self) -> Self:
+        """:meth:`start`, and the show itself."""
+        self.start()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        """:meth:`stop`, whatever ended the block."""
+        self.stop()
+
+    # ----------------------------------------------------------- helpers
+
+    def _open(self) -> None:
+        """Build the input side (bindings, the web link, the surfaces) and
+        feedback, and open the surfaces and their feedback ports."""
+        engine, session, clock = self._engine, self._session, self._clock
+        compiled = session.compiled
+
+        def page() -> str | None:
+            snapshot = engine.snapshot
+            return None if snapshot is None or snapshot.page is None else snapshot.page.id
+
+        resolver = BindingResolver(
+            session.show,
+            compiled,
+            InputSink(session),
+            live=lambda: engine.bus.compiled,
+            page=page,
+            clock=clock.now,
+        )
+        web = WebLink(
+            snapshot=lambda: engine.snapshot,
+            compiled=lambda: engine.bus.compiled,
+            submit=session.submit,
+            clock=clock.now,
+            key=self._web_key(),
+        )
+        self._surfaces = SurfaceManager(resolver.handle, web)
+        self._surfaces.reconcile(compiled)
+        self._feedback = FeedbackWorker(
+            lambda: engine.bus.compiled,
+            lambda: engine.snapshot,
+            resolver.lastInput,
+            clock=clock.now,
+            senders=self._surfaces.senders,
+        )
+        self._feedback.open()
+
+    def _web_key(self) -> str:
+        """The web remote's key: the state directory's, else a new one."""
+        if self._state_dir is not None:
+            try:
+                return web_key(self._state_dir)
+            except OSError as exc:
+                _surfaces_log.warning(f"web key not saved: {exc}; it changes on the next run")
+        return secrets.token_urlsafe(6)
+
+    def _monitor(self) -> None:
+        """Every :data:`MONITOR_S` s: log the output's reports, open or close
+        the surfaces live edits changed, follow MIDI devices plugged in and
+        out."""
+        stop = self._stops[1]
+        while not stop.wait(MONITOR_S):
+            if self._run is not None:
+                self._run.poll()
+            if self._surfaces is not None:
+                self._surfaces.reconcile(self._engine.bus.compiled)
+                self._surfaces.poll(time.monotonic())
