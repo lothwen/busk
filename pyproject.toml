@@ -1,21 +1,30 @@
 [project]
 name = "busk"
 version = "0.1.0"
-description = "Busking lighting console engine (Phase 7: hardening — three processes with a watchdog, the safety stage, reconnects, rate limits, OFL and GDTF import, an event log, soak tests)"
+description = "A real-time busking lighting console: show files, fixture import, a DMX engine and its command line"
 readme = "README.md"
+# PEP 639: the wheel's METADATA carries License-Expression and the file (tests/test_packaging.py).
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "Daniel Sánchez", email = "danillo@euskai.org" }
 ]
-# PEP 695 `type` statements and class type parameters need 3.12.
+# PEP 695 `type` statements and class type parameters need 3.12. The suite passes on 3.12-3.14.
 requires-python = ">=3.12"
+# Floors: the lowest versions the suite passes with under `uv sync --resolution lowest-direct`
+# (phase-8-plan step 11). numpy 2.3.2 is the first with Python 3.14 wheels; on 3.14, pydantic
+# before 2.12.4 cannot build the Show validator ("not fully defined").
 dependencies = [
-    "numpy>=2.5.4",
-    "pydantic>=2.14.0",
+    "numpy>=2.3.2",
+    "pydantic>=2.12.4",
 ]
 
 [project.optional-dependencies]
 # MIDI surfaces (phase-8-plan §5.7): python-rtmidi needs ALSA to build where no wheel exists.
-midi = ["mido>=1.3.3", "python-rtmidi>=1.5.8"]
+midi = ["mido>=1.3.0", "python-rtmidi>=1.5.8"]
+
+[project.urls]
+Repository = "https://github.com/lothwen/busk"
 
 [project.scripts]
 busk = "busk.cli:main"

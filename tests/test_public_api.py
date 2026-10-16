@@ -224,6 +224,8 @@ class _Text:
 
 
 def _annotation(value: object) -> str:
+    if isinstance(value, typing.ForwardRef):  # a TypedDict's keys before Python 3.14
+        return value.__forward_arg__
     return value if isinstance(value, str) else inspect.formatannotation(value)
 
 
