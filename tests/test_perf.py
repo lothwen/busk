@@ -392,7 +392,7 @@ def test_a_busking_tick_on_the_reference_rig_fits_the_100_hz_budget() -> None:
     """The §19 reference rig with 60 active playbacks in 3 bands, all mid-fade.
 
     The gate is p99 < 10 ms (no overruns at 100 Hz). §19's 4 ms per tick is a
-    target: the numbers are recorded in the README either way.
+    target: the numbers are recorded in docs/benchmarks.md either way.
     """
     doc = busking_benchmark_rig()
     compiled = compile_doc(doc)
@@ -440,7 +440,7 @@ def test_a_busking_tick_on_the_reference_rig_fits_the_100_hz_budget() -> None:
 # ------------------------------------------------------ Phase 4: time (§5.16)
 #
 # The gates are the 100 Hz budget (10 ms); §19's 4 ms per tick is a target,
-# recorded in docs/phase-4-plan.md (step 18) and the README either way.
+# recorded in docs/phase-4-plan.md (step 18) and docs/benchmarks.md either way.
 
 GO_BURSTS = 200
 
@@ -548,7 +548,7 @@ def test_eight_bpm_chases_at_16_steps_per_second_fit_the_100_hz_budget() -> None
 # ---------------------------------------------------- Phase 5: effects (§5.15)
 #
 # The gate is the 100 Hz budget (10 ms); §19's 4 ms per tick is a target,
-# recorded in docs/phase-5-plan.md (step 16) and the README either way.
+# recorded in docs/phase-5-plan.md (step 16) and docs/benchmarks.md either way.
 
 EFFECTS = 20
 

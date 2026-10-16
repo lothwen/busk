@@ -1,0 +1,112 @@
+# The console
+
+The console is where a show is built and changed: patching, programming, recording
+presets and cues, binding controllers. It runs at the `busk run` prompt, from a script
+(`busk run --script FILE`, or `source FILE` at the prompt), and from a pipe. The stage
+keeps running while you edit, and every edit can be undone.
+
+- [Commands](#commands)
+- [Notes](#notes)
+- [Scripts](#scripts)
+
+## Commands
+
+The console speaks in user-facing numbers (`fixture 101`, `group 2`, `preset color 1`,
+`cue 10/1`, `playback 3`) and turns them into ids; everything it does goes through the
+session, as the web remote's commands do. `help` prints the grammar.
+
+| Area | Commands |
+|---|---|
+| Selection | `sel fixture 101 thru 104`, `sel group 1, group 2`, `sel + fixture 201`, `sel - group 2`, `sel 301.3 thru 301.6`, `sel none`, `sel playback 3` |
+| Values | `set intensity 80%`, `set pan -45`, `set color 1 0.5 0 w 0.2`, `set gobo1 breakup`, `set pan spread -30 30 [center\|edges]`, `set color preset color 1`, `preset position 1` |
+| Programmer | `clear`, `blind on\|off`, `fade 2` (programmer changes fade over 2 s), `programmer` |
+| Record | `record group N`, `record preset <pool> N [global\|profile\|target]`, `record cue L/C [only <family>…] [freeze]`, `record slot S [only <family>…]`; each takes `merge`, `replace` or `remove` and a `"name"` |
+| Patch | `universe add 1 "Stage"`, `fixture add 101 thru 104 "Generic Spot 16ch" mode 16ch at 1.1`, `fixture 101 patch 2.1`, `fixture 101 patch none` |
+| Output | `route add 1 sacn 1 [unicast 10.0.0.20 \| multicast IF]`, `route add 1 artnet 0.0.1 [unicast 10.0.0.20 \| broadcast IF]`, `route add 1 dmxusb enttecPro\|dmxking /dev/ttyUSB0 [hz 40]` |
+| Surfaces | `surface add midi "nanoKONTROL2"`, `surface add osc "Touch" [port 8000] [feedback 10.0.0.5:9000]`, `surface add web "Phone" [port 8080] [on 10.0.0.2]`, `surface "nanoKONTROL2" pickup soft\|jump` |
+| Bindings, feedback | `bind "nanoKONTROL2" cc 1 0 fader 1`, `… cc 1 32 button 1 1 [led]`, `… cc 1 7 fader playback 18 [motor]`, `… cc 1 23 master gm`, `… cc 1 18 master "Speed 1"`, `… cc 1 46 tap ["Speed 1"]`, `… cc 1 42 blackout [momentary]`, `… cc 1 62 page +1`, `… note 1 60 page 2`, `bind "Touch" osc "/fader/1" fader 1 [display osc "/label/1"]`, `bind "nanoKONTROL2" clock tap`, `… cc 1 60 release all [2]`, `… note 1 61 output off`, `feedback "nanoKONTROL2" cc 1 32 thru 39 led\|motor\|display\|none`, `unbind "nanoKONTROL2" cc 1 60 [thru 61]` |
+| Pages | `page 2`, `page next\|prev`, `page add 2 ["Washes"]`, `page 2 slot 1 playback 14`, `page 2 slot 5 clear`, `record slot 2.1`, `playback 9 goto 4` |
+| Edit | `playback 3 exclusivity color`, `cue 3/1 timing.fadeIn 1`, `playback 1 buttons ["toggle", "flash", "release"]`, `show meta.title "Club Night"`, `rename group 1 "Heads"`, `delete cue 10/2` |
+| Timing, triggers | `cue 9/1 time 3 easeInOut`, `cue 9/3 time 1/3 delay 0/1`, `cue 9/2 time position 4 [delay 1] [easeOut]`, `… bezier 0.4 0 0.2 1`, `cue 9/3 wait 8`, `cue 9/5 follow 4`, `cue 9/2 go`, `cue 9/5 release group 1 [only pan tilt]` |
+| Cue lists, tempo | `cuelist 9 tracking true`, `cuelist 10 chase bpm ["Speed 1"] [x 2] [forward\|reverse\|bounce\|random] [crossfade 0.25]`, `cuelist 10 chase hz 4`, `cuelist 10 sequence`, `master add speed "Speed 1" [bpm 120] [steps 0.5, 1, 2]` |
+| Effects, masters | `effect add "Circle" [id fx1] [hz 0.5 \| bpm ["Speed 1"] [x 0.5]] [size 15] [low 0 high 1] [phase 0 180] [groups N] [blocks N] [wings 2] [forward\|reverse\|bounce] [fadein 1] [sizemaster "FX"] [speedmaster "Speed 1"]`, `effect remove fx1`, `effect clear`, `effect template add "Name" [{…layers…}]`, `cue 9/4 effect rainbow size 0.5`, `master add size "FX"`, `master add group "Wash level" group 2`, `master add fadetime "Fade"` |
+| Perform | `go 9`, `back 9`, `goto 9 4`, `release 3 [2]`, `fader 3 75%`, `gm 0.5`, `master "Speed 1" 0.75`, `tap ["Speed 1"]`, `bpm ["Speed 1"] 128`, `blackout on\|off` |
+| Safety, panic | `park fixture 204 intensity 0`, `park group 2 color 1 0 0`, `unpark fixture 204 [intensity]`, `unpark all`, `fixture 101 thru 102 limits tilt -90 10`, `fixture 301 limits intensity 50%`, `fixture 101 limits none`, `safety strobe 3\|off`, `highlight on\|off`, `release all [2]`, `output on\|off` |
+| Profiles | `profile update "Generic Spot 16ch"` (to the library's other revision), `list profiles` |
+| Session | `undo`, `redo`, `save [PATH]`, `list fixtures\|groups\|presets\|cuelists\|playbacks\|pages\|universes\|routes\|surfaces\|bindings\|masters\|profiles\|effects\|park`, `list cues 9`, `library`, `info`, `status`, `source FILE`, `quit` |
+
+## Notes
+
+* **Numbers.** Fixture `N` is every element of fixture `N`; `N.E` is element `E`, counted
+  from 1 (`301.3` is the PiX's third cell). Page slots and buttons count from 1, like the
+  physical controls. `thru` keeps its direction (`104 thru 101` selects backwards).
+* **Recording keeps intent.** A cue references a group wherever one covers the targets
+  that have the attribute (the biggest first; ties go to the group with fewer members,
+  then the lower number) and keeps preset references, so editing the group or the preset
+  later updates the look; `freeze` records explicit targets instead. Differing literal
+  values are recorded per target. A preset cascades from the requested scope: one global
+  value if every target agrees, else per profile, else per target, and the reply says so
+  (`pan: 4 target values (values differ)`). Without `merge`, `replace` or `remove` a record
+  command only creates, so a typo never overwrites anything.
+* **`record slot S`** on an empty slot of the current page (`record slot 2.1`: slot 1 of
+  page 2) creates a cue list, its cue 1, a
+  playback (Appendix A's Blue playback without its exclusivity: band 50, `master` fader,
+  `toggle` and `flash` buttons, `threshold` LTP at 2 %, auto start/release, a flash that
+  brings LTP, 1 s release) and puts it in the slot, as one undo step. On an occupied slot
+  it records into the playback's cue, with `merge`, `replace` or `remove`.
+* **Tracking lists record changes only.** In a list with `tracking` on, `record cue`
+  stores only the values that differ from what the list already tracks into that cue
+  (`recorded cue 9/2: 4 entries; 8 values tracked from cue 9/1`); a cue whose values all
+  track is created without entries. `sel playback N` selects the targets of the
+  playback's *current* cue (its tracked state), or of its first cue while it is idle.
+* **Timing.** `cue L/C time <in>[/<out>]` sets the cue's fade in and out (out defaults to
+  in), with an optional `delay` and curve (`linear`, `easeIn`, `easeOut`, `easeInOut`,
+  `snapStart`, `snapEnd`, `bezier x1 y1 x2 y2`); with a family name it sets that family's
+  own timing. In a chase, cue timing and triggers are ignored except the curve: the
+  crossfade sets the step fade. Speed masters have no numbers, so they are named in quotes;
+  `tap` and `bpm` without a name use the show's only speed master.
+* **Effects.** `effect add` adds an effect on the selection, in selection order (which sets
+  the phase spread), to the programmer, where it runs live at band 100 like its values;
+  `programmer` lists it (`effect fx1 'Circle' on 101, 102, bpm 'Speed 1' ×0.5, size 15`)
+  and `record cue` or `record slot` records it (`only` filters it by its attributes'
+  families, `merge` adds or replaces it by id, `remove` drops it). The template is the
+  show's of that name, else the built-in library's (Circle, Pulse, Wave, Chase, Saw,
+  Sweep, Flicker, Rainbow, listed by `library`), embedded into the show first. Defaults:
+  the library's size, `low`/`high` and phase for that template, ×1 on the show's only
+  speed master (else 1 Hz), and the id `fx<n>` that neither the programmer nor any cue
+  uses. A slot recorded with only effects gets a `size` fader. `list effects` lists the
+  show's templates, `list cues` counts each cue's effects, and `cue L/C effect <id> <prop>
+  <value>` edits a recorded instance.
+* **Pages and surfaces.** `page N`, `page next` and `page prev` turn the
+  engine's page (`list pages` marks it with `*`); `page add` creates one with empty slots,
+  and `page P slot S playback N` fills a slot. `surface add osc` and `surface add web`
+  take their options in any order; ports default to 8000 and 8080 and must be free among
+  surfaces of that kind, and surface names are unique. `bind` takes a feedback after the
+  action (`led`, `motor` or `display`, sent to the input's own address unless another
+  follows); `feedback "<surface>" <input> [thru <n>] led` adds feedback to the bindings
+  already on those inputs (`none` removes it), and an input without a binding is an
+  error. `list surfaces` and `list bindings` show ports, pickup and feedback.
+* **Safety, panic and profiles** (see [Safety](safety.md) and [Fixture profiles](profiles.md#updating-a-shows-profiles)). `park` replaces what
+  was parked on the slots it names and `unpark` removes it, each as one undo step (park
+  entries have no ids, so the whole list is set). `limits` sets one key of each fixture's
+  limits and keeps the others. `release all` and `output on|off` are performance
+  commands, like `go`, and can be bound; `bind` adds a binding next to those already on an
+  input, so `unbind "<surface>" <input> [thru N]` frees it first. `info` adds the
+  processes, their restarts and the event log file.
+* **Undo** walks one timeline of show edits and programmer changes (1000 steps): the last
+  action, whatever it was. Blind and the programmer's fade time are modes and are never
+  undone. Saving is not a step.
+* **Errors** name what you typed (`no group 7`, `preset color 1 exists: add merge or
+  replace`), and an edit that would make the show invalid lists every place it breaks:
+
+  ```
+  busk> delete group 2
+  error: deleted groups[1]: rejected, the show would not be valid
+    cueLists[1].cues[0].entries[1].targets.groupId: Unknown group 'g-par'
+  ```
+
+## Scripts
+
+Scripts are console lines in a file (`#` starts a comment); `source FILE` runs one
+from the console and `busk run --script FILE` before it. A script stops at its first
+error and says where (`build.busk:12: sel group 7`).

@@ -14,7 +14,8 @@ Everything public is importable from `busk` itself. This guide covers [installin
 [the three uses](#1-tooling-validate-a-show-import-a-profile) with examples, a
 [reference](#reference) of the 28 public names, [the errors](#errors),
 [logging](#logging), [what is public](#what-is-public) and [the stability promise](#stability).
-The README covers the command line, the console's commands and how busk works inside.
+The [README](../README.md) covers the command line and links the other guides: the
+[console's commands](console.md), [running a show](running.md) and [how busk works inside](internals.md).
 
 ## Installing
 
