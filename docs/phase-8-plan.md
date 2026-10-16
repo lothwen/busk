@@ -636,6 +636,8 @@ Step 0 is the repository. Steps 1–5 decouple without changing behaviour, 6–8
 2. **The exception base** (§5.8). Add `errors.py` (`BuskError`; `ScriptError` is defined here and raised from step 6), then re-base `ShowLoadError`, `UnsupportedFeature` and `ImportFailed` (which keeps `ValueError`). → *verify:*
    - `test_errors.py`: each class subclasses `BuskError`; `ImportFailed` is still a `ValueError`; the attributes are unchanged;
    - the transcripts are unchanged.
+
+   **Done** (2026-10-16; 3190 passed with step 1, ruff, format and mypy clean; transcripts unchanged). `busk/errors.py` imports nothing from busk, so the three modules import `BuskError` from it without a cycle. `ScriptError(path, line, text, output)` formats as `path:line: text`, the line `busk run --script` prints. `ImportFailed` is `ImportFailed(BuskError, ValueError)`.
 3. **Prints become reporters** (§5.6), and the `busk` logger gets its `NullHandler`. The CLI passes printers to `Session`, `BindingResolver`, `FeedbackWorker`, `SurfaceManager`, `OscSurface` and `EventLog`. Check the benches: they build `Session` without a `report`, so they rely on its stderr default. → *verify:*
    - `test_reporting.py`: each class built with defaults writes nothing to stdout or stderr (`capsys`), and logs the same text (`caplog`): a posted command that fails, a MIDI port not found, an OSC flood, an unwritable event log;
    - test_cli, test_hotplug and test_rate_limits, and the transcripts, are unchanged.

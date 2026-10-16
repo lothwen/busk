@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from busk import __version__
+from busk.errors import BuskError
 from busk.model.show import SCHEMA_VERSION, Show
 from busk.model.validate import Issue, has_errors, validate_show
 from busk.session.ids import IdFactory
@@ -67,7 +68,7 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
-class ShowLoadError(Exception):
+class ShowLoadError(BuskError):
     """The show file could not be loaded; :attr:`issues` says why."""
 
     def __init__(self, issues: list[Issue]) -> None:

@@ -81,6 +81,7 @@ from busk.compiler.slots import SlotTable, build_slots
 from busk.compiler.tracking import compile_cue_states
 from busk.convert.dmx import UNIVERSE_SIZE, split_raw
 from busk.convert.plan import ConversionPlan, build_plan
+from busk.errors import BuskError
 from busk.model.common import CueListId, MasterId, PlaybackId, UniverseId
 from busk.model.output import OutputSettings
 from busk.model.show import Show
@@ -96,7 +97,7 @@ __all__ = [
 ]
 
 
-class UnsupportedFeature(Exception):
+class UnsupportedFeature(BuskError):
     """The show is valid, but uses a feature this build cannot compile yet."""
 
 

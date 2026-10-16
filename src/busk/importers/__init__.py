@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from busk.errors import BuskError
 from busk.model.profile import FixtureProfile
 
 
@@ -30,6 +31,6 @@ class ImportReport:
     notes: tuple[str, ...]
 
 
-class ImportFailed(ValueError):
+class ImportFailed(BuskError, ValueError):
     """A file that is not a fixture of the format, or that has no mode busk
     can use. The message says why."""
