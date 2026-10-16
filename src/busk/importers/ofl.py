@@ -72,6 +72,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
@@ -155,7 +156,7 @@ _ENTITY = re.compile(r"^(-?\d+(?:\.\d+)?(?:e-?\d+)?)\s*(%|deg|Hz|bpm|rpm|s|ms|K|
 # ------------------------------------------------------------------ entry points
 
 
-def read_ofl(path: Path, *, manufacturer: str | None = None) -> ImportReport:
+def read_ofl(path: str | os.PathLike[str], *, manufacturer: str | None = None) -> ImportReport:
     """Import the OFL fixture file at ``path``.
 
     The manufacturer is ``manufacturer``, else the OFL repository layout's
@@ -163,6 +164,7 @@ def read_ofl(path: Path, *, manufacturer: str | None = None) -> ImportReport:
     directory is named ``fixtures``, else ``"Unknown"``. The key is the
     file's stem. Raises :class:`ImportFailed` (also for unreadable files).
     """
+    path = Path(path)
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:

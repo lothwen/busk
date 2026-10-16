@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import functools
 import json
+import os
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from importlib import resources
@@ -61,10 +62,18 @@ def builtin_directory() -> Path:
 class ProfileLibrary:
     """Validated profiles, by id, in load order."""
 
-    def __init__(self, directories: Sequence[Path] = (), *, builtin: bool = True) -> None:
+    def __init__(
+        self, directories: Sequence[str | os.PathLike[str]] = (), *, builtin: bool = True
+    ) -> None:
+        """Load the built-in profiles (unless ``builtin=False``), then every
+        ``*.json`` and ``*.gdtf`` file of ``directories``, in order; a later
+        profile replaces an earlier one with the same id. Raises nothing: a
+        file or directory that cannot be used becomes a line of
+        :attr:`problems`."""
         self._profiles: dict[str, FixtureProfile] = {}
         self.problems: list[str] = []  # one line per skipped file
-        for directory in ([builtin_directory()] if builtin else []) + list(directories):
+        for entry in ([builtin_directory()] if builtin else []) + list(directories):
+            directory = Path(entry)
             if not directory.is_dir():
                 self.problems.append(f"{directory}: not a directory")
                 continue

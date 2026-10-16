@@ -36,6 +36,7 @@ import json
 import os
 import re
 import shutil
+import uuid
 import zipfile
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -46,7 +47,7 @@ from busk import __version__
 from busk.errors import BuskError
 from busk.model.show import SCHEMA_VERSION, Show
 from busk.model.validate import Issue, has_errors, validate_show
-from busk.session.ids import IdFactory
+from busk.session.ids import IdFactory, RandomIds
 
 SHOW_ENTRY: Final = "show.json"
 """The one entry of a ``.show`` ZIP."""
@@ -79,7 +80,7 @@ class ShowLoadError(BuskError):
 # ------------------------------------------------------------------- loading
 
 
-def read_show_bytes(path: str | Path) -> bytes:
+def read_show_bytes(path: str | os.PathLike[str]) -> bytes:
     """The ``show.json`` document of ``path`` (a ``.show`` ZIP or a ``.json`` file).
 
     Raises :class:`ShowLoadError` for an unknown extension or a damaged ZIP,
@@ -99,7 +100,7 @@ def read_show_bytes(path: str | Path) -> bytes:
         raise ShowLoadError([Issue("error", "", f"Not a valid .show file: {exc}")]) from None
 
 
-def load_show(path: str | Path) -> tuple[Show, list[Issue]]:
+def load_show(path: str | os.PathLike[str]) -> tuple[Show, list[Issue]]:
     """Read and validate the show at ``path`` (``.show`` or ``.json``).
 
     Returns the validated show and its warnings. Raises :class:`ShowLoadError`
@@ -144,15 +145,28 @@ def zip_show_json(data: bytes) -> bytes:
     return buffer.getvalue()
 
 
-def save_show(show: Show, path: str | Path, *, now: datetime, backups: bool = True) -> Path | None:
+def save_show(
+    show: Show,
+    path: str | os.PathLike[str],
+    *,
+    now: datetime | None = None,
+    backups: bool = True,
+) -> Path | None:
     """Write ``show`` to ``path`` atomically, backing up the file it replaces.
 
+    ``now`` stamps the backup's name; ``None`` means the wall clock
+    (:func:`utc_now`). With ``backups=False`` the old file is overwritten
+    without a copy.
+
     Returns the backup's path, or ``None`` when there was nothing to back up.
-    The caller sets ``meta.modified`` first (saving is not an edit).
+    The caller sets ``meta.modified`` first (saving is not an edit). Raises
+    :class:`ValueError` if the extension is neither ``.show`` nor ``.json``,
+    and :class:`OSError` if the file cannot be written; the original is then
+    untouched.
     """
     path = Path(path)
     data = encode_show(show, path)
-    kept = backup(path, now) if backups and path.exists() else None
+    kept = backup(path, now or utc_now()) if backups and path.exists() else None
     atomic_write(path, data)
     return kept
 
@@ -253,13 +267,30 @@ def iso_time(now: datetime) -> str:
     return now.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def new_show(title: str, *, ids: IdFactory, now: datetime, cid: str) -> Show:
+def new_show(
+    title: str,
+    *,
+    cid: str | None = None,
+    now: datetime | None = None,
+    ids: IdFactory | None = None,
+) -> Show:
     """The ``busk new`` template: a valid, empty show.
 
     One grand master, one empty page ``Main``, no routes; ``output`` sends at
-    100 Hz as ``Busk Console`` with the installation's sACN CID (§5.16).
+    100 Hz as ``Busk Console`` with the sACN CID ``cid`` (§5.16).
+
+    The defaults touch nothing outside the call: ``cid=None`` is a fresh
+    random UUID (``busk new`` passes the installation's CID from the state
+    directory instead), ``now=None`` the wall clock, and ``ids=None``
+    :class:`~busk.session.ids.RandomIds`; pass
+    :class:`~busk.session.ids.CounterIds` for reproducible ids. Raises
+    nothing.
     """
-    stamp = iso_time(now)
+    if cid is None:
+        cid = str(uuid.uuid4())
+    if ids is None:
+        ids = RandomIds()
+    stamp = iso_time(now or utc_now())
     doc: dict[str, Any] = {
         "schemaVersion": SCHEMA_VERSION,
         "meta": {

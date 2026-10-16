@@ -664,6 +664,8 @@ Step 0 is the repository. Steps 1–5 decouple without changing behaviour, 6–8
    - the existing tests are untouched;
    - in `test_signatures.py`, `new_show("x")` with `HOME` and `XDG_STATE_HOME` pointed at an empty directory leaves it empty, and the template still validates with 0 issues;
    - `str` paths work.
+
+   **Done** (2026-10-16; 3217 passed, ruff, format and mypy clean; transcripts unchanged). `new_show` takes its keywords in the plan's order (`cid`, `now`, `ids`), all keyword-only, so existing calls are unchanged. `StrPath` is not a named alias: the signatures say `str | os.PathLike[str]`, which reads the same in the signature golden and needs no import. `load_show` and `read_show_bytes` take it too. `ProfileLibrary.__init__` gained a docstring. `test_signatures.py` has 8 tests. **Deviation:** `read_ofl` and `read_gdtf` already turned an unreadable file into `ImportFailed`, and the CLI's transcripts depend on that, so they keep doing it; §5.8's table, and the guide in step 12, say `ImportFailed` for them, not `OSError`.
 6. **`OfflineShow`, `DmxFrame`, `ScriptError`** (§5.4), plus `Console.run_script(failed=)`. → *verify:* `test_offline_show.py`:
    - building with `phase3-build.busk` and `CounterIds` gives `tests/golden/phase3_built_show.json`, apart from the `meta` timestamps;
    - busking it gives `phase3_frames.json`;

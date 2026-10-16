@@ -87,12 +87,12 @@ curves (imported as linear), relations and macros.
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import zipfile
 import zlib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Final, Literal, cast
 from xml.etree import ElementTree as ET
 from xml.parsers import expat
@@ -222,7 +222,7 @@ _Values = Callable[[tuple[float, float]], tuple[float, float]]
 # ------------------------------------------------------------------ entry points
 
 
-def read_gdtf(path: Path, *, manufacturer: str | None = None) -> ImportReport:
+def read_gdtf(path: str | os.PathLike[str], *, manufacturer: str | None = None) -> ImportReport:
     """Import the GDTF file at ``path`` (the manufacturer: ``manufacturer``,
     else the file's own). Raises :class:`ImportFailed`, also for files that
     cannot be read or are not ZIP archives."""
