@@ -60,17 +60,26 @@ import threading
 import time
 from collections.abc import Callable, Mapping
 from functools import partial
-from typing import Final, Protocol
+from typing import TYPE_CHECKING, Final, Protocol
 
 from busk.compiler.compile import CompiledShow
 from busk.compiler.playbacks import CompiledPage
 from busk.engine.snapshot import EngineSnapshot, PlaybackStatus, SpeedStatus
-from busk.io import midi
 from busk.io.bindings import current_page
-from busk.io.midi import FeedbackKind
-from busk.io.surfaces import HOTPLUG_S, follow_midi, open_midi
+from busk.io.surfaces import HOTPLUG_S, MIDI_MISSING, follow_midi, open_midi
 from busk.model.common import MasterId, PlaybackId, SurfaceId
-from busk.model.surface import Action, Binding, BindingFeedback, ControlSurface, InputAddress
+
+if TYPE_CHECKING:  # imported where a port opens: it needs mido, the `midi` extra
+    from busk.io import midi
+
+from busk.model.surface import (
+    Action,
+    Binding,
+    BindingFeedback,
+    ControlSurface,
+    FeedbackKind,
+    InputAddress,
+)
 
 FEEDBACK_HZ: Final = 30.0
 """How often the feedback thread looks at the snapshot."""
@@ -347,15 +356,20 @@ class FeedbackWorker:
                 del self._midi[ident]
         for ident, surface in wanted.items():
             if ident not in self._midi:
-                port = midi.MidiOutput(surface)
-                opened = open_midi(
-                    f"MIDI {ident} feedback",
-                    port,
-                    midi.output_names,
-                    say=self._say,
-                    warn=self._warn,
-                )
-                self._midi[ident] = (surface, port if opened else None)
+                self._midi[ident] = (surface, self._open_port(ident, surface))
+
+    def _open_port(self, ident: SurfaceId, surface: ControlSurface) -> midi.MidiOutput | None:
+        """Open the feedback output of a MIDI surface, reporting the outcome;
+        without the ``midi`` extra, say so and leave it closed."""
+        label = f"MIDI {ident} feedback"
+        try:
+            from busk.io import midi
+        except ImportError:
+            self._warn(f"{label}: {MIDI_MISSING}")
+            return None
+        port = midi.MidiOutput(surface)
+        opened = open_midi(label, port, midi.output_names, say=self._say, warn=self._warn)
+        return port if opened else None
 
     def _follow_ports(self) -> None:
         """Open the feedback ports whose device appeared and close the ones
@@ -363,8 +377,10 @@ class FeedbackWorker:
         if not self._midi:
             return
         try:
+            from busk.io import midi
+
             names = midi.output_names()
-        except Exception:  # no MIDI backend: reported when the ports first opened
+        except Exception:  # no MIDI backend or no mido: reported when the ports first opened
             return
         for ident, (surface, port) in list(self._midi.items()):
             make = partial(midi.MidiOutput, surface)

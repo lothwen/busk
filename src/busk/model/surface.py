@@ -194,6 +194,10 @@ type Action = Annotated[
 # ------------------------------------------------------------------ bindings
 
 
+type FeedbackKind = Literal["led", "motorFader", "display"]
+"""What a binding's feedback drives (:attr:`BindingFeedback.kind`)."""
+
+
 @with_config(STRICT)
 class BindingFeedback(TypedDict):
     """Where to send feedback (LEDs, motor faders, displays) for a binding."""

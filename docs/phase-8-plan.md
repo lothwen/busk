@@ -653,6 +653,8 @@ Step 0 is the repository. Steps 1–5 decouple without changing behaviour, 6–8
      - a MIDI surface gives the one warning;
    - test_midi, test_hotplug and test_feedback pass with the extra installed;
    - `python -X importtime` shows no `mido` under `busk.console.console`.
+
+   **Done** (2026-10-16; 3209 passed, ruff, format and mypy clean; transcripts unchanged; `-X importtime` of `busk.console.console` lists no `mido` or `rtmidi`). `FeedbackKind` is now in `model/surface.py`; `BindingFeedback.kind` keeps its own `Literal`, so the schema is unchanged. `io/midi.py` and `io/osc.py` import it from there. `surfaces.py` and `feedback.py` import `busk.io.midi` only under `TYPE_CHECKING` at module level, and for real inside `SurfaceManager._open_midi` and `poll`, and `FeedbackWorker._open_port` (new) and `_follow_ports`. An `ImportError` on open reports `surfaces.MIDI_MISSING` (`unavailable: install busk[midi]`) once; the hot-plug reads stay silent, as with a backend that cannot list ports. `test_no_midi.py` (5 tests, each in a subprocess): the imports work without mido, no mido is loaded with it installed, an OSC surface opens, and a MIDI surface and its feedback each say it once. **Call the user may veto:** the `dev` dependency group lists `"busk[midi]"`, so a plain `uv sync`, and a fresh clone's `uv sync && uv run pytest`, still install MIDI. `uv sync --all-extras` works too, and `--no-dev` leaves MIDI out (tried in a scratch copy). The README Setup section says this.
 5. **Library-friendly signatures, additive only:**
    - `save_show(now=None)` uses `utc_now()`;
    - `new_show(title, *, cid=None, now=None, ids=None)` gets a fresh UUID, `utc_now()` and `RandomIds()`;

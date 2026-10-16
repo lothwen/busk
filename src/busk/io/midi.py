@@ -55,14 +55,15 @@ MIDI has no ``display`` feedback, and no other address can be sent.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, Final, Literal
+from typing import Any, Final
 
 import mido
 
 from busk.io.events import InputEvent
 from busk.model.common import SurfaceId
-from busk.model.surface import (
+from busk.model.surface import (  # FeedbackKind lived here before Phase 8: re-exported
     ControlSurface,
+    FeedbackKind,
     InputAddress,
     MidiCC,
     MidiClock,
@@ -77,8 +78,6 @@ _CLOCKS_PER_SIXTEENTH: Final = 6
 """A Song Position Pointer counts sixteenths: 6 clocks each."""
 
 _MIDI_CLOCK: Final = MidiClock(kind="midiClock")
-
-type FeedbackKind = Literal["led", "motorFader", "display"]
 
 
 class BeatCounter:

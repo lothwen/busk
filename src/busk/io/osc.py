@@ -57,10 +57,9 @@ from collections.abc import Callable
 from typing import Final
 
 from busk.io.events import InputEvent
-from busk.io.midi import FeedbackKind
 from busk.io.ratelimit import OSC_BURST, OSC_RATE, TokenBucket
 from busk.model.common import SurfaceId
-from busk.model.surface import ControlSurface, InputAddress, OscInput, SurfaceMatch
+from busk.model.surface import ControlSurface, FeedbackKind, InputAddress, OscInput, SurfaceMatch
 
 _log = logging.getLogger("busk.surfaces")
 

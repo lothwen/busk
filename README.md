@@ -190,12 +190,16 @@ Requires [uv](https://docs.astral.sh/uv/) and Python ≥ 3.12 (development uses 
 pinned in `.python-version`).
 
 ```bash
-uv sync
+uv sync                 # the development setup: busk, the dev tools and the `midi` extra
+uv sync --all-extras    # the same, spelled out
 ```
 
-MIDI input uses [`mido`](https://mido.readthedocs.io/) with `python-rtmidi` (wheels exist
-for current CPython on Linux, macOS and Windows). On Linux it needs the ALSA sequencer
-(`/dev/snd/seq`); `aseqdump -l` lists the input ports `busk run` can match.
+MIDI surfaces are the optional extra `busk[midi]` (Phase 8): [`mido`](https://mido.readthedocs.io/)
+with `python-rtmidi` (wheels exist for current CPython on Linux, macOS and Windows). The
+development setup includes it, because the `dev` group depends on `busk[midi]`. Without
+it, busk runs as before, except that each MIDI surface reports
+`MIDI s-…: unavailable: install busk[midi]` once and stays closed. On Linux MIDI needs the
+ALSA sequencer (`/dev/snd/seq`); `aseqdump -l` lists the input ports `busk run` can match.
 
 ## Usage
 

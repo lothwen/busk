@@ -51,15 +51,17 @@ import logging
 import math
 from collections.abc import Callable
 from functools import partial
-from typing import Final, Protocol
+from typing import TYPE_CHECKING, Final, Protocol
 
 from busk.compiler.compile import CompiledShow
-from busk.io import midi
 from busk.io.events import InputEvent
 from busk.io.osc import OscFeedback, OscSurface
 from busk.model.common import SurfaceId
 from busk.model.surface import ControlSurface
 from busk.web.api import WebLink, WebSurface
+
+if TYPE_CHECKING:  # imported where a port opens: it needs mido, the `midi` extra
+    from busk.io import midi
 
 type Opened = midi.MidiInput | OscSurface | WebSurface
 
@@ -67,6 +69,9 @@ _log = logging.getLogger("busk.surfaces")
 
 type Report = Callable[[str], None]
 """Where a line goes: a printer in the CLI, a logger method by default."""
+
+MIDI_MISSING: Final = "unavailable: install busk[midi]"
+"""What a MIDI surface reports when ``mido`` is not installed (phase-8-plan §5.7)."""
 
 HOTPLUG_S: Final = 2.0
 """Seconds between two reads of the MIDI port names (decision 18)."""
@@ -214,8 +219,10 @@ class SurfaceManager:
         if not surfaces:
             return
         try:
+            from busk.io import midi
+
             names = midi.input_names()
-        except Exception:
+        except Exception:  # no MIDI backend or no mido: reported when the surface opened
             return
         for ident, surface, port in surfaces:
             assert port is None or isinstance(port, midi.MidiInput)
@@ -226,9 +233,15 @@ class SurfaceManager:
             self._open[ident] = (surface, followed)
 
     def _open_midi(self, surface: ControlSurface) -> midi.MidiInput | None:
-        """Open a MIDI surface's input, reporting the outcome."""
-        port = midi.MidiInput(surface, self._handle)
+        """Open a MIDI surface's input, reporting the outcome; without the
+        ``midi`` extra, say so and leave it closed."""
         label = f"MIDI {surface['id']}"
+        try:
+            from busk.io import midi
+        except ImportError:
+            self._warn(f"{label}: {MIDI_MISSING}")
+            return None
+        port = midi.MidiInput(surface, self._handle)
         opened = open_midi(label, port, midi.input_names, say=self._say, warn=self._warn)
         return port if opened else None
 

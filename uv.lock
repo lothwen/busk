@@ -84,14 +84,19 @@ name = "busk"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "mido" },
     { name = "numpy" },
     { name = "pydantic" },
+]
+
+[package.optional-dependencies]
+midi = [
+    { name = "mido" },
     { name = "python-rtmidi" },
 ]
 
 [package.dev-dependencies]
 dev = [
+    { name = "busk", extra = ["midi"] },
     { name = "hypothesis" },
     { name = "mypy" },
     { name = "pytest" },
@@ -100,14 +105,16 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "mido", specifier = ">=1.3.3" },
+    { name = "mido", marker = "extra == 'midi'", specifier = ">=1.3.3" },
     { name = "numpy", specifier = ">=2.5.4" },
     { name = "pydantic", specifier = ">=2.14.0" },
-    { name = "python-rtmidi", specifier = ">=1.5.8" },
+    { name = "python-rtmidi", marker = "extra == 'midi'", specifier = ">=1.5.8" },
 ]
+provides-extras = ["midi"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "busk", extras = ["midi"] },
     { name = "hypothesis", specifier = ">=6.169.0" },
     { name = "mypy", specifier = ">=2.4.0" },
     { name = "pytest", specifier = ">=9.1.1" },
