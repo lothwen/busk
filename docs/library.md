@@ -119,7 +119,7 @@ engine to time `t` and returns the frame it made.
 >>> busk.save_show(busk.new_show("Club Night"), "club.show")   # what `busk new` does
 >>> show, _ = busk.load_show("club.show")
 >>> offline = busk.OfflineShow(show, path="club.show", ids=busk.CounterIds())
->>> lines = offline.run_script("examples/phase3-build.busk")   # its last line, `save`, writes club.show
+>>> lines = offline.run_script("examples/club-night.busk")     # its last line, `save`, writes club.show
 >>> lines[-1]
 'saved club.show'
 >>> offline.execute("fader 1 1")

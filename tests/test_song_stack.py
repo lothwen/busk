@@ -1,6 +1,6 @@
 """The Phase 4 done criterion (phase-4-plan §5.15, step 19): a song as a
 tracking cue stack and a BPM-locked chase, built with console commands only
-on the show ``examples/phase3-build.busk`` saved, then played.
+on the show ``tests/fixtures/phase3-build.busk`` saved, then played.
 
 The build runs both scripts against a session and a real engine on a fake
 clock, with counter ids, a fixed wall clock and a fixed installation CID, so
@@ -48,8 +48,8 @@ from busk.session.library import ProfileLibrary
 from busk.session.session import Session
 from harness import Harness, Observation, Script
 
-BUILD = ROOT / "examples" / "phase3-build.busk"
-SONG = ROOT / "examples" / "phase4-song.busk"
+BUILD = ROOT / "tests" / "fixtures" / "phase3-build.busk"
+SONG = ROOT / "tests" / "fixtures" / "phase4-song.busk"
 GOLDEN = Path(__file__).parent / "golden"
 NOW = datetime(2026, 10, 11, 12, 0, 0, tzinfo=UTC)
 CID = "0f6c1b9e-3d2a-4f7b-8e5c-1a2b3c4d5e6f"

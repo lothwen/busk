@@ -47,7 +47,7 @@ GOLDEN = Path(__file__).parent / "golden" / "cli"
 REGOLDEN = os.environ.get("BUSK_REGOLDEN") == "1"
 APPENDIX_A = ROOT / "tests" / "fixtures" / "appendix_a.json"
 OFL = ROOT / "tests" / "fixtures" / "ofl" / "tupperdmx"
-SCRIPT = ROOT / "examples" / "phase3-build.busk"
+SCRIPT = ROOT / "tests" / "fixtures" / "phase3-build.busk"
 MIDI_PORTS = ["Midi Through:Midi Through Port-0 14:0"]
 """The one MIDI port every run sees, as in test_cli."""
 

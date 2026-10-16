@@ -442,7 +442,9 @@ def test_the_phase_3_build_and_its_undo_give_the_same_frames_through_the_codec()
             assert remote.latest is not None
             assert remote.latest.universes == direct.latest.universes, (line, now)
 
-    script = (ROOT / "examples" / "phase3-build.busk").read_text(encoding="utf-8").splitlines()
+    script = (
+        (ROOT / "tests" / "fixtures" / "phase3-build.busk").read_text(encoding="utf-8").splitlines()
+    )
     lines = [line for line in script if line.strip() and not line.lstrip().startswith("#")]
     assert len(lines) >= 120
     for line in lines:

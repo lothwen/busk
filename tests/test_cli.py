@@ -447,7 +447,7 @@ def test_python_dash_m_entry_point(appendix_a_path: Path) -> None:
 
 # ------------------------------------------------------------ Phase 2: busking
 
-PHASE2 = ROOT / "examples" / "phase2-busk.json"
+PHASE2 = ROOT / "tests" / "fixtures" / "phase2-busk.json"
 
 
 def test_validate_the_phase_2_demo(capsys: pytest.CaptureFixture[str]) -> None:
@@ -717,7 +717,7 @@ def test_a_running_chase_does_not_change_the_status_line(appendix_a: dict[str, A
 
 # ------------------------------------------------------------ Phase 3: console
 
-PHASE3_SCRIPT = ROOT / "examples" / "phase3-build.busk"
+PHASE3_SCRIPT = ROOT / "tests" / "fixtures" / "phase3-build.busk"
 
 
 def test_new_writes_a_valid_template_and_never_overwrites(

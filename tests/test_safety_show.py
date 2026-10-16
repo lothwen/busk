@@ -1,8 +1,8 @@
 """The Phase 7 done criterion A (phase-7-plan §5.24, step 18): limits, park,
 a strobe cap, highlight and the panic commands added to the surfaces show
-with console commands only, on the show that ``examples/phase3-build.busk``,
-``examples/phase4-song.busk``, ``examples/phase5-effects.busk`` and
-``examples/phase6-surfaces.busk`` saved.
+with console commands only, on the show that ``tests/fixtures/phase3-build.busk``,
+``tests/fixtures/phase4-song.busk``, ``tests/fixtures/phase5-effects.busk`` and
+``tests/fixtures/phase6-surfaces.busk`` saved.
 
 The build runs the five scripts against a session and a real engine on a
 fake clock, with counter ids, a fixed wall clock and a fixed installation
@@ -86,7 +86,7 @@ from harness import Harness, Observation
 from sacn_receiver import Receiver
 
 SCRIPTS = [
-    ROOT / "examples" / name
+    ROOT / "tests" / "fixtures" / name
     for name in (
         "phase3-build.busk",
         "phase4-song.busk",
@@ -94,7 +94,7 @@ SCRIPTS = [
         "phase6-surfaces.busk",
     )
 ]
-SAFETY = ROOT / "examples" / "phase7-safety.busk"
+SAFETY = ROOT / "tests" / "fixtures" / "phase7-safety.busk"
 GOLDEN = Path(__file__).parent / "golden"
 NOW = datetime(2026, 10, 16, 12, 0, 0, tzinfo=UTC)
 CID = "0f6c1b9e-3d2a-4f7b-8e5c-1a2b3c4d5e6f"

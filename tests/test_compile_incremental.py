@@ -93,7 +93,7 @@ def test_every_step_of_the_build_compiles_like_a_full_compile() -> None:
     compiled = compile_show(show)
     session = Session(show, Engine(compiled, FakeClock()).bus, compiled=compiled, ids=ids)
     console = Console(session, ProfileLibrary())
-    lines = (ROOT / "examples" / "phase3-build.busk").read_text().splitlines()
+    lines = (ROOT / "tests" / "fixtures" / "phase3-build.busk").read_text().splitlines()
     for line in [*lines, "undo", "undo", "undo", "redo"]:
         if line.strip() == "save":
             continue

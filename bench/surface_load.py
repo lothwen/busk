@@ -99,7 +99,7 @@ OSC_SURFACE = SurfaceId("s-osc-bench")
 
 
 def demo_show() -> Show:
-    """The show ``examples/phase6-surfaces.busk`` and the scripts before it save."""
+    """The show ``tests/fixtures/phase6-surfaces.busk`` and the scripts before it save."""
     path = ROOT / "tests" / "golden" / "phase6_surfaces_show.json"
     return cast(Show, json.loads(path.read_text()))
 

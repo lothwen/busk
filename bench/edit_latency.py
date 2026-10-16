@@ -5,7 +5,7 @@ caller's thread, and the autosave thread serialises the show. In CPython all
 of that holds the GIL and can delay the engine's ticks. This benchmark
 measures it on two rigs:
 
-* **demo**: the show ``examples/phase3-build.busk`` builds (7 fixtures);
+* **demo**: the show ``tests/fixtures/phase3-build.busk`` builds (7 fixtures);
 * **reference**: §19's scale: 400 fixtures over 64 universes (Phase 1
   profiles), 40 groups, 100 presets, 100 cue lists with playbacks (20 of them
   running).
@@ -84,7 +84,7 @@ def demo_show() -> Show:
         show, Engine(compiled, MonotonicClock()).bus, compiled=compiled, ids=ids, report=warn
     )
     console = Console(session, ProfileLibrary())
-    lines = (ROOT / "examples" / "phase3-build.busk").read_text().splitlines()
+    lines = (ROOT / "tests" / "fixtures" / "phase3-build.busk").read_text().splitlines()
     for line in lines:
         if line.strip() != "save":
             reply = console.execute(line)

@@ -49,8 +49,8 @@ from busk.session.session import Session
 from process_harness import BuskRun
 
 ROOT = Path(__file__).resolve().parent.parent
-SCRIPTS = [ROOT / "examples" / f"{name}.busk" for name in ("phase3-build", "phase4-song")]
-EFFECTS = ROOT / "examples" / "phase5-effects.busk"
+SCRIPTS = [ROOT / "tests" / "fixtures" / f"{name}.busk" for name in ("phase3-build", "phase4-song")]
+EFFECTS = ROOT / "tests" / "fixtures" / "phase5-effects.busk"
 NOW = datetime(2026, 10, 16, 12, 0, 0, tzinfo=UTC)
 CID = "0f6c1b9e-3d2a-4f7b-8e5c-1a2b3c4d5e6f"
 STEPS = (0.003, 0.0137, 0.021, 0.05, 0.25, 0.9)

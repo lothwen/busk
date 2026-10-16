@@ -1,4 +1,4 @@
-$ busk run <tmp>/club.show --no-console --duration 1 --iface lo --script <repo>/examples/phase3-build.busk --state-dir <tmp>/state
+$ busk run <tmp>/club.show --no-console --duration 1 --iface lo --script <repo>/tests/fixtures/phase3-build.busk --state-dir <tmp>/state
 exit 0
 stdout:
   12 targets selected

@@ -34,8 +34,8 @@ type Doc = dict[str, Any]
 
 ROOT = Path(__file__).parent.parent
 APPENDIX_A = Path(__file__).parent / "fixtures" / "appendix_a.json"
-DEMO = ROOT / "examples" / "phase1-demo.json"
-DEMO_VALUES = ROOT / "examples" / "phase1-values.json"
+DEMO = ROOT / "examples" / "real-fixtures.json"
+DEMO_VALUES = Path(__file__).parent / "fixtures" / "phase1-values.json"
 
 # ----------------------------------------------------------- capabilities
 

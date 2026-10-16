@@ -1,5 +1,5 @@
 """The Phase 1 done criterion: logical values produce the DMX that the
-manufacturers' charts give, for three real fixtures (``examples/phase1-demo.json``).
+manufacturers' charts give, for three real fixtures (``examples/real-fixtures.json``).
 
 Patch: MH-X25 ``MH 1`` at 1 and ``MH 2`` (invertPan) at 13, ML-56 RGBW
 ``Wash 1`` at 25, COLORband PiX ``Bar 1`` at 29–64.

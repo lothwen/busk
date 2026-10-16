@@ -3,14 +3,16 @@
 
 The Phase 3 build runs through the facade and gives the same show and the
 same frame as ``test_build_from_scratch``, which wires the parts by hand. The
-Phase 4–7 scripts follow it. Commands happen at the current engine time
-(decision 20): a tick at the same time is a no-op for fades and chases.
+Phase 4–7 scripts follow it, and ``examples/club-night.busk`` builds the same
+show in one script. Commands happen at the current engine time (decision 20):
+a tick at the same time is a no-op for fades and chases.
 """
 
 from __future__ import annotations
 
 import copy
 import json
+import re
 import shutil
 import signal
 import threading
@@ -36,11 +38,12 @@ from busk.persistence.show_file import (
 from busk.runner import DmxFrame, OfflineShow
 from busk.session.ids import CounterIds
 
-EXAMPLES = ROOT / "examples"
+FIXTURES = ROOT / "tests" / "fixtures"
 GOLDEN = Path(__file__).parent / "golden"
 NOW = datetime(2026, 10, 11, 12, 0, 0, tzinfo=UTC)  # test_build_from_scratch's
 CID = "0f6c1b9e-3d2a-4f7b-8e5c-1a2b3c4d5e6f"
 LATER = ["phase4-song.busk", "phase5-effects.busk", "phase6-surfaces.busk", "phase7-safety.busk"]
+CLUB_NIGHT = ROOT / "examples" / "club-night.busk"
 
 
 def golden(name: str) -> Any:
@@ -66,7 +69,7 @@ class Built:
         self.template = new_show("Club Night", cid=CID, now=NOW, ids=ids)
         self.path = directory / "club.show"
         self.offline = OfflineShow(self.template, path=str(self.path), ids=ids)
-        self.output = self.offline.run_script(EXAMPLES / "phase3-build.busk")
+        self.output = self.offline.run_script(FIXTURES / "phase3-build.busk")
 
 
 @pytest.fixture(scope="module")
@@ -85,7 +88,7 @@ def phase4(built: Built, tmp_path_factory: pytest.TempPathFactory) -> Show:
     """The Phase 3 show with ``phase4-song.busk`` run on it (song 9, chase 10)."""
     path = Path(shutil.copy(built.path, tmp_path_factory.mktemp("phase4") / "club.show"))
     offline = OfflineShow(load_show(path)[0], path=path)
-    offline.run_script(EXAMPLES / "phase4-song.busk")
+    offline.run_script(FIXTURES / "phase4-song.busk")
     return offline.show
 
 
@@ -113,9 +116,37 @@ def test_busking_the_built_show_gives_the_golden_frame(phase3: Path) -> None:
 def test_the_phase4_to_7_scripts_follow(phase3: Path) -> None:
     offline = OfflineShow(load_show(phase3)[0], path=phase3)
     for name in LATER:
-        output = offline.run_script(str(EXAMPLES / name))  # a ScriptError fails the test
+        output = offline.run_script(str(FIXTURES / name))  # a ScriptError fails the test
         assert output[-1] == f"saved {phase3}", name
     assert load_show(phase3)[0] == offline.show
+
+
+def renamed_ids(show: Show) -> Any:
+    """The show without ``meta.modified``, its ids renamed in order of first appearance."""
+    names: dict[str, str] = {}
+    text = re.sub(
+        r"\b([a-z]+)-[0-9a-f]{12}\b",
+        lambda m: names.setdefault(m[0], f"{m[1]}-{len(names)}"),
+        show_json(show).decode(),
+    )
+    return without_modified(json.loads(text))
+
+
+def test_the_club_night_example_builds_the_show_of_the_five_scripts(tmp_path: Path) -> None:
+    """The same show up to its ids: the example leaves out the binding of marker
+    SET that phase5-effects.busk adds and phase7-safety.busk unbinds, so every
+    id after it comes one count earlier."""
+
+    def build(name: str, scripts: list[Path]) -> Any:
+        ids = CounterIds()
+        template = new_show("Club Night", cid=CID, now=NOW, ids=ids)
+        offline = OfflineShow(template, path=tmp_path / name, ids=ids)
+        for script in scripts:
+            offline.run_script(script)
+        return renamed_ids(offline.show)
+
+    chain = build("chain.show", [FIXTURES / name for name in ["phase3-build.busk", *LATER]])
+    assert build("club.show", [CLUB_NIGHT]) == chain
 
 
 # ------------------------------------------------- commands happen now
@@ -247,7 +278,7 @@ def test_no_threads_no_prints_no_home(
     offline = OfflineShow(load_show(phase3)[0], path=phase3)
     offline.execute("fader 1 1")
     offline.execute("record cue 1/9")  # fails or succeeds, quietly either way
-    offline.run_script(EXAMPLES / "phase4-song.busk")
+    offline.run_script(FIXTURES / "phase4-song.busk")
     offline.tick(1.0)
     assert threading.active_count() == threads
     assert capsys.readouterr() == ("", "")

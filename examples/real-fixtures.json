@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "meta": { "id": "phase1-demo", "title": "Phase 1 Demo: three real fixtures", "created": "2026-10-11T00:00:00Z",
+  "meta": { "id": "real-fixtures", "title": "Three real fixtures", "created": "2026-10-11T00:00:00Z",
             "modified": "2026-10-11T00:00:00Z", "app": "busk 0.1" },
 
   "profiles": [

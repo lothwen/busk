@@ -63,7 +63,7 @@ def offline(directory: Path) -> bytes:
     ids: busk.IdFactory = busk.CounterIds(start=1)
     show_ = busk.OfflineShow(show, path=path, library=library, ids=ids)
     try:
-        written: list[str] = show_.run_script("examples/phase3-build.busk")
+        written: list[str] = show_.run_script("examples/club-night.busk")
     except busk.ScriptError as exc:
         written = [f"{exc.path}:{exc.line}: {exc.text}", *exc.output]
     assert written

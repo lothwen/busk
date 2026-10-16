@@ -2,7 +2,7 @@
 # console commands only, no JSON. Run it with
 #
 #   busk new club.show --title "Club Night"
-#   busk run club.show --script examples/phase3-build.busk [--iface eth0]
+#   busk run club.show --script tests/fixtures/phase3-build.busk [--iface eth0]
 #
 # then busk from a Korg nanoKONTROL2 in factory CC mode, as in the Phase 2
 # demo (faders 1–8: playbacks, S/M/R buttons: toggle/flash/release, knob 8:

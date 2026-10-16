@@ -99,7 +99,7 @@ terminal ───┤ output thread (44 Hz) ─▶ sACN (+ discovery), Art-Net (
 process, without the watchdog and the restarts.
 
 The Phase 7 done criteria hold. **A, the safety show**: on the show the Phase 3–6 scripts
-save, the script [`examples/phase7-safety.busk`](examples/phase7-safety.busk) adds, with
+save, the script [`tests/fixtures/phase7-safety.busk`](tests/fixtures/phase7-safety.busk) adds, with
 console commands only, a tilt limit of 10° on the heads (a low truss), an intensity limit
 of half on the bar, wash 4 **parked** dark and wash 3 parked on red, a **strobe cap** of
 3 Hz, a strobe look (10 Hz asked) and an 8 Hz pulse on page 2, and marker SET bound to
@@ -126,7 +126,7 @@ The split also closes the overrun misses of Phases 3–6: on the §19-sized rig,
 overrun 1 tick in 1 911 (10 % with threads) and surface load 0.4 % (2.3 %).
 
 The Phase 6 done criterion holds: on the show the Phase 3–5 scripts save, the script
-[`examples/phase6-surfaces.busk`](examples/phase6-surfaces.busk) adds, with console
+[`tests/fixtures/phase6-surfaces.busk`](tests/fixtures/phase6-surfaces.busk) adds, with console
 commands only, soft takeover on the nanoKONTROL2, a web surface "Phone", a fade-time
 master "Fade", a **second page** "Washes" (four exclusive wash looks whose M buttons
 **swop**, a three-cue list run by hand on a **crossfade fader**, and the knob playbacks of
@@ -144,7 +144,7 @@ origin are refused, a show edit from the phone is refused, and a flash the phone
 off when the phone vanishes.
 
 The Phase 5 done criterion holds: on the show the Phase 3 and Phase 4 scripts save, the
-script [`examples/phase5-effects.busk`](examples/phase5-effects.busk) adds, with console
+script [`tests/fixtures/phase5-effects.busk`](tests/fixtures/phase5-effects.busk) adds, with console
 commands only, a size master "FX" and a group master on the washes, three effect-only
 playbacks with `size` faders (a **circle** on the heads, half a revolution per beat with
 MH 2 a quarter turn behind, growing over 1 s; a **pulse** travelling across the washes; a
@@ -159,7 +159,7 @@ programmer holds a pan under a running circle, and the frames are byte-identical
 on an irregular tick schedule and after save → load.
 
 The Phase 4 done criterion holds: on the show the Phase 3 build saves, the script
-[`examples/phase4-song.busk`](examples/phase4-song.busk) adds, with console commands only,
+[`tests/fixtures/phase4-song.busk`](tests/fixtures/phase4-song.busk) adds, with console commands only,
 a speed master, a five-cue **tracking song stack** (Intro, Verse, Pre, Chorus, Outro) with
 an eased fade, per-family timing, a `wait` cue, a `follow` cue and a release, a four-step
 **chase** bouncing across the washes, BPM-locked to the speed master, and nanoKONTROL2
@@ -171,7 +171,7 @@ steps on the 120 BPM grid and, after four taps, on the 128 BPM grid of the last 
 the frames are byte-identical at 100 Hz and on an irregular tick schedule.
 
 The Phase 3 done criterion holds: starting from `busk new`, the script
-[`examples/phase3-build.busk`](examples/phase3-build.busk) builds a complete busking show
+[`tests/fixtures/phase3-build.busk`](tests/fixtures/phase3-build.busk) builds a complete busking show
 with console commands only (a universe, two Appendix A spots, four Eurolite ML-56 and a
 COLORband PiX from the Phase 1 library, four groups, global colour presets, per-head
 position presets, looks and bumps on page slots, exclusivity, an sACN route and the
@@ -190,7 +190,7 @@ the §7.8 worked example as a golden test and MIDI faders driving it.
 
 Phase 1 turned logical values (pan in degrees, colour as linear RGB, a gobo by name) into
 DMX through the fixture profiles, verified against the manufacturers' charts for three
-real fixtures (`examples/phase1-demo.json`); Phase 1.5 put those bytes on the wire as
+real fixtures (`examples/real-fixtures.json`); Phase 1.5 put those bytes on the wire as
 **sACN (ANSI E1.31)** with send-on-change, keep-alive and Stream_Terminated.
 
 ## Setup
@@ -213,16 +213,27 @@ ALSA sequencer (`/dev/snd/seq`); `aseqdump -l` lists the input ports `busk run` 
 
 ## Usage
 
+[`examples/club-night.busk`](examples/club-night.busk) builds a complete show with console
+commands only: two moving heads, four washes and an LED bar, looks and bumps, a song, a
+chase, effects, a second page, a phone remote, controller LEDs and safety limits. Its
+header maps every control of the Korg nanoKONTROL2 it binds. Run it once on a new show; it
+saves the show, and from then on `busk run club.show` plays it. The scripts of each phase,
+`phase3-build.busk` … `phase7-safety.busk` in [`tests/fixtures/`](tests/fixtures/), build
+the same show in five steps; the tests and the checklists below use the show after each.
+
 ```bash
 uv run busk new club.show --title "Club Night"
 # created club.show
-uv run busk run club.show --script examples/phase3-build.busk
+uv run busk run club.show --script examples/club-night.busk
 # added universe 'Stage'
 # added fixture 101–102: Generic Spot 16ch, 16ch
 # …                                          (one line per command of the script)
+# recorded cue 9/2: 4 entries; 8 values tracked from cue 9/1       (the washes: tracked, not stored)
+# …
 # saved club.show
 # sACN r-…: U1 Stage → universe 1, multicast 239.255.0.1 via eth0, priority 100
 # MIDI s-…: nanoKONTROL2:nanoKONTROL2 _ CTRL 20:0
+# Web s-…: http://192.168.1.20:8080/?k=…                           (open it on the phone)
 # busk console: type 'help' for the commands, 'quit' to stop.
 busk> fader 1 1                              # Warm up …
 busk> fader 3 1                              # … and the Blue bump on top
@@ -236,17 +247,12 @@ busk> undo                                   # and back
 busk> quit
 # engine: 2311 ticks @ 100 Hz, 0 overruns, max tick 1.4 ms, 2 commands, 0 command errors
 
-uv run busk run club.show --script examples/phase4-song.busk     # Phase 4: the song and the chase
-# added master 'Speed 1'
-# …
-# recorded cue 9/2: 4 entries; 8 values tracked from cue 9/1       (the washes: tracked, not stored)
-# …
-# saved club.show
+uv run busk run club.show                    # the song and the chase
 busk> list cues 9
 #     1  Intro                time 3 easeInOut  go
 #     2  Verse                time 2, position 4  go
 #     3  Pre                  time 1/3  wait 8
-#     4  Chorus               time 0.5/2  go
+#     4  Chorus               time 0.5/2  go  1 effect
 #     5  Outro                time 6  follow 4
 busk> fader 9 1                              # the Intro eases in over 3 s
 busk> go 9                                   # Verse: the heads swing out over 4 s; Pre fires 8 s later
@@ -257,19 +263,12 @@ busk> tap                                    # four taps at 128 BPM: the chase f
 busk> list masters
 # Grand Master         grand   100%
 # Speed 1              speed    50%  128 BPM ×1
+# FX                   size    100%
+# Wash level           group   100%
+# Fade                 fadeTime    0%
 busk> quit
 
-uv run busk run club.show --script examples/phase5-effects.busk  # Phase 5: effects on that show
-# added master 'FX'
-# added master 'Wash level'
-# 2 targets selected
-# added effect template 'Circle'                                   (embedded from the library)
-# added effect 'fx1' on 2 targets
-# recorded slot 11: playback 11 'Circle'                           (an effect-only cue: a size fader)
-# …
-# recorded cue 9/4: 3 entries, 1 effect                            (the Chorus gets the colour cycle)
-# …
-# saved club.show
+uv run busk run club.show                    # the effects
 busk> list effects
 # Circle               pan add sine, tilt add sine +90°
 # Pulse                intensity multiply sine
@@ -286,27 +285,15 @@ busk> list masters
 # Speed 1              speed    50%  128 BPM ×1
 # FX                   size     50%
 # Wash level           group   100%
+# Fade                 fadeTime    0%
 busk> status
 # GM 100% | BO off | P1 Main | Speed 1 128 BPM ×1 | 1 Warm on 1.00 · 6 Audience on 1.00 · 11 Circle on 1.00 · 12 Pulse on 1.00
 busk> quit
 
-uv run busk run club.show --script examples/phase6-surfaces.busk # Phase 6: pages, a phone, LEDs
-# set surfaces[0].faderPickup to "soft"
-# added surface 'Phone'
-# added master 'Fade'
-# added page 'Washes'
-# …
-# recorded slot 2.1: playback 14 'Wash Blue'                       (slot 1 of page 2)
-# …
-# playback 9 on slot 9 of page 2
-# …
-# feedback on 8 bindings
-# …
-# saved club.show
-# Web s-…: http://192.168.1.20:8080/?k=…                           (open it on the phone)
+uv run busk run club.show                    # pages, the phone, LEDs
 busk> list pages
 # *   1  Main                 1:1 2:2 3:3 4:4 5:5 6:6 7:7 8:8 9:9 10:10 11:11 12:12 13:13
-#     2  Washes               1:14 2:15 3:16 4:17 5:- 6:- 7:- 8:18 9:9 10:10 11:11 12:12 13:13
+#     2  Washes               1:14 2:15 3:16 4:17 5:19 6:20 7:- 8:18 9:9 10:10 11:11 12:12 13:13
 busk> page 2                                 # the phone shows "Washes"; the faders take over softly
 busk> status
 # GM 100% | BO off | P2 Washes | Speed 1 120 BPM ×1
@@ -318,16 +305,7 @@ busk> status
 # GM 100% | BO off | P2 Washes | Speed 1 120 BPM ×1 | Fade 2.5 s
 busk> quit
 
-uv run busk run club.show --script examples/phase7-safety.busk   # Phase 7: limits, park, a strobe cap, panic
-# limited fixture 101 thru 102: tilt -90° to 10°
-# limited fixture 301: intensity at most 0.5
-# parked fixture 204 intensity at 0
-# parked fixture 203 color at 1 0 0
-# strobe cap 3 Hz
-# …
-# unbound 1 binding                                                (marker SET toggled the bar wave)
-# added binding b-…                                                (now it is `release all`)
-# saved club.show
+uv run busk run club.show                    # safety: limits, park, a strobe cap, panic
 busk> fader 1 1                              # Warm: wash 4 stays dark, wash 3 red, the bar at half
 busk> list park
 # 204 intensity 0
@@ -355,16 +333,16 @@ uv run busk import ofl ~/Documents/TupperDMX/demo.show/fixtures/*.json --manufac
 # …/blinder.json: 'TupperDMX blinder' (modes 8ch) → profiles/ofl-tupperdmx-blinder.json; 3 notes (--report)
 # …/moving-head.json: 'TupperDMX moving-head' (modes 12ch, 18ch) → profiles/ofl-tupperdmx-moving-head.json; 4 notes (--report)
 # …
-uv run busk replay ~/.local/state/busk/logs/show-…/20261016T170328907372Z.log   # the Phase 3 build's run, rebuilt
-# 13706.760109  start  'Club Night', fresh engine
-# 13706.780164  e      added universe 'Stage'
+uv run busk replay ~/.local/state/busk/logs/show-…/20261016T170328907372Z.log   # the build's run, rebuilt
+# 31666.650112  start  'Club Night', fresh engine
+# 31666.660170  e      added universe 'Stage'
 # …
-# replayed 121 record(s) in 8 tick(s), up to t=13706.840794
+# replayed 284 record(s) in 21 tick(s), up to t=31666.850168
 
-uv run busk validate examples/phase2-busk.json
+uv run busk validate tests/fixtures/phase2-busk.json
 # 0 errors, 0 warnings
 
-uv run busk run examples/phase2-busk.json --no-console    # Phase 2 style: busk until Ctrl+C
+uv run busk run tests/fixtures/phase2-busk.json --no-console    # Phase 2 style: busk until Ctrl+C
 # sACN r1: U1 Stage → universe 1, multicast 239.255.0.1 via eth0, priority 100
 # MIDI s-nano: nanoKONTROL2:nanoKONTROL2 _ CTRL 20:0
 # Running; press Ctrl+C to stop.                                   (stderr)
@@ -385,7 +363,7 @@ uv run busk run tests/fixtures/appendix_a.json --duration 2 --console
 # GM 100% | BO off | P1 Main | Speed 1 120 BPM ×1
 # engine: 211 ticks @ 100 Hz, 0 overruns, max tick 1.351 ms, 0 commands, 0 command errors
 
-uv run busk run examples/phase1-demo.json --values examples/phase1-values.json --console
+uv run busk run examples/real-fixtures.json --values tests/fixtures/phase1-values.json --console
 # the Phase 1 chart-derived golden frame, as before (see below)
 ```
 
@@ -596,6 +574,9 @@ their pids and the restarts so far (`processes: root 96567, engine 96595, consol
 * The safety stage runs after the masters on the output frame only (highlight, park on
   intensity, blackout, park on everything else, limits, strobe lanes), so releasing any of
   it returns exactly to the live state.
+* **In the demo show**, the last part of [`examples/club-night.busk`](examples/club-night.busk)
+  limits the heads' tilt to 10° (a low truss) and the bar to half, parks wash 4 dark and
+  wash 3 on red, caps strobes at 3 Hz, and binds marker SET (CC 60) to `release all`.
 
 ### Rate limits
 
@@ -660,10 +641,12 @@ every frame as JSON, and frames rebuilt this way are byte-identical to the run's
 
 ### Busking
 
-`examples/phase2-busk.json` is the demo: 2 Appendix A spots and 4 RGB pars on universe 1,
-groups Heads / Pars / All, colour presets Blue, Red, Green, Amber (global scope) and
-position presets Audience and Centre (per head), one sACN route, and a **Korg
-nanoKONTROL2** in its factory CC mode (check the numbers with `aseqdump -p nanoKONTROL2`):
+[`examples/club-night.busk`](examples/club-night.busk) builds the demo: 2 Appendix A spots,
+4 Eurolite ML-56 RGBW washes and a COLORband PiX bar on universe 1, groups Heads / Washes /
+Bar / All, colour presets Blue, Red, Green, Amber (global scope) and position presets
+Audience and Centre (per head), one sACN route, and a **Korg nanoKONTROL2** in its factory
+CC mode (check the numbers with `aseqdump -p nanoKONTROL2`). Its first part lays out page
+1 as the hand-written Phase 2 demo did (`tests/fixtures/phase2-busk.json`, on 4 RGB pars):
 
 | Slot | Playback | Content | Fader | Exclusivity |
 |---|---|---|---|---|
@@ -689,8 +672,8 @@ turns blackout on, the next turns it off; `blackout momentary` (`"momentary": tr
 keeps the Phase 2 behaviour, blackout while held. Another controller works by editing the
 `bindings` (`midiCC`/`midiNote`/`midiPitchBend`, channels 1–16).
 
-**The song** (`examples/phase4-song.busk`, run after the Phase 3 build) adds slots 9 and 10
-and binds the nanoKONTROL2's free knobs and transport buttons:
+**The song** (the script's second part) adds slots 9 and 10 and binds the nanoKONTROL2's
+free knobs and transport buttons:
 
 | Slot | Playback | Content |
 |---|---|---|
@@ -710,7 +693,7 @@ and binds the nanoKONTROL2's free knobs and transport buttons:
 Tapping locks within two taps: every tap moves the beat grid onto the tap, and from the
 second tap on the tempo follows the taps, so a BPM chase steps on them.
 
-**The effects** (`examples/phase5-effects.busk`, run after the song) add a size master
+**The effects** (the script's third part) add a size master
 "FX", a group master "Wash level" on group 2, three effect-only slots and a colour cycle in
 the song's Chorus. Each slot's cue holds one effect and no values, so its playback has a
 `size` fader: the knob scales the effect's size, and the effect starts when the knob
@@ -727,20 +710,20 @@ leaves 0 and stops at 0.
 |---|---|---|
 | Knobs 4 / 5 / 6 | 19 / 20 / 21 | Circle / Pulse / Bar wave size |
 | Knob 7 | 22 | "FX" size master |
-| track ◀ / track ▶ / marker set | 58 / 59 / 60 | Circle / Pulse / Bar wave on and off |
+| track ◀ / track ▶ | 58 / 59 | Circle / Pulse on and off |
 
 A tap keeps every BPM effect where it is and closes the gap to the new beat grid over one
 beat, so nothing jumps and one beat later the effect is on the beat again.
 
 ### Surfaces
 
-**The surfaces** (`examples/phase6-surfaces.busk`, run after the effects) turn on soft
-takeover for the nanoKONTROL2, add a web surface "Phone" and a fade-time master "Fade", and
-build a second page:
+**The surfaces** (the script's fourth part) turn on soft takeover for the nanoKONTROL2,
+add a web surface "Phone" and a fade-time master "Fade", and build a second page:
 
 | Page 2 "Washes" | Playback | Content |
 |---|---|---|
 | 1–4 | Wash Blue / Red / Green / Amber | Washes at 100 % in colour preset 1–4; exclusivity `wash` (one at a time); buttons `toggle`, `swop`, `release` |
+| 5 / 6 | Strobe / Fast pulse | Heads strobing at 10 Hz / washes pulsing at 8 Hz, both held at 3 Hz by the strobe cap (the script's last part; see [Safety](#safety)) |
 | 8 | Manual | Bar at 100 %: cues 1–3 blue, red, green, `wrap`; a `crossfade` fader; buttons `go`, `back`, `release` |
 | 9–13 | Song, Chase, Circle, Pulse, Bar wave | The knob playbacks of page 1, on the same knobs |
 
@@ -1155,7 +1138,7 @@ the real clock with autosave running while 50 edits of each kind go through the 
 On the demo rig (the Phase 3 build) an edit takes **2–4 ms median, 5.5–7.5 ms p95** with
 **0 overruns** (max tick 6.4–7.2 ms; one run started straight after the perf suite
 overran once, at 11.4 ms). A script that edits back to back is harsher: `busk run
---script examples/phase3-build.busk` (about 150 edits in under a second) overruns 0–2
+--script tests/fixtures/phase3-build.busk` (about 150 edits in under a second) overruns 0–2
 ticks while it runs (max about 15 ms); playing the built show afterwards overruns none. On a §19-sized rig (400 fixtures over 64 universes, 4 300
 slots, 40 groups, 100 presets, 100 cue lists, 20 playbacks running) edits take 39 ms
 median, 124–136 ms p95 (a patch, which rebuilds the rig, ≈ 125 ms; a recorded cue ≈ 15
@@ -1354,14 +1337,8 @@ src/busk/
 LICENSE                      # MIT
 CHANGELOG.md                 # releases (Keep a Changelog); 0.1.0 is the first with a public API
 docs/library.md              # the library guide: installing, examples (doctests), reference, stability
-examples/phase1-demo.json    # three real fixtures, transcribed from their manuals
-examples/phase1-values.json
-examples/phase2-busk.json    # the busking demo: 2 spots, 4 pars, 8 playbacks, a nanoKONTROL2
-examples/phase3-build.busk   # the Phase 3 build: a busking show from console commands only
-examples/phase4-song.busk    # the Phase 4 song: a tracking stack and a BPM chase on that show
-examples/phase5-effects.busk # the Phase 5 effects: a circle, a pulse, a wave and a colour cycle on it
-examples/phase6-surfaces.busk # the Phase 6 surfaces: a second page, a phone, LEDs on that show
-examples/phase7-safety.busk  # the Phase 7 safety show: limits, park, a strobe cap, panic on that show
+examples/club-night.busk     # the demo show, built with console commands only (the five phase scripts in one)
+examples/real-fixtures.json  # three real fixtures, transcribed from their manuals
 examples/tupperdmx/          # the user's TupperDMX rig: hand-transcribed profiles, build.busk, build-ofl.busk (imported)
 bench/edit_latency.py        # live-edit latency and engine stalls
 bench/surface_load.py        # ticks, phone round trips and command latency under surface load
@@ -1372,6 +1349,13 @@ bench/soak_receiver.py       #   its receiver: sACN, Art-Net and a DMX-USB pseud
 bench/soak_load.py           #   its load: MIDI, OSC, a phone and console lines, seeded
 tests/fixtures/appendix_a.json   # verbatim copy of the spec's Appendix A
 tests/fixtures/golden_7_8.json   # the §7.8 worked example's rig and playbacks
+tests/fixtures/phase1-values.json  # values for examples/real-fixtures.json: the Phase 1 golden frame
+tests/fixtures/phase2-busk.json    # the Phase 2 busking demo, hand-written: 2 spots, 4 pars, 8 playbacks, a nanoKONTROL2
+tests/fixtures/phase3-build.busk   # the Phase 3 build: a busking show from console commands only
+tests/fixtures/phase4-song.busk    # the Phase 4 song: a tracking stack and a BPM chase on that show
+tests/fixtures/phase5-effects.busk # the Phase 5 effects: a circle, a pulse, a wave and a colour cycle on it
+tests/fixtures/phase6-surfaces.busk # the Phase 6 surfaces: a second page, a phone, LEDs on that show
+tests/fixtures/phase7-safety.busk  # the Phase 7 safety show: limits, park, a strobe cap, panic on that show
 tests/builders.py            # synthetic shows, feature matrix, benchmark rigs, busking content
 tests/harness.py             # deterministic engine harness: fake clock + command script (§20)
 tests/reference_convert.py   # per-channel §13 transcription: the conversion oracle
@@ -2167,7 +2151,7 @@ receiver: fixtures through an sACN node, or sACNView / QLC+ / OLA (Wireshark wit
 `udp.port == 5568` dissects E1.31). Set the demo route's `iface` to your interface, patch
 the rig as in the demo (spots at 1 and 17, pars at 33, 36, 39 and 42), then:
 
-1. `busk run examples/phase2-busk.json` prints no limitations, the route line, and the
+1. `busk run tests/fixtures/phase2-busk.json` prints no limitations, the route line, and the
    matched MIDI port.
 2. Raise fader 1 slowly. Every fixture follows the fader, and warm white comes in once the
    fader passes 2 %. Pull the fader to 0: intensity drops with it, and the status line
@@ -2214,7 +2198,7 @@ wired link to an sACN → DMX node (or a fixture with native sACN) on universe 1
 the demo with the route's `iface` set to that interface, and the DMX chain patched as in
 the demo: MH-X25 #1 at 1, MH-X25 #2 at 13, ML-56 at 25, COLORband PiX at 29. Then check:
 
-1. `busk run <copy> --values examples/phase1-values.json --console` prints the route line
+1. `busk run <copy> --values tests/fixtures/phase1-values.json --console` prints the route line
    and the golden frame line, and no errors.
 2. An sACN viewer (sACNView, QLC+) shows universe 1 from "Busk Console" with the show's CID
    and priority 100, carrying the golden values.
@@ -2578,7 +2562,7 @@ The manual check of phase-3-plan step 15 needs the Phase 2 setup (a nanoKONTROL2
 sACN receiver, the route's interface set with `--iface`):
 
 1. `busk new club.show --title "Club Night"`, then `busk run club.show --script
-   examples/phase3-build.busk --iface <your interface>`: the script's lines, `saved
+   tests/fixtures/phase3-build.busk --iface <your interface>`: the script's lines, `saved
    club.show`, the route line, the matched MIDI port, then the prompt.
 2. Busk as in the [Phase 2 checklist](#busking-checklist-phase-2): faders 1–8, S/M/R
    buttons, knob 8, ■. Everything behaves as in the hand-written demo (the washes and the
@@ -2605,8 +2589,8 @@ The manual check of phase-4-plan step 20 needs the Phase 3 setup (a nanoKONTROL2
 sACN rig, the route's interface set with `--iface`):
 
 1. `busk new club.show --title "Club Night"`, `busk run club.show --script
-   examples/phase3-build.busk --duration 1`, then `busk run club.show --script
-   examples/phase4-song.busk --iface <your interface>`. `Ignored in Phase 5:` (`Ignored in
+   tests/fixtures/phase3-build.busk --duration 1`, then `busk run club.show --script
+   tests/fixtures/phase4-song.busk --iface <your interface>`. `Ignored in Phase 5:` (`Ignored in
    Phase 4:` then) lists only what the show uses that waits for later phases (limits, soft
    pickup, …); with the Phase 3 build it lists nothing.
 2. Knob 1 up: the Intro eases in over 3 s, the washes going blue. ▶: Verse, the heads
@@ -2639,9 +2623,9 @@ The manual check of phase-5-plan step 18 needs the Phase 3 setup (a nanoKONTROL2
 sACN rig, the route's interface set with `--iface`):
 
 1. `busk new club.show --title "Club Night"`, then `busk run club.show --script
-   examples/phase3-build.busk --duration 1`, `busk run club.show --script
-   examples/phase4-song.busk --duration 1` and `busk run club.show --script
-   examples/phase5-effects.busk --iface <your interface>`. `Ignored in Phase 5:` lists
+   tests/fixtures/phase3-build.busk --duration 1`, `busk run club.show --script
+   tests/fixtures/phase4-song.busk --duration 1` and `busk run club.show --script
+   tests/fixtures/phase5-effects.busk --iface <your interface>`. `Ignored in Phase 5:` lists
    nothing for this show.
 2. Fader 1 up (Warm), fader 6 up (Audience). Knob 4 up: the heads circle around the
    audience position, a circle every two beats, MH 2 a quarter turn behind MH 1. Track ◀
@@ -2681,8 +2665,8 @@ nanoKONTROL2's LED mode set to **External** with the KORG KONTROL Editor (in the
 Internal mode the buttons light only while pressed):
 
 1. `busk new club.show --title "Club Night"`, then `busk run club.show --script
-   examples/phase3-build.busk --duration 1`, the same with `phase4-song.busk` and
-   `phase5-effects.busk`, and `busk run club.show --script examples/phase6-surfaces.busk
+   tests/fixtures/phase3-build.busk --duration 1`, the same with `phase4-song.busk` and
+   `phase5-effects.busk`, and `busk run club.show --script tests/fixtures/phase6-surfaces.busk
    --iface <your interface>`. There is no `Ignored in Phase 7:` block. Open the printed
    `Web s-…` address on the phone: page 1 "Main" with its strips.
 2. Fader 1 from the bottom to the top: Warm comes up. S1 and R1 light.
@@ -2744,8 +2728,8 @@ TupperDMX-Simul.
    Play the page: the simulator shows the same looks as with the hand-transcribed build
    (`examples/tupperdmx/build.busk`), except the smoke machine's dead band (intensity above
    0 starts at DMX 8).
-3. **The safety show on the Phase 3 rig**, after the five scripts (`phase3-build` …
-   `phase7-safety`, as in the [Usage](#usage) example, with `--iface`):
+3. **The safety show on the Phase 3 rig**, built by `examples/club-night.busk` (as in the
+   [Usage](#usage) example, with `--iface`):
    - Fader 1 up: wash 4 stays dark and wash 3 red, whatever is played. The bar never goes
      above half.
    - The song's Chorus: the heads tilt no higher than 10°. The Circle flattens at the top.

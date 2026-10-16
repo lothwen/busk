@@ -1,7 +1,7 @@
 """The Phase 6 done criterion (phase-6-plan §5.19, step 15): pages, a phone
 remote and controller LEDs added to the effects show with console commands
-only, on the show that ``examples/phase3-build.busk``,
-``examples/phase4-song.busk`` and ``examples/phase5-effects.busk`` saved.
+only, on the show that ``tests/fixtures/phase3-build.busk``,
+``tests/fixtures/phase4-song.busk`` and ``tests/fixtures/phase5-effects.busk`` saved.
 
 The build runs the four scripts against a session and a real engine on a
 fake clock, with counter ids, a fixed wall clock and a fixed installation
@@ -71,10 +71,10 @@ from harness import Harness, Observation
 from ws_client import WsClient, request, upgrade_headers
 
 SCRIPTS = [
-    ROOT / "examples" / name
+    ROOT / "tests" / "fixtures" / name
     for name in ("phase3-build.busk", "phase4-song.busk", "phase5-effects.busk")
 ]
-SURFACES = ROOT / "examples" / "phase6-surfaces.busk"
+SURFACES = ROOT / "tests" / "fixtures" / "phase6-surfaces.busk"
 GOLDEN = Path(__file__).parent / "golden"
 NOW = datetime(2026, 10, 11, 12, 0, 0, tzinfo=UTC)
 CID = "0f6c1b9e-3d2a-4f7b-8e5c-1a2b3c4d5e6f"

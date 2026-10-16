@@ -1,0 +1,401 @@
+# Club Night: a complete busking show, built with console commands only.
+# Run it once on a new show:
+#
+#   busk new club.show --title "Club Night"
+#   busk run club.show --script examples/club-night.busk [--iface eth0]
+#
+# It saves club.show; after that, `busk run club.show [--iface eth0]` plays it.
+#
+# The rig: two moving heads, four RGBW washes and an LED bar on universe 1,
+# sent over sACN. Two pages of playbacks: looks and bumps, a song, a chase and
+# effects on page 1 ("Main"), wash looks, a manual crossfade, a strobe and a
+# fast pulse on page 2 ("Washes"). Safety holds whatever is played: the heads
+# never tilt above 10°, the bar never runs above half, wash 4 stays dark,
+# wash 3 stays red, and nothing flashes faster than 3 times a second.
+#
+# Play it from a Korg nanoKONTROL2 in its factory CC mode (set its LED mode to
+# "external" in the Korg Kontrol Editor, so the LEDs follow the show) and from
+# a phone on the same network: open the "Web s-…" address busk prints.
+#
+#   faders 1–8          the playbacks of the current page
+#   S / M / R           toggle / flash (swop on page 2's washes) / release
+#   knob 1, ▶ ◀◀ ●      the song: level, GO, BACK, release
+#   knob 2, ▶▶          the chase: level, on and off
+#   cycle, knob 3       tap the tempo, "Speed 1"'s multiplier (×¼ … ×4)
+#   knobs 4–6           the size of the circle, the pulse and the bar wave
+#   track ◀ / ▶         the circle / the pulse on and off
+#   knob 7              the "FX" size master
+#   knob 8, ■           the grand master, blackout on and off
+#   marker ◀ / ▶        previous / next page (the faders take over softly)
+#   marker SET          release every playback
+#
+# The phone has every playback of the page, the masters, and a GOTO button
+# that jumps the song to its Chorus over the time the "Fade" master sets.
+
+# ---------------------------------------------------------------- patch
+universe add 1 "Stage"
+fixture add 101 thru 102 "Generic Spot 16ch" mode 16ch at 1.1
+fixture add 201 thru 204 "Eurolite LED ML-56 RGBW" mode 4-channel at 1.33
+fixture add 301 "Chauvet DJ COLORband PiX" mode 36-CH at 1.49
+
+# --------------------------------------------------------------- groups
+sel fixture 101 thru 102
+record group 1 "Heads"
+sel fixture 201 thru 204
+record group 2 "Washes"
+sel fixture 301
+record group 3 "Bar"
+sel group 1, group 2, group 3
+record group 4 "All"
+
+# -------------------------------------------- colour presets (global)
+set color 0 0 1
+record preset color 1 "Blue"
+set color 1 0 0
+record preset color 2 "Red"
+set color 0 1 0
+record preset color 3 "Green"
+set color 1 0.5 0
+record preset color 4 "Amber"
+clear
+
+# ----------------------------------------- position presets (per head)
+sel group 1
+set pan spread -30 30
+set tilt 40
+record preset position 1 "Audience"
+set pan spread 15 -15
+set tilt 10
+record preset position 2 "Centre"
+clear
+
+# ------------------------------------------------------- base looks
+sel group 4
+set intensity 80%
+set color 1 0.75 0.45
+record slot 1 "Warm"
+set color 0.75 0.85 1
+record slot 2 "Cool"
+clear
+
+# ------------------------------------------------------- colour bumps
+sel group 4
+preset color 1
+record slot 3 "Blue"
+preset color 2
+record slot 4 "Red"
+preset color 3
+record slot 5 "Green"
+clear
+
+# ----------------------------------------------------- position bumps
+sel group 1
+preset position 1
+record slot 6 "Audience"
+preset position 2
+record slot 7 "Centre"
+clear
+
+# --------------------------------------------------------------- panic
+sel group 4
+set intensity 100%
+set color 1 1 1
+record slot 8 "Panic"
+clear
+
+# ---------------------------------------------------- playback behaviour
+playback 1 exclusivity base
+playback 2 exclusivity base
+playback 3 exclusivity color
+playback 4 exclusivity color
+playback 5 exclusivity color
+playback 6 exclusivity position
+playback 7 exclusivity position
+cue 3/1 timing.fadeIn 1
+cue 4/1 timing.fadeIn 1
+cue 5/1 timing.fadeIn 1
+cue 6/1 timing.fadeIn 2
+cue 7/1 timing.fadeIn 2
+playback 6 ltpFaderMode followFader
+playback 7 ltpFaderMode followFader
+playback 6 releaseTime 2
+playback 7 releaseTime 2
+playback 8 priority 200
+playback 8 fader none
+playback 8 autoStart false
+playback 8 autoRelease false
+playback 8 releaseTime 0
+playback 1 buttons ["toggle", "flash", "release"]
+playback 2 buttons ["toggle", "flash", "release"]
+playback 3 buttons ["toggle", "flash", "release"]
+playback 4 buttons ["toggle", "flash", "release"]
+playback 5 buttons ["toggle", "flash", "release"]
+playback 6 buttons ["toggle", "flash", "release"]
+playback 7 buttons ["toggle", "flash", "release"]
+playback 8 buttons ["toggle", "flash", "release"]
+
+# -------------------------------------------------------------- output
+route add 1 sacn 1
+
+# ------------------------------------------------- nanoKONTROL2 (CC mode)
+surface add midi "nanoKONTROL2"
+bind "nanoKONTROL2" cc 1 0 fader 1
+bind "nanoKONTROL2" cc 1 1 fader 2
+bind "nanoKONTROL2" cc 1 2 fader 3
+bind "nanoKONTROL2" cc 1 3 fader 4
+bind "nanoKONTROL2" cc 1 4 fader 5
+bind "nanoKONTROL2" cc 1 5 fader 6
+bind "nanoKONTROL2" cc 1 6 fader 7
+bind "nanoKONTROL2" cc 1 7 fader 8
+bind "nanoKONTROL2" cc 1 32 button 1 1
+bind "nanoKONTROL2" cc 1 33 button 2 1
+bind "nanoKONTROL2" cc 1 34 button 3 1
+bind "nanoKONTROL2" cc 1 35 button 4 1
+bind "nanoKONTROL2" cc 1 36 button 5 1
+bind "nanoKONTROL2" cc 1 37 button 6 1
+bind "nanoKONTROL2" cc 1 38 button 7 1
+bind "nanoKONTROL2" cc 1 39 button 8 1
+bind "nanoKONTROL2" cc 1 48 button 1 2
+bind "nanoKONTROL2" cc 1 49 button 2 2
+bind "nanoKONTROL2" cc 1 50 button 3 2
+bind "nanoKONTROL2" cc 1 51 button 4 2
+bind "nanoKONTROL2" cc 1 52 button 5 2
+bind "nanoKONTROL2" cc 1 53 button 6 2
+bind "nanoKONTROL2" cc 1 54 button 7 2
+bind "nanoKONTROL2" cc 1 55 button 8 2
+bind "nanoKONTROL2" cc 1 64 button 1 3
+bind "nanoKONTROL2" cc 1 65 button 2 3
+bind "nanoKONTROL2" cc 1 66 button 3 3
+bind "nanoKONTROL2" cc 1 67 button 4 3
+bind "nanoKONTROL2" cc 1 68 button 5 3
+bind "nanoKONTROL2" cc 1 69 button 6 3
+bind "nanoKONTROL2" cc 1 70 button 7 3
+bind "nanoKONTROL2" cc 1 71 button 8 3
+bind "nanoKONTROL2" cc 1 23 master gm
+bind "nanoKONTROL2" cc 1 42 blackout
+
+# ======================================================== the song and the chase
+master add speed "Speed 1" bpm 120
+
+# ---------------------------------------------- song stack (tracking)
+# Intro: the washes in blue, easing in over 3 s.
+sel group 2
+set intensity 60%
+preset color 1
+record slot 9 "Song"
+rename cue 9/1 "Intro"
+cuelist 9 tracking true
+cue 9/1 time 3 easeInOut
+
+# Verse: the heads come in warm on the audience; their position takes 4 s.
+# The washes' values in the programmer equal the Intro's: tracked, not stored.
+sel group 1
+set intensity 70%
+set color 1 0.75 0.45
+preset position 1
+record cue 9/2 "Verse"
+cue 9/2 time 2
+cue 9/2 time position 4
+clear
+
+# Pre: 8 s after the Verse, the bar rises fast in amber while the washes dim
+# slowly (fade in 1 s, out 3 s).
+sel group 3
+set intensity 100%
+preset color 4
+sel group 2
+set intensity 30%
+record cue 9/3 "Pre"
+cue 9/3 time 1/3
+cue 9/3 wait 8
+clear
+
+# Chorus: everything at full white.
+sel group 4
+set intensity 100%
+set color 1 1 1
+record cue 9/4 "Chorus"
+cue 9/4 time 0.5/2
+clear
+
+# Outro: 4 s after the Chorus lands, the heads dim over 6 s and drift back
+# to their default position (released).
+sel group 1
+set intensity 20%
+record cue 9/5 "Outro"
+cue 9/5 time 6
+cue 9/5 follow 4
+cue 9/5 release group 1 only pan tilt
+clear
+
+playback 9 buttons ["go", "back", "release"]
+playback 9 exclusivity base
+playback 9 releaseTime 3
+
+# ------------------------------------------------- chase (BPM-locked)
+# One red wash per step, bouncing on the beat of "Speed 1".
+sel fixture 201
+set intensity 100%
+preset color 2
+record slot 10 "Chase"
+clear
+sel fixture 202
+set intensity 100%
+preset color 2
+record cue 10/2
+clear
+sel fixture 203
+set intensity 100%
+preset color 2
+record cue 10/3
+clear
+sel fixture 204
+set intensity 100%
+preset color 2
+record cue 10/4
+clear
+cuelist 10 chase bpm x 1 bounce crossfade 0.25
+
+# ------------------------------------------------- nanoKONTROL2: song and chase
+bind "nanoKONTROL2" cc 1 16 fader 9            # knob 1: the song
+bind "nanoKONTROL2" cc 1 17 fader 10           # knob 2: the chase
+bind "nanoKONTROL2" cc 1 41 button 9 1         # ▶: GO
+bind "nanoKONTROL2" cc 1 43 button 9 2         # ◀◀: BACK
+bind "nanoKONTROL2" cc 1 45 button 9 3         # ●: release the song
+bind "nanoKONTROL2" cc 1 44 button 10 1        # ▶▶: chase on/off
+bind "nanoKONTROL2" cc 1 46 tap                # cycle: tap tempo
+bind "nanoKONTROL2" cc 1 18 master "Speed 1"   # knob 3: the multiplier
+
+# ======================================================== effects
+# The effects lock to "Speed 1": tap the tempo and they follow it.
+master add size "FX"
+master add group "Wash level" group 2
+
+# ------------------------------------------------ circle on the heads
+# Half the beat (a circle every two beats), MH 2 a quarter turn behind MH 1,
+# growing over 1 s when it starts.
+sel group 1
+effect add "Circle" size 15 bpm x 0.5 phase 0 180 fadein 1 sizemaster "FX"
+record slot 11 "Circle"                        # an effect-only cue: a size fader
+clear
+
+# ------------------------------------------------ pulse on the washes
+# Dims the washes' own level on the beat, in a wave across the four.
+sel group 2
+effect add "Pulse" size 0.8 phase 0 360 sizemaster "FX"
+record slot 12 "Pulse"
+clear
+
+# ------------------------------------------------ wave across the bar
+# A crest from both ends to the middle and back, once per beat.
+sel group 3
+effect add "Wave" phase 0 360 wings 2
+record slot 13 "Bar wave"
+clear
+
+# ------------------------------------------------ the Chorus gets a colour cycle on the bar
+# Red, green and blue around the bar every 4 s; it tracks into the Outro.
+sel group 3
+effect add "Rainbow" id rainbow hz 0.25 phase 0 360
+record cue 9/4 merge
+clear
+
+# ------------------------------------------------ nanoKONTROL2: effects
+bind "nanoKONTROL2" cc 1 19 fader 11           # knob 4: circle size
+bind "nanoKONTROL2" cc 1 20 fader 12           # knob 5: pulse size
+bind "nanoKONTROL2" cc 1 21 fader 13           # knob 6: bar wave
+bind "nanoKONTROL2" cc 1 22 master "FX"        # knob 7: size master
+bind "nanoKONTROL2" cc 1 58 button 11 1        # track ◀: circle on/off
+bind "nanoKONTROL2" cc 1 59 button 12 1        # track ▶: pulse on/off
+
+# ======================================================== pages, the phone, LEDs
+# After a page change a fader does nothing until it passes the playback's
+# level (soft takeover).
+surface "nanoKONTROL2" pickup soft
+surface add web "Phone"
+master add fadetime "Fade"
+
+# ------------------------------------------------ page 2: wash looks
+page add 2 "Washes"
+sel group 2
+set intensity 100%
+preset color 1
+record slot 2.1 "Wash Blue"
+preset color 2
+record slot 2.2 "Wash Red"
+preset color 3
+record slot 2.3 "Wash Green"
+preset color 4
+record slot 2.4 "Wash Amber"
+clear
+playback 14 exclusivity wash                  # one wash look at a time
+playback 15 exclusivity wash
+playback 16 exclusivity wash
+playback 17 exclusivity wash
+playback 14 buttons ["toggle", "swop", "release"]   # M swops: only that wash
+playback 15 buttons ["toggle", "swop", "release"]
+playback 16 buttons ["toggle", "swop", "release"]
+playback 17 buttons ["toggle", "swop", "release"]
+
+# ------------------------------------------------ page 2: a manual crossfade on fader 8
+sel group 3
+set intensity 100%
+preset color 1
+record slot 2.8 "Manual"
+preset color 2
+record cue 18/2
+preset color 3
+record cue 18/3
+clear
+cuelist 18 wrap true
+playback 18 fader crossfade                   # the fader runs each cue by hand
+playback 18 buttons ["go", "back", "release"]
+
+# ------------------------------------------------ the knob playbacks on page 2 too
+page 2 slot 9 playback 9
+page 2 slot 10 playback 10
+page 2 slot 11 playback 11
+page 2 slot 12 playback 12
+page 2 slot 13 playback 13
+
+# ------------------------------------------------ the song: a goto button for the phone
+playback 9 goto 4                             # the Chorus
+playback 9 buttons ["go", "back", "release", "goto"]
+
+# ------------------------------------------------ nanoKONTROL2: pages and LEDs (LED mode: external)
+bind "nanoKONTROL2" cc 1 61 page -1           # marker ◀
+bind "nanoKONTROL2" cc 1 62 page +1           # marker ▶
+feedback "nanoKONTROL2" cc 1 32 thru 39 led   # S: the slot's playback is active
+feedback "nanoKONTROL2" cc 1 48 thru 55 led   # M: flash or swop held
+feedback "nanoKONTROL2" cc 1 64 thru 71 led   # R: active
+feedback "nanoKONTROL2" cc 1 41 thru 45 led   # play, stop (blackout), rewind, fast-forward, record
+feedback "nanoKONTROL2" cc 1 46 led           # cycle: the beat
+
+# ======================================================== safety
+# At the prompt, `sel fixture 102` and `highlight on` find a head at full
+# white whatever the show says; `output off` (it asks first) stops all DMX,
+# `output on` brings it back.
+
+# ------------------------------------------------ limits and park
+fixture 101 thru 102 limits tilt -90 10      # a low truss: the heads never tilt above 10°
+fixture 301 limits intensity 0.5             # the bar runs at half at most
+park fixture 204 intensity 0                 # wash 4 is broken: held dark
+park fixture 203 color 1 0 0                 # wash 3's colour is stuck on red
+safety strobe 3                              # at most 3 flashes per second
+
+# ------------------------------------------------ page 2: a strobe look and a fast pulse
+# They ask for 10 Hz and 8 Hz; the strobe cap holds both at 3.
+sel group 1
+set intensity 100%
+set shutter strobe
+set strobeRate 10
+record slot 2.5 "Strobe"
+clear
+sel group 2
+effect add "Pulse" hz 8 size 1
+record slot 2.6 "Fast pulse"
+clear
+
+# ------------------------------------------------ panic on marker SET
+bind "nanoKONTROL2" cc 1 60 release all
+save

@@ -33,6 +33,9 @@ line; Phase 8 ([plan](docs/phase-8-plan.md)) made it a library too.
 - The `midi` extra, `busk[midi]`, for MIDI surfaces (`mido`, `python-rtmidi`).
 - The MIT license.
 - The library guide, [`docs/library.md`](docs/library.md), whose examples are tested.
+- [`examples/club-night.busk`](examples/club-night.busk): the demo show in one script (the
+  rig, looks, a song, a chase, effects, two pages, a phone remote, LEDs and safety), with
+  the controller's layout in its header.
 
 ### Changed
 
@@ -47,6 +50,9 @@ line; Phase 8 ([plan](docs/phase-8-plan.md)) made it a library too.
   state directory. Path parameters take `str` as well as `os.PathLike`.
 - The lowest supported dependency versions were lowered to what the test suite passes
   with: `numpy>=2.3.2`, `pydantic>=2.12.4`, `mido>=1.3.0`.
+- The per-phase example scripts (`phase3-build.busk` … `phase7-safety.busk`), the Phase 1
+  values file and the Phase 2 demo moved from `examples/` to `tests/fixtures/`;
+  `examples/phase1-demo.json` is now `examples/real-fixtures.json`.
 
 The command line is unchanged: every command, flag, exit code and output line is the
 same as before Phase 8.

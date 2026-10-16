@@ -1,7 +1,7 @@
 """The Phase 3 done criterion: build a complete busking show from `busk new`
 with console commands only (phase-3-plan, "Done when").
 
-The build runs ``examples/phase3-build.busk`` against a session and a real
+The build runs ``tests/fixtures/phase3-build.busk`` against a session and a real
 engine on a fake clock, with counter ids, a fixed wall clock and a fixed
 installation CID, so it is deterministic. Goldens live in ``tests/golden/``;
 regenerate them with ``BUSK_REGOLDEN=1`` after a deliberate change, then
@@ -33,7 +33,7 @@ from busk.session.ids import CounterIds
 from busk.session.library import ProfileLibrary
 from busk.session.session import Session
 
-SCRIPT = ROOT / "examples" / "phase3-build.busk"
+SCRIPT = ROOT / "tests" / "fixtures" / "phase3-build.busk"
 GOLDEN = Path(__file__).parent / "golden"
 NOW = datetime(2026, 10, 11, 12, 0, 0, tzinfo=UTC)
 CID = "0f6c1b9e-3d2a-4f7b-8e5c-1a2b3c4d5e6f"

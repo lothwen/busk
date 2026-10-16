@@ -1,6 +1,6 @@
 """The Phase 5 done criterion (phase-5-plan §5.14, step 17): effects added to
 the song show with console commands only, on the show that
-``examples/phase3-build.busk`` and ``examples/phase4-song.busk`` saved, then
+``tests/fixtures/phase3-build.busk`` and ``tests/fixtures/phase4-song.busk`` saved, then
 played.
 
 The build runs the three scripts against a session and a real engine on a
@@ -66,8 +66,8 @@ from busk.session.session import Session
 from harness import Harness, Observation, Script
 from session_harness import CLEAR, Live, put, sel
 
-SCRIPTS = [ROOT / "examples" / name for name in ("phase3-build.busk", "phase4-song.busk")]
-EFFECTS = ROOT / "examples" / "phase5-effects.busk"
+SCRIPTS = [ROOT / "tests" / "fixtures" / name for name in ("phase3-build.busk", "phase4-song.busk")]
+EFFECTS = ROOT / "tests" / "fixtures" / "phase5-effects.busk"
 GOLDEN = Path(__file__).parent / "golden"
 NOW = datetime(2026, 10, 11, 12, 0, 0, tzinfo=UTC)
 CID = "0f6c1b9e-3d2a-4f7b-8e5c-1a2b3c4d5e6f"

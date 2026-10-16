@@ -3,9 +3,9 @@
 # Run it with
 #
 #   busk new club.show --title "Club Night"
-#   busk run club.show --script examples/phase3-build.busk --duration 1
-#   busk run club.show --script examples/phase4-song.busk --duration 1
-#   busk run club.show --script examples/phase5-effects.busk [--iface eth0]
+#   busk run club.show --script tests/fixtures/phase3-build.busk --duration 1
+#   busk run club.show --script tests/fixtures/phase4-song.busk --duration 1
+#   busk run club.show --script tests/fixtures/phase5-effects.busk [--iface eth0]
 #
 # then play it from the Korg nanoKONTROL2 (factory CC mode): knobs 4–6 bring
 # the circle, the pulse and the bar wave up (their faders scale the effect's

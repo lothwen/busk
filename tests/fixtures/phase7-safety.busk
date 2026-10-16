@@ -4,11 +4,11 @@
 # with
 #
 #   busk new club.show --title "Club Night"
-#   busk run club.show --script examples/phase3-build.busk --duration 1
-#   busk run club.show --script examples/phase4-song.busk --duration 1
-#   busk run club.show --script examples/phase5-effects.busk --duration 1
-#   busk run club.show --script examples/phase6-surfaces.busk --duration 1
-#   busk run club.show --script examples/phase7-safety.busk [--iface eth0]
+#   busk run club.show --script tests/fixtures/phase3-build.busk --duration 1
+#   busk run club.show --script tests/fixtures/phase4-song.busk --duration 1
+#   busk run club.show --script tests/fixtures/phase5-effects.busk --duration 1
+#   busk run club.show --script tests/fixtures/phase6-surfaces.busk --duration 1
+#   busk run club.show --script tests/fixtures/phase7-safety.busk [--iface eth0]
 #
 # then play it as in Phase 6. Whatever the playbacks do, the heads never tilt
 # above 10°, the bar never runs above half, wash 4 stays dark, wash 3 stays

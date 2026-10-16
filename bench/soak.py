@@ -84,7 +84,7 @@ from busk.output.scheduler import OUTPUT_HZ  # noqa: E402
 from busk.persistence.show_file import load_show, save_show, utc_now  # noqa: E402
 
 SCRIPTS = [
-    ROOT / "examples" / f"{name}.busk"
+    ROOT / "tests" / "fixtures" / f"{name}.busk"
     for name in (
         "phase3-build",
         "phase4-song",
