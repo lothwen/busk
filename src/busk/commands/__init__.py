@@ -20,4 +20,11 @@
 The session (:mod:`busk.session`) routes commands by class. The event log
 (§15.5, Phase 7) records what the engine applied, and why
 (:mod:`busk.persistence.eventlog`).
+
+What is public: the ``TypedDict``\\ s and type aliases of
+:mod:`busk.commands.types`, which describe the commands a show file's
+bindings hold and that :meth:`busk.OfflineShow.submit` takes. ``busk.Command``
+is their union; import a single command type from ``busk.commands.types``.
+The rest of this package is internal (see :mod:`busk`), and may change in
+any release.
 """

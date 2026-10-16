@@ -41,13 +41,15 @@ import zipfile
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Final
+from typing import TYPE_CHECKING, Any, Final
 
 from busk import __version__
 from busk.errors import BuskError
 from busk.model.show import SCHEMA_VERSION, Show
 from busk.model.validate import Issue, has_errors, validate_show
-from busk.session.ids import IdFactory, RandomIds
+
+if TYPE_CHECKING:  # the engine process imports this module, and never busk.session
+    from busk.session.ids import IdFactory
 
 SHOW_ENTRY: Final = "show.json"
 """The one entry of a ``.show`` ZIP."""
@@ -71,6 +73,9 @@ def utc_now() -> datetime:
 
 class ShowLoadError(BuskError):
     """The show file could not be loaded; :attr:`issues` says why."""
+
+    issues: list[Issue]
+    """What stopped the load: at least one error, and any warnings found with it."""
 
     def __init__(self, issues: list[Issue]) -> None:
         super().__init__(f"show failed validation with {len(issues)} issue(s)")
@@ -289,6 +294,8 @@ def new_show(
     if cid is None:
         cid = str(uuid.uuid4())
     if ids is None:
+        from busk.session.ids import RandomIds
+
         ids = RandomIds()
     stamp = iso_time(now or utc_now())
     doc: dict[str, Any] = {

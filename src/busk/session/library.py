@@ -62,6 +62,9 @@ def builtin_directory() -> Path:
 class ProfileLibrary:
     """Validated profiles, by id, in load order."""
 
+    problems: list[str]
+    """One line per file or directory that was skipped, saying why."""
+
     def __init__(
         self, directories: Sequence[str | os.PathLike[str]] = (), *, builtin: bool = True
     ) -> None:
@@ -71,7 +74,7 @@ class ProfileLibrary:
         file or directory that cannot be used becomes a line of
         :attr:`problems`."""
         self._profiles: dict[str, FixtureProfile] = {}
-        self.problems: list[str] = []  # one line per skipped file
+        self.problems = []
         for entry in ([builtin_directory()] if builtin else []) + list(directories):
             directory = Path(entry)
             if not directory.is_dir():

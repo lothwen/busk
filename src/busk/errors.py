@@ -39,6 +39,11 @@ class ScriptError(BuskError):
     prints it.
     """
 
+    path: Path
+    line: int
+    text: str
+    output: list[str]
+
     def __init__(self, path: Path, line: int, text: str, output: list[str]) -> None:
         super().__init__(f"{path}:{line}: {text}")
         self.path = path

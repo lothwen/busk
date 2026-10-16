@@ -708,6 +708,21 @@ Step 0 is the repository. Steps 1–5 decouple without changing behaviour, 6–8
      - the three subprocess boundary checks;
    - `uv run mypy --strict tests/api_consumer.py`;
    - **the user reviews the names and the signatures golden before step 9.** Names are cheapest to change now.
+
+   **Done** (2026-10-16; 3257 passed, ruff, format and mypy clean; `mypy --strict tests/api_consumer.py` clean; transcripts unchanged). `busk/__init__.py` has the new docstring (the API by group, what is public, stability, logging, laziness), `__all__` (the 28 names, sorted), `_EXPORTS` (the §5.1 table) and the type checkers' re-exports (`from module import name as name`). `busk.commands` and `busk.model` say what of them is public. `test_public_api.py` (16 tests): `__all__` is the §5.1 list; each name is the object of its table module, and defined there; the `TYPE_CHECKING` block is the same table (read with `ast`); `from busk import *`; `dir(busk)`; `AttributeError` for five internal names, and `ImportError` from `from busk import Session`; a name is imported on first use and kept; the golden; and the three boundary checks, each in a fresh interpreter. **Deviations and calls the user may veto:**
+   - **No `typing` import.** `TYPE_CHECKING = False` is a module global (mypy and pyright read any `TYPE_CHECKING` as true), and `importlib` is imported inside the lookup. `logging` does not load `typing`, so the sketch's `from typing import TYPE_CHECKING, Any` would fail §5.3's "nothing but `logging`" check.
+   - **`__getattr__` is hidden from type checkers.** The function is `_lazy`, bound to `__getattr__` under `if not TYPE_CHECKING:`. A module `__getattr__` that mypy can see makes every unknown `busk.x` valid, typed as its return type. `api_consumer.py` guards this: it has two `type: ignore[attr-defined]` lines on internal names, which become unused ignores, an error under `--strict`, if the guard goes (tried).
+   - `busk.TYPE_CHECKING` and `busk.logging` are module globals, so `dir(busk)` lists them. They are internal by decision 13.
+   - **Found and fixed:** the engine process loaded `busk.session.ids` (`engine_host` → `eventlog` → `paths` → `show_file`). `show_file` had imported `IdFactory` at run time since before Phase 8. Now it imports `IdFactory` under `TYPE_CHECKING`, and `RandomIds` inside `new_show`.
+   - **Class-level annotations** for the documented instance attributes, so the golden pins them: `ProfileLibrary.problems`, `ShowLoadError.issues`, and `ScriptError`'s `path`, `line`, `text` and `output`. Behaviour is unchanged.
+   - **What the golden pins** (`tests/golden/public_api.json`, rewritten with `BUSK_REGOLDEN=1`), for each name: its module and kind; a function's signature; a class's public methods, properties and annotated attributes, including those of a private base (`_Facade`); a dataclass's fields in order and its `__init__`; an exception's bases; the two `TypedDict`s' top-level keys; `Command`'s 37 members. Annotations print as written in the source, since every module postpones them, so the golden reads like the code and does not change with the Python version. The plan asked for signatures and dataclass fields; the keys, the members and the bases are additions.
+   - `pyright --verifytypes` (optional in §5.10) was not run: it would download pyright.
+   - **For the review** (the gate before step 9), points worth a look in the golden:
+     - `Issue` and `Reply` construct positionally; the other dataclasses are keyword-only.
+     - `LiveShow.__exit__` has typed parameters, not §5.1's `*exc: object`.
+     - `FixtureProfile.id` reads `TId`, the parameter of the generic `EntityBase`.
+     - `SpeedStatus.beats(t)` is public.
+     - The exceptions' constructors are pinned too.
 9. **`RunOptions`.** A frozen dataclass replaces `argparse.Namespace` in `run_console`, `ThreadsBackend`, `ProcessBackend`, `Root` and `replay.main`. `cli.py` builds it from the arguments. The console child still receives its argument list and parses it again. → *verify:*
    - the full suite;
    - test_processes, test_watchdog, test_console_restart and test_recovery, three times;

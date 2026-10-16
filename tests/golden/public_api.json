@@ -1,0 +1,359 @@
+{
+  "BuskError": {
+    "bases": [
+      "Exception"
+    ],
+    "kind": "exception",
+    "members": {},
+    "module": "busk.errors"
+  },
+  "Command": {
+    "kind": "type alias",
+    "members": [
+      "AddCmd",
+      "AddEffectCmd",
+      "ApplyPresetCmd",
+      "AssignPlaybackCmd",
+      "BackCmd",
+      "BatchCmd",
+      "BlackoutCmd",
+      "BlindCmd",
+      "ClearProgrammerCmd",
+      "DeleteCmd",
+      "FlashCmd",
+      "GoCmd",
+      "GotoCmd",
+      "HighlightCmd",
+      "OutputCmd",
+      "PageCmd",
+      "PatchFixtureCmd",
+      "PlaybackButtonCmd",
+      "ProgrammerFadeCmd",
+      "RecordCueCmd",
+      "RecordGroupCmd",
+      "RecordPresetCmd",
+      "RedoCmd",
+      "ReleaseAllCmd",
+      "ReleasePlaybackCmd",
+      "RemoveEffectCmd",
+      "SelectCmd",
+      "SelectPlaybackCmd",
+      "SetAttributeCmd",
+      "SetBpmCmd",
+      "SetCmd",
+      "SetFaderCmd",
+      "SetMasterCmd",
+      "TapCmd",
+      "TogglePlaybackCmd",
+      "TriggerPlaybackCmd",
+      "UndoCmd"
+    ],
+    "module": "busk.commands.types"
+  },
+  "CommandResult": {
+    "fields": [
+      "ok: bool",
+      "message: str",
+      "issues: tuple[Issue, ...]"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, *, ok: bool, message: str, issues: tuple[Issue, ...] = ()) -> None"
+    },
+    "module": "busk.session.session"
+  },
+  "CounterIds": {
+    "kind": "class",
+    "members": {
+      "__init__": "(self, start: int = 1) -> None",
+      "new": "(self, prefix: str, taken: Container[str] = ()) -> str"
+    },
+    "module": "busk.session.ids"
+  },
+  "DmxFrame": {
+    "fields": [
+      "seq: int",
+      "time: float",
+      "universes: Mapping[int, bytes]"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, *, seq: int, time: float, universes: Mapping[int, bytes]) -> None"
+    },
+    "module": "busk.runner"
+  },
+  "EngineSnapshot": {
+    "fields": [
+      "seq: int",
+      "time: float",
+      "grandMaster: float",
+      "blackout: bool",
+      "playbacks: tuple[PlaybackStatus, ...]",
+      "masterLevels: tuple[tuple[MasterId, float], ...]",
+      "speed: tuple[SpeedStatus, ...]",
+      "page: PageStatus | None",
+      "fadeTime: float | None",
+      "outputEnabled: bool"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, *, seq: int, time: float, grandMaster: float, blackout: bool, playbacks: tuple[PlaybackStatus, ...], masterLevels: tuple[tuple[MasterId, float], ...] = (), speed: tuple[SpeedStatus, ...] = (), page: PageStatus | None = None, fadeTime: float | None = None, outputEnabled: bool = True) -> None"
+    },
+    "module": "busk.engine.snapshot"
+  },
+  "FixtureProfile": {
+    "keys": {
+      "emitters": "NotRequired[list[Emitter]]",
+      "id": "TId",
+      "manufacturer": "str",
+      "model": "str",
+      "modes": "list[FixtureMode]",
+      "name": "str",
+      "notes": "NotRequired[str]",
+      "physical": "FixturePhysical",
+      "revision": "str",
+      "source": "Literal['gdtf', 'ofl', 'user']",
+      "tags": "NotRequired[list[str]]",
+      "wheels": "list[Wheel]"
+    },
+    "kind": "TypedDict",
+    "module": "busk.model.profile"
+  },
+  "IdFactory": {
+    "kind": "protocol",
+    "members": {
+      "new": "(self, prefix: str, taken: Container[str] = ()) -> str"
+    },
+    "module": "busk.session.ids"
+  },
+  "ImportFailed": {
+    "bases": [
+      "BuskError",
+      "ValueError"
+    ],
+    "kind": "exception",
+    "members": {},
+    "module": "busk.importers"
+  },
+  "ImportReport": {
+    "fields": [
+      "profile: FixtureProfile",
+      "notes: tuple[str, ...]"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, *, profile: FixtureProfile, notes: tuple[str, ...]) -> None"
+    },
+    "module": "busk.importers"
+  },
+  "Issue": {
+    "fields": [
+      "severity: Severity",
+      "path: str",
+      "message: str"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, severity: Severity, path: str, message: str) -> None",
+      "__str__": "(self) -> str"
+    },
+    "module": "busk.model.validate"
+  },
+  "LiveShow": {
+    "kind": "class",
+    "members": {
+      "__enter__": "(self) -> Self",
+      "__exit__": "(self, exc_type: type[BaseException] | None, exc: BaseException | None, traceback: TracebackType | None) -> None",
+      "__init__": "(self, show: Show, *, path: str | os.PathLike[str] | None = None, library: ProfileLibrary | None = None, output: bool = True, surfaces: bool = False, state_dir: str | os.PathLike[str] | None = None, tune_interpreter: bool = False) -> None",
+      "execute": "(self, line: str) -> Reply",
+      "frame": "property: DmxFrame | None",
+      "run_script": "(self, path: str | os.PathLike[str]) -> list[str]",
+      "save": "(self, path: str | os.PathLike[str] | None = None) -> CommandResult",
+      "show": "property: Show",
+      "snapshot": "property: EngineSnapshot | None",
+      "start": "(self) -> None",
+      "stop": "(self) -> None",
+      "submit": "(self, command: Command) -> CommandResult",
+      "warnings": "property: tuple[Issue, ...]"
+    },
+    "module": "busk.runner"
+  },
+  "OfflineShow": {
+    "kind": "class",
+    "members": {
+      "__init__": "(self, show: Show, *, path: str | os.PathLike[str] | None = None, library: ProfileLibrary | None = None, ids: IdFactory | None = None) -> None",
+      "execute": "(self, line: str) -> Reply",
+      "run_script": "(self, path: str | os.PathLike[str]) -> list[str]",
+      "save": "(self, path: str | os.PathLike[str] | None = None) -> CommandResult",
+      "show": "property: Show",
+      "snapshot": "property: EngineSnapshot",
+      "submit": "(self, command: Command) -> CommandResult",
+      "tick": "(self, t: float) -> DmxFrame",
+      "time": "property: float",
+      "warnings": "property: tuple[Issue, ...]"
+    },
+    "module": "busk.runner"
+  },
+  "PageStatus": {
+    "fields": [
+      "id: str",
+      "number: int",
+      "name: str"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, *, id: str, number: int, name: str) -> None"
+    },
+    "module": "busk.engine.snapshot"
+  },
+  "PlaybackStatus": {
+    "fields": [
+      "id: PlaybackId",
+      "number: int",
+      "name: str",
+      "state: PlaybackState",
+      "faderLevel: float",
+      "flash: bool",
+      "swop: bool",
+      "progress: float | None",
+      "fader: FaderFunction",
+      "chase: bool",
+      "cueCount: int",
+      "cue: str | None",
+      "cueName: str | None",
+      "next: str | None",
+      "seq: int"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, *, id: PlaybackId, number: int, name: str, state: PlaybackState, faderLevel: float, flash: bool, swop: bool = False, progress: float | None = None, fader: FaderFunction = 'master', chase: bool = False, cueCount: int = 1, cue: str | None = None, cueName: str | None = None, next: str | None = None, seq: int = 0) -> None"
+    },
+    "module": "busk.engine.snapshot"
+  },
+  "ProfileLibrary": {
+    "kind": "class",
+    "members": {
+      "__init__": "(self, directories: Sequence[str | os.PathLike[str]] = (), *, builtin: bool = True) -> None",
+      "__iter__": "(self) -> Iterator[FixtureProfile]",
+      "__len__": "(self) -> int",
+      "find": "(self, name: str) -> FixtureProfile | None",
+      "get": "(self, ident: str) -> FixtureProfile | None",
+      "problems": "attribute: list[str]"
+    },
+    "module": "busk.session.library"
+  },
+  "Reply": {
+    "fields": [
+      "text: str",
+      "ok: bool"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, text: str, ok: bool = True) -> None"
+    },
+    "module": "busk.console.console"
+  },
+  "ScriptError": {
+    "bases": [
+      "BuskError"
+    ],
+    "kind": "exception",
+    "members": {
+      "__init__": "(self, path: Path, line: int, text: str, output: list[str]) -> None",
+      "line": "attribute: int",
+      "output": "attribute: list[str]",
+      "path": "attribute: Path",
+      "text": "attribute: str"
+    },
+    "module": "busk.errors"
+  },
+  "Show": {
+    "keys": {
+      "bindings": "list[Binding]",
+      "cueLists": "list[CueList]",
+      "effects": "list[EffectTemplate]",
+      "fixtures": "list[Fixture]",
+      "groups": "list[Group]",
+      "masters": "list[Master]",
+      "meta": "ShowMeta",
+      "output": "OutputSettings",
+      "pages": "list[PlaybackPage]",
+      "park": "list[ParkEntry]",
+      "playbacks": "list[Playback]",
+      "presets": "list[Preset]",
+      "profiles": "list[FixtureProfile]",
+      "safety": "NotRequired[SafetySettings]",
+      "schemaVersion": "int",
+      "surfaces": "list[ControlSurface]",
+      "universes": "list[Universe]"
+    },
+    "kind": "TypedDict",
+    "module": "busk.model.show"
+  },
+  "ShowLoadError": {
+    "bases": [
+      "BuskError"
+    ],
+    "kind": "exception",
+    "members": {
+      "__init__": "(self, issues: list[Issue]) -> None",
+      "issues": "attribute: list[Issue]"
+    },
+    "module": "busk.persistence.show_file"
+  },
+  "SpeedStatus": {
+    "fields": [
+      "id: MasterId",
+      "name: str",
+      "bpm: float",
+      "multiplier: float",
+      "level: float",
+      "beatTime: float",
+      "beat: float"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, *, id: MasterId, name: str, bpm: float, multiplier: float, level: float, beatTime: float, beat: float) -> None",
+      "beats": "(self, t: float) -> float"
+    },
+    "module": "busk.engine.snapshot"
+  },
+  "UnsupportedFeature": {
+    "bases": [
+      "BuskError"
+    ],
+    "kind": "exception",
+    "members": {},
+    "module": "busk.compiler.compile"
+  },
+  "load_show": {
+    "kind": "function",
+    "module": "busk.persistence.show_file",
+    "signature": "(path: str | os.PathLike[str]) -> tuple[Show, list[Issue]]"
+  },
+  "new_show": {
+    "kind": "function",
+    "module": "busk.persistence.show_file",
+    "signature": "(title: str, *, cid: str | None = None, now: datetime | None = None, ids: IdFactory | None = None) -> Show"
+  },
+  "read_gdtf": {
+    "kind": "function",
+    "module": "busk.importers.gdtf",
+    "signature": "(path: str | os.PathLike[str], *, manufacturer: str | None = None) -> ImportReport"
+  },
+  "read_ofl": {
+    "kind": "function",
+    "module": "busk.importers.ofl",
+    "signature": "(path: str | os.PathLike[str], *, manufacturer: str | None = None) -> ImportReport"
+  },
+  "save_show": {
+    "kind": "function",
+    "module": "busk.persistence.show_file",
+    "signature": "(show: Show, path: str | os.PathLike[str], *, now: datetime | None = None, backups: bool = True) -> Path | None"
+  },
+  "validate_show": {
+    "kind": "function",
+    "module": "busk.model.validate",
+    "signature": "(text: str | bytes) -> tuple[Show | None, list[Issue]]"
+  }
+}

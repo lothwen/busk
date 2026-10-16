@@ -26,4 +26,11 @@ module layout follows the spec's sections:
 This ``__init__`` deliberately re-exports nothing: ``busk.commands.types``
 imports from the model and ``model.surface`` imports the command types, so
 eagerly importing every submodule here would create an import cycle.
+
+What is public: the ``TypedDict``\\ s and type aliases of every module here,
+which describe the show file. ``busk.Show`` and ``busk.FixtureProfile`` are
+re-exported; import the others from their modules (``from busk.model.cue
+import Cue``). Validate a document with ``busk.validate_show``, which returns
+``busk.Issue``\\ s. The rest (the registry's tables, the validation passes,
+the helpers) is internal (see :mod:`busk`), and may change in any release.
 """
