@@ -76,10 +76,13 @@ Open it on a phone on the same network. The key in the address is created once i
 another site are refused.
 
 The page shows the current page's strips (a fader to drag, the buttons by function, the
-current cue); the header has the page arrows, blackout, the first grand master, TAP with
-the tempo and a beat dot, the other masters and the fade time. It sends the same
-commands as a controller, so both drive the show together, and it reconnects by itself
-(after a console restart too).
+current cue and, in a stack, the cue GO goes to next); the header has the page arrows,
+the page name (tap it to choose a page from a list), blackout, the first grand master, TAP
+with the tempo and a beat dot, the other masters and the fade time. On a phone held
+sideways the header takes one row, each fader sits beside its buttons, and the masters
+open with the **Masters** button. While `output off` holds, a red OUTPUT OFF bar says so.
+It sends the same commands as a controller, so both drive the show together, and it
+reconnects by itself (after a console restart too).
 
 A phone sends **performance commands only**: it plays the show but cannot edit it or the
 programmer. The buttons it holds are released when it disconnects, so a phone that loses

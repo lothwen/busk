@@ -152,12 +152,14 @@ def test_hello_show_and_state_on_connect(link: Link) -> None:
     assert show["playbacks"] == [
         {"id": "pb-song", "number": source[0]["number"], "name": source[0]["name"],
          "fader": "master", "buttons": ["go", "back", "goto", "select"],
-         "gotoCue": {"number": "2", "name": "Chorus"}, "cueCount": 2},
+         "gotoCue": {"number": "2", "name": "Chorus"}, "cueCount": 2,
+         "cues": [{"number": "1", "name": "Verse"}, {"number": "2", "name": "Chorus"}]},
         {"id": "pb-blue", "number": source[1]["number"], "name": source[1]["name"],
          "fader": "master", "buttons": ["toggle", "flash", "swop"], "gotoCue": None,
-         "cueCount": 1},
+         "cueCount": 1, "cues": [{"number": "1", "name": "Blue"}]},
         {"id": "pb-pulse", "number": source[2]["number"], "name": source[2]["name"],
-         "fader": "size", "buttons": ["toggle"], "gotoCue": None, "cueCount": 1},
+         "fader": "size", "buttons": ["toggle"], "gotoCue": None, "cueCount": 1,
+         "cues": [{"number": "1", "name": "Pulse"}]},
     ]  # fmt: skip
     masters = {m["id"]: m for m in show["masters"]}
     assert list(masters) == ["m-gm", "m-speed"]

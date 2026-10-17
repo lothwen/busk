@@ -338,8 +338,8 @@ connection reads on its handler thread and writes on a writer thread of its own,
 pongs and the close frame go first, replies queue (64 at most) and each state message
 replaces the one not yet sent, so a slow phone gets the newest state, not a backlog, and a
 phone that takes nothing for 2 s is dropped. The protocol is JSON: on connect a `hello`
-(the protocol version and the engine's time), the `show` (pages, their playbacks and
-buttons, the masters) and then whenever the compiled show changes, and the `state` (the
+(the protocol version and the engine's time), the `show` (pages, playbacks with buttons
+and cues, the masters) and then whenever the compiled show changes, and the `state` (the
 snapshot) at most 30 times a second. A phone sends performance commands (`PAGE`,
 `SET_FADER`, `PLAYBACK_BUTTON`, `SET_MASTER`, `TAP`, `BLACKOUT`, …) and gets an `error`
 with the command's id when one is refused. Show edits and programmer commands are refused:

@@ -14,11 +14,23 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   Tab completes commands, keywords and names in quotes, and lists what may come next. `?`
   prints that and the forms of the command. Both follow the parser, the show and the
   libraries.
+- The web remote ([the web remote](docs/surfaces.md#the-web-remote)): tap the page name to
+  choose a page from a list; a stack's strip shows the cue GO goes to next; a red OUTPUT
+  OFF bar shows while `output off` holds. The `show` message lists each playback's `cues`
+  (number and name).
 
 ### Changed
 
 - Ctrl+C at the console prompt: on an empty line it now says how to quit, and a second
   Ctrl+C in a row quits like `quit`. Ctrl+C on a typed line still only clears it.
+
+### Fixed
+
+- The web remote on a phone held sideways: the strips were squeezed until their names
+  vanished and their buttons spilled out. The header now takes one row, each fader sits
+  beside its buttons, and the masters open with a **Masters** button.
+- The web remote showed a TAP button that did nothing in a show without a speed master
+  that takes taps.
 
 ## [0.1.0] - Unreleased
 

@@ -12,7 +12,8 @@ Server →    When
             the beat anchors on its own clock
 ``show``    on connect, and when the compiled show changes (by identity):
             ``pages``, ``playbacks`` and ``masters`` (:func:`show_message`;
-            a master's ``tap`` says whether TAP drives it)
+            a playback's ``cues`` name the cues the ``state`` numbers, a
+            master's ``tap`` says whether TAP drives it)
 ``state``   on connect, and when the engine publishes a new snapshot, at
             most :data:`STATE_HZ` times a second: the
             :class:`~busk.engine.snapshot.EngineSnapshot` as JSON
@@ -116,6 +117,7 @@ def show_message(compiled: CompiledShow) -> Message:
                 "buttons": list(playback.buttons),
                 "gotoCue": None if goto is None else {"number": goto.number, "name": goto.name},
                 "cueCount": len(cues),
+                "cues": [{"number": cue.number, "name": cue.name} for cue in cues],
             }
         )
     return {
