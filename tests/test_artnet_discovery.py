@@ -440,6 +440,26 @@ def test_a_flood_is_read_a_bounded_batch_per_cycle(lan: Lan) -> None:
         sender.close()
 
 
+def test_without_broadcast_routes_nodes_are_forgotten_and_polls_neither_sent_nor_answered(
+    lan: Lan,
+) -> None:
+    unicast = opened(lan.network, route(destination={"kind": "unicast", "host": "127.0.0.2"}))
+    sender = opened(lan.network)
+    try:
+        announce(lan, 0.0, poll_reply(ip="127.0.0.2", outputs=(1,)))
+        assert len(lan.network.nodes) == 1
+        sender.close()  # the last broadcast route: discovery is off
+        assert lan.network.nodes == {}
+        lan.node.send(poll(), ("127.0.0.1", lan.network.local_port))
+        lan.network.service(2 * POLL_INTERVAL)
+        lan.node.pump()
+        assert (len(lan.node.polls), lan.node.answers) == (1, [])  # only announce's poll
+        unicast.send(DATA, True, 0.0)
+        assert [p.sequence for p in lan.unicast.drain(0.05)] == [1]
+    finally:
+        unicast.close()
+
+
 # -------------------------------------------------------------- a taken port
 
 

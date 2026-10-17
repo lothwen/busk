@@ -53,9 +53,14 @@ line; Phase 8 ([plan](docs/phase-8-plan.md)) made it a library too.
 - The per-phase example scripts (`phase3-build.busk` … `phase7-safety.busk`), the Phase 1
   values file and the Phase 2 demo moved from `examples/` to `tests/fixtures/`;
   `examples/phase1-demo.json` is now `examples/real-fixtures.json`.
+- Art-Net binds UDP 6454 only while a broadcast route is open, since only broadcast routes
+  use discovery. A show whose Art-Net routes are all unicast sends from another port, so
+  a receiver on the same machine, such as a visualiser, can start before or after busk;
+  it no longer prints `Art-Net: cannot listen on UDP port 6454 …`, and it answers no
+  ArtPolls.
 
-The command line is unchanged: every command, flag, exit code and output line is the
-same as before Phase 8.
+The command line is otherwise unchanged: every command, flag, exit code and output line
+is the same as before Phase 8.
 
 [Unreleased]: https://github.com/lothwen/busk/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/lothwen/busk/releases/tag/v0.1.0

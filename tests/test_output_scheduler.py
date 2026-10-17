@@ -12,6 +12,7 @@ import io
 import socket
 import threading
 import uuid
+from ipaddress import IPv4Network
 from typing import Any, Literal, cast
 
 import pytest
@@ -22,6 +23,7 @@ from busk.engine.clock import FakeClock
 from busk.engine.loop import Frame
 from busk.model.common import UniverseId
 from busk.model.output import OutputSettings
+from busk.output import artnet
 from busk.output.artnet import ArtNetNetwork
 from busk.output.console import ConsoleOutput
 from busk.output.driver import DriverStatus
@@ -367,14 +369,17 @@ def test_art_net_routes_send_changes_at_once_and_keep_alives_every_second(
 
 
 def test_build_routes_reports_a_taken_art_net_port_after_the_routes(
-    artnet_receiver: ArtNetReceiver,
+    artnet_receiver: ArtNetReceiver, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr(artnet, "broadcast_address", lambda iface: "127.0.0.1")
+    monkeypatch.setattr(artnet, "interface_network", lambda iface: IPv4Network("127.0.0.0/8"))
+    broadcast = {"kind": "broadcast", "iface": "eth9"}  # only broadcast routes listen
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as other:  # another Art-Net program
         other.bind(("", 0))
         taken = other.getsockname()[1]
         network = ArtNetNetwork(port=taken)
         routes, notices = build_routes(
-            settings(artnet_route("r1"), sacn_route("r2", enabled=False)),
+            settings(artnet_route("r1", destination=broadcast), sacn_route("r2", enabled=False)),
             (STAGE,),
             artnet=network,
         )

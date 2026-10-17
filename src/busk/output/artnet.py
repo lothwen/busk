@@ -57,9 +57,16 @@ are reported as notices, which the scheduler prints::
 
 **The socket.** All Art-Net traffic of an output scheduler goes through one
 UDP socket, owned by :class:`ArtNetNetwork`. It opens with the first Art-Net
-route and closes with the last. It is bound to the Art-Net port with
-``SO_REUSEADDR`` and has ``SO_BROADCAST``. If the port is taken (another
-Art-Net program), it is bound to an ephemeral port instead, with a notice,
+route and closes with the last. It has ``SO_REUSEADDR`` and ``SO_BROADCAST``.
+While a broadcast route is open it is bound to the Art-Net port, where nodes
+answer polls. Otherwise it is bound to an ephemeral port: unicast routes
+need no discovery, and a receiver on this machine (a visualiser) can then
+have the Art-Net port, whichever program starts first. The cost is that
+without a broadcast route this console answers no polls. When the first
+broadcast route opens or the last one closes, the socket is opened again on
+the other port (senders read :attr:`ArtNetNetwork.sock` on every send) and
+the node table is emptied. If the Art-Net port is taken (another Art-Net
+program), the socket is bound to an ephemeral port instead, with a notice,
 and discovery is off: nodes answer polls on the Art-Net port, which this
 console cannot hear. It is non-blocking: a full send buffer is a failed send,
 never a stall of the output thread.
@@ -320,14 +327,15 @@ class ArtNetNetwork:
     """
 
     def __init__(self, *, port: int | None = None, name: str = "busk") -> None:
-        """``port`` is the local UDP port to bind: :data:`ARTNET_PORT` (read at
-        open) unless a test passes 0 for an ephemeral one. ``name`` is what
-        this console's ArtPollReply says (the scheduler sets it from the
-        show's ``sacnSourceName``)."""
+        """``port`` is the local UDP port to bind while a broadcast route is
+        open: :data:`ARTNET_PORT` (read at open) unless a test passes 0 for an
+        ephemeral one. ``name`` is what this console's ArtPollReply says (the
+        scheduler sets it from the show's ``sacnSourceName``)."""
         self._port = port
         self.name = name
         self._socket: socket.socket | None = None
         self._users = 0
+        self._for_polls = False  # the socket was opened for broadcast routes
         self._listening = False  # bound to the Art-Net port: discovery is on
         self._polled: Counter[str] = Counter()  # broadcast address → routes using it
         self._last_poll = -math.inf
@@ -350,20 +358,28 @@ class ArtNetNetwork:
         """The UDP port the socket is bound to; ``None`` while no route uses it."""
         return None if self._socket is None else int(self._socket.getsockname()[1])
 
-    def acquire(self, poll: str | None = None) -> socket.socket:
-        """The socket, opened for the first user. ``poll`` is a broadcast
-        address to send ArtPolls to while this user remains. Raises
+    @property
+    def sock(self) -> socket.socket:
+        """The socket, while a route uses it. Broadcast routes opening and
+        closing replace it (see the module docs), so senders read it on
+        every send."""
+        assert self._socket is not None
+        return self._socket
+
+    def acquire(self, poll: str | None = None) -> None:
+        """Join, opening the socket for the first user. ``poll`` (a broadcast
+        route's) is a broadcast address to send ArtPolls to while this user
+        remains; the first one moves the socket to the Art-Net port. Raises
         ``OSError`` if no UDP socket can be made at all."""
-        if self._socket is None:
-            self._socket = self._open()
+        self._rebind(poll is not None or bool(self._polled))
         self._users += 1
         if poll is not None:
             self._polled[poll] += 1
-        return self._socket
 
     def release(self, poll: str | None = None) -> None:
         """One user is done (with the ``poll`` it acquired with); the last
-        one closes the socket and empties the node table."""
+        one closes the socket and empties the node table, and the last
+        poll moves the socket off the Art-Net port."""
         if poll is not None:
             self._polled[poll] -= 1
             if not self._polled[poll]:
@@ -374,6 +390,8 @@ class ArtNetNetwork:
             self._socket = None
             self._seen.clear()
             self._update({})
+        else:
+            self._rebind(bool(self._polled))
 
     def move_poll(self, old: str, new: str) -> None:
         """A user's broadcast address changed from ``old`` to ``new``: poll
@@ -465,13 +483,34 @@ class ArtNetNetwork:
     def _notice(self, text: str) -> None:
         self.notices.append(RouteNotice(text=f"Art-Net: {text}", failed=False))
 
-    def _open(self) -> socket.socket:
+    def _rebind(self, polls: bool) -> None:
+        """Open the socket, on the Art-Net port if broadcast routes ``polls``;
+        open it again if that changed (see the module docs). Raises
+        ``OSError`` if no socket can be made, keeping the old one."""
+        if self._socket is not None and polls == self._for_polls:
+            return
+        sock = self._open(polls)
+        if self._socket is not None:
+            self._socket.close()
+            self._seen.clear()
+            self._update({})
+        self._socket = sock
+        self._for_polls = polls
+
+    def _open(self, listen: bool) -> socket.socket:
+        """A new socket, bound to the Art-Net port if ``listen`` (to an
+        ephemeral one, with a notice, if that is taken), else to an ephemeral
+        port."""
         port = ARTNET_PORT if self._port is None else self._port
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
             sock.setblocking(False)
+            if not listen:
+                sock.bind(("", 0))
+                self._listening = False
+                return sock
             try:
                 sock.bind(("", port))
             except OSError as exc:
@@ -527,7 +566,7 @@ class ArtNetSender:
         self._policy = SendPolicy(repeats=0, keepalive=KEEPALIVE_S)
         self._packet = art_dmx(0, self._port_address, bytes(UNIVERSE_SIZE))
         self._data = memoryview(self._packet)[DATA:]  # also pins the packet's size
-        self._socket: socket.socket | None = None  # None until opened, and once closed
+        self._joined = False  # in the network: opened, and not closed since
         self._port = ARTNET_PORT
         self._broadcast = ""  # a broadcast route's fallback address
         self._lan: IPv4Network | None = None  # a broadcast route's interface network
@@ -568,17 +607,17 @@ class ArtNetSender:
         try:
             if destination["kind"] == "unicast":
                 self._addresses = [(resolve(destination["host"]), self._port)]
-                sock = self._network.acquire()
+                self._network.acquire()
             else:
                 self._broadcast = broadcast_address(destination["iface"])
                 self._lan = interface_network(destination["iface"])
-                sock = self._network.acquire(poll=self._broadcast)
+                self._network.acquire(poll=self._broadcast)
                 self._version = -1  # the destinations follow the new address
                 self._recheck_at = None  # the first send schedules the next read
         except OSError as exc:
             self._state = (False, str(exc))
             return
-        self._socket = sock
+        self._joined = True
         if self._state is _NOT_OPEN:
             self._state = _OK
 
@@ -586,8 +625,7 @@ class ArtNetSender:
         """Transmit ``data`` (512 bytes) if the send policy says a packet is
         due: once to each destination. Does nothing on a route that isn't
         open or was closed."""
-        sock = self._socket
-        if sock is None or not self._policy.due(changed, now):
+        if not self._joined or not self._policy.due(changed, now):
             return
         if self._lan is not None:
             if self._recheck_at is None:
@@ -600,6 +638,7 @@ class ArtNetSender:
                 self._addresses = [(ip, self._port) for ip in nodes or (self._broadcast,)]
         self._packet[SEQUENCE] = self._network.sequence(self._port_address)
         self._data[:] = data
+        sock = self._network.sock
         for address in self._addresses:
             try:
                 sock.sendto(self._packet, address)
@@ -616,9 +655,9 @@ class ArtNetSender:
     def close(self) -> None:
         """Leave the network (nothing is sent: Art-Net has no stream end).
         Idempotent; a closed route never sends again."""
-        if self._socket is None:
+        if not self._joined:
             return
-        self._socket = None
+        self._joined = False
         self._network.release(poll=self._broadcast or None)
 
     def status(self) -> DriverStatus:

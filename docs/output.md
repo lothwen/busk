@@ -64,9 +64,12 @@ node (`unicast 10.0.0.20`). Packets go out on change and as a keep-alive once a 
 Every 2.5 s busk polls the network (ArtPoll). A node on the interface's network that
 answers with an output on the route's Port-Address then gets that universe unicast instead
 of the broadcast; a node silent for 10 s is forgotten (broadcast again). busk answers polls
-too, as a controller named after the show's sACN source name. It listens on UDP 6454; if
-another Art-Net program holds the port, busk sends from another one, without discovery,
-and says so.
+too, as a controller named after the show's sACN source name. For this it listens on UDP
+6454, but only while a broadcast route is open. A show whose Art-Net routes are all
+unicast sends from another port and leaves 6454 free, so a receiver on the same machine (a
+visualiser, say) can listen there, whichever program starts first; such a show answers no
+polls. If another Art-Net program holds the port when a broadcast route needs it, busk
+sends from another one, without discovery, and says so.
 
 Art-Net nodes keep their last frame when busk stops or turns the output off.
 

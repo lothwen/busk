@@ -252,8 +252,8 @@ TupperDMX-Simul.
    summary says **pass**: 0 output drops, every kill recovered, memory within bounds. Keep
    the report and, on a failure, the `soak-24h/` directory next to it (its event logs
    replay what the engine saw).
-2. **TupperDMX on imported profiles.** Start TupperDMX-Simul first (it holds port 6454),
-   then:
+2. **TupperDMX on imported profiles.** Start TupperDMX-Simul (before or after busk: the
+   show's unicast route leaves port 6454 to it), then:
 
    ```
    busk import ofl ~/Documents/TupperDMX/demo.show/fixtures/*.json --manufacturer TupperDMX --out /tmp/tdmx
@@ -311,7 +311,7 @@ Before tagging `v0.1.0` (phase-8-plan step 13):
    `uv run python -c "import busk; print(busk.load_show)"` works.
 2. **The guide's examples** ([`docs/library.md`](library.md)) run there unchanged, from a
    copy of `examples/` and `tests/fixtures/`.
-3. **TupperDMX through `LiveShow`.** Start TupperDMX-Simul first (it holds port 6454). In
+3. **TupperDMX through `LiveShow`.** Start TupperDMX-Simul. In
    Python: `show, _ = busk.load_show("examples/tupperdmx/tupper-demo.show")`, then
    `with busk.LiveShow(show) as live: live.execute("fader 1 1")`, and wait a few seconds in
    the block. The simulator shows the look, and lets go when the block ends.

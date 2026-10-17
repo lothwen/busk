@@ -227,20 +227,64 @@ def test_the_socket_opens_with_the_first_route_and_closes_with_the_last(
     assert network.local_port is None
 
 
-def test_the_socket_is_bound_to_the_art_net_port_for_broadcast() -> None:
+def free_port() -> int:
+    """A UDP port nothing is bound to, standing in for the Art-Net port."""
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
         probe.bind(("", 0))
-        free = probe.getsockname()[1]
+        port: int = probe.getsockname()[1]
+        return port
+
+
+def test_the_socket_is_bound_to_the_art_net_port_for_broadcast() -> None:
+    free = free_port()
     network = ArtNetNetwork(port=free)
-    sock = network.acquire()
+    network.acquire(poll="127.0.0.1")  # a broadcast route
     try:
+        sock = network.sock
         assert sock.getsockname() == ("0.0.0.0", free)
         assert sock.getsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST)
         assert sock.getsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR)
         assert not sock.getblocking()
         assert network.notices == []
     finally:
-        network.release()
+        network.release(poll="127.0.0.1")
+
+
+def test_unicast_routes_leave_the_art_net_port_free(artnet_receiver: ArtNetReceiver) -> None:
+    free = free_port()
+    network = ArtNetNetwork(port=free)
+    sender = opened(network)
+    try:
+        assert network.local_port not in (None, free)
+        assert network.notices == []
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as visualiser:
+            visualiser.bind(("", free))  # without SO_REUSEADDR, as TupperDMX-Simul binds
+        sender.send(DATA, True, 0.0)
+        assert artnet_receiver.receive().sequence == 1
+    finally:
+        sender.close()
+
+
+def test_the_socket_is_on_the_art_net_port_only_while_a_broadcast_route_is_open(
+    artnet_receiver: ArtNetReceiver,
+) -> None:
+    free = free_port()
+    network = ArtNetNetwork(port=free)
+    unicast = opened(network)
+    try:
+        network.acquire(poll="127.0.0.1")  # a broadcast route opens
+        assert network.local_port == free
+        unicast.send(DATA, True, 0.0)  # through the new socket
+        network.release(poll="127.0.0.1")  # and closes
+        port = network.local_port
+        assert port not in (None, free)
+        unicast.send(DATA, True, 0.1)
+        assert [p.sequence for p in artnet_receiver.drain()] == [1, 2]
+        assert artnet_receiver.sources == [("127.0.0.1", free), ("127.0.0.1", port)]
+        assert unicast.status().errors == 0
+    finally:
+        unicast.close()
+    assert network.local_port is None
 
 
 def test_a_taken_port_sends_from_another_one_with_a_notice() -> None:
@@ -248,7 +292,7 @@ def test_a_taken_port_sends_from_another_one_with_a_notice() -> None:
         other.bind(("", 0))
         taken = other.getsockname()[1]
         network = ArtNetNetwork(port=taken)
-        network.acquire()
+        network.acquire(poll="127.0.0.1")  # a broadcast route
         try:
             port = network.local_port
             assert port not in (None, taken)
@@ -260,7 +304,7 @@ def test_a_taken_port_sends_from_another_one_with_a_notice() -> None:
                 )
             ]
         finally:
-            network.release()
+            network.release(poll="127.0.0.1")
 
 
 # -------------------------------------------------------------- destinations

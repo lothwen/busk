@@ -430,9 +430,7 @@ def test_art_net_routes_follow_live_edits(artnet_receiver: ArtNetReceiver) -> No
     stage = live.engine.compiled.universes[0]
     described = f"U{stage.number} {stage.name} → port address 0.0.3, unicast 127.0.0.1"
     assert output.notices.get().text == f"Art-Net r-a: {described}"
-    taken = output.notices.get()  # the network opened during the edit
-    assert taken.failed
-    assert taken.text.startswith("Art-Net: cannot listen on UDP port ")
+    # Nothing about the taken port: unicast routes never ask for it.
 
     # A second route on the Port-Address joins the run's network: one socket, one count.
     live.do({"type": "ADD", "path": ["output", "routes"], "value": art_net_route("r-b")})

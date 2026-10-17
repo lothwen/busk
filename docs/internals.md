@@ -371,8 +371,10 @@ reports changes. On shutdown the output
 thread makes a final pass, then closes every sender, which sends 3 Stream_Terminated
 packets (if it ever sent a packet) and closes its socket.
 
-**Art-Net** (`busk.output.artnet`). One socket on UDP 6454 (`ArtNetNetwork`) is
-shared by the Art-Net routes, opened with the first and closed with the last. A route
+**Art-Net** (`busk.output.artnet`). One socket (`ArtNetNetwork`) is shared by the
+Art-Net routes, opened with the first and closed with the last. It is bound to UDP 6454
+while a broadcast route is open and to an ephemeral port otherwise, and is opened again
+on the other port when the first broadcast route opens or the last one closes. A route
 sends a 530-byte ArtDmx per universe with a sequence number per Port-Address, on change
 and as a keep-alive once a second. Each output cycle the network reads what arrived (64
 datagrams at most, so a flood cannot stall the output), answers ArtPoll with an
