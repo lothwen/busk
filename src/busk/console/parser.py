@@ -139,14 +139,21 @@ library's other revision and moves its fixtures to it, refused when a
 fixture's mode is missing from that revision. ``list park`` lists what is
 parked; ``list profiles`` says which embedded profiles the library has in
 another revision.
+
+Completion (Tab and ``?`` at the prompt, :mod:`busk.console.prompt`).
+:func:`expected` parses a line up to the word being typed. Where the line
+runs out, the parser notes what it was looking for: keywords, names in
+quotes from the show and the libraries, and descriptions of the values. It
+also reports whether the line runs as it is, or the mistake that stops it.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
 import re
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Final, cast
 
@@ -155,7 +162,7 @@ from busk.commands.types import Command, EditPath
 from busk.model.attributes import ATTRIBUTES, AttributeDefinition
 from busk.model.cue import CUE_NUMBER
 from busk.model.show import Show
-from busk.session.ids import IdFactory
+from busk.session.ids import IdFactory, RandomIds
 from busk.session.library import EffectDefaults, EffectLibrary, ProfileLibrary, builtin_effects
 from busk.session.programmer import EMPTY, Programmer, split_slot_key
 
@@ -223,6 +230,11 @@ class ParseError(Exception):
         self.message = message
 
 
+class _Unfinished(ParseError):
+    """The line ends where the command needs more (:func:`expected` tells it
+    from a mistake before the end)."""
+
+
 @dataclass(frozen=True)
 class Context:
     """What parsing reads: the current show, the profile library, the id
@@ -246,6 +258,47 @@ def parse(line: str, context: Context) -> Action:
     if not tokens:
         return Nothing()
     return _Parser(line, tokens, comment, context).command()
+
+
+@dataclass(frozen=True)
+class Expected:
+    """What may follow a line (:func:`expected`)."""
+
+    words: tuple[str, ...] = ()
+    """Keywords and names that may come next, as typed (names in quotes)."""
+    values: tuple[str, ...] = ()
+    """Anything else that may come next, described: ``a fixture number``."""
+    runnable: bool = False
+    """The line is a whole command as it is."""
+    error: str | None = None
+    """The mistake that stops the line. ``words`` may still be set, when the
+    mistake shows only at the end (``record slot 1`` on a slot in use)."""
+
+
+def expected(line: str, context: Context) -> Expected:
+    """What may follow ``line``, a line cut where its next word starts (Tab
+    completion and ``?``). Like :func:`parse`, it changes nothing: ids come
+    from a factory of its own."""
+    try:
+        tokens, end = tokenize(line)
+    except ParseError as exc:
+        return Expected(error=exc.message)
+    if end < len(line):  # in a comment
+        return Expected()
+    if not tokens:
+        return Expected(COMMANDS)
+    parser = _Parser(line, tokens, end, replace(context, ids=RandomIds()))
+    runnable, error = False, None
+    try:
+        parser.command()
+        runnable = True
+    except _Unfinished:
+        pass
+    except ParseError as exc:
+        error = exc.message
+    return Expected(
+        tuple(dict.fromkeys(parser.offers)), tuple(dict.fromkeys(parser.needs)), runnable, error
+    )
 
 
 # ---------------------------------------------------------------- tokenizer
@@ -348,6 +401,8 @@ class _Parser:
         self.k = 0
         self.ctx = context
         self.show = context.show
+        self.offers: list[str] = []  # what may come where the line ends: words…
+        self.needs: list[str] = []  # …and anything else, described (see `expected`)
 
     # ------------------------------------------------------------ cursor
 
@@ -355,19 +410,37 @@ class _Parser:
         index = self.k + offset
         return self.tokens[index] if index < len(self.tokens) else None
 
-    def take(self, what: str) -> Token:
-        token = self.peek()
-        if token is None:
-            raise ParseError(f"expected {what}")
-        self.k += 1
-        return token
+    def ending(self, *offers: str, need: str = "") -> bool:
+        """Whether the line ends here. If it does, note what may come next
+        for :func:`expected`: ``offers``, words as typed, and ``need``, a
+        description of anything else."""
+        if self.peek() is not None:
+            return False
+        self.offers += offers
+        if need:
+            self.needs.append(need)
+        return True
 
-    def word(self, what: str) -> str:
-        return self.take(what).lower
+    def fail(self, message: str) -> ParseError:
+        """The error for ``message``: :class:`_Unfinished` where the line ends."""
+        return _Unfinished(message) if self.peek() is None else ParseError(message)
+
+    def take(self, what: str, *names: str) -> Token:
+        """The next token, ``what``. Where the line ends, :func:`expected`
+        offers ``names`` for it, else describes it as ``what``."""
+        if self.ending(*names, need="" if names else what):
+            raise _Unfinished(f"expected {what}")
+        self.k += 1
+        return self.tokens[self.k - 1]
+
+    def word(self, what: str, *names: str) -> str:
+        return self.take(what, *names).lower
 
     def keyword(self, *options: str) -> str | None:
         token = self.peek()
-        if token is not None and token.lower in options:
+        if token is None:
+            self.offers += options
+        elif token.lower in options:
             self.k += 1
             return token.lower
         return None
@@ -377,7 +450,7 @@ class _Parser:
         if found is None:
             token = self.peek()
             got = f", got {token.text!r}" if token else ""
-            raise ParseError(f"expected {' or '.join(options)}{got}")
+            raise self.fail(f"expected {' or '.join(options)}{got}")
         return found
 
     def integer(self, what: str) -> int:
@@ -414,6 +487,7 @@ class _Parser:
         """An optional fade curve: a name, or ``bezier x1 y1 x2 y2``."""
         token = self.peek()
         if token is None:
+            self.offers += (*_CURVES.values(), "bezier")
             return None
         if token.lower == "bezier":
             self.k += 1
@@ -436,7 +510,8 @@ class _Parser:
         """The raw text from the next token to the comment (for JSON values)."""
         token = self.peek()
         if token is None:
-            raise ParseError("expected a value")
+            self.needs.append("a value")
+            raise _Unfinished("expected a value")
         self.k = len(self.tokens)
         return self.line[token.start : self.end].strip()
 
@@ -483,10 +558,9 @@ class _Parser:
 
     def master(self, what: str = 'a master name in quotes, e.g. "Speed 1"') -> str:
         """A master of any kind, named in quotes (any case)."""
-        token = self.peek()
-        if token is None or not token.quoted:
+        token = self.take(what, *_quoted(m["name"] for m in self.show["masters"]))
+        if not token.quoted:
             raise ParseError(f"expected {what}")
-        self.k += 1
         folded = token.text.casefold()
         found = next((m for m in self.show["masters"] if m["name"].casefold() == folded), None)
         if found is None:
@@ -674,7 +748,7 @@ class _Parser:
         return self.submit({"type": "SET_ATTRIBUTE", "attribute": definition.id, "value": source})
 
     def attribute(self) -> AttributeDefinition:
-        token = self.take("an attribute")
+        token = self.take("an attribute", *ATTRIBUTES)
         name = _ATTRIBUTE_NAMES.get(token.lower)
         if name is None:
             raise ParseError(f"unknown attribute {token.text!r}")
@@ -723,12 +797,15 @@ class _Parser:
             return self._template_add()
         if verb == "clear":
             return self.submit({"type": "REMOVE_EFFECT"})
-        return self.submit({"type": "REMOVE_EFFECT", "id": self.take("an effect id").text})
+        ids = (effect["id"] for effect in self.ctx.programmer.effects)
+        return self.submit({"type": "REMOVE_EFFECT", "id": self.take("an effect id", *ids).text})
 
     def _effect_add(self) -> Action:
         """``effect add "<template>" [options]``: an instance of the template
         on the selection, after embedding a library template (module docs)."""
-        token = self.take('a template name in quotes, e.g. "Circle"')
+        names = [t["name"] for t in self.show["effects"]]
+        names += [effect.template["name"] for effect in self.ctx.effects]
+        token = self.take('a template name in quotes, e.g. "Circle"', *_quoted(names))
         template, defaults, embed = self._template(token.text)
         options: dict[str, Any] = {}
         while (option := self.keyword(*_EFFECT_OPTIONS)) is not None:
@@ -849,12 +926,12 @@ class _Parser:
         """``effect template add "<name>" <JSON layers>``."""
         name = self._name()
         if name is None:
-            raise ParseError("expected a template name in quotes")
+            raise self.fail("expected a template name in quotes")
         if any(t["name"].casefold() == name.casefold() for t in self.show["effects"]):
             raise ParseError(f"a template named {name!r} exists")
         example = 'expected the layers as a JSON list, e.g. [{"attribute": "pan", …}]'
-        if self.peek() is None:
-            raise ParseError(example)
+        if self.ending(need="the layers as a JSON list"):
+            raise _Unfinished(example)
         try:
             layers = json.loads(self.rest())
         except ValueError as exc:
@@ -886,11 +963,18 @@ class _Parser:
                 while (family := self.keyword(*_FAMILIES)) is not None:
                     found.families.append(family)
                 if not found.families:
-                    raise ParseError(
+                    raise self.fail(
                         f"expected attribute families after only ({', '.join(_FAMILIES)})"
                     )
             else:
                 raise ParseError(f"unexpected {token.text!r}")
+        self.ending(  # the options still free
+            *(_MERGES if "merge" in allowed and found.merge is None else ()),
+            *(_SCOPES if "scope" in allowed and found.scope is None else ()),
+            *(("only",) if "only" in allowed and not found.families else ()),
+            *(("freeze",) if "freeze" in allowed and not found.freeze else ()),
+            need="a name in quotes" if "name" in allowed and found.name is None else "",
+        )
         return found
 
     def _cmd_record(self) -> Action:
@@ -1048,9 +1132,14 @@ class _Parser:
         last = self.integer("a fixture number after thru") if self.keyword("thru") else first
         if last < first:
             raise ParseError("fixture add needs ascending numbers: N thru M with M ≥ N")
-        token = self.take('a profile name in quotes, e.g. "Generic Spot 16ch"')
+        names = [p["name"] for p in self.show["profiles"]] + [p["name"] for p in self.ctx.library]
+        token = self.take('a profile name in quotes, e.g. "Generic Spot 16ch"', *_quoted(names))
         self.expect("mode")
-        mode_name = self.take("a mode name").text
+        offered: list[str] = []
+        if self.peek() is None:  # Tab offers the profile's modes
+            with contextlib.suppress(ParseError):
+                offered = [_word(m["name"]) for m in self._profile(token.text)[0]["modes"]]
+        mode_name = self.take("a mode name", *offered).text
         patch: tuple[str, int] | None = None
         if self.keyword("at"):
             patch = self._address()
@@ -1192,7 +1281,7 @@ class _Parser:
         else:
             name = self._name() or ""
             if not name:
-                raise ParseError("expected a name in quotes")
+                raise self.fail("expected a name in quotes")
             match = self._listening(kind)
         if any(s["name"].casefold() == name.casefold() for s in self.show["surfaces"]):
             raise ParseError(f"a surface named {name!r} exists")
@@ -1249,7 +1338,8 @@ class _Parser:
 
     def surface(self) -> dict[str, Any]:
         """A surface named in quotes (any case; a MIDI surface also by its device)."""
-        name = self.take("a surface name in quotes").text
+        names = _quoted(s["name"] for s in self.show["surfaces"])
+        name = self.take("a surface name in quotes", *names).text
         folded = name.casefold()
         surface = next(
             (s for s in self.show["surfaces"]
@@ -1279,10 +1369,12 @@ class _Parser:
             kind = self.keyword(*_FEEDBACK)
             if kind is None:
                 raise ParseError(f"expected led, motor or display, got {token.text!r}")
-            target = address if self.peek() is None else self.address()
+            target = address if self.ending("cc", "note", "osc") else self.address()
             if target["kind"] == "midiClock":
                 raise ParseError("a clock input has no feedback address: give one")
             value["feedback"] = {"kind": _FEEDBACK[kind], "address": target}
+        else:
+            self.offers += _FEEDBACK  # a feedback may follow
         return self.submit({"type": "ADD", "path": ["bindings"], "value": value})
 
     def address(self, *, clock: bool = False) -> dict[str, Any]:
@@ -1292,10 +1384,10 @@ class _Parser:
         if kind == "clock":
             return {"kind": "midiClock"}
         if kind == "osc":
-            token = self.peek()
-            if token is None or not token.quoted or not token.text.startswith("/"):
-                raise ParseError('expected an OSC path in quotes, e.g. "/1/fader1"')
-            self.k += 1
+            what = 'an OSC path in quotes, e.g. "/1/fader1"'
+            token = self.take(what)
+            if not token.quoted or not token.text.startswith("/"):
+                raise ParseError(f"expected {what}")
             return {"kind": "osc", "path": token.text}
         channel = self.integer("a MIDI channel (1–16)")
         control = self.integer("a CC or note number")
@@ -1358,7 +1450,7 @@ class _Parser:
         if kind is None:
             token = self.peek()
             got = f", got {token.text!r}" if token else ""
-            raise ParseError(f"expected led, motor, display or none{got}")
+            raise self.fail(f"expected led, motor, display or none{got}")
         commands = []
         for address in addresses:
             for binding in self.bound(surface, address):
@@ -1429,11 +1521,12 @@ class _Parser:
             following = self.peek(1)
             if following is not None and following.lower == "patch":
                 return self._patch()
-            after = (
-                self.peek(3) if following is not None and following.lower == "thru" else following
-            )
-            if after is not None and after.lower == "limits":
-                return self._limits()
+            thru = following is not None and following.lower == "thru"
+            after = self.peek(3) if thru else following
+            if (after is not None and after.lower == "limits") or (thru and after is None):
+                return self._limits()  # N thru M comes only before limits
+            if following is None and self.peek() is not None:  # fixture N: Tab offers these
+                self.offers += ("patch", "thru", "limits")
         if head == "universe" and self.keyword("add"):
             return self._universe_add()
         if head == "page":
@@ -1455,7 +1548,7 @@ class _Parser:
             path = self.entity_path(head)
         if head == "page":
             page = _element(self.show["pages"], path)
-            if self.peek() is None:  # page N: go to it
+            if self.ending("slot"):  # page N: go to it
                 return self.submit({"type": "PAGE", "number": page["number"]})
             if self.keyword("slot"):
                 return self._assign(page["id"])
@@ -1468,6 +1561,10 @@ class _Parser:
             if words in (["chase", "hz"], ["chase", "bpm"]):  # else chase {json}: a plain SET
                 self.k += 1
                 return self._chase(path)
+            if not words:
+                self.offers.append("chase")
+            elif words == ["chase"]:
+                self.offers += ("hz", "bpm")
         return self._set(path, "name or timing.fadeIn")
 
     def _page_add(self) -> Action:
@@ -1517,7 +1614,7 @@ class _Parser:
     def _cue_effect(self, path: EditPath, cue: Mapping[str, Any], ref: str) -> Action:
         """``cue L/C effect <id> <prop[.sub…]> <value>``: a property of one
         of the cue's effect instances."""
-        ident = self.take("an effect id").text
+        ident = self.take("an effect id", *(effect["id"] for effect in cue["effects"])).text
         if not any(effect["id"] == ident for effect in cue["effects"]):
             raise ParseError(f"cue {ref} has no effect {ident!r}")
         return self._set([*path, "effects", {"id": ident}], "size or rate.multiplier")
@@ -1564,9 +1661,10 @@ class _Parser:
         while (token := self.peek()) is not None and token.lower in _ATTRIBUTE_NAMES:
             self.k += 1
             names.append(_ATTRIBUTE_NAMES[token.lower])
+        self.ending(*ATTRIBUTES)
         if not names:
             got = "" if token is None else f", got {token.text!r}"
-            raise ParseError(f"expected attribute names after only{got}")
+            raise self.fail(f"expected attribute names after only{got}")
         return names
 
     def _chase(self, path: EditPath) -> Action:
@@ -1610,18 +1708,18 @@ class _Parser:
         return [collection, {"id": item["id"]}]
 
     def _cmd_rename(self) -> Action:
-        head = self.word("an entity")
+        head = self.word("an entity", *sorted(_ENTITIES))
         if head not in _ENTITIES:
             raise ParseError(f"cannot rename {head!r}")
         path = self.entity_path(head)
         name = self._name()
         if name is None:
-            raise ParseError("expected a name in quotes")
+            raise self.fail("expected a name in quotes")
         keys: EditPath = ["meta", "title"] if head == "show" else [*path, "name"]
         return self.submit({"type": "SET", "path": keys, "value": name})
 
     def _cmd_delete(self) -> Action:
-        head = self.word("an entity")
+        head = self.word("an entity", *sorted(_ENTITIES - {"show"}))
         if head not in _ENTITIES or head == "show":
             raise ParseError(f"cannot delete {head!r}")
         return self.submit({"type": "DELETE", "path": self.entity_path(head)})
@@ -1631,6 +1729,7 @@ class _Parser:
         if token is not None and token.quoted:
             self.k += 1
             return token.text
+        self.ending(need="a name in quotes")
         return None
 
     # performance
@@ -1652,7 +1751,7 @@ class _Parser:
         if self.keyword("all"):  # every playback: the panic release (decision 15)
             return self.submit(self._release_all())
         command: dict[str, Any] = {"type": "RELEASE_PLAYBACK", "playbackId": self.playback_id()}
-        if self.peek() is not None:  # the playback's releaseTime otherwise
+        if not self.ending(need="a time in seconds"):  # the playback's releaseTime otherwise
             command["time"] = self.number("a time in seconds")
         return self.submit(command)
 
@@ -1687,13 +1786,13 @@ class _Parser:
         kind = "fadeTime" if word == "fadetime" else word
         name = self._name()
         if name is None:
-            raise ParseError("expected a name in quotes")
+            raise self.fail("expected a name in quotes")
         if any(m["name"].casefold() == name.casefold() for m in self.show["masters"]):
             raise ParseError(f"a master named {name!r} exists")
         value: dict[str, Any] = {"id": self.new_id("m", "masters"), "kind": kind, "name": name}
         if kind == "group":
             if not self.keyword("group"):
-                raise ParseError("expected group N: the group the master scales")
+                raise self.fail("expected group N: the group the master scales")
             value["groupId"] = self.by_number("groups", self.integer("a group number"), "group")[
                 "id"
             ]
@@ -1727,18 +1826,20 @@ class _Parser:
         if token is not None and token.quoted:
             return self.named_master("speed")
         speeds = [m for m in self.show["masters"] if m["kind"] == "speed"]
+        self.ending(*_quoted(m["name"] for m in speeds))
         if not speeds:
             raise ParseError("no speed master")
         if len(speeds) > 1:
-            raise ParseError("several speed masters: name one")
+            raise self.fail("several speed masters: name one")
         return speeds[0]["id"]
 
     def named_master(self, kind: str) -> str:
         """A master of ``kind``, named in quotes (any case)."""
-        token = self.peek()
-        if token is None or not token.quoted:
-            raise ParseError(f"expected a {kind} master name in quotes")
-        self.k += 1
+        what = f"a {kind} master name in quotes"
+        names = _quoted(m["name"] for m in self.show["masters"] if m["kind"] == kind)
+        token = self.take(what, *names)
+        if not token.quoted:
+            raise ParseError(f"expected {what}")
         folded = token.text.casefold()
         named = next(
             (
@@ -1759,7 +1860,9 @@ class _Parser:
         number: a binding's feedback may follow)."""
         command: dict[str, Any] = {"type": "RELEASE_ALL"}
         token = self.peek()
-        if token is not None and not token.quoted and _NUMBER.fullmatch(token.text):
+        if token is None:
+            self.needs.append("a time in seconds")
+        elif not token.quoted and _NUMBER.fullmatch(token.text):
             command["time"] = self.number("a time in seconds")
         return command
 
@@ -1802,7 +1905,7 @@ class _Parser:
             return Submit(_set_park([], f"unparked everything ({len(park)} parked)"))
         start = self.k
         refs = self.target_refs()
-        attribute = self.attribute().id if self.peek() is not None else None
+        attribute = None if self.ending(*ATTRIBUTES) else self.attribute().id
         where = self.typed(start)
         self.done()
         targets = {(ref["fixtureId"], ref["element"]) for ref in refs}
@@ -1874,10 +1977,10 @@ class _Parser:
         differs is set (or deleted), so the profile keeps its place in the
         show, and each of its fixtures records the new revision."""
         self.expect("update")
-        token = self.peek()
-        if token is None or not token.quoted:
-            raise ParseError('expected a profile name in quotes, e.g. "Generic Spot 16ch"')
-        self.k += 1
+        what = 'a profile name in quotes, e.g. "Generic Spot 16ch"'
+        token = self.take(what, *_quoted(p["name"] for p in self.show["profiles"]))
+        if not token.quoted:
+            raise ParseError(f"expected {what}")
         self.done()
         name = token.text
         library = self.ctx.library.find(name)
@@ -1934,6 +2037,7 @@ class _Parser:
 
     def _cmd_save(self) -> Action:
         token = self.peek()
+        self.ending(need="a path")
         self.k = len(self.tokens)
         return Save(
             None if token is None else Path(self.line[token.start : self.end].strip().strip('"'))
@@ -1945,7 +2049,7 @@ class _Parser:
         return Source(Path(token.text))
 
     def _cmd_list(self) -> Action:
-        kind = self.word(f"what to list ({', '.join(LIST_KINDS)})")
+        kind = self.word(f"what to list ({', '.join(LIST_KINDS)})", *LIST_KINDS)
         if kind not in LIST_KINDS:
             raise ParseError(f"cannot list {kind!r}; try one of {', '.join(LIST_KINDS)}")
         if kind == "cues":
@@ -1995,11 +2099,29 @@ _COLLECTIONS: Final = {
 }
 _ENTITIES: Final = frozenset({*_COLLECTIONS, "preset", "cue", "show"})
 
+COMMANDS: Final = tuple(
+    sorted({name.removeprefix("_cmd_") for name in vars(_Parser) if name.startswith("_cmd_")}
+           | _ENTITIES)
+)  # fmt: skip
+"""The words a line can start with."""
+
+_BARE: Final = re.compile(r'[^\s",#][^\s",]*')
+
 
 def _numeric(text: str) -> float:
     """A number as typed: an ``int`` when written without a decimal point."""
     value = float(text)
     return int(value) if value.is_integer() and "." not in text else value
+
+
+def _quoted(names: Iterable[str]) -> tuple[str, ...]:
+    """Names as typed: in quotes, escaped as :func:`tokenize` reads them."""
+    return tuple(json.dumps(name, ensure_ascii=False) for name in names)
+
+
+def _word(name: str) -> str:
+    """A name as typed: bare when it is one word, else in quotes."""
+    return name if _BARE.fullmatch(name) else _quoted([name])[0]
 
 
 def _element(items: Sequence[Any], path: EditPath) -> Mapping[str, Any]:

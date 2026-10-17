@@ -31,8 +31,10 @@ busk run club.show --no-console                      # no commands: busk from th
 busk run club.show --duration 2 --console            # print the DMX frames too
 ```
 
-- **At a terminal** the console is a prompt. Ctrl+C clears the line and never stops the
-  output; `quit` or Ctrl+D ends the run and offers to save unsaved edits.
+- **At a terminal** the console is a prompt, with [Tab completion and `?`](console.md#the-prompt).
+  Ctrl+C clears a typed line. On an empty line it prints `press Ctrl+C again to quit`, and
+  a second Ctrl+C in a row ends the run, so one stray press never stops the output. `quit`,
+  Ctrl+D or that second Ctrl+C ends the run and offers to save unsaved edits.
 - **From a pipe** the commands are read line by line, and the end of the input quits,
   unless `--duration` is given.
 - **`--script FILE`** runs a [console script](console.md#scripts) first and stops at its
@@ -78,7 +80,7 @@ surfaces, `hw` inputs, display feedback on a MIDI surface, feedback on a `comman
 sACN r-…: U1 Stage → universe 1, multicast 239.255.0.1 via eth0, priority 100
 MIDI s-…: nanoKONTROL2:nanoKONTROL2 _ CTRL 20:0
 Web s-…: http://192.168.1.20:8080/?k=…
-busk console: type 'help' for the commands, 'quit' to stop.
+busk console: Tab completes, ? shows what comes next, 'help' lists the commands, 'quit' stops.
 ```
 
 [Output](output.md#route-messages) and [Surfaces](surfaces.md) list the other messages

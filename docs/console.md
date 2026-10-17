@@ -5,9 +5,39 @@ presets and cues, binding controllers. It runs at the `busk run` prompt, from a 
 (`busk run --script FILE`, or `source FILE` at the prompt), and from a pipe. The stage
 keeps running while you edit, and every edit can be undone.
 
+- [The prompt](#the-prompt)
 - [Commands](#commands)
 - [Notes](#notes)
 - [Scripts](#scripts)
+
+## The prompt
+
+At a terminal, `busk run` opens the `busk>` prompt:
+
+- **Tab** completes the word being typed: a command, a keyword, or a name in quotes (a
+  master, surface, profile, mode or effect template). Where several words fit, or a value
+  comes next, it lists what may come next instead.
+- **`?`** prints what may come next and the forms of the command, then gives the line back
+  as it was:
+
+  ```
+  busk> route add 1 ?
+  next: artnet  dmxusb  sacn
+      route add U sacn <universe> [unicast <host> | multicast <iface>]
+      route add U artnet <net>.<sub>.<uni> [unicast <host>]
+      route add U dmxusb enttecPro|dmxking <port> [hz N]
+          (hz: the widget's output rate, 40 by default)
+  busk> route add 1
+  ```
+
+  `<a fixture number>` describes a value to type, `<Enter>` means the line runs as it is,
+  and a line that cannot go on says why (`error: no fixture 99`). To type a `?` itself (in
+  a name), press Ctrl+V first. Where Python's readline is libedit (macOS, and Pythons
+  installed by uv), `?` is not a key: end the line with `?` and press Enter.
+- **Ctrl+C** clears a typed line. On an empty line it prints `press Ctrl+C again to quit`,
+  and a second Ctrl+C in a row quits, so one stray press never stops the output. `quit`
+  and Ctrl+D quit too; with unsaved edits, busk asks whether to save them first. With
+  libedit every Ctrl+C counts as one on an empty line.
 
 ## Commands
 

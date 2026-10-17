@@ -107,7 +107,8 @@ The suite also passes on Python 3.12 and 3.13, for example
 | `test_compile_incremental.py` | The identity-memoised compile equals a full compile after every step of the Phase 3 build; it reuses the rig and untouched cue lists, and recompiles exactly what read an edited preset or effect template |
 | `test_show_file.py` | `.show` and `.json` round trips, byte-identical saves, a failing `os.replace` leaves the original and no temp file, backup rotation, the template, the state directory and CID |
 | `test_autosave.py` · `test_recovery.py` | Burst and periodic show autosaves, retention, `session.json`, every row of the recovery table; then `kill -9` of a real `busk run` and a restart that brings back the programmer (with its fade time and effects), the master levels (group, size and fade-time included), the tempo, the page and the unsaved edit |
-| `test_console_parser.py` · `test_console.py` | Every grammar row (311 cases, Phase 4's timing, trigger, chase, master and tempo sugar, Phase 5's effect sugar and Phase 6's page, surface, binding, feedback and route sugar included) and its error messages; execution, rendering (`list cues`, `list masters`, `list effects`, the programmer's fade and effects, `library`), scripts and `source`, defaults, Ctrl+C held back during a command and clearing the line at the prompt, quit offering to save |
+| `test_console_parser.py` · `test_console.py` | Every grammar row (311 cases, Phase 4's timing, trigger, chase, master and tempo sugar, Phase 5's effect sugar and Phase 6's page, surface, binding, feedback and route sugar included) and its error messages; execution, rendering (`list cues`, `list masters`, `list effects`, the programmer's fade and effects, `library`), scripts and `source`, defaults, Ctrl+C held back during a command, clearing a typed line at the prompt and quitting at the second in a row, quit offering to save |
+| `test_console_prompt.py` | What may follow a line, per grammar area (keywords, names from the show and the libraries, described values, `<Enter>`, mistakes), with no id taken; every word of `examples/club-night.busk` offered where it stands; the `?` help and the grammar forms it picks; the completer's choices for GNU readline and libedit; a real prompt on a pseudo-terminal (Tab, `?`, Ctrl+C twice) |
 | `test_build_from_scratch.py` | **The Phase 3 done criterion:** the build script from `busk new`, golden show and golden DMX (checked by hand), a live preset edit, undo all / redo all, save → load |
 | `test_song_stack.py` | **The Phase 4 done criterion:** the song script on the built show, golden show, 34 checkpoints of hand-computed logical values and golden DMX, GOTO equals stepping, the tap and multiplier alignment, 100 Hz vs an irregular schedule, save → load |
 | `test_waveforms.py` | The nine waveforms against a scalar transcription: key phases, the 0..1 range, `pulse` with zero-length ramps, `random` deterministic per (seed, member, cycle) and `smooth` continuous, `curve` continuous across the cycle (hypothesis) |
@@ -180,8 +181,9 @@ src/busk/
   library/profiles/      # the built-in profiles (Appendix A's two, Phase 1's three)
   library/effects.json   # the built-in effect templates and their console defaults
   console/
-    parser.py            #   parse(): a console line → an action (pure)
+    parser.py            #   parse(): a console line → an action (pure); expected()
     console.py           #   Console.execute(), run_script(), interact()
+    prompt.py            #   Tab completion and ? on readline (GNU readline and libedit)
   persistence/
     show_file.py         #   load_show(), save_show(), atomic_write(), backups, new_show()
     autosave.py          #   AutosaveWorker, read_recovery() (+ the show stamp, highlight)

@@ -8,6 +8,18 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ## [Unreleased]
 
+### Added
+
+- Tab completion and `?` at the console prompt ([the prompt](docs/console.md#the-prompt)).
+  Tab completes commands, keywords and names in quotes, and lists what may come next. `?`
+  prints that and the forms of the command. Both follow the parser, the show and the
+  libraries.
+
+### Changed
+
+- Ctrl+C at the console prompt: on an empty line it now says how to quit, and a second
+  Ctrl+C in a row quits like `quit`. Ctrl+C on a typed line still only clears it.
+
 ## [0.1.0] - Unreleased
 
 The first release with a public API. Phases 0–7 built the console and its `busk` command

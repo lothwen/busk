@@ -49,8 +49,9 @@
       :mod:`busk.persistence.eventlog`) to
       ``<stateDir>/logs/<show id>/<UTC start>.log``; ``info`` names the file.
 
-    * On a terminal the console prompt opens (Ctrl+C clears the line, ``quit``
-      or Ctrl+D ends the run and offers to save unsaved edits). When stdin is
+    * On a terminal the console prompt opens, with Tab completion and ``?``
+      (Ctrl+C clears the line; a second one in a row, ``quit`` or Ctrl+D ends
+      the run and offers to save unsaved edits). When stdin is
       not a terminal, commands are read from it line by line, and its end
       quits (unless ``--duration`` is given). ``--no-console`` reads no
       commands: the run busks until Ctrl+C, as in Phase 2.

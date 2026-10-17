@@ -12,6 +12,7 @@ import pytest
 from builders import APPENDIX_A, load_doc
 from busk.console.console import Console, interact
 from busk.console.parser import SubmitAll
+from busk.console.prompt import Editing
 from busk.session.library import ProfileLibrary, builtin_directory
 from session_harness import Live
 
@@ -228,12 +229,58 @@ class answers:
         return item
 
 
-def test_ctrl_c_at_the_prompt_clears_the_line_and_keeps_running(console: Console) -> None:
+def typing(monkeypatch: pytest.MonkeyPatch, *lines: str) -> None:
+    """What is on the prompt's line at each Ctrl+C, in turn."""
+    on_line = iter(lines)
+    monkeypatch.setattr(Editing, "typed", lambda self: next(on_line))
+
+
+def test_ctrl_c_on_a_typed_line_clears_it_and_keeps_running(
+    console: Console, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    typing(monkeypatch, "set pa")
     feed = answers("sel group 1", KeyboardInterrupt, "set pan 1", "quit")
     written: list[str] = []
     interact(console, ask=lambda prompt: next(feed), write=written.append)
     assert written == ["2 targets selected", "", "pan: 2 targets"]
     assert console.quit_requested
+
+
+def test_ctrl_c_twice_on_an_empty_line_quits(
+    console: Console, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    typing(monkeypatch, "", "")
+    feed = answers("sel group 1", KeyboardInterrupt, KeyboardInterrupt)
+    written: list[str] = []
+    interact(console, ask=lambda prompt: next(feed), write=written.append)
+    assert written == ["2 targets selected", "", "press Ctrl+C again to quit", ""]
+    assert console.quit_requested
+
+
+def test_only_two_ctrl_c_in_a_row_quit(console: Console, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A line, or a Ctrl+C that clears one, in between: the next Ctrl+C warns again."""
+    typing(monkeypatch, "", "", "sel gr", "", "")
+    feed = answers(
+        KeyboardInterrupt, "sel group 1", KeyboardInterrupt, KeyboardInterrupt, KeyboardInterrupt,
+        KeyboardInterrupt,
+    )  # fmt: skip
+    written: list[str] = []
+    interact(console, ask=lambda prompt: next(feed), write=written.append)
+    warning = ["", "press Ctrl+C again to quit"]
+    assert written == [*warning, "2 targets selected", *warning, "", *warning, ""]
+    assert console.quit_requested
+
+
+def test_ctrl_c_twice_with_unsaved_edits_offers_to_save(
+    console: Console, live: Live, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    typing(monkeypatch, "", "")
+    live.session._path = tmp_path / "show.json"
+    feed = answers('rename show "Edited"', KeyboardInterrupt, KeyboardInterrupt, "y")
+    written: list[str] = []
+    interact(console, ask=lambda prompt: next(feed), write=written.append)
+    assert written[-1] == f"saved {tmp_path / 'show.json'}"
+    assert not live.session.dirty
 
 
 def test_quit_with_unsaved_edits_offers_to_save(

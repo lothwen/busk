@@ -654,7 +654,11 @@ def run_console(options: RunOptions, backend: Backend, *, restarted: str | None 
             if interactive:
                 live._start_monitor()
                 if not adopt:
-                    print("busk console: type 'help' for the commands, 'quit' to stop.", flush=True)
+                    print(
+                        "busk console: Tab completes, ? shows what comes next, 'help' lists "
+                        "the commands, 'quit' stops.",
+                        flush=True,
+                    )
                 interact(console)
             elif console_on:
                 _read_commands(console, live._poll, clock, end, waits=options.duration is not None)

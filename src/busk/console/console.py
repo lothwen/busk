@@ -8,17 +8,20 @@ each with its path, so deleting a fixture that is still in use lists every
 place that uses it.
 
 :func:`interact` is the interactive loop of ``busk run`` on a terminal, with
-``readline`` history: Ctrl+C clears the line instead of stopping the output,
-``quit`` or Ctrl+D asks whether to save unsaved edits, and a line that needs
-confirmation (``output off``) asks first. Scripts and piped input never ask.
+``readline`` history, Tab completion and ``?`` (:mod:`busk.console.prompt`).
+Ctrl+C clears a typed line. On an empty line it says how to quit, and a
+second Ctrl+C in a row quits, so one stray press never stops the output.
+``quit``, Ctrl+D or that second Ctrl+C asks whether to save unsaved edits,
+and a line that needs confirmation (``output off``) asks first. Scripts and
+piped input never ask.
 
 **Ctrl+C never splits a command.** Python raises ``KeyboardInterrupt`` in the
 main thread wherever it happens to be; inside an edit, between queueing the
 engine's install and committing the session, it would leave the engine and
 the session with different shows. So while a command runs, SIGINT is held
 back: :attr:`Console.interrupted` records it, and the caller acts on it once
-the command is done (the prompt clears the line, a script stops, piped input
-ends the run).
+the command is done (the prompt drops it, a script stops, piped input ends
+the run).
 """
 
 from __future__ import annotations
@@ -36,6 +39,7 @@ from typing import Any, Final, cast
 from busk.console.parser import (
     HELP,
     Context,
+    Expected,
     Nothing,
     ParseError,
     Query,
@@ -44,8 +48,10 @@ from busk.console.parser import (
     Source,
     Submit,
     SubmitAll,
+    expected,
     parse,
 )
+from busk.console.prompt import PROMPT, Editing, hints
 from busk.io.osc import feedback_target
 from busk.model.common import TargetRef
 from busk.model.effect import ColorLayer, EffectInstance, EffectLayer
@@ -138,6 +144,10 @@ class Console:
         except ParseError:
             return None
         return action.confirm if isinstance(action, Submit) else None
+
+    def expected(self, line: str) -> Expected:
+        """What may follow ``line`` at the prompt (Tab completion and ``?``)."""
+        return expected(line, self._context())
 
     def _context(self) -> Context:
         session = self.session
@@ -693,35 +703,49 @@ def _action(action: Mapping[str, Any], names: Mapping[str, Mapping[Any, Any]]) -
 
 # --------------------------------------------------------------- interactive
 
-PROMPT: Final = "busk> "
-
 
 def interact(
     console: Console, ask: Callable[[str], str] = input, write: Callable[[str], None] = print
 ) -> None:
-    """The interactive loop on a terminal, until ``quit`` or Ctrl+D.
+    """The interactive loop on a terminal, until ``quit``, Ctrl+D or Ctrl+C twice.
 
-    Ctrl+C clears the line and never stops the show. At ``quit`` with unsaved
-    edits, it asks whether to save first.
+    Ctrl+C clears a typed line. On an empty line it says how to quit, and a
+    second Ctrl+C in a row quits: one stray press never stops the show. At
+    the end, with unsaved edits, it asks whether to save first.
     """
-    _enable_history()
+    editing = Editing(console)
+    armed = False  # Ctrl+C came on an empty line: the next one quits
     while not console.quit_requested:
         try:
-            line = ask(PROMPT)
+            with editing:
+                line = ask(PROMPT)
         except KeyboardInterrupt:
             write("")  # a new, empty prompt: the output keeps running
+            if editing.typed().strip():  # it cleared the line
+                armed = False
+            elif not armed:
+                write("press Ctrl+C again to quit")
+                armed = True
+            else:
+                console.quit_requested = True
+                break
             continue
         except EOFError:
             write("")
             console.quit_requested = True
             break
+        armed = False
+        if editing.asks(line):  # where ? is not a key
+            if lines := hints(console, line.rstrip()[:-1]):
+                write("\n".join(lines))
+            continue
         question = console.confirmation(line)
         if question is not None and not _confirmed(question, ask, write):
             continue
         reply = console.execute(line)
         if reply.text:
             write(reply.text)
-        console.interrupted = False  # Ctrl+C at the prompt only ever clears the line
+        console.interrupted = False  # a Ctrl+C while the line ran: dropped, it has run
     if console.session.dirty:
         _offer_save(console, ask, write)
 
@@ -762,12 +786,6 @@ def _offer_save(console: Console, ask: Callable[[str], str], write: Callable[[st
             return
         if answer.lower() in ("n", "no"):
             return
-
-
-def _enable_history() -> None:
-    """Line editing and history, where :mod:`readline` exists."""
-    with contextlib.suppress(ImportError):
-        import readline  # noqa: F401 - importing it enables editing for input()
 
 
 def lines_of(texts: Iterable[str]) -> list[str]:
