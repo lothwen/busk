@@ -19,18 +19,17 @@ The [README](../README.md) covers the command line and links the other guides: t
 
 ## Installing
 
-busk is not on PyPI. Install it from its GitHub repository, at a release tag (or `@main`):
+busk is not on PyPI. Install it from a checkout of its repository, at a release tag (or
+without `--branch`, for `main`):
 
 ```bash
-uv add "busk @ git+https://github.com/lothwen/busk.git@v0.1.0"
-uv add "busk[midi] @ git+https://github.com/lothwen/busk.git@v0.1.0"   # with MIDI surfaces
-pip install "busk[midi] @ git+https://github.com/lothwen/busk.git@v0.1.0"
-pip install "busk[midi] @ git+ssh://git@github.com/lothwen/busk.git@v0.1.0"
+git clone --branch v0.1.0 https://github.com/lothwen/busk.git
+uv add ./busk                       # into your uv project
+uv add ./busk --extra midi          # with MIDI surfaces
+pip install "./busk[midi]"
 ```
 
-- **The repository is private.** You need read access to it, and git credentials:
-  `gh auth setup-git`, or an SSH key with the `git+ssh` form.
-- **A git install builds busk from source**, so it fetches the build backend (`uv_build`)
+- **An install from a checkout builds busk from source**, so it fetches the build backend (`uv_build`)
   from the package index. On a machine without network access, install a wheel instead:
   `uv build` in a checkout writes `dist/busk-0.1.0-py3-none-any.whl`, and
   `pip install busk-0.1.0-py3-none-any.whl` installs it.

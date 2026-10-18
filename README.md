@@ -1,5 +1,11 @@
 # busk — busking lighting console engine
 
+> [!NOTE]
+> This is a personal project, fully “vibe coded” as part of my learning process, and developed as
+> improvement for [tupperdmx-simulator](https://github.com/lothwen/tupperDMX-simulator).
+> The engine is provided for personal and experimental use.
+> Feedback, bug reports, and help with testing are greatly appreciated! Have fun!
+
 A real-time engine for improvising lighting live. The operator layers looks, colours,
 positions and effects from a MIDI controller, a phone or the keyboard, and busk turns that
 intent into DMX over sACN, Art-Net or a USB DMX interface. Shows are built and changed
@@ -54,11 +60,10 @@ uv sync                 # busk, the `midi` extra and the development tools
 uv run busk --version
 ```
 
-Or into another project, from GitHub. The repository is private, so you need read access
-([details](docs/library.md#installing)):
+Or into another project, from that checkout ([details](docs/library.md#installing)):
 
 ```bash
-pip install "busk[midi] @ git+https://github.com/lothwen/busk.git@v0.1.0"
+uv add path/to/busk --extra midi        # or: pip install "path/to/busk[midi]"
 ```
 
 **MIDI** is the optional extra `busk[midi]` ([`mido`](https://mido.readthedocs.io/) with
@@ -155,6 +160,7 @@ busk> fader 1 1                               # or the console does
 | Guide | |
 |---|---|
 | [The demo show](docs/demo-show.md) | The club-night show: its rig, pages and controller map, and a tour. |
+| [FAQ](docs/faq.md) | Shows and scripts, the order to build a show in, no light, controllers, crashes and backups. |
 | [Running a show](docs/running.md) | `busk run`: its options and output, autosave and recovery, the processes and the watchdog, the event log, values files. |
 | [The console](docs/console.md) | Every console command, recording rules, scripts. |
 | [Control surfaces](docs/surfaces.md) | MIDI, OSC, the web remote, feedback, pages, soft takeover, swop, crossfade faders, rate limits. |

@@ -31,8 +31,8 @@ Four things make this phase harder than adding an `__init__`:
 
 **Done when:**
 
-- The project is a private GitHub repository, `lothwen/busk`, with one commit per step.
-- In a fresh virtual environment, `pip install "busk @ git+https://github.com/lothwen/busk.git@v0.1.0"` gives:
+- The project is a GitHub repository, `lothwen/busk`, with one commit per step.
+- In a fresh virtual environment, `pip install ./busk` from a checkout at `v0.1.0` gives:
   - the `busk` command;
   - `import busk` with the §5.1 API.
 
@@ -51,14 +51,14 @@ Four things make this phase harder than adding an `__init__`:
 
 | In Phase 8 | Deferred |
 |---|---|
-| A git repository with a private GitHub remote (step 0) | CI (GitHub Actions) |
+| A git repository with a GitHub remote (step 0) | CI (GitHub Actions) |
 | A small public API in `busk` (§5.1). The schema and command types are public as types | `compile_show`, `Engine`, `Session`, `Console`, `EffectLibrary`, route status: added when someone needs them |
 | `OfflineShow` (a clock the caller drives) and `LiveShow` (real time, DMX output, optional surfaces) | Autosave, crash recovery and the event log in `LiveShow`. The process split and the watchdog from the library |
 | `BuskError` and `ScriptError` | A `CommandResult.check()` that raises |
 | Reporters and logging instead of prints. No process-wide changes by default | — |
 | MIDI as the optional extra `busk[midi]` | — |
 | `RunOptions` instead of `argparse.Namespace`. The CLI rebuilt on the runner | Moving the CLI into a `cli/` package |
-| Packaging for git URLs and wheels: MIT license, extras, lower dependency floors, Python versions | PyPI (the user's choice: git and private only) |
+| Packaging for checkouts and wheels: MIT license, extras, lower dependency floors, Python versions | PyPI (the user's choice) |
 | `docs/library.md` with doctested examples. A versioning policy, a CHANGELOG, the tag `v0.1.0` | Sphinx. Windows |
 
 ---
@@ -154,8 +154,8 @@ The CLI has five commands: `validate`, `new`, `import ofl|gdtf`, `replay` and `r
    - run a show live in their own process: the engine and DMX output as threads, optionally the show's surfaces.
 
    The three-process split and the watchdog stay in `busk run`. *(user)*
-2. **Distribution: git URLs and private wheels**, no PyPI. So there is no PyPI readme and no classifiers. *(user)*
-3. **Version control comes first (step 0):** `git init`, commit the current state, push to a private GitHub repository. *(user)* The name `lothwen/busk` is the plan's choice: it matches the package and the install URL.
+2. **Distribution: checkouts and wheels**, no PyPI. So there is no PyPI readme and no classifiers. *(user)*
+3. **Version control comes first (step 0):** `git init`, commit the current state, push to a GitHub repository. *(user)* The name `lothwen/busk` is the plan's choice: it matches the package.
 4. **The facades are named `OfflineShow` and `LiveShow`.** "Simulator" would clash with TupperDMX-Simul. *(user)*
 5. **MIDI becomes the optional extra `busk[midi]`** (`mido`, `python-rtmidi`). It is the only dependency that needs system libraries (ALSA) to build where no wheel exists. *(user)*
 6. **The version stays 0.1.0.** It becomes the first release with a public API, tagged `v0.1.0` at step 13. *(user)*
@@ -547,9 +547,8 @@ busk = "busk.cli:main"
 - **The version is written in two places**, `pyproject.toml` and `__version__`. `test_packaging.py` checks that they match.
 - **`LICENSE`:** the MIT text, `Copyright (c) 2026 Daniel Sánchez`. Step 11 checks that the wheel's `METADATA` carries `License-Expression: MIT` and the file.
 - **Installing:**
-  - `pip install "busk[midi] @ git+https://github.com/lothwen/busk.git@v0.1.0"`, or the `git+ssh://git@github.com/…` form, or a wheel from `uv build`;
-  - the repository is private, so other developers need read access as collaborators, plus git credentials (`gh auth setup-git` or an SSH key);
-  - a git install builds from source, so it fetches `uv_build` from the package index. Offline machines need the wheel.
+  - `pip install "./busk[midi]"` from a checkout, or a wheel from `uv build`;
+  - an install from a checkout builds from source, so it fetches `uv_build` from the package index. Offline machines need the wheel.
 - **No PyPI readme or classifiers** (decision 2). The README stays the long description.
 
 ### 5.10 Typing and docs
@@ -600,7 +599,7 @@ busk = "busk.cli:main"
 - **`.gitignore`:** `.venv/`, `__pycache__/`, `.mypy_cache/`, `.ruff_cache/`, `.pytest_cache/`, `.hypothesis/` (also `tests/.hypothesis/`), `dist/`, `*.backups/` (show backups written by runs) and `soak-*/` (soak output).
 - **What is committed:** everything else, 290 files (289 plus the `.gitignore`). That includes `uv.lock`, `.python-version`, the spec and the plans in `docs/`, examples, goldens, fixtures and `tests/process_site/`. The 528-byte TupperDMX show backup is ignored.
 - **The commit:** `git init -b main`, then one commit, authored with the global identity and ending with the `Co-Authored-By` line. The message: `busk after Phase 7 (3175 tests green), and the Phase 8 plan`.
-- **The remote:** `gh repo create lothwen/busk --private --source . --remote origin --push`.
+- **The remote:** `gh repo create lothwen/busk --source . --remote origin --push`.
 
 ---
 
@@ -613,13 +612,13 @@ Step 0 is the repository. Steps 1–5 decouple without changing behaviour, 6–8
 0. **Repository** (§5.12).
    - Write `.gitignore`; `git init -b main`.
    - Check `git status --short`: 290 entries, nothing from the ignore list, and a look at anything unexpected. The README's links into `docs/` resolve.
-   - Commit; `gh repo create lothwen/busk --private --source . --remote origin --push`.
+   - Commit; `gh repo create lothwen/busk --source . --remote origin --push`.
 
    → *verify:*
-   - `gh repo view lothwen/busk --json visibility` says `PRIVATE`, and `git status` is clean;
+   - `git status` is clean;
    - a fresh clone into a scratch directory passes `uv sync && uv run pytest`: 3175 passed, which proves the ignore list dropped nothing the suite needs.
 
-   **Done** (2026-10-16). `git status` listed 290 entries, none from the ignore list; the README's links into `docs/` resolve, and a pattern search found no secrets. The commit is `busk after Phase 7 (3175 tests green), and the Phase 8 plan`, pushed to `https://github.com/lothwen/busk` (`PRIVATE`, default branch `main`). A fresh clone passed `uv sync && uv run pytest`: 3175 passed, 1 skipped, 13 deselected (141 s).
+   **Done** (2026-10-16). `git status` listed 290 entries, none from the ignore list; the README's links into `docs/` resolve, and a pattern search found no secrets. The commit is `busk after Phase 7 (3175 tests green), and the Phase 8 plan`, pushed to `https://github.com/lothwen/busk` (default branch `main`). A fresh clone passed `uv sync && uv run pytest`: 3175 passed, 1 skipped, 13 deselected (141 s).
 1. **CLI transcripts.** `tests/test_cli_transcripts.py` and `tests/golden/cli/`, recorded from the CLI as it is, before any change, and reviewed by hand. It covers stdout and stderr separately, with exit codes:
    - `validate` on Appendix A and on a broken copy;
    - `new` with `--state-dir`;
@@ -782,7 +781,7 @@ Step 0 is the repository. Steps 1–5 decouple without changing behaviour, 6–8
     - every name in `__all__` appears in the reference table, checked by a test;
     - push `main`.
     **Done** (2026-10-16; 3268 passed, ruff, format and mypy clean; transcripts and the public API golden unchanged). What changed:
-   - **`docs/library.md`** has installing (git URLs, the private repository, the wheel, the `midi` extra, requirements and platforms), the three uses, the reference table of the 28 names, the error tree and table, logging, what is public, and the stability policy with the deprecation rule. The `LiveShow` warning is a block quote in the `LiveShow` section, where the class is introduced. 31 `>>>` examples.
+   - **`docs/library.md`** has installing (from a checkout, the wheel, the `midi` extra, requirements and platforms), the three uses, the reference table of the 28 names, the error tree and table, logging, what is public, and the stability policy with the deprecation rule. The `LiveShow` warning is a block quote in the `LiveShow` section, where the class is introduced. 31 `>>>` examples.
    - **Deviations in the examples.** They read `tests/fixtures/appendix_a.json`, `tests/fixtures/ofl/tupperdmx/moving-head.json` and `examples/`, so they run in a checkout. `tests/test_docs.py` runs them in a temporary directory with `examples` and `tests/fixtures` linked in, so `club.show` stays out of the project. Example 1 shows `ShowLoadError` on a broken file, then `validate_show` on the same text. Example 2 adds a refused `execute`, a `submit` of `BLACKOUT` and a `ScriptError`. Example 3's tested form is `LiveShow(show, output=False)` with `go 1` and a 0.5 s wait, because the Phase 3 show has no playback 9 and the suite must not send to the network. The plan's form, with `surfaces=True` and routes, is shown as a plain, untested code block. The live example passed 3 runs out of 3.
    - **`tests/test_docs.py`:** 2 tests. `doctest.testfile` runs `docs/library.md` alone (with `ELLIPSIS`), and the reference table's first column is exactly `busk.__all__`.
    - **README:** the status line names Phase 8, with a paragraph on what it did. A short "Using busk as a library" section comes before "The console". Setup's claim that python-rtmidi has wheels for current CPython is fixed (1.5.8 stops at 3.12). The Layout gains `__init__.py`, `errors.py`, `runner.py`, `process/options.py`, `LICENSE`, `CHANGELOG.md`, `docs/library.md`, `api_consumer.py` and the two new goldens. **Addition:** a "Library checklist (Phase 8)" section (§8's list, for step 13), and "Next" points to it and lists §10.
@@ -832,7 +831,7 @@ python -m venv /tmp/busk-venv && /tmp/busk-venv/bin/pip install /tmp/busk-dist/b
 **Library checklist (Phase 8)**, for step 13:
 
 1. **Install from GitHub into another project.** In a new directory:
-   - `uv init`, then `uv add "busk[midi] @ git+https://github.com/lothwen/busk.git@main"`;
+   - `git clone https://github.com/lothwen/busk.git`, `uv init app && cd app`, then `uv add ../busk --extra midi`;
    - `uv run busk --version` prints `busk 0.1.0`;
    - `uv run python -c "import busk; print(busk.load_show)"` works.
 2. **The three guide examples** run there unchanged, from a copy of `examples/`.
@@ -840,9 +839,9 @@ python -m venv /tmp/busk-venv && /tmp/busk-venv/bin/pip install /tmp/busk-dist/b
    - start TupperDMX-Simul first, since it holds port 6454;
    - in Python: `show, _ = busk.load_show("examples/tupperdmx/tupper-demo.show")`, then `with busk.LiveShow(show) as live: live.execute("fader 1 1")`, and wait a few seconds inside the block;
    - the simulator shows the look, and lets go when the block ends.
-4. **Without the extra:** in a second project, `uv add "busk @ git+…@main"`. Then `busk run` on the Phase 3 show prints `MIDI s-…: unavailable: install busk[midi]` and runs on.
+4. **Without the extra:** in a second project, `uv add ../busk`. Then `busk run` on the Phase 3 show prints `MIDI s-…: unavailable: install busk[midi]` and runs on.
 5. **Read `docs/library.md` as a newcomer would.** Anything unclear gets fixed before the tag.
-6. **Tag and push** `v0.1.0`. A collaborator account with read access installs `@v0.1.0`.
+6. **Tag and push** `v0.1.0`. A fresh `git clone --branch v0.1.0` installs as in item 1.
 
 ---
 
@@ -858,7 +857,7 @@ python -m venv /tmp/busk-venv && /tmp/busk-venv/bin/pip install /tmp/busk-dist/b
   - in one process, the reference rig overran 10 % of ticks under edits (Phase 7, step 13: 163 of 1615), against 0.05 % with processes, and that was with the switch interval already set;
   - the docs say so where `LiveShow` is introduced.
 - **Python 3.12 and 3.13 are untested** until step 11, which may raise `requires-python`.
-- **The private repository:** other developers need read access, and git installs need credentials and network access to fetch `uv_build`. The spec, the plans and the README, which mention local paths such as `~/Documents/TupperDMX`, go to GitHub. They stay private.
+- **Installs from a checkout** need network access to fetch `uv_build`. Offline machines need the wheel.
 - **Internal modules stay where they are,** so tests and benches keep working. Code that imports internals gets no stability promise.
 - **The `pyproject.toml` description changes.** The version stays 0.1.0.
 

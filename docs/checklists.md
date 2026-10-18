@@ -305,8 +305,9 @@ and the 24 hours, are left.
 
 Before tagging `v0.1.0` (phase-8-plan step 13):
 
-1. **Install from GitHub into another project.** In a new directory: `uv init`, then
-   `uv add "busk[midi] @ git+https://github.com/lothwen/busk.git@main"`.
+1. **Install from GitHub into another project.** In a new directory:
+   `git clone https://github.com/lothwen/busk.git`, `uv init app && cd app`, then
+   `uv add ../busk --extra midi`.
    `uv run busk --version` prints `busk 0.1.0`, and
    `uv run python -c "import busk; print(busk.load_show)"` works.
 2. **The guide's examples** ([`docs/library.md`](library.md)) run there unchanged, from a
@@ -315,10 +316,10 @@ Before tagging `v0.1.0` (phase-8-plan step 13):
    Python: `show, _ = busk.load_show("examples/tupperdmx/tupper-demo.show")`, then
    `with busk.LiveShow(show) as live: live.execute("fader 1 1")`, and wait a few seconds in
    the block. The simulator shows the look, and lets go when the block ends.
-4. **Without the extra.** In a second project, `uv add "busk @ git+…@main"`. `busk run` on
+4. **Without the extra.** In a second project, `uv add ../busk`. `busk run` on
    the Phase 3 show prints `MIDI s-…: unavailable: install busk[midi]` and runs on.
 5. **Read [`docs/library.md`](library.md) as a newcomer would.** Fix anything unclear
    before the tag.
 6. **Tag and push:** `git tag -a v0.1.0 -m "busk 0.1.0: the first release with a public API"`,
    `git push origin v0.1.0`, and date the `0.1.0` entry of [`CHANGELOG.md`](../CHANGELOG.md).
-   A collaborator account with read access installs `@v0.1.0`.
+   A fresh `git clone --branch v0.1.0` installs as in item 1.
