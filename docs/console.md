@@ -8,6 +8,7 @@ keeps running while you edit, and every edit can be undone.
 - [The prompt](#the-prompt)
 - [Commands](#commands)
 - [Notes](#notes)
+- [Attributes](#attributes)
 - [Scripts](#scripts)
 
 ## The prompt
@@ -134,6 +135,35 @@ session, as the web remote's commands do. `help` prints the grammar.
   error: deleted groups[1]: rejected, the show would not be valid
     cueLists[1].cues[0].entries[1].targets.groupId: Unknown group 'g-par'
   ```
+
+## Attributes
+
+The attributes are built into busk: a show cannot add one, and each fixture has those its
+profile supports. `set`, `park` and `release … only` take an attribute's name, in any
+case; `record … only` takes a family (any but `control`). A normalised value is `0..1`
+or a percentage (`80%`), a discrete value names one of the fixture's options
+(`set gobo1 breakup`), and a colour is `r g b` with optional `w`, `a` and `uv`.
+
+| Attribute | Family | Kind | Unit | Merge | Fade | Default |
+|---|---|---|---|---|---|---|
+| `intensity` | intensity | scalar | normalised | **HTP** | fade | 0 |
+| `pan` | position | scalar | degrees | LTP | fade | 0 |
+| `tilt` | position | scalar | degrees | LTP | fade | 0 |
+| `positionSpeed` | position | scalar | normalised | LTP | snap | 0 (fastest) |
+| `color` | color | color | linear RGB | LTP | fade | white `{1,1,1}` |
+| `colorWheel` | color | discrete | — | LTP | snap | open |
+| `cto` | color | scalar | normalised | LTP | fade | 0 |
+| `gobo1`, `gobo2` | beam | discrete | — | LTP | snap | open |
+| `gobo1Rotation`, `gobo2Rotation` | beam | scalar | degPerSec | LTP | fade | 0 |
+| `prism` | beam | discrete | — | LTP | snap | off |
+| `prismRotation` | beam | scalar | degPerSec | LTP | fade | 0 |
+| `zoom` | beam | scalar | degrees | LTP | fade | profile midpoint |
+| `iris` | beam | scalar | normalised | LTP | fade | 1 (open) |
+| `frost` | beam | scalar | normalised | LTP | fade | 0 |
+| `focus` | focus | scalar | normalised | LTP | fade | 0.5 |
+| `shutter` | shutter | discrete | — | LTP | snap | `open` |
+| `strobeRate` | shutter | scalar | hz | LTP | fade | 0 |
+| `control` | control | discrete | — | LTP | snap | none (lamp on, reset… — never busked) |
 
 ## Scripts
 

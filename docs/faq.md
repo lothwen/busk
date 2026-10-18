@@ -8,6 +8,7 @@ details.
 - [Playing](#playing)
 - [Output and controllers](#output-and-controllers)
 - [Saving, crashes and other machines](#saving-crashes-and-other-machines)
+- [Glossary](#glossary)
 
 ## Shows and scripts
 
@@ -189,6 +190,24 @@ only while you patch. See [Fixture profiles](profiles.md).
 
 `list playbacks`, `list pages` and the other `list` commands show the numbers.
 
+### What can a cue hold?
+
+A cue is a list of entries, plus effects and timing. Each entry gives one attribute a
+value on some targets:
+
+- **The value** is a direct value (`set intensity 80%`), a preset (`preset color 1`), one
+  value per fixture, or a spread across the fixtures (`set pan spread -30 30`).
+- **The targets** are a group, or a fixed list of fixtures or cells. A group is a live
+  link: edit the group later and the cue follows.
+
+One cue can hold many entries, for different groups, attributes and presets: group 1 in
+Blue, group 2 at 50% and fixture 301 with gobo `breakup`, all in the same cue.
+
+A cue does not store your selection, which lives only in the programmer while you work.
+Recording turns it into groups wherever a group covers the selected fixtures, and lists
+the fixtures otherwise; `record cue … freeze` always lists them. See
+[the console](console.md#notes).
+
 ### `record` says something exists. How do I change it?
 
 A record command without `merge`, `replace` or `remove` only creates, so a typo never
@@ -218,6 +237,33 @@ last action, whatever it was, and `redo` brings it back. Saving is not a step, a
 and the programmer's fade time are modes, which are never undone.
 
 ## Playing
+
+### What can a playback, or a fader, play?
+
+A playback runs one cue list, nothing else. What changes is how many cues the list has:
+
+- **one cue** is a look: the fader brings it in and out, and the buttons toggle or flash
+  it;
+- with **several cues**, GO and BACK step through them, each with its own fade;
+- in **chase mode**, busk steps through them by itself, at a BPM or a rate in Hz.
+
+Values, presets and effects reach a fader only inside a cue. To put a preset on a fader,
+record it as a one-cue look:
+
+```
+sel group 1
+preset color 1
+record slot 3 "Blue"
+clear
+```
+
+Fader 3 now brings in Blue. The cue keeps the preset, so editing preset color 1 later
+changes what the fader does.
+
+A controller's faders and buttons can drive more than playbacks: masters (grand, group,
+speed, size, fade time), tap, pages, blackout, `release all` and `output on|off`. A group
+master is the closest thing to a fader on an attribute: it scales one group's intensity.
+`set` and `preset` reach only the programmer, from the console.
 
 ### Can I play a show without typing?
 
@@ -343,3 +389,42 @@ from source and needs a C++ compiler and the ALSA headers. See [Install](../READ
 
 Yes. Shows can be loaded, validated, saved and played from Python, on a clock you drive
 or live. See [busk as a library](library.md).
+
+## Glossary
+
+Each of the four words you meet first is built from the one before it:
+
+- **Attribute**: one property of a fixture that you can control, such as intensity, pan
+  or colour. `set color 0 0 1` sets the `color` attribute of whatever is selected. busk
+  has a fixed set of attributes, listed in [the console](console.md#attributes).
+- **Preset** (palette): a named, reusable value for one attribute or a few, such as
+  "Blue" or "Audience". `record preset color 1 "Blue"` records one. Cues point to the
+  preset instead of copying its value, so if you edit "Blue", every cue that uses it
+  changes too.
+- **Cue**: one stored state: attribute values (or presets) for groups or fixtures, plus
+  effects and timing (fade in and out, wait). `record cue 9/2` records cue 2 of cue
+  list 9.
+- **Cue list**: an ordered list of cues that you step through with GO, BACK and GOTO. A
+  cue list with one cue is a **look**, and one in chase mode is a **chase**. A cue list
+  does nothing until a **playback** runs it from a fader or button; `record slot 1`
+  creates a cue list, its first cue and a playback in one go.
+
+The other terms:
+
+| Term | Meaning |
+|---|---|
+| **Fixture** | A patched instance of a lighting device. |
+| **Fixture profile** | Library definition of a device model: modes, channels, wheels, physical ranges. |
+| **Mode** | One DMX personality of a profile (e.g. "16-ch basic", "32-ch extended"). |
+| **Element** | An individually controllable part of a fixture (a pixel of a bar, a cell of a multi-head). Single-cell fixtures have exactly one element. |
+| **Target** | A `(fixture, element)` pair — the smallest thing an attribute belongs to. |
+| **Slot** | A compiled `(target, attribute)` pair with a dense integer index; the unit the resolver works on. |
+| **Lane** | One float inside a slot (a colour slot has several lanes: r, g, b, optional w/a/uv). |
+| **Playback** | A performance handle that runs one cue list, with fader/button behaviour and a priority. |
+| **Contribution** | What a running source offers for one slot this tick: value, weight, priority, sequence. |
+| **Priority band** | All contributions sharing the same priority number. |
+| **HTP / LTP** | Highest-takes-precedence / latest-takes-precedence merge rules. |
+| **Weight** | 0..1 "how present" a contribution is, driven by fades and LTP fader modes. |
+| **Programmer** | The temporary editing buffer the operator uses to build values before recording. |
+| **Tracking** | A cue list behaviour where values persist into later cues until changed. |
+| **Park** | A value forced at output regardless of everything else (e.g. a broken fixture held at 0). |
