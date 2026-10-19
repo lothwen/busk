@@ -18,8 +18,24 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   choose a page from a list; a stack's strip shows the cue GO goes to next; a red OUTPUT
   OFF bar shows while `output off` holds. The `show` message lists each playback's `cues`
   (number and name).
+- Colour macros: the attributes `colorMacro` (a fixture's built-in colour presets and
+  programs), `colorEffect` (its colour effects) and `colorMacroRate` (how fast they run),
+  in the `color` family ([attributes](docs/console.md#attributes)). Uncontrolled, a
+  fixture outputs the option its own default selects.
+- Tab completes the options of a discrete attribute after `set` and `park`, from the
+  selected or named fixtures.
 
 ### Changed
+
+- The OFL import maps `ColorPreset` to `colorMacro` and `ColorJump`/`ColorFade` programs
+  to `colorEffect`; the GDTF import maps `ColorMacro1`, `ColorMacro1Rate` and
+  `ColorEffects1` ([importing](docs/profiles.md#importing-ofl-and-gdtf-files)). These
+  channels were `control` channels held at their default. A few channels change
+  attribute: three OFL "Color Macro / Temperature" channels were `cto`, and GDTF
+  channels whose logical attribute is `ColorMacro1` but whose functions are a colour
+  wheel's (Robe's virtual colour wheels) were `colorWheel`.
+- Imported profiles get a new revision: the importer's version is part of it, so a show
+  that embeds an older import can take the new one with `profile update`.
 
 - Ctrl+C at the console prompt: on an empty line it now says how to quit, and a second
   Ctrl+C in a row quits like `quit`. Ctrl+C on a typed line still only clears it.

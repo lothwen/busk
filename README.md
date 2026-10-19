@@ -197,8 +197,9 @@ autosave or crash recovery. For a show on stage, use `busk run`.
 
 ## Known limitations
 
-- **Colour wheels.** A fixture with only a colour wheel takes `colorWheel` values. An RGB
-  colour, such as a global colour preset, does nothing on it yet.
+- **Colour wheels and macros.** A fixture with only a colour wheel takes `colorWheel`
+  values, and one with only colour macros `colorMacro` values. An RGB colour, such as a
+  global colour preset, does nothing on them yet.
 - **Single-emitter elements** (UV-only, white-only) and pan/tilt fixtures without a dimmer
   cannot be described yet. The importers work around them.
 - **One page for every surface.** Two operators cannot be on different pages.

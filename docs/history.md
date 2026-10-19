@@ -370,7 +370,9 @@ Still open:
 * **Colour → colour wheel**: wheel-only fixtures accept only `colorWheel` for now; the
   precedence between a controlled `color` and `colorWheel` must be decided. Phase 1
   deferred it to Phase 2, but the Phase 2 plan does not schedule it, so a global colour
-  preset does nothing on a wheel-only fixture yet.
+  preset does nothing on a wheel-only fixture yet. The same holds for fixtures whose only
+  colour control is a colour macro (`colorMacro`, since 2026-10-19): `color` does not
+  pick their nearest preset.
 * **Indexed gobo rotation** has no attribute; **strobe units** are estimates on many
   charts; **output gamma** has no profile field.
 * **Single-emitter colour elements** (UV-only, white-only) and **pan/tilt-only fixtures

@@ -15,9 +15,11 @@ keeps running while you edit, and every edit can be undone.
 
 At a terminal, `busk run` opens the `busk>` prompt:
 
-- **Tab** completes the word being typed: a command, a keyword, or a name in quotes (a
-  master, surface, profile, mode or effect template). Where several words fit, or a value
-  comes next, it lists what may come next instead.
+- **Tab** completes the word being typed: a command, a keyword, a name in quotes (a
+  master, surface, profile, mode or effect template), or an option of a discrete
+  attribute (`set colorMacro `, `park fixture 3 gobo1 `: the options of the selected or
+  named fixtures). Where several words fit, or a value comes next, it lists what may come
+  next instead.
 - **`?`** prints what may come next and the forms of the command, then gives the line back
   as it was:
 
@@ -167,6 +169,13 @@ or a percentage (`80%`), a discrete value names one of the fixture's options
 | `shutter` | shutter | discrete | — | LTP | snap | `open` |
 | `strobeRate` | shutter | scalar | hz | LTP | fade | 0 |
 | `control` | control | discrete | — | LTP | snap | none (lamp on, reset… — never busked) |
+
+`colorMacro` picks a colour preset or program built into a fixture (`set colorMacro red`,
+`set colorMacro colourChange`), `colorEffect` one of its colour effects, and
+`colorMacroRate` sets how fast a program runs. Their options are the fixture's own,
+named after its OFL or GDTF file. Nothing controlling them, a fixture outputs the option
+its own default selects, usually "no function" (`off`): on most fixtures a macro
+overrides the colour mix while it is set.
 
 ## Scripts
 

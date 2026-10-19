@@ -364,6 +364,14 @@ commit.
    - the spec's §5.3 table;
    - `history.md`: the colour → wheel item now names macro-only fixtures too;
    - CHANGELOG: Added (attributes, completion) and Changed (imports, revisions).
+
+   **Done** (2026-10-19): docs only.
+   - The §5.3 table and `console.md`'s attribute table came with step 1.
+   - `console.md`: Tab offers options, plus a paragraph on the three attributes.
+   - `profiles.md`: OFL and GDTF bullets, options with parameters, the uncontrolled
+     default, the revision's importer version. "Only synthetic GDTF files have been
+     tested" now says real descriptions were checked to import.
+   - The README's "Colour wheels" limitation now names colour macros too.
 8. **Real-file sweep.** Import every OFL fixture (636) and GDTF description (5,733) at
    `HEAD~` and at `HEAD`. Verify:
    - no import that succeeded now fails;

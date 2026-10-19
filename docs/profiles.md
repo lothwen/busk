@@ -58,11 +58,17 @@ capability type to a busk attribute.
 
 - Profile ids are `ofl-<manufacturer>-<fixture>`. The manufacturer comes from the OFL
   repository layout (`<manufacturer>/<fixture>.json`) unless given with `--manufacturer`.
-- The revision is the file's `lastModifyDate` plus a short hash of its content, so editing
-  the file makes a new revision.
+- The revision is the file's `lastModifyDate` plus a short hash of its content and of the
+  importer's version, so editing the file, or a busk that imports it differently, makes a
+  new revision: `list profiles` shows it and `profile update` takes it.
 - `FogOutput` is intensity, so the masters and blackout apply to a smoke machine.
 - Gobo rotation is `WheelSlotRotation`. `WheelRotation` (the whole wheel spinning) is
   never output.
+- A `ColorPreset` channel is `colorMacro`. Each preset is a slot of a wheel made for the
+  channel, with the preset's colour, `NoFunction` is `off`, and every other range is an
+  option too: a program's speed becomes its `colorMacroRate` (slow 0, fast 1), a strobe's
+  its `strobeRate`. A channel of `ColorJump`/`ColorFade` programs with nothing else busk
+  drives is `colorEffect`.
 - A mode whose colours are only whites or UV makes each its own intensity element.
 - Speeds OFL gives only as `slow…fast` become estimates (strobe 1–20 Hz, rotation
   10–360 °/s), flagged in the report.
@@ -74,9 +80,13 @@ hand-transcribed profiles (`build.busk`) or from the same fixtures imported from
 **GDTF** (DIN SPEC 15800) is a subset: single-cell fixtures, and multi-cell ones built
 from geometry references, with their wheels, emitter colours (CIE xyY to linear RGB),
 physical ranges and DMX defaults. `Fog1` and `Haze1` are intensity, as OFL's `FogOutput`
-is. Mode masters, DMX breaks after the first and virtual channels are reported, not
-imported. The XML is read with no `DOCTYPE` allowed, and the archive's `description.xml`
-is capped at 32 MB. Only synthetic GDTF files have been tested so far.
+is. `ColorMacro1` and `ColorEffects1` are `colorMacro` and `colorEffect`, with every
+function and channel set an option (the slots of a linked wheel, `off` for "No function"
+and the like), and `ColorMacro1Rate` is `colorMacroRate`; the second macro or effect of
+a fixture is not imported. Mode masters, DMX breaks after the first and virtual channels
+are reported, not imported. The XML is read with no `DOCTYPE` allowed, and the archive's `description.xml`
+is capped at 32 MB. The tests use synthetic GDTF files; real ones (the 5,733
+descriptions of the OpenGDTFLibrary, GDTF 1.0 and 1.1) have only been checked to import.
 
 ## Updating a show's profiles
 
@@ -99,7 +109,11 @@ when a fixture's mode is missing from the new revision. Nothing is ever updated 
   from r, g, b; an explicit `w` is used as given. Explicit `a`/`uv` are used, otherwise 0.
   CMY is `1 − r`, `1 − g`, `1 − b`. Other emitters (lime, cyan, custom) output 0 until
   calibrated mixing exists. Virtual intensity scales every additive emitter.
-- **Options** (wheel slots, shutter functions) output the centre of their DMX range.
+- **Options** (wheel slots, shutter functions, colour macros) output the centre of their
+  DMX range. A function option with a parameter (a strobe and its `strobeRate`, a program
+  and its `colorMacroRate`) maps the parameter across its range instead.
+- **Colour macros and effects**, uncontrolled, output the option holding the channel's
+  `defaultDmx`, else its first option.
 - **The shutter guard**: an uncontrolled shutter outputs `open`, never its `defaultDmx`,
   so a fixture with nothing up is not held dark by its shutter.
 - **Rounding** is half to even.
