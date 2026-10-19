@@ -484,7 +484,7 @@ def test_pan_tilt_zoom_focus_iris_frost_cto_and_speed() -> None:
             channel("6", function("Iris", "0/1", (100, 0))),
             channel("7", function("Frost1", "0/1", (0, 1))),
             channel("8", function("CTO", "0/1", (6500, 3200))),
-            channel("9", function("MSpeed", "0/1", (0.1, 20))),
+            channel("9", function("PositionMSpeed", "0/1", (0.1, 20))),
         ),
     )
     attributes = [c["attribute"] for c in channels_of(report)]
@@ -505,8 +505,27 @@ def test_pan_tilt_zoom_focus_iris_frost_cto_and_speed() -> None:
     assert caps(report, 5) == [("range", 0, 255, (1, 0))]  # 100…0 scaled to 0…1
     assert noted(report, "Beam_Iris: physical 0…100 taken as 0…1")
     assert caps(report, 7) == [("range", 0, 255, (0, 1))]  # kelvin
-    assert caps(report, 8) == [("range", 0, 255, (0, 1))]  # MSpeed: a time, fast first
+    assert caps(report, 8) == [("range", 0, 255, (0, 1))]  # PositionMSpeed: a time, fast first
     assert report.profile["physical"] == {"panRange": 540, "tiltRange": 270, "zoomRange": (8, 40)}
+
+
+@pytest.mark.parametrize("attribute", ["Fog1", "Haze1"])
+def test_fog_and_haze_are_intensity_after_their_dead_band(attribute: str) -> None:
+    """As OFL's ``FogOutput``: the masters and blackout apply to them."""
+    report = imported(
+        mode(
+            "1ch",
+            channel(
+                "1", function("NoFeature", "0/1"), function(attribute, "10/1"), attribute=attribute
+            ),
+        ),
+    )
+    assert at(report, 0)["attribute"] == "intensity"
+    assert caps(report, 0) == [
+        ("range", 0, 0, (0, 0)),
+        ("function", 1, 9, "noFunction"),
+        ("range", 10, 255, (0, 1)),
+    ]
 
 
 def test_colour_systems() -> None:

@@ -333,6 +333,30 @@ def test_wheel_rotation_on_the_wheel_channel_is_never_output() -> None:
     ]
 
 
+def test_whole_wheel_rotation_is_never_output() -> None:
+    """``WheelRotation`` spins the whole wheel, not the gobo in its slot, as
+    GDTF's ``Gobo(n)WheelSpin``: no attribute, on its own channel or on a
+    gobo rotation channel."""
+    spin = {"type": "WheelRotation", "wheel": "Gobo Wheel"}
+    report = lamped({
+        "Gobo Wheel": one({"type": "WheelSlot", "slotNumber": 1}),
+        "Wheel Spin": one({**spin, "speedStart": "slow CW", "speedEnd": "fast CW"}),
+        "Gobo Rotation": many(
+            (0, 127, {"type": "WheelSlotRotation", "wheel": "Gobo Wheel",
+                      "speedStart": "1rpm", "speedEnd": "60rpm"}),
+            (128, 191, {**spin, "angleStart": "0deg", "angleEnd": "360deg"}),
+            (192, 255, {**spin, "speedStart": "1rpm", "speedEnd": "60rpm"})),
+    }, wheels=WHEELS)  # fmt: skip
+    assert at(report, 1)["attribute"] == "control"
+    assert noted(report, "Wheel Spin", "no busk attribute (WheelRotation)")
+    assert at(report, 2)["attribute"] == "gobo1Rotation"
+    assert caps(report, 2) == [
+        ("range", (0, 127), (6.0, 360.0)),
+        ("fn", (128, 191), "wheelRotation", None),
+        ("fn", (192, 255), "wheelRotation", None),
+    ]
+
+
 def test_prism_slots_come_from_the_prism_wheel_or_a_new_one() -> None:
     wheels = {"Prism": {"slots": [{"type": "Open"}, {"type": "Prism", "facets": 5}]}}
     report = lamped({

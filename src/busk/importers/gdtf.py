@@ -30,7 +30,8 @@ GDTF attribute, else of its first channel function busk can drive:
 ==========================================  ===================================
 GDTF                                        busk
 ==========================================  ===================================
-``Dimmer``                                  ``intensity``
+``Dimmer``, ``Fog1``, ``Haze1``             ``intensity`` (fog is intensity, so
+                                            the masters and blackout apply)
 ``Pan``, ``Tilt``                           ``pan``, ``tilt`` (physical degrees,
                                             centred on the channel's travel)
 ``ColorAdd_R/G/B/W/A/RY/UV/C/GY``,          the emitters ``red``, ``green``,
@@ -55,7 +56,7 @@ GDTF                                        busk
                                             → ``strobe``, ``pulse``, ``random``
                                             with their ``strobeRate`` in Hz
 ``Shutter1Strobe``, ``StrobeFrequency``     ``strobeRate`` (a channel of its own)
-``PanTiltSpeed``, ``MSpeed``                ``positionSpeed`` (0 = fastest)
+``PositionMSpeed``                          ``positionSpeed`` (0 = fastest)
 everything else                             a ``control`` channel held at its
                                             default and reported
 ==========================================  ===================================
@@ -132,6 +133,8 @@ DESCRIPTION_CAP: Final = 32 * 1024 * 1024
 
 ATTRIBUTES: Final[Mapping[str, str]] = {
     "Dimmer": "intensity",
+    "Fog1": "intensity",
+    "Haze1": "intensity",
     "Pan": "pan",
     "Tilt": "tilt",
     "Color1": "colorWheel",
@@ -149,8 +152,7 @@ ATTRIBUTES: Final[Mapping[str, str]] = {
     "Shutter1": "shutter",
     "Shutter1Strobe": "strobeRate",
     "StrobeFrequency": "strobeRate",
-    "PanTiltSpeed": "positionSpeed",
-    "MSpeed": "positionSpeed",
+    "PositionMSpeed": "positionSpeed",
 }
 """GDTF attributes busk drives (colours apart), by busk attribute."""
 
@@ -946,14 +948,13 @@ class _ModeBuilder:
             self.fixture.widen_zoom(low, high)
         elif attribute == "strobeRate":
             self.fixture.widen("maxStrobeHz", high)
-        elif attribute == "positionSpeed":  # 0 = fastest; MSpeed is a time, the other a speed
-            invert = p.source != "MSpeed"
-            return _rescaled(low, high, invert=invert)
+        elif attribute == "positionSpeed":  # 0 = fastest; PositionMSpeed is a time
+            return _rescaled(low, high)
         elif attribute == "cto" and not 0 <= low <= high <= 1:  # kelvin
             return lambda v: (_kelvin(v[0]), _kelvin(v[1]))
         elif attribute in _NORMALISED and not 0 <= low <= high <= 1:
             self.fixture.note(f"{name}: physical {low:g}…{high:g} taken as 0…1")
-            return _rescaled(low, high, invert=False)
+            return _rescaled(low, high)
         return lambda v: v
 
     def _slots(self, p: _Placed, f: _Function) -> list[Capability]:
@@ -1041,13 +1042,13 @@ def _kelvin(k: float) -> float:
     return min(1.0, max(0.0, (6500 - k) / (6500 - 3200)))
 
 
-def _rescaled(low: float, high: float, *, invert: bool) -> _Values:
-    """Physical ``low…high`` scaled to 0…1 (1…0 when ``invert``)."""
+def _rescaled(low: float, high: float) -> _Values:
+    """Physical ``low…high`` scaled to 0…1."""
     span = high - low or 1.0
 
     def scale(v: tuple[float, float]) -> tuple[float, float]:
         a, b = ((x - low) / span for x in v)
-        return (1 - a, 1 - b) if invert else (a, b)
+        return (a, b)
 
     return scale
 

@@ -23,7 +23,9 @@ OFL                                     busk
 ``Pan``, ``Tilt``                       ``pan``, ``tilt``, centred on the travel
 ``PanTiltSpeed``                        ``positionSpeed`` (fast 0, slow 1)
 ``WheelSlot``                           ``colorWheel``, ``gobo1``, ``gobo2``, ``prism``
-``WheelRotation``, ``WheelSlotRotation``  ``gobo1Rotation`` … in °/s, CW positive
+``WheelSlotRotation``                   ``gobo1Rotation`` … in °/s, CW positive
+                                        (``WheelRotation``, the whole wheel
+                                        spinning, is never output)
 ``Prism``, ``PrismRotation``            ``prism`` slots, ``prismRotation``
 ``Zoom``, ``Focus``, ``Iris``,          ``zoom`` (degrees), ``focus``, ``iris``,
 ``Frost``, ``ColorTemperature``         ``frost``, ``cto``
@@ -696,7 +698,7 @@ class _ModeBuilder:
             if wheel is None or not isinstance(slot, int):
                 return None
             return wheel.attribute
-        if kind in ("WheelRotation", "WheelSlotRotation"):
+        if kind == "WheelSlotRotation":
             wheel = self.fixture.wheels.get(str(data.get("wheel", channel.key)))
             if wheel is None or not _has_speed(data):
                 return None
@@ -826,8 +828,7 @@ class _ModeBuilder:
             ) == attribute:
                 out.extend(self._mapped(channel, cap, attribute, low, high))
             elif cap.type == "NoFunction" or (
-                cap.type in ("WheelSlotRotation", "PrismRotation", "WheelRotation")
-                and not _has_speed(cap.data)
+                cap.type in ("WheelSlotRotation", "PrismRotation") and not _has_speed(cap.data)
             ):
                 out.extend(self._dead_band(channel, attribute, low, high, cap))
             else:

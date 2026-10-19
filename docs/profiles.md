@@ -61,6 +61,8 @@ capability type to a busk attribute.
 - The revision is the file's `lastModifyDate` plus a short hash of its content, so editing
   the file makes a new revision.
 - `FogOutput` is intensity, so the masters and blackout apply to a smoke machine.
+- Gobo rotation is `WheelSlotRotation`. `WheelRotation` (the whole wheel spinning) is
+  never output.
 - A mode whose colours are only whites or UV makes each its own intensity element.
 - Speeds OFL gives only as `slow…fast` become estimates (strobe 1–20 Hz, rotation
   10–360 °/s), flagged in the report.
@@ -71,10 +73,10 @@ hand-transcribed profiles (`build.busk`) or from the same fixtures imported from
 
 **GDTF** (DIN SPEC 15800) is a subset: single-cell fixtures, and multi-cell ones built
 from geometry references, with their wheels, emitter colours (CIE xyY to linear RGB),
-physical ranges and DMX defaults. Mode masters, DMX breaks after the first and virtual
-channels are reported, not imported. The XML is read with no `DOCTYPE` allowed, and the
-archive's `description.xml` is capped at 32 MB. Only synthetic GDTF files have been
-tested so far.
+physical ranges and DMX defaults. `Fog1` and `Haze1` are intensity, as OFL's `FogOutput`
+is. Mode masters, DMX breaks after the first and virtual channels are reported, not
+imported. The XML is read with no `DOCTYPE` allowed, and the archive's `description.xml`
+is capped at 32 MB. Only synthetic GDTF files have been tested so far.
 
 ## Updating a show's profiles
 
