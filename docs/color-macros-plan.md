@@ -379,6 +379,25 @@ commit.
    - three fixtures checked by hand, DMX against their charts.
 
    Write the numbers in step 8's Done note.
+
+   **Done** (2026-10-19), at `b18faab` against `05cdf16` (step 2, before either importer
+   changed). The scripts lived in the session scratchpad.
+   - **OFL** (636 fixtures at `db1234f`): 567 import and 91 fail, before and after; no
+     mode is lost. 278 fixtures get 800 `colorMacro` and 91 `colorEffect` channels.
+     Control channels drop by 888, and `cto` by 3 (step 3).
+   - **GDTF** (5,733 descriptions): 5,683 import and 50 fail, before and after; no mode is
+     lost. 158 fixture types get 454 `colorMacro` and 13 `colorEffect` channels, and no
+     `colorMacroRate` (no file has the attribute). Control channels drop by 461, and
+     `colorWheel` by 6 (the Robe DL4S, step 4).
+   - **By hand**, patched at 1.1 through `OfflineShow`, against the charts:
+     - Wild Wash Pro 648 5Ch: uncontrolled 2 (black, 0–5); red 9 (6–13); white 113
+       (110–117); colour change 160 at rate 0.5 and 192 at 1 (129–192); gradual colour
+       change 193 at 0.
+     - ADJ COB Cannon Wash 10-channel: Color 5 is 14 (13–16); uncontrolled 0 (Black).
+     - Terbly GLW7QZ Standard: uncontrolled 3 ("No function", 0–7); Red to Yellow 23
+       (8–39); Red to White 215 (200–231).
+     - Robe DL4S Mode 1 RGBW: White 2700 K is 1 (1–2); Blue 26 (16–36, the first of the
+       chart's two Blue ranges); the rainbow 249 (248–251).
 9. **The user's checks.** A fixture in a macro mode in the TupperDMX simulator (the Wild
    Wash in 5Ch). Real GDTF 1.2 files with `ColorMacro(n)Rate`, if the user has any from
    GDTF Share.
