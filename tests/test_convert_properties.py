@@ -34,6 +34,7 @@ from builders import (
     fixture,
     frame,
     load_doc,
+    macro_rig,
     mode,
     profile,
     random_frame,
@@ -49,6 +50,7 @@ SHOWS: dict[str, Callable[[], CompiledShow]] = {
     "appendix A": lambda: compile_doc(load_doc(APPENDIX_A)),
     "demo": lambda: compile_doc(load_doc(DEMO)),
     "feature matrix": lambda: compile_doc(feature_matrix()),
+    "colour macros": lambda: compile_doc(macro_rig()),
 }
 
 

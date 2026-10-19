@@ -477,6 +477,57 @@ def feature_matrix() -> Doc:
 # ------------------------------------------------------------ benchmark rig
 
 
+def macro_rig() -> Doc:
+    """Colour macros (color-macros-plan step 2): two RGB pars with a macro, a
+    rate and a colour effect channel (fixtures 1 and 2, at 1 and 11), and a
+    macro-only fixture whose default selects a black preset (fixture 3, at 21)."""
+
+    def wheel(*names: str) -> Doc:
+        colours = {"black": (0, 0, 0), "red": (1, 0, 0), "green": (0, 1, 0), "white": (1, 1, 1)}
+        slots = [
+            {"id": n, "name": n.title(), "color": dict(zip("rgb", colours[n], strict=True))}
+            for n in names
+        ]
+        return {"id": "macro1", "kind": "color", "slots": slots}
+
+    speed = ("colorMacroRate", 0.0, 1.0)
+    macro = channel(
+        4,
+        "colorMacro",
+        fn(0, 9, "off"),
+        slot(10, 19, "red", "macro1"),
+        slot(20, 29, "green", "macro1"),
+        slot(30, 39, "white", "macro1"),
+        fn(40, 199, "colourChange", speed),
+        fn(200, 255, "soundActive"),
+    )
+    macro["highlightDmx"] = 35
+    effect = channel(
+        6, "colorEffect", fn(0, 9, "off"), fn(10, 127, "colorJump", speed),
+        fn(128, 255, "colorFade", speed),
+    )  # fmt: skip
+    par = mode([
+        channel(0, "intensity"), color(1, "red"), color(2, "green"), color(3, "blue"),
+        macro, channel(5, "colorMacroRate"), effect,
+    ])  # fmt: skip
+    only = mode([
+        channel(0, "intensity"),
+        channel(1, "colorMacro", slot(0, 5, "black", "macro1"), slot(6, 13, "red", "macro1"),
+                slot(14, 21, "white", "macro1"), fn(22, 255, "colourChange", speed)),
+    ])  # fmt: skip
+    return show(
+        [
+            profile("macro-par", par, wheels=[wheel("red", "green", "white")]),
+            profile("macro-only", only, wheels=[wheel("black", "red", "white")]),
+        ],
+        [
+            fixture("a", 1, "macro-par", 1),
+            fixture("b", 2, "macro-par", 11),
+            fixture("c", 3, "macro-only", 21),
+        ],
+    )
+
+
 def benchmark_rig(universes: int = 64) -> Doc:
     """The §19 reference rig: per universe, 4 Appendix A spots, 6 MH-X25,
     10 ML-56 and 9 COLORband PiX (500 channels). Across 64 universes that is

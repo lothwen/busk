@@ -21,8 +21,8 @@ from builders import (
     profile,
     rng,
     show,
-    slot,
 )
+from builders import slot as wheel_slot
 from busk.compiler.compile import CompiledShow
 from busk.compiler.slots import Slot
 from busk.model.common import FixtureId, TargetRef
@@ -236,9 +236,9 @@ def macro_show(default: int) -> dict:
         1,
         "colorMacro",
         fn(0, 9, "off"),
-        slot(10, 19, "red", "macro1"),
-        slot(20, 29, "blue", "macro1"),
-        slot(30, 39, "red", "macro1"),
+        wheel_slot(10, 19, "red", "macro1"),
+        wheel_slot(20, 29, "blue", "macro1"),
+        wheel_slot(30, 39, "red", "macro1"),
         fn(40, 199, "colourChange", ("colorMacroRate", 0, 1)),
         rng(200, 255, 0, 1),  # a range is never an option
         default=default,

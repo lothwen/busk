@@ -274,6 +274,15 @@ commit.
 
    **2b (only with Q1(c)):** colour-follows-macro on elements without colour mixing,
    nearest preset by distance in linear RGB.
+
+   **Done** (2026-10-19): 3369 passed. No production code changed.
+   - `builders.macro_rig()` is the rig. `tests/test_color_macros.py` has eight cases with
+     hand-computed DMX, and `test_convert_properties` runs the differential and safety
+     properties on the rig too.
+   - The engine process's slot view is not tested separately: `engine_view` only drops
+     `slots` and `byKey`.
+   - Fixed with this step: step 1's `test_slots.py` import of `slot` shadowed a loop
+     variable (ruff F402).
 3. **OFL** (§5.3). Verify in `test_ofl.py`:
    - a Wild Wash-like channel: no off range, a black first preset, a repeated "Red", effects
      with speed;
