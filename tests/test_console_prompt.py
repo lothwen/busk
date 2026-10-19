@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from builders import APPENDIX_A, ROOT, load_doc, show_of
+from builders import APPENDIX_A, ROOT, load_doc, macro_rig, show_of
 from busk import new_show
 from busk.console.console import Console
 from busk.console.parser import (
@@ -31,6 +31,7 @@ from busk.model.attributes import ATTRIBUTES
 from busk.runner import OfflineShow
 from busk.session.ids import CounterIds
 from busk.session.library import ProfileLibrary, builtin_effects
+from busk.session.programmer import Programmer
 from session_harness import Live
 
 LIBRARY = ProfileLibrary()
@@ -158,6 +159,28 @@ def test_expected_changes_nothing() -> None:
 def test_only_limits_follows_a_fixture_range() -> None:
     with pytest.raises(ParseError, match=r"^expected limits$"):
         parse("fixture 101 thru 102", context())
+
+
+def test_a_discrete_value_offers_the_options_of_its_targets() -> None:
+    """``set`` offers the options of the selection, ``park`` those of the
+    targets it names (color-macros-plan Q6); nothing selected, a value."""
+    a, c = ({"fixtureId": f, "element": 0} for f in ("a", "c"))
+    selected = Programmer(selection=(a, c))  # type: ignore[arg-type]
+    ctx = Context(show_of(macro_rig()), LIBRARY, CounterIds(), programmer=selected)
+    assert expected("set colorMacro ", ctx).words == (
+        "spread", "preset", "off", "red", "green", "white", "colourChange", "soundActive", "black",
+    )  # fmt: skip
+    assert expected("set colorEffect ", ctx).words[2:] == ("off", "colorJump", "colorFade")
+    assert expected("park fixture 3 colorMacro ", ctx).words == (
+        "black", "red", "white", "colourChange",
+    )  # fmt: skip
+    nothing = Context(show_of(macro_rig()), LIBRARY, CounterIds())
+    assert expected("set colorMacro ", nothing) == Expected(
+        ("spread", "preset"), ("a colorMacro option",)
+    )
+    heads = Programmer(selection=({"fixtureId": "fx-mh1", "element": 0},))  # type: ignore[arg-type]
+    gobos = Context(show_of(load_doc(APPENDIX_A)), LIBRARY, CounterIds(), programmer=heads)
+    assert "open" in expected("set gobo1 ", gobos).words
 
 
 def test_tab_offers_every_word_of_the_example_show_where_it_stands(tmp_path: Path) -> None:

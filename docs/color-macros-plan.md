@@ -351,6 +351,13 @@ commit.
      `list profiles` and `profile update` through `OfflineShow`.
 6. **Console** (Q6): completion of discrete options. Verify in `test_console_prompt.py`,
    including `?`.
+
+   **Done** (2026-10-19): 3380 passed.
+   - `_Parser.value(definition, targets=None)` offers the options of `targets`, else the
+     programmer's selection, and only where the line ends. `_Parser._options` reads them
+     from the show's profiles with `option_capabilities`. `park` passes its targets.
+   - `?` shows the same words, since it reads `expected` too. The club-night walk still
+     passes; its discrete values are now offered words.
 7. **Docs and changelog.**
    - `profiles.md`: the import bullets, and how options and the default become DMX;
    - `console.md`: the attribute table and a `set colorMacro red` example;

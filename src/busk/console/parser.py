@@ -160,7 +160,9 @@ from typing import Any, Final, cast
 from busk.commands.patch import deep_copy
 from busk.commands.types import Command, EditPath
 from busk.model.attributes import ATTRIBUTES, AttributeDefinition
+from busk.model.common import TargetRef
 from busk.model.cue import CUE_NUMBER
+from busk.model.profile import option_capabilities
 from busk.model.show import Show
 from busk.session.ids import IdFactory, RandomIds
 from busk.session.library import EffectDefaults, EffectLibrary, ProfileLibrary, builtin_effects
@@ -754,11 +756,19 @@ class _Parser:
             raise ParseError(f"unknown attribute {token.text!r}")
         return ATTRIBUTES[name]
 
-    def value(self, definition: AttributeDefinition) -> Any:
+    def value(
+        self, definition: AttributeDefinition, targets: Sequence[TargetRef] | None = None
+    ) -> Any:
+        """An attribute's value. Where the line ends, a discrete attribute
+        offers the options of ``targets`` (default: the selection)."""
         if definition.kind == "scalar":
             return self.number()
         if definition.kind == "discrete":
-            token = self.take(f"a {definition.id} option")
+            names: list[str] = []
+            if self.peek() is None:
+                chosen = self.ctx.programmer.selection if targets is None else targets
+                names = self._options(definition.id, chosen)
+            token = self.take(f"a {definition.id} option", *names)
             return {"slot": token.text}
         color: dict[str, float] = {}
         for component in ("r", "g", "b"):
@@ -766,6 +776,19 @@ class _Parser:
         while (extra := self.keyword("w", "a", "uv")) is not None:
             color[extra] = self.number(f"the colour's {extra}")
         return color
+
+    def _options(self, attribute: str, targets: Iterable[TargetRef]) -> list[str]:
+        """The options the channels of ``attribute`` on ``targets`` offer."""
+        fixtures = {fixture["id"]: fixture for fixture in self.show["fixtures"]}
+        modes = {(p["id"], m["id"]): m for p in self.show["profiles"] for m in p["modes"]}
+        names: dict[str, None] = {}
+        for target in targets:
+            fixture = fixtures.get(target["fixtureId"])
+            mode = None if fixture is None else modes.get((fixture["profileId"], fixture["modeId"]))
+            for channel in [] if mode is None else mode["channels"]:
+                if channel["element"] == target["element"] and channel["attribute"] == attribute:
+                    names.update((option, None) for option, _ in option_capabilities(channel))
+        return list(names)
 
     def _cmd_preset(self) -> Action:
         return self.submit({"type": "APPLY_PRESET", "presetId": self.preset()["id"]})
@@ -1881,7 +1904,7 @@ class _Parser:
         where = self.typed(start)
         definition = self.attribute()
         start = self.k
-        value = self.value(definition)
+        value = self.value(definition, cast(list[TargetRef], refs))
         shown = self.typed(start)
         self.done()
         park = [cast(dict[str, Any], deep_copy(entry)) for entry in self.show["park"]]
