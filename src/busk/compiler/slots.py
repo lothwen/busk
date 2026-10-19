@@ -48,9 +48,10 @@ from busk.model.attributes import (
     AttributeDefinition,
     AttributeFamily,
     AttributeValue,
+    DiscreteValue,
 )
 from busk.model.common import AttributeId, FixtureId, TargetKey, TargetRef, target_key
-from busk.model.profile import ChannelDefinition, option_capabilities
+from busk.model.profile import ChannelDefinition, channel_default_option, option_capabilities
 
 type SlotIndex = int
 """Dense index of a slot in :attr:`SlotTable.slots`."""
@@ -70,7 +71,8 @@ class Slot:
     """One controllable ``(target, attribute)`` and where its lanes live.
 
     ``options`` (discrete slots) are the option ids the lane indexes into, in
-    DMX order: wheel slot ids, or shutter functions. ``wheels`` are the ids of
+    DMX order: wheel slot ids, shutter functions, or a colour macro's presets
+    and programs. ``wheels`` are the ids of
     the wheels those options belong to, used to check a value's optional
     ``wheel``. ``extras`` (colour slots) name the lanes after ``r, g, b``.
     """
@@ -143,7 +145,8 @@ def build_slots(rig: Sequence[RigFixture]) -> SlotTable:
             for definition, channel in _element_attributes(fixture, element):
                 slot = _make_slot(fixture, element, target, definition, channel, len(slots), lane)
                 slots.append(slot)
-                defaults.extend(encode_value(slot, _default_value(fixture, element, definition)))
+                default = _default_value(fixture, element, definition, channel)
+                defaults.extend(encode_value(slot, default))
                 lane += slot.laneCount
     frame = np.array(defaults, dtype=np.float64)
     frame.flags.writeable = False
@@ -232,12 +235,20 @@ def _make_slot(
 
 
 def _default_value(
-    fixture: RigFixture, element: int, definition: AttributeDefinition
+    fixture: RigFixture,
+    element: int,
+    definition: AttributeDefinition,
+    channel: ChannelDefinition | None,
 ) -> AttributeValue:
-    """The registry default, with ``zoom``'s "profile midpoint" resolved."""
-    if definition.default != "profileMidpoint":
-        return definition.default
-    return _profile_midpoint(fixture, element, definition.id)
+    """The registry default, with ``zoom``'s "profile midpoint" and the colour
+    macros' "channel default" resolved."""
+    if definition.default == "profileMidpoint":
+        return _profile_midpoint(fixture, element, definition.id)
+    if definition.default == "channelDefault":
+        # Validation guarantees the channel offers at least one option.
+        option = channel_default_option(cast(ChannelDefinition, channel))
+        return DiscreteValue(slot=cast(str, option))
+    return definition.default
 
 
 def _profile_midpoint(fixture: RigFixture, element: int, attribute: AttributeId) -> float:

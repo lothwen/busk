@@ -21,6 +21,7 @@ from builders import (
     profile,
     rng,
     show,
+    slot,
 )
 from busk.compiler.compile import CompiledShow
 from busk.compiler.slots import Slot
@@ -225,3 +226,68 @@ def test_control_channels_and_their_parameters_get_no_slots() -> None:
     macro = channel(1, "control", fn(0, 255, "macroSpeed", ("strobeRate", 0, 10)))
     doc = show([profile("p", mode([channel(0, "intensity"), macro]))], [fixture("f", 1, "p", 1)])
     assert slot_list(compile_doc(doc), "f") == [(0, "intensity", 1)]
+
+
+def macro_show(default: int) -> dict:
+    """A fixture with a colour macro channel (defaultDmx ``default``): an
+    ``off`` range, two presets (``red`` twice), a program with a speed, and a
+    colour effect channel of functions only."""
+    macro = channel(
+        1,
+        "colorMacro",
+        fn(0, 9, "off"),
+        slot(10, 19, "red", "macro1"),
+        slot(20, 29, "blue", "macro1"),
+        slot(30, 39, "red", "macro1"),
+        fn(40, 199, "colourChange", ("colorMacroRate", 0, 1)),
+        rng(200, 255, 0, 1),  # a range is never an option
+        default=default,
+    )
+    effect = channel(2, "colorEffect", fn(0, 127, "jump"), fn(128, 255, "fade"), default=200)
+    wheels = [
+        {
+            "id": "macro1",
+            "kind": "color",
+            "slots": [{"id": "red", "name": "Red"}, {"id": "blue", "name": "Blue"}],
+        }
+    ]
+    return show(
+        [profile("p", mode([channel(0, "intensity"), macro, effect]), wheels=wheels)],
+        [fixture("f", 1, "p", 1)],
+    )
+
+
+def test_colour_macro_options_are_its_slots_and_functions() -> None:
+    compiled = compile_doc(macro_show(0))
+    assert slot_list(compiled, "f") == [
+        (0, "intensity", 1),
+        (0, "colorMacro", 1),
+        (0, "colorMacroRate", 1),
+        (0, "colorEffect", 1),
+    ]
+    macro = find(compiled, "f", "colorMacro")
+    assert macro.options == ("off", "red", "blue", "colourChange")
+    assert macro.wheels == ("macro1",)
+    assert find(compiled, "f", "colorEffect").options == ("jump", "fade")
+    assert list(compiled.slots.defaultFrame[find(compiled, "f", "colorMacroRate").lanes]) == [0.5]
+
+
+@pytest.mark.parametrize(
+    ("default", "option"),
+    [
+        (0, "off"),
+        (15, "red"),
+        (35, "red"),  # the second "red" range: still the option "red"
+        (100, "colourChange"),
+        (230, "off"),  # in no option: the first one
+    ],
+)
+def test_colour_macros_default_to_the_option_holding_their_default_dmx(
+    default: int, option: str
+) -> None:
+    compiled = compile_doc(macro_show(default))
+    macro = find(compiled, "f", "colorMacro")
+    index = compiled.slots.defaultFrame[macro.lanes][0]
+    assert macro.options[int(index)] == option
+    effect = find(compiled, "f", "colorEffect")
+    assert effect.options[int(compiled.slots.defaultFrame[effect.lanes][0])] == "fade"

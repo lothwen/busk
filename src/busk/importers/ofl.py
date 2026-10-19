@@ -1014,9 +1014,12 @@ class _ModeBuilder:
 
 def _default_option(attribute: str) -> str | None:
     """The option a discrete attribute outputs when nothing controls it
-    (``open``, ``off``), which its channel must offer; ``None`` for others."""
+    (``open``, ``off``), which its channel must offer; ``None`` for others,
+    and for the colour macros, whose default is the channel's own."""
     definition = ATTRIBUTES.get(cast(Any, attribute))
     if definition is None or definition.kind != "discrete" or attribute == "control":
+        return None
+    if definition.default == "channelDefault":
         return None
     return cast(str, cast(Mapping[str, Any], definition.default)["slot"])
 

@@ -205,6 +205,10 @@ SHUTTER_FUNCTIONS: Final = frozenset({"open", "closed", "strobe", "pulse", "rand
 """``fn`` values of the function capabilities that are ``shutter`` options (§5.4).
 Every other function (reset, lamp on, custom effects) is never output."""
 
+MACRO_ATTRIBUTES: Final = frozenset({"colorMacro", "colorEffect"})
+"""Discrete attributes whose options are every slot and function capability: the
+colour presets, programs and effects built into a fixture, each chosen by name."""
+
 BUILTIN_EMITTERS: Final[Mapping[str, bool]] = MappingProxyType(
     {
         "red": False,
@@ -258,6 +262,8 @@ def option_capabilities(
     * A wheel or prism channel's options are its ``slot`` capabilities.
     * A ``shutter`` channel's options are its function capabilities whose
       ``fn`` is one of :data:`SHUTTER_FUNCTIONS`.
+    * A ``colorMacro`` or ``colorEffect`` channel's options are all its slot
+      and function capabilities (:data:`MACRO_ATTRIBUTES`).
 
     Options keep DMX order. When an id appears twice, the first capability
     wins: real charts repeat ranges (the Stairville MH-X25 has two "open"
@@ -266,14 +272,40 @@ def option_capabilities(
     have no options.
     """
     options: dict[str, SlotCapability | FunctionCapability] = {}
-    attribute = channel["attribute"]
     for capability in channel["capabilities"]:
-        if capability["kind"] == "slot" and attribute in WHEEL_ATTRIBUTES:
-            options.setdefault(capability["slot"], capability)
-        elif (
-            capability["kind"] == "function"
-            and attribute == "shutter"
-            and capability["fn"] in SHUTTER_FUNCTIONS
-        ):
-            options.setdefault(capability["fn"], capability)
+        option = _option_id(channel["attribute"], capability)
+        if option is not None and capability["kind"] != "range":
+            options.setdefault(option, capability)
     return list(options.items())
+
+
+def channel_default_option(channel: ChannelDefinition) -> str | None:
+    """The option a channel outputs when nothing controls its attribute, for
+    the attributes whose registry default is ``"channelDefault"``.
+
+    It is the option of the capability whose DMX range holds the channel's
+    ``defaultDmx``, else the channel's first option; ``None`` when it has no
+    options. So an uncontrolled colour macro outputs what the fixture's own
+    default selects, which is usually its "no function" range.
+    """
+    for capability in channel["capabilities"]:
+        option = _option_id(channel["attribute"], capability)
+        low, high = capability["dmx"]
+        if option is not None and low <= channel["defaultDmx"] <= high:
+            return option
+    options = option_capabilities(channel)
+    return options[0][0] if options else None
+
+
+def _option_id(attribute: str, capability: Capability) -> str | None:
+    """The option a capability is on a channel of ``attribute``, or ``None``."""
+    if capability["kind"] == "slot" and (
+        attribute in WHEEL_ATTRIBUTES or attribute in MACRO_ATTRIBUTES
+    ):
+        return capability["slot"]
+    if capability["kind"] == "function" and (
+        attribute in MACRO_ATTRIBUTES
+        or (attribute == "shutter" and capability["fn"] in SHUTTER_FUNCTIONS)
+    ):
+        return capability["fn"]
+    return None

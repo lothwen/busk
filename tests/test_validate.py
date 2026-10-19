@@ -1011,6 +1011,26 @@ PHASE1 = [
         expect=set(),
     ),
     case(
+        "colour macro channel without an option",
+        extra_channel(13, "colorMacro", [{"kind": "range", "dmx": [0, 255], "value": [0, 1]}]),
+        expect={E(f"{CH}[10].capabilities")},
+    ),
+    case(
+        "colour macro channel needs no 'off' (its default is its own)",
+        extra_channel(
+            13,
+            "colorMacro",
+            [{"kind": "slot", "dmx": [0, 127], "slot": "red"}, fn(128, 255, "fade")],
+            defaultDmx=200,
+        ),
+        expect=set(),
+    ),
+    case(
+        "colour effect channel of functions",
+        extra_channel(13, "colorEffect", [fn(0, 127, "jump"), fn(128, 255, "fade")]),
+        expect=set(),
+    ),
+    case(
         "a duplicate 'open' range is fine (the first one wins)",
         push(f"{CH}[9].capabilities", fn(132, 255, "open")),
         expect=set(),

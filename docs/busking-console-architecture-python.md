@@ -306,6 +306,9 @@ class AttributeDefinition:
 | `color` | color | color | linear RGB | LTP | fade | white `{1,1,1}` |
 | `colorWheel` | color | discrete | — | LTP | snap | open |
 | `cto` | color | scalar | normalised | LTP | fade | 0 |
+| `colorMacro` | color | discrete | — | LTP | snap | the channel's default option |
+| `colorMacroRate` | color | scalar | normalised | LTP | fade | 0.5 (0 slowest, 1 fastest) |
+| `colorEffect` | color | discrete | — | LTP | snap | the channel's default option |
 | `gobo1`, `gobo2` | beam | discrete | — | LTP | snap | open |
 | `gobo1Rotation`, `gobo2Rotation` | beam | scalar | degPerSec | LTP | fade | 0 |
 | `prism` | beam | discrete | — | LTP | snap | off |

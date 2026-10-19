@@ -16,6 +16,9 @@ SPEC_TABLE = [
     ("color", "color", "color", "normalized", "LTP", "fade", {"r": 1.0, "g": 1.0, "b": 1.0}),
     ("colorWheel", "color", "discrete", "none", "LTP", "snap", {"slot": "open"}),
     ("cto", "color", "scalar", "normalized", "LTP", "fade", 0.0),
+    ("colorMacro", "color", "discrete", "none", "LTP", "snap", "channelDefault"),
+    ("colorMacroRate", "color", "scalar", "normalized", "LTP", "fade", 0.5),
+    ("colorEffect", "color", "discrete", "none", "LTP", "snap", "channelDefault"),
     ("gobo1", "beam", "discrete", "none", "LTP", "snap", {"slot": "open"}),
     ("gobo2", "beam", "discrete", "none", "LTP", "snap", {"slot": "open"}),
     ("gobo1Rotation", "beam", "scalar", "degPerSec", "LTP", "fade", 0.0),
@@ -34,7 +37,7 @@ SPEC_TABLE = [
 
 def test_registry_holds_exactly_the_spec_attributes_in_table_order() -> None:
     assert list(ATTRIBUTES) == [row[0] for row in SPEC_TABLE]
-    assert len(ATTRIBUTES) == 20
+    assert len(ATTRIBUTES) == 23
 
 
 @pytest.mark.parametrize(
@@ -66,6 +69,9 @@ def test_each_default_shape_matches_its_kind() -> None:
         if definition.id == "zoom":
             # The profile midpoint is resolved per fixture by the slot compiler.
             assert definition.default == "profileMidpoint"
+        elif definition.id in ("colorMacro", "colorEffect"):
+            # So is the channel's default option.
+            assert definition.default == "channelDefault"
         else:
             assert value_kind(definition.default) == definition.kind, definition.id
 

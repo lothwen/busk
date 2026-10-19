@@ -68,6 +68,7 @@ from busk.model.preset import PresetScope
 from busk.model.profile import (
     ADDITIVE_PRIMARIES,
     BUILTIN_EMITTERS,
+    MACRO_ATTRIBUTES,
     SHUTTER_FUNCTIONS,
     SUBTRACTIVE_PRIMARIES,
     WHEEL_ATTRIBUTES,
@@ -947,7 +948,9 @@ class _SemanticPass:
         :func:`~busk.model.profile.option_capabilities`) and must offer its
         attribute's default: the default is what the channel outputs when
         nothing controls it, which is what makes the shutter guard (§13.2)
-        total. Control channels are never converted and need nothing.
+        total. A colour macro or effect channel's default is its own (see
+        :func:`~busk.model.profile.channel_default_option`), so any option
+        will do. Control channels are never converted and need nothing.
         """
         definition = ATTRIBUTES.get(channel["attribute"])
         if definition is None or definition.family == "control":
@@ -961,12 +964,15 @@ class _SemanticPass:
             return
         option_ids = [option for option, _ in option_capabilities(channel)]
         if not option_ids:
-            needed = (
-                "a slot capability"
-                if definition.id in WHEEL_ATTRIBUTES
-                else "a function capability among " + ", ".join(sorted(SHUTTER_FUNCTIONS))
-            )
+            if definition.id in WHEEL_ATTRIBUTES:
+                needed = "a slot capability"
+            elif definition.id in MACRO_ATTRIBUTES:
+                needed = "a slot or function capability"
+            else:
+                needed = "a function capability among " + ", ".join(sorted(SHUTTER_FUNCTIONS))
             self._error(caps_path, f"A {definition.id!r} channel needs {needed}")
+            return
+        if definition.default == "channelDefault":
             return
         default = cast(DiscreteValue, definition.default)["slot"]
         if default not in option_ids:

@@ -108,10 +108,12 @@ class ScalarRange:
 class AttributeDefinition:
     """One entry of the attribute registry (§5.3).
 
-    ``default`` is the value a slot takes when no source controls it. The one
-    exception to it being an :data:`AttributeValue` is ``zoom``, whose default
-    is "the profile's midpoint": the sentinel ``"profileMidpoint"`` is resolved
-    against the fixture profile by the slot compiler (Phase 1).
+    ``default`` is the value a slot takes when no source controls it. Two
+    defaults are not an :data:`AttributeValue`, and the slot compiler resolves
+    them per fixture: ``zoom``'s is "the profile's midpoint", the sentinel
+    ``"profileMidpoint"`` (Phase 1); ``colorMacro``'s and ``colorEffect``'s is
+    "the channel's default option", the sentinel ``"channelDefault"`` (see
+    :func:`~busk.model.profile.channel_default_option`).
     """
 
     id: AttributeId
@@ -123,7 +125,7 @@ class AttributeDefinition:
     fade: Literal["fade", "snap"]  # discrete values always snap
     snapAt: Literal["start", "middle", "end"] | None = None  # None means "start"
     wraps: bool | None = None  # e.g. continuous rotation index
-    default: AttributeValue | Literal["profileMidpoint"]
+    default: AttributeValue | Literal["profileMidpoint", "channelDefault"]
     home: AttributeValue | None = None  # optional value used by the HOME command
 
 
@@ -157,10 +159,11 @@ def _scalar(
 
 
 def _discrete(
-    attribute: AttributeId, family: AttributeFamily, default_slot: str
+    attribute: AttributeId, family: AttributeFamily, default_slot: str | None
 ) -> AttributeDefinition:
     """Build a discrete definition. Discrete values cannot be interpolated, so
-    they always snap, at the start of a fade (§7.3)."""
+    they always snap, at the start of a fade (§7.3). A ``None`` default slot
+    is the channel's own default option (``"channelDefault"``)."""
     return AttributeDefinition(
         id=attribute,
         family=family,
@@ -169,7 +172,7 @@ def _discrete(
         merge="LTP",
         fade="snap",
         snapAt="start",
-        default=DiscreteValue(slot=default_slot),
+        default="channelDefault" if default_slot is None else DiscreteValue(slot=default_slot),
     )
 
 
@@ -193,6 +196,10 @@ ATTRIBUTES: Mapping[AttributeId, AttributeDefinition] = MappingProxyType(
             ),
             _discrete("colorWheel", "color", "open"),
             _scalar("cto", "color", "normalized", 0.0),
+            # Colour presets and programs built into the fixture, and their speed.
+            _discrete("colorMacro", "color", None),
+            _scalar("colorMacroRate", "color", "normalized", 0.5),  # 0 slowest, 1 fastest
+            _discrete("colorEffect", "color", None),
             _discrete("gobo1", "beam", "open"),
             _discrete("gobo2", "beam", "open"),
             _scalar("gobo1Rotation", "beam", "degPerSec", 0.0),
