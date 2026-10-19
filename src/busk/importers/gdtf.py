@@ -57,6 +57,8 @@ GDTF                                        busk
                                             with their ``strobeRate`` in Hz
 ``Shutter1Strobe``, ``StrobeFrequency``     ``strobeRate`` (a channel of its own)
 ``PositionMSpeed``                          ``positionSpeed`` (0 = fastest)
+``ColorMacro1``, ``ColorEffects1``          ``colorMacro``, ``colorEffect``
+``ColorMacro1Rate``                         ``colorMacroRate`` (0…1)
 everything else                             a ``control`` channel held at its
                                             default and reported
 ==========================================  ===================================
@@ -68,6 +70,17 @@ attribute's rest value. Normalised attributes (``intensity``, ``focus``,
 ``iris``, ``frost``) take the physical values when they lie in 0…1, else
 the channel's physical span is scaled to 0…1 (reported); ``cto`` outside
 0…1 is read as kelvin.
+
+**Colour macros.** On a ``colorMacro`` or ``colorEffect`` channel every
+function and channel set is an option. The channel sets of a colour
+function (``Color1``, ``ColorMacro1``, ``ColorEffects1``) linked to a wheel
+are slots of that wheel (by ``WheelSlotIndex``); every other set,
+and a function without sets, is a function named after it. ``NoFeature`` and
+sets named like "No function", "Safe", "Open" or "No macro" are ``off``. A
+strobe function keeps its rate as ``strobeRate`` (so the strobe cap holds),
+a ``ColorMacro1Rate`` function its own as ``colorMacroRate``. Nothing
+controlling the channel, it outputs the option its default selects.
+``ColorMacro2``, ``ColorEffects2`` and later are ``control``.
 
 **Elements.** One per ``GeometryReference`` under the mode's geometry, in
 DMX order, named after the reference: the mode's channels on the referenced
@@ -113,6 +126,7 @@ from busk.importers.ofl import (
 from busk.model.attributes import ColorValue
 from busk.model.common import ModeId
 from busk.model.profile import (
+    MACRO_ATTRIBUTES,
     Capability,
     ChannelDefinition,
     ElementDefinition,
@@ -153,6 +167,9 @@ ATTRIBUTES: Final[Mapping[str, str]] = {
     "Shutter1Strobe": "strobeRate",
     "StrobeFrequency": "strobeRate",
     "PositionMSpeed": "positionSpeed",
+    "ColorMacro1": "colorMacro",
+    "ColorMacro1Rate": "colorMacroRate",
+    "ColorEffects1": "colorEffect",
 }
 """GDTF attributes busk drives (colours apart), by busk attribute."""
 
@@ -203,6 +220,8 @@ WHEEL_KINDS: Final[Mapping[str, Literal["color", "gobo", "prism"]]] = {
     "gobo1": "gobo",
     "gobo2": "gobo",
     "prism": "prism",
+    "colorMacro": "color",
+    "colorEffect": "color",
 }
 
 _XYZ_TO_SRGB: Final = (
@@ -215,7 +234,13 @@ _XYZ_TO_SRGB: Final = (
 _DMX: Final = re.compile(r"(\d+)(?:/([1-4])(s?))?")
 _INDEX: Final = re.compile(r"(Gobo[12]|Prism1)Pos")
 """The index (angle) function of a rotation channel: a dead band."""
-_NORMALISED: Final = frozenset({"intensity", "focus", "iris", "frost"})
+_NORMALISED: Final = frozenset({"intensity", "focus", "iris", "frost", "colorMacroRate"})
+_OFF: Final = re.compile(
+    r"(no ?(function|fonction|feature|macro|colou?r ?macro|effect)s?|off|none|open|safe|normal)"
+    r"\b.*",
+    re.IGNORECASE,
+)
+"""Channel set names that mean "no macro" on a colour macro channel: ``off``."""
 
 _Values = Callable[[tuple[float, float]], tuple[float, float]]
 """Physical values of a channel function → the attribute's logical values."""
@@ -903,6 +928,8 @@ class _ModeBuilder:
     def _capabilities(self, p: _Placed) -> list[Capability]:
         """A driven channel's capabilities (raises :class:`_Unmapped`)."""
         attribute = p.attribute
+        if attribute in MACRO_ATTRIBUTES:
+            return self._macro(p)
         mapped = [f for f in p.channel.functions if self._maps(p, f)]
         values = self._value_map(p, mapped)
         out: list[Capability] = []
@@ -973,6 +1000,49 @@ class _ModeBuilder:
                                           slot=wheel["slots"][s.slot - 1]["id"]))  # fmt: skip
             else:
                 out.append(_function(s.low, s.high, _camel(s.name) or _fn(f)))
+        return out
+
+    def _macro(self, p: _Placed) -> list[Capability]:
+        """A colour macro or effect channel: every function and channel set
+        an option (module docstring)."""
+        taken: set[str] = set()
+        seen: dict[tuple[int, str], str] = {}  # (function, name) → option
+
+        def name(k: int, text: str) -> str:
+            if _OFF.fullmatch(text.strip()):
+                return "off"
+            if (k, text) not in seen:
+                seen[k, text] = _unique(_camel(text) or "function", taken)
+                taken.add(seen[k, text])
+            return seen[k, text]
+
+        out: list[Capability] = []
+        for k, f in enumerate(p.channel.functions):
+            if f.attribute == "NoFeature":
+                out.append(_function(f.low, f.high, "off"))
+                continue
+            default_name = re.fullmatch(re.escape(f.attribute) + r" \d+", f.name)
+            own = f.attribute if not f.name or default_name else f.name
+            rate = ATTRIBUTES.get(f.attribute)
+            if f.attribute in SHUTTER or rate in ("strobeRate", "colorMacroRate"):
+                option = _function(f.low, f.high, name(k, SHUTTER.get(f.attribute, own)))
+                if rate == "colorMacroRate":
+                    option["param"] = {"attribute": "colorMacroRate", "value": _unit(f.physical)}
+                else:
+                    self.fixture.widen("maxStrobeHz", max(f.physical))
+                    option["param"] = {"attribute": "strobeRate", "value": f.physical}
+                out.append(option)
+                continue
+            colour = WHEEL_KINDS.get(ATTRIBUTES.get(f.attribute, "")) == "color"
+            wheel = self.fixture.wheel(f.wheel, p.attribute) if f.wheel and colour else None
+            if not f.sets or f.sets[0].low > f.low:
+                out.append(_function(f.low, f.sets[0].low - 1 if f.sets else f.high, name(k, own)))
+            for s in f.sets:
+                if wheel is not None and s.slot is not None and 1 <= s.slot <= len(wheel["slots"]):
+                    out.append(SlotCapability(kind="slot", dmx=(s.low, s.high), wheel=wheel["id"],
+                                              slot=wheel["slots"][s.slot - 1]["id"]))  # fmt: skip
+                else:
+                    out.append(_function(s.low, s.high, name(k, s.name or own)))
         return out
 
     def _shutter(self, f: _Function) -> list[Capability]:
@@ -1051,6 +1121,15 @@ def _rescaled(low: float, high: float) -> _Values:
         return (a, b)
 
     return scale
+
+
+def _unit(physical: tuple[float, float]) -> tuple[float, float]:
+    """A rate's physical span as ``colorMacroRate``: as it is within 0…1, else
+    0…1 in its direction."""
+    low, high = physical
+    if min(low, high) >= 0 and max(low, high) <= 1:
+        return physical
+    return (0.0, 1.0) if low <= high else (1.0, 0.0)
 
 
 def _shutter_state(name: str) -> str | None:

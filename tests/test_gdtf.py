@@ -48,7 +48,7 @@ from gdtf_builder import (
     slot,
     wheel,
 )
-from test_ofl import COLOURS, _sample
+from test_ofl import COLOURS, _sample, macro_default
 
 Doc = dict[str, Any]
 GENERIC_SPOT = ROOT / "src" / "busk" / "library" / "profiles" / "generic-spot-16ch.json"
@@ -570,6 +570,121 @@ def test_colour_systems() -> None:
     )
     assert [c["attribute"] for c in channels_of(alone)] == ["intensity", "control", "control"]
     assert noted(alone, "busk colour mixes red, green and blue")
+
+
+def test_a_colour_macro_channel_of_named_sets() -> None:
+    """The common shape (Terbly, ACME): one ColorMacro1 function of named sets,
+    "No function" first, then other functions on the same channel."""
+    report = imported(mode(
+        "2ch",
+        dimmer(),
+        channel(
+            "2",
+            function("ColorMacro1", "0/1", (0, 1), channel_set("No function", "0/1", 0),
+                     channel_set("Red to Yellow", "8/1", 0), channel_set("Yellow", "40/1"),
+                     channel_set("Red to Yellow", "72/1"), name="ColorMacro1 1"),
+            function("ColorEffects1", "128/1", (0, 1), channel_set("Fade", "128/1"),
+                     channel_set("Safe", "200/1")),
+            function("Shutter1Strobe", "220/1", (1, 20)),
+            function("ColorMacro1Rate", "240/1", (0, 100)),
+        ),
+    ))  # fmt: skip
+    assert at(report, 1)["attribute"] == "colorMacro"
+    assert caps(report, 1) == [
+        ("function", 0, 7, "off"),
+        ("function", 8, 39, "redToYellow"),
+        ("function", 40, 71, "yellow"),
+        ("function", 72, 127, "redToYellow"),  # the same set name in one function
+        ("function", 128, 199, "fade"),
+        ("function", 200, 219, "off"),
+        ("function", 220, 239, "strobe", (1.0, 20.0)),  # kept under the strobe cap
+        ("function", 240, 255, "colorMacro1Rate", (0.0, 1.0)),
+    ]
+    assert at(report, 1)["capabilities"][6]["param"]["attribute"] == "strobeRate"
+    assert report.profile["physical"]["maxStrobeHz"] == 20
+    assert macro_default(report, 1) == "off"
+    assert not noted(report, "ColorMacro1")
+
+
+def test_wheel_linked_macros_colour_effects_and_the_rate() -> None:
+    wheels = (
+        wheel("Virtual", slot("Red", SRGB_RED), slot("Blue", SRGB_BLUE)),
+        wheel("Colours", slot("Open"), slot("Green", SRGB_GREEN)),
+    )
+    report = imported(
+        mode(
+            "7ch",
+            dimmer(),
+            channel("2", function("ColorMacro1", "0/1", (0, 1), channel_set("Open", "0/1"),
+                                  channel_set("Red", "10/1", 1), channel_set("Blue", "20/1", 2),
+                                  wheel="Virtual")),
+            channel("3", function("NoFeature", "0/1"),
+                    function("ColorEffects1", "10/1", (0, 1), channel_set("Rainbow", "10/1"),
+                             channel_set("Chase", "100/1")),
+                    attribute="ColorEffects1", initial="Beam_ColorEffects1.ColorEffects1"),
+            channel("4", function("ColorMacro1Rate", "0/1", (0, 1))),
+            channel("5", function("ColorMacro1Rate", "0/1", (0, 100))),
+            channel("6", function("ColorMacro2", "0/1", default="5/1")),
+            channel("7", function("Color1", "0/1", (0, 1), channel_set("Open", "0/1", 1),
+                                  channel_set("Green", "64/1", 2), wheel="Colours"),
+                    function("ColorMacro1", "128/1")),
+        ),
+        wheels=wheels,
+    )  # fmt: skip
+    assert caps(report, 1) == [
+        ("function", 0, 9, "off"),
+        ("slot", 10, 19, "red"),
+        ("slot", 20, 255, "blue"),
+    ]
+    virtual = next(w for w in report.profile["wheels"] if w["id"] == "virtual")
+    assert virtual["kind"] == "color"
+    assert [s["color"] for s in virtual["slots"]] == [{"r": 1.0, "g": 0.0, "b": 0.0},
+                                                     {"r": 0.0, "g": 0.0, "b": 1.0}]  # fmt: skip
+    assert at(report, 2)["attribute"] == "colorEffect"
+    assert caps(report, 2) == [
+        ("function", 0, 9, "off"),
+        ("function", 10, 99, "rainbow"),
+        ("function", 100, 255, "chase"),
+    ]
+    assert macro_default(report, 2) == "off"
+    assert at(report, 3)["attribute"] == "colorMacroRate"
+    assert caps(report, 3) == [("range", 0, 255, (0, 1))]
+    assert noted(report, "a second colorMacroRate channel")
+    assert (at(report, 5)["attribute"], at(report, 5)["defaultDmx"]) == ("control", 5)
+    assert noted(report, "no busk attribute (ColorMacro2)")
+    assert at(report, 6)["attribute"] == "colorWheel"
+    assert caps(report, 6)[-1] == ("function", 128, 255, "colorMacro1")
+
+
+def test_a_colour_macro_logical_channel_of_wheel_functions_keeps_the_wheel() -> None:
+    """Robe's virtual colour wheels: a ColorMacro1 logical channel whose
+    functions are Color1 and its spin on a wheel."""
+    report = imported(
+        mode("2ch", dimmer(), channel(
+            "2",
+            function("Color1", "0/1", (0, 1), channel_set("Open", "0/1", 1),
+                     channel_set("Red", "100/1", 2), wheel="Virtual Colours"),
+            function("Color1WheelSpin", "200/1", (0, 1), channel_set("Rainbow", "200/1", 0),
+                     wheel="Virtual Colours"),
+            attribute="ColorMacro1",
+        )),
+        wheels=(wheel("Virtual Colours", slot("Open", D65), slot("Red", SRGB_RED)),),
+    )  # fmt: skip
+    assert at(report, 1)["attribute"] == "colorMacro"
+    assert caps(report, 1) == [
+        ("slot", 0, 99, "open"),
+        ("slot", 100, 199, "red"),
+        ("function", 200, 255, "rainbow"),
+    ]
+    assert report.profile["wheels"][0]["id"] == "virtualColours"
+    assert macro_default(report, 1) == "open"
+
+
+def test_a_rate_outside_0_to_1_is_rescaled() -> None:
+    report = imported(mode("2ch", dimmer(), channel("2", function("ColorMacro1Rate", "0/1",
+                                                                  (0, 100)))))  # fmt: skip
+    assert caps(report, 1) == [("range", 0, 255, (0, 1))]
+    assert noted(report, "physical 0…100 taken as 0…1")
 
 
 def test_unmapped_channels_are_control_held_at_their_default() -> None:

@@ -320,6 +320,23 @@ commit.
    - `ColorMacro1Rate` at 0…1 and at 0…100;
    - `ColorMacro2` (held);
    - a `Color1` channel with macro functions (stays `colorWheel`).
+
+   **Done** (2026-10-19): 3378 passed. Deviations from §5.4:
+   - **Wheels.** Sets become wheel slots for any *colour* function linked to a wheel
+     (`Color1`, `ColorMacro1`, `ColorEffects1`), not only the mapped one. The Robe Robin
+     DL4S has a `ColorMacro1` logical channel whose function is `Color1` on a virtual
+     wheel. It was `colorWheel` (no mapping for `ColorMacro1`) and is now `colorMacro`,
+     as the file says, with the wheel's coloured slots.
+   - **Names.** A function's default name ("ColorMacro1 1") gives way to its attribute.
+     A set name repeated within one function is one option; across functions it is
+     numbered.
+   - **Speeds.** Strobe functions keep `strobeRate`, and a `ColorMacro1Rate` function on
+     the macro channel becomes an option with `colorMacroRate` (0…1 in its physical
+     direction).
+   - The sweep against step 2 (5,733 OpenGDTFLibrary descriptions): no new failure, no
+     mode lost. 454 `colorMacro` and 13 `colorEffect` channels; control channels
+     23,105 → 22,644. 23 second macro channels on one element are held. The six DL4S
+     modes are the only attribute changes.
 5. **Importer version** (Q5): `IMPORT_VERSION = 2`, mixed into both importers' revision
    digest. Verify: the same file and the same busk give the same revision, and a version
    bump gives a new one. With an old embedded copy, `list profiles` shows the library's
