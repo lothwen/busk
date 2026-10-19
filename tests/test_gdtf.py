@@ -846,6 +846,12 @@ def test_id_name_and_revision() -> None:
     assert profile["revision"].startswith("2024-05-06-")
     edited = import_gdtf(data.replace(b'Name="Wash"', b'Name="Wash2"', 1)).profile
     assert edited["revision"] != profile["revision"]  # an edited file is a new revision
+    assert import_gdtf(data).profile["revision"] == profile["revision"]
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr("busk.importers.ofl.IMPORT_VERSION", 1)  # GDTF shares OFL's _version
+        older = import_gdtf(data).profile["revision"]
+    assert older.startswith("2024-05-06-")
+    assert older != profile["revision"]
     assert import_gdtf(data, manufacturer="Other").profile["name"] == "Other Wash"
     assert [
         m["id"]

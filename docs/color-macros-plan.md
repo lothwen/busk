@@ -341,6 +341,14 @@ commit.
    digest. Verify: the same file and the same busk give the same revision, and a version
    bump gives a new one. With an old embedded copy, `list profiles` shows the library's
    revision and `profile update` takes it.
+
+   **Done** (2026-10-19): 3379 passed.
+   - `busk.importers.IMPORT_VERSION = 2`. `ofl._version()` (shared by GDTF) appends
+     `\0busk-import-2` to the hashed content. The revision's format is unchanged.
+   - The CLI transcripts `import-ofl.txt` and `import-gdtf.txt` changed only in the
+     sha256 of the written profiles (`BUSK_REGOLDEN=1`).
+   - `test_ofl.py::test_a_busk_that_imports_differently_makes_a_new_revision` checks
+     `list profiles` and `profile update` through `OfflineShow`.
 6. **Console** (Q6): completion of discrete options. Verify in `test_console_prompt.py`,
    including `?`.
 7. **Docs and changelog.**

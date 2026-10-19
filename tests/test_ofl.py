@@ -22,7 +22,7 @@ from typing import Any, cast
 import numpy as np
 import pytest
 
-from builders import ROOT, compile_doc, fixture, frame, show
+from builders import ROOT, compile_doc, fixture, frame, show, show_of
 from busk.cli import main
 from busk.compiler.compile import compile_show
 from busk.console.console import Console
@@ -33,6 +33,7 @@ from busk.importers.ofl import import_ofl, read_ofl
 from busk.model.common import FixtureId, TargetRef
 from busk.model.validate import validate_show
 from busk.persistence.show_file import new_show
+from busk.runner import OfflineShow
 from busk.session.ids import CounterIds
 from busk.session.library import ProfileLibrary
 from busk.session.session import Session
@@ -766,6 +767,31 @@ def test_id_name_and_revision() -> None:
     )
     again = import_ofl(copy.deepcopy(data), manufacturer="Acme Co", key="spot-1")
     assert again.profile["revision"] == profile["revision"]
+
+
+def test_a_busk_that_imports_differently_makes_a_new_revision(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """IMPORT_VERSION (color-macros-plan Q5): a show embedding an older import
+    sees the library's revision, and ``profile update`` takes it."""
+    folder = tmp_path / "acme"
+    folder.mkdir()
+    (folder / "wash.json").write_text(json.dumps(ofl({"Dimmer": one({"type": "Intensity"})})))
+    monkeypatch.setattr("busk.importers.ofl.IMPORT_VERSION", 1)
+    old = OfflineShow(show_of(show([], [])), library=ProfileLibrary([folder], builtin=False))
+    assert old.execute('fixture add 1 "acme Test" mode All at 1.1').ok
+    embedded = old.show["profiles"][0]["revision"]
+    monkeypatch.undo()
+    new = OfflineShow(old.show, library=ProfileLibrary([folder], builtin=False))
+    revision = new.execute("library").text.split("revision ")[1].split(")")[0]
+    assert revision != embedded
+    assert revision.startswith("2026-01-02-")
+    assert new.execute("list profiles").text == (
+        f"acme Test (revision {embedded} → {revision} in the library): All"
+    )
+    reply = new.execute('profile update "acme Test"')
+    assert reply.text == f"updated profile 'acme Test' to revision '{revision}' (1 fixture)"
+    assert new.show["fixtures"][0]["profileRevision"] == revision
 
 
 def test_a_mode_that_cannot_be_imported_is_skipped_and_reported() -> None:

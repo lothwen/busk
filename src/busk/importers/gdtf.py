@@ -95,7 +95,8 @@ curves (imported as linear), relations and macros.
 
 **Identity.** The id is ``gdtf-<FixtureTypeID>``, the name ``<Manufacturer>
 <Name>``, and the revision the newest revision's date plus a short hash of
-``description.xml``, so an edited file is a new revision (§17).
+``description.xml`` and :data:`~busk.importers.IMPORT_VERSION`, so an edited
+file, or a busk that imports it differently, is a new revision (§17).
 """
 
 from __future__ import annotations
@@ -122,6 +123,7 @@ from busk.importers.ofl import (
     _slug,
     _top,
     _unique,
+    _version,
 )
 from busk.model.attributes import ColorValue
 from busk.model.common import ModeId
@@ -512,8 +514,9 @@ class _FixtureType:
         return cast(FixtureProfile, profile)
 
     def _revision(self) -> str:
-        """The newest revision's date plus 7 hex digits of the file's hash."""
-        digest = hashlib.sha256(self.description).hexdigest()[:7]
+        """The newest revision's date plus 7 hex digits of the hash of the
+        file and the importers' version."""
+        digest = hashlib.sha256(self.description + _version()).hexdigest()[:7]
         dates = [r.get("Date", "") for r in self.node.iterfind("Revisions/Revision")]
         newest = max(dates, default="")
         return f"{newest[:10]}-{digest}" if newest else digest

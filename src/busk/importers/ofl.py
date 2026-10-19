@@ -82,8 +82,10 @@ outside the matrix go on element 0, the first pixel.
 
 **Identity.** The id is ``ofl-<manufacturer>-<key>``, the name
 ``<manufacturer> <OFL name>``, and the revision the OFL ``lastModifyDate``
-plus a short hash of the fixture's content, so an edited file is a new
-revision (§17: a show never takes it silently).
+plus a short hash of the fixture's content and
+:data:`~busk.importers.IMPORT_VERSION`, so an edited file, or a busk that
+imports it differently, is a new revision (§17: a show never takes it
+silently).
 """
 
 from __future__ import annotations
@@ -98,7 +100,7 @@ from itertools import product
 from pathlib import Path
 from typing import Any, Final, Literal, cast
 
-from busk.importers import ImportFailed, ImportReport
+from busk.importers import IMPORT_VERSION, ImportFailed, ImportReport
 from busk.model.attributes import ATTRIBUTES, ColorValue
 from busk.model.common import ModeId
 from busk.model.profile import (
@@ -1284,10 +1286,17 @@ def _linear_rgb(hex_colour: str) -> tuple[float, float, float]:
 
 
 def _revision(data: Mapping[str, Any]) -> str:
-    """``lastModifyDate`` plus 7 hex digits of the content's hash."""
-    digest = hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()[:7]
+    """``lastModifyDate`` plus 7 hex digits of the hash of the content and
+    the importers' version."""
+    content = json.dumps(data, sort_keys=True).encode() + _version()
+    digest = hashlib.sha256(content).hexdigest()[:7]
     date = data.get("meta", {}).get("lastModifyDate")
     return f"{date}-{digest}" if date else digest
+
+
+def _version() -> bytes:
+    """What :data:`~busk.importers.IMPORT_VERSION` adds to a revision's hash."""
+    return f"\0busk-import-{IMPORT_VERSION}".encode()
 
 
 def _slug(text: str, prefix: str = "") -> str:
