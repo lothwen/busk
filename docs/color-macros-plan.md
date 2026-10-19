@@ -293,6 +293,26 @@ commit.
    - sweeps, colour temperatures and unnamed presets.
 
    The TupperDMX examples are unchanged: their files have no `ColorPreset`.
+
+   **Done** (2026-10-19): 3374 passed. Deviations from §5.3:
+   - **Option names.** A function option is named after the `effectName`, then the
+     `comment`, then the `effectPreset` (ADJ's "Program 1" … "Program 8" share
+     `ColorJump`). A repeated name is the same option only when the two capabilities
+     are equal apart from their range; otherwise it is numbered (`red2`). `_Fixture.macro`
+     works this out once per OFL channel (keyed by `id()` of its JSON), so a template's
+     pixels share one wheel.
+   - **Colour effects are a last resort.** `ColorJump`/`ColorFade` make a channel
+     `colorEffect` only when no other capability on it maps to an attribute. The first
+     sweep turned 7 strobe channels with a small sound-to-colour range (BeamZ PLS25,
+     ADJ Dekker …) into `colorEffect`, losing `shutter` and the strobe cap.
+   - **A strobe range on a macro channel keeps `strobeRate`** as its parameter, so
+     `safety strobe` still caps it.
+   - **Speeds in Hz or bpm** (1 case in OFL) give an option without a speed, reported.
+     The plan said to rescale them.
+   - The sweep against step 2 (636 OFL fixtures): no new failure, no mode lost. 800
+     `colorMacro` and 91 `colorEffect` channels; control channels 7825 → 6937. Three
+     "Color Macro / Temperature" channels (Event Lighting PAR12x12 and PAR5x12, Prolights
+     SmartBat) were `cto` and are now `colorMacro`, with the CTO range an option.
 4. **GDTF** (§5.4). Verify with synthetic descriptions in `test_gdtf.py`:
    - named sets with a "No function" set;
    - a wheel-linked macro with coloured slots;

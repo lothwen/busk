@@ -424,6 +424,156 @@ def test_no_function_is_the_dead_band_of_the_channels_other_capability() -> None
     ]
 
 
+def preset(name: str | None = None, *colours: str, **more: Any) -> Doc:
+    capability: Doc = {"type": "ColorPreset", **more}
+    if name is not None:
+        capability["comment"] = name
+    if colours:
+        capability["colors"] = list(colours)
+    return capability
+
+
+def macro_default(report: ImportReport, offset: int = 0, mode: int = 0) -> str:
+    """The option the imported channel outputs when nothing controls it."""
+    profile = cast(Doc, report.profile)
+    mode_id = profile["modes"][mode]["id"]
+    rig = {**fixture("f", 1, profile["id"], 1, mode_id=mode_id),
+           "profileRevision": profile["revision"]}  # fmt: skip
+    compiled = compile_doc(show([profile], [rig]))
+    channel = at(report, offset, mode)
+    slot = compiled.slots.find(TargetRef(fixtureId=FixtureId("f"), element=channel["element"]),
+                               channel["attribute"])  # fmt: skip
+    assert slot is not None
+    return slot.options[int(compiled.slots.defaultFrame[slot.lanes][0])]
+
+
+def test_colour_presets_are_slots_of_a_macro_wheel_and_effects_options_with_a_speed() -> None:
+    """The Wild Wash Pro 648's colour macro: no NoFunction, a black first
+    preset, "Red" twice, and two programs with a speed."""
+    report = lamped({"Color Macro": many(
+        (0, 5, preset("LEDs off (blackout)", "#000000")),
+        (6, 13, preset("Red", "#ff0000")),
+        (14, 21, preset("Split", "#ff0000", "#0000ff")),
+        (22, 29, preset("Red", "#ff0000")),  # the same preset again: the same option
+        (30, 37, preset("Red", "#ff8080")),  # another colour of that name: a new one
+        (38, 192, {"type": "Effect", "effectName": "Colour change",
+                   "speedStart": "slow", "speedEnd": "fast"}),
+        (193, 255, {"type": "Effect", "effectName": "Gradual colour change",
+                    "speedStart": "fast reverse", "speedEnd": "50%"}),
+    )})  # fmt: skip
+    assert at(report, 0)["attribute"] == "colorMacro"
+    assert caps(report, 0) == [
+        ("slot", (0, 5), "lEDsOffBlackout"),
+        ("slot", (6, 13), "red"),
+        ("slot", (14, 21), "split"),
+        ("slot", (22, 29), "red"),
+        ("slot", (30, 37), "red2"),
+        ("fn", (38, 192), "colourChange", (0.0, 1.0)),
+        ("fn", (193, 255), "gradualColourChange", (1.0, 0.5)),
+    ]
+    assert {c["wheel"] for c in at(report, 0)["capabilities"] if c["kind"] == "slot"} == {"macro1"}
+    (wheel,) = report.profile["wheels"]
+    assert (wheel["id"], wheel["kind"]) == ("macro1", "color")
+    assert [(s["id"], s["name"], s.get("color")) for s in wheel["slots"]] == [
+        ("lEDsOffBlackout", "LEDs off (blackout)", {"r": 0.0, "g": 0.0, "b": 0.0}),
+        ("red", "Red", {"r": 1.0, "g": 0.0, "b": 0.0}),
+        ("split", "Split", {"r": 0.5, "g": 0.0, "b": 0.5}),
+        ("red2", "Red", {"r": 1.0, "g": 0.2159, "b": 0.2159}),
+    ]
+    assert macro_default(report) == "lEDsOffBlackout"  # defaultValue 0: as the chart says
+    assert not noted(report, "Color Macro")
+
+
+def test_no_function_on_a_macro_channel_is_off_and_the_default_selects() -> None:
+    report = lamped({"Macro": many(
+        (0, 9, {"type": "NoFunction"}),
+        (10, 19, preset("Red", "#ff0000")),
+        (20, 29, preset(None, colorsStart=["#ff0000"], colorsEnd=["#ffff00"])),  # a sweep
+        (30, 39, preset(None, colorTemperature="3200K")),
+        (40, 255, {"type": "Effect", "effectName": "Sound", "soundControlled": True}),
+        defaultValue=15,
+    )})  # fmt: skip
+    assert caps(report, 0) == [
+        ("fn", (0, 9), "off", None),
+        ("slot", (10, 19), "red"),
+        ("slot", (20, 29), "preset"),
+        ("slot", (30, 39), "preset2"),
+        ("fn", (40, 255), "sound", None),
+    ]
+    assert [s.get("color") for s in report.profile["wheels"][0]["slots"]][1:] == [None, None]
+    assert macro_default(report) == "red"  # defaultValue 15
+
+
+def test_colour_jump_and_fade_programs_are_a_colour_effect() -> None:
+    jump = {"type": "Effect", "effectPreset": "ColorJump"}
+    programs = [(16 * k, 16 * k + 15, {**jump, "comment": f"Program {k + 1}"}) for k in range(3)]
+    report = lamped({
+        "Programs": many(
+            *programs,
+            (48, 127, {"type": "Effect", "effectPreset": "ColorFade",
+                       "speedStart": "stop", "speedEnd": "fast"}),
+            (128, 255, {"type": "Effect", "effectPreset": "ColorFade", "speed": "120bpm"}),
+        ),
+        # A preset channel whose first range is a program stays a colour macro.
+        "Macro": many((0, 99, {"type": "Effect", "effectPreset": "ColorJump"}),
+                      (100, 255, preset("Blue", "#0000ff"))),
+    })  # fmt: skip
+    assert at(report, 0)["attribute"] == "colorEffect"
+    assert caps(report, 0) == [
+        ("fn", (0, 15), "program1", None),
+        ("fn", (16, 31), "program2", None),
+        ("fn", (32, 47), "program3", None),
+        ("fn", (48, 127), "colorFade", (0.0, 1.0)),
+        ("fn", (128, 255), "colorFade2", None),
+    ]
+    assert noted(report, "Programs", "colorFade2 has no colorMacroRate", "120bpm")
+    assert at(report, 1)["attribute"] == "colorMacro"
+    assert caps(report, 1) == [("fn", (0, 99), "colorJump", None), ("slot", (100, 255), "blue")]
+    assert macro_default(report) == "program1"
+
+
+def test_strobes_keep_their_rate_beside_colour_programs() -> None:
+    """A strobe channel with a sound-to-colour range stays a shutter (BeamZ
+    PLS25); a strobe range on a macro channel keeps its strobeRate, so the
+    strobe cap holds over it."""
+    report = lamped({
+        "Strobe": many((0, 0, {"type": "NoFunction"}),
+                       (1, 10, {"type": "Effect", "effectPreset": "ColorJump",
+                                "soundControlled": True}),
+                       (11, 255, {"type": "ShutterStrobe", "shutterEffect": "Strobe",
+                                  "speedStart": "1Hz", "speedEnd": "25Hz"})),
+        "Macro": many((0, 127, preset("Red", "#ff0000")),
+                      (128, 255, {"type": "ShutterStrobe", "shutterEffect": "Strobe",
+                                  "speedStart": "2Hz", "speedEnd": "10Hz"})),
+    })  # fmt: skip
+    assert at(report, 0)["attribute"] == "shutter"
+    assert caps(report, 0)[-1] == ("fn", (11, 255), "strobe", (1.0, 25.0))
+    assert at(report, 1)["attribute"] == "colorMacro"
+    assert caps(report, 1) == [("slot", (0, 127), "red"), ("fn", (128, 255), "strobe", (2.0, 10.0))]
+    assert at(report, 1)["capabilities"][1]["param"]["attribute"] == "strobeRate"
+
+
+def test_a_per_pixel_macro_channel_shares_one_wheel_and_a_second_one_is_held() -> None:
+    matrix = {
+        "matrix": {"pixelCount": [2, 1, 1]},
+        "templateChannels": {"Macro $pixelKey": many(
+            (0, 127, {"type": "NoFunction"}), (128, 255, preset("Red", "#ff0000")))},
+    }  # fmt: skip
+    insert = {"insert": "matrixChannels", "repeatFor": "eachPixelXYZ",
+              "channelOrder": "perPixel", "templateChannels": ["Macro $pixelKey"]}  # fmt: skip
+    report = imported(
+        {"Dimmer": one({"type": "Intensity"}),
+         "Gel": many((0, 127, preset("Amber", "#ff8000")), (128, 255, preset("Blue", "#0000ff")))},
+        [{"name": "Pixels", "channels": ["Dimmer", insert, "Gel"]}],
+        **matrix,
+    )  # fmt: skip
+    placed = [(c["offset"], c["element"], c["attribute"]) for c in channels_of(report)]
+    assert placed == [(0, 0, "intensity"), (1, 0, "colorMacro"), (2, 1, "colorMacro"),
+                      (3, 0, "control")]  # fmt: skip
+    assert [w["id"] for w in report.profile["wheels"]] == ["macro1"]
+    assert noted(report, "Gel", "a second colorMacro channel; held as control")
+
+
 def test_a_wheel_or_shutter_without_its_default_option_is_held_as_control() -> None:
     """busk outputs ``open`` (``off`` for a prism) when nothing controls a
     discrete attribute, so its channel must offer it (validation)."""

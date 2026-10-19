@@ -29,6 +29,10 @@ OFL                                     busk
 ``Prism``, ``PrismRotation``            ``prism`` slots, ``prismRotation``
 ``Zoom``, ``Focus``, ``Iris``,          ``zoom`` (degrees), ``focus``, ``iris``,
 ``Frost``, ``ColorTemperature``         ``frost``, ``cto``
+``ColorPreset``                         ``colorMacro``: each preset a slot of the
+                                        channel's macro wheel
+``Effect`` ``ColorJump``, ``ColorFade``  ``colorEffect`` (on a channel with
+                                        nothing else busk drives)
 everything else                         a ``control`` channel held at the OFL
                                         ``defaultValue`` and reported
 ======================================  ==========================================
@@ -38,6 +42,18 @@ two kinds of dead band: ``NoFunction`` and the angle (index) range of a
 rotation channel. On a scalar attribute a dead band's first DMX value is the
 attribute's rest value (intensity 0, rotation stopped) and the rest is never
 output; on ``shutter`` it is ``open``, on ``prism`` the ``off`` slot.
+
+**Colour macros.** On a ``colorMacro`` or ``colorEffect`` channel every
+capability is an option. A preset is a slot of a wheel made for the channel
+(``macro1`` …, its colour the mean of the preset's ``colors``; sweeps and
+colour temperatures have none), ``NoFunction`` is ``off``, and any other
+capability a function named after its effect name, comment or type. An
+``Effect``'s speed becomes the option's ``colorMacroRate`` (slow 0, fast 1,
+percentages of full speed), and a strobe's its ``strobeRate``, so the
+strobe cap holds. A repeated name is one option when the two
+capabilities are the same (the second "Red" of a chart), else a numbered
+one. Nothing controlling the channel, it outputs the option its
+``defaultValue`` selects.
 
 **Modelling rules** (decision 20).
 
@@ -86,6 +102,7 @@ from busk.importers import ImportFailed, ImportReport
 from busk.model.attributes import ATTRIBUTES, ColorValue
 from busk.model.common import ModeId
 from busk.model.profile import (
+    MACRO_ATTRIBUTES,
     Capability,
     ChannelDefinition,
     ElementDefinition,
@@ -305,6 +322,15 @@ class _Wheel:
 
 
 @dataclass
+class _Macro:
+    """The options of a colour macro or effect channel, per capability: a slot
+    of the channel's macro wheel, or a function."""
+
+    wheel: str | None  # the macro wheel's id; None: the channel has no presets
+    options: list[tuple[Literal["slot", "function"], str]]
+
+
+@dataclass
 class _Fixture:
     """The parsed OFL fixture and what the import learns across its modes."""
 
@@ -313,6 +339,7 @@ class _Fixture:
     wheels: dict[str, _Wheel] = field(default_factory=dict)  # by OFL name, in file order
     emitters: dict[str, Emitter] = field(default_factory=dict)  # custom ones used
     physical: FixturePhysical = field(default_factory=FixturePhysical)
+    macros: dict[int, _Macro] = field(default_factory=dict)  # by id() of the OFL channel
 
     def __post_init__(self) -> None:
         self._read_wheels()
@@ -482,6 +509,42 @@ class _Fixture:
             self.wheels["\0prism"] = wheel
         return wheel
 
+    def macro(self, channel: _Channel) -> _Macro:
+        """The options of a colour macro or effect channel (module docstring),
+        worked out once per OFL channel, so a template's pixels share its wheel."""
+        found = self.macros.get(id(channel.data))
+        if found is not None:
+            return found
+        taken: set[str] = set()
+        seen: dict[str, tuple[Literal["slot", "function"], str]] = {}  # capability → option
+        slots: list[WheelSlot] = []
+        options: list[tuple[Literal["slot", "function"], str]] = []
+        for cap in channel.caps:
+            if cap.type == "NoFunction":
+                options.append(("function", "off"))
+                continue
+            rest = {k: v for k, v in cap.data.items() if k != "dmxRange"}
+            same = json.dumps(rest, sort_keys=True)
+            if same not in seen:
+                kind: Literal["slot", "function"] = (
+                    "slot" if cap.type == "ColorPreset" else "function"
+                )
+                ident = _unique(_camel(_macro_name(cap)) or "function", taken)
+                taken.add(ident)
+                seen[same] = (kind, ident)
+                if kind == "slot":
+                    slot = WheelSlot(id=ident, name=str(cap.data.get("comment") or ident))
+                    if cap.data.get("colors"):
+                        slot["color"] = _mean_colour(cap.data["colors"])
+                    slots.append(slot)
+            options.append(seen[same])
+        wheel = None
+        if slots:
+            wheel = f"macro{sum(1 for w in self.wheels.values() if w.id.startswith('macro')) + 1}"
+            self.wheels[f"\0{wheel}"] = _Wheel(channel.name, wheel, "color", slots, None, None)
+        found = self.macros[id(channel.data)] = _Macro(wheel, options)
+        return found
+
     def _physical(self) -> FixturePhysical:
         physical = dict(self.physical)
         ofl = self.data.get("physical", {})
@@ -523,13 +586,26 @@ def _wheel_slot(slot: Mapping[str, Any], k: int, kind: str, ids: set[str]) -> Wh
     if kind_of == "Prism" and slot.get("facets"):
         result["facets"] = int(slot["facets"])
     if kind_of == "Color" and slot.get("colors"):
-        rgb = [_linear_rgb(color) for color in slot["colors"]]
-        result["color"] = ColorValue(
-            r=sum(c[0] for c in rgb) / len(rgb),
-            g=sum(c[1] for c in rgb) / len(rgb),
-            b=sum(c[2] for c in rgb) / len(rgb),
-        )
+        result["color"] = _mean_colour(slot["colors"])
     return result
+
+
+def _mean_colour(colours: list[str]) -> ColorValue:
+    """The mean of sRGB ``#rrggbb`` colours, in linear RGB."""
+    rgb = [_linear_rgb(colour) for colour in colours]
+    return ColorValue(
+        r=sum(c[0] for c in rgb) / len(rgb),
+        g=sum(c[1] for c in rgb) / len(rgb),
+        b=sum(c[2] for c in rgb) / len(rgb),
+    )
+
+
+def _macro_name(cap: _Cap) -> str:
+    """What a colour macro channel's option is named after."""
+    for key in ("effectName", "comment", "effectPreset", "shutterEffect"):
+        if cap.data.get(key):
+            return str(cap.data[key])
+    return "preset" if cap.type == "ColorPreset" else cap.type
 
 
 # ------------------------------------------------------------------ one mode
@@ -705,6 +781,13 @@ class _ModeBuilder:
             return wheel.rotation if wheel.kind in ("gobo", "prism") else None
         if kind == "Prism":
             return "prism"
+        if kind == "ColorPreset":
+            return "colorMacro"
+        if kind == "Effect" and data.get("effectPreset") in ("ColorJump", "ColorFade"):
+            # Only when nothing else on the channel is: a strobe channel with
+            # a sound-to-colour range stays a shutter.
+            others = (self._candidate(channel, c) for c in channel.caps if c.type != "Effect")
+            return None if any(other is not None for other in others) else "colorEffect"
         if kind == "PrismRotation":
             return "prismRotation" if _has_speed(data) else None
         return {
@@ -820,6 +903,8 @@ class _ModeBuilder:
     def _capabilities(self, p: _Placed, nbytes: int) -> list[Capability]:
         """A driven channel's capabilities (raises :class:`_Unmapped`)."""
         channel, attribute = p.channel, p.attribute
+        if attribute in MACRO_ATTRIBUTES:
+            return self._macro(channel, nbytes)
         coloured = _colour(channel) is not None  # a colour component or a white die
         out: list[Capability] = []
         for cap, low, high in self._scaled(channel, nbytes):
@@ -837,6 +922,30 @@ class _ModeBuilder:
 
     def _controls(self, channel: _Channel, nbytes: int) -> list[Capability]:
         return [_function(low, high, _fn(cap)) for cap, low, high in self._scaled(channel, nbytes)]
+
+    def _macro(self, channel: _Channel, nbytes: int) -> list[Capability]:
+        """A colour macro or effect channel: every capability an option."""
+        macro = self.fixture.macro(channel)
+        out: list[Capability] = []
+        for cap, low, high in self._scaled(channel, nbytes):
+            kind, option = macro.options[channel.caps.index(cap)]
+            if kind == "slot":
+                wheel = cast(str, macro.wheel)
+                out.append(SlotCapability(kind="slot", dmx=(low, high), wheel=wheel, slot=option))
+                continue
+            capability = _function(low, high, option)
+            if cap.type == "ShutterStrobe" and _has_speed(cap.data):
+                rate = self._strobe(channel, cap)
+                capability["param"] = {"attribute": "strobeRate", "value": rate}
+            elif cap.type == "Effect" and _has_speed(cap.data):
+                try:
+                    speed = _pair(cap.data, "speed", _macro_speed)
+                except _Unmapped as exc:
+                    self.fixture.note(f"{channel.name}: {option} has no colorMacroRate ({exc})")
+                else:
+                    capability["param"] = {"attribute": "colorMacroRate", "value": speed}
+            out.append(capability)
+        return out
 
     def _scaled(self, channel: _Channel, nbytes: int) -> Iterator[tuple[_Cap, int, int]]:
         """The capabilities with their ranges at ``nbytes``; ranges that a
@@ -1082,6 +1191,20 @@ def _position_speed(text: str) -> float:
     if number is not None and unit == "%":
         return 1 - number / 100
     raise _Unmapped(f"pan/tilt speed {text!r}")
+
+
+def _macro_speed(text: str) -> float:
+    """A program's speed as ``colorMacroRate``: slow or stop 0, fast 1, a
+    percentage of full speed; reverse runs at the same speed."""
+    word = text.split()[0] if text.strip() else text
+    if word in ("slow", "stop"):
+        return 0.0
+    if word == "fast":
+        return 1.0
+    number, unit = _entity(word)
+    if number is not None and unit == "%":
+        return number / 100
+    raise _Unmapped(f"speed {text!r}")
 
 
 def _keyword_speed(word: str, estimate: tuple[float, float]) -> float:
