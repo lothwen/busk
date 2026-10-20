@@ -30,6 +30,7 @@ from builders import (
     benchmark_rig,
     channel,
     compile_doc,
+    effects_rig,
     feature_matrix,
     fixture,
     frame,
@@ -51,6 +52,7 @@ SHOWS: dict[str, Callable[[], CompiledShow]] = {
     "demo": lambda: compile_doc(load_doc(DEMO)),
     "feature matrix": lambda: compile_doc(feature_matrix()),
     "colour macros": lambda: compile_doc(macro_rig()),
+    "fixture effects": lambda: compile_doc(effects_rig()),
 }
 
 

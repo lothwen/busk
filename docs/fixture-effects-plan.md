@@ -442,6 +442,14 @@ shebang). Each step is one commit.
    - `set effect <Tab>` and `?`;
    - the vectorised converter agreeing with the reference one (`test_convert_properties` on
      the rig).
+
+   **Done** (2026-10-20): 3409 passed. No production code changed.
+   - `builders.effects_rig()` and `tests/test_fixture_effects.py`: ten cases with
+     hand-computed DMX; `test_convert_properties` runs on the rig too.
+   - Beam presets default to the `profile` scope (`parser._DEFAULT_SCOPE`), so the
+     cross-type case records with `global`.
+   - The busk effect is checked at t = 1/6 and 0.5, not 0.25: there the sine is
+     0.5 − 3·10⁻¹⁷, which rounds to DMX 127.
 3. **OFL** (§5.3). Verify in `test_ofl.py`, with synthetic channels:
    - the LED bar, the blinder and the Wild Wash 6Ch: the worked examples' DMX;
    - an effect channel with `Maintenance` ranges, and a Cameo-like macro without its `reset`

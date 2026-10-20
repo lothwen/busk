@@ -528,6 +528,46 @@ def macro_rig() -> Doc:
     )
 
 
+def effects_rig() -> Doc:
+    """Fixture effects (fixture-effects-plan step 2): an LED-bar-like fixture
+    whose ``off`` comes last and whose speed channel defaults to 255 (fixture
+    1, at 1), a blinder-like one whose auto program takes ``effectRate`` from
+    a speed channel too (fixture 2, at 11), and a wash with dimmer patterns,
+    a speed of two slow…fast ranges and a sound sensitivity with its dead band
+    (fixture 3, at 21)."""
+    effect = channel(
+        1, "effect", fn(0, 3, "on"), fn(4, 7, "strobo"), fn(8, 11, "fade"), fn(68, 71, "fuego"),
+        fn(140, 255, "off"),
+    )  # fmt: skip
+    effect["highlightDmx"] = 1
+    bar = mode([
+        channel(0, "intensity"), effect, channel(2, "effectRate", default=255),
+        channel(3, "control", fn(0, 127, "forward"), fn(128, 255, "reverse")),
+    ])  # fmt: skip
+    blinder = mode([
+        channel(0, "intensity"),
+        channel(1, "effect", fn(0, 9, "off"), fn(10, 249, "autoProgram", ("effectRate", 0, 1)),
+                fn(250, 255, "soundActive")),
+        channel(2, "effectRate"),
+    ])  # fmt: skip
+    wash = mode([
+        channel(0, "intensity"),
+        channel(1, "effect", fn(0, 16, "off"), fn(17, 30, "dimmerPattern1"),
+                fn(31, 44, "dimmerPattern2")),
+        channel(2, "effectRate", rng(0, 127, 0, 1), rng(128, 255, 0, 1)),
+        channel(3, "soundSensitivity", rng(0, 0, 0, 0), fn(1, 5, "noFunction"),
+                rng(6, 255, 0, 1)),
+    ])  # fmt: skip
+    return show(
+        [profile("fx-bar", bar), profile("fx-blinder", blinder), profile("fx-wash", wash)],
+        [
+            fixture("a", 1, "fx-bar", 1),
+            fixture("b", 2, "fx-blinder", 11),
+            fixture("c", 3, "fx-wash", 21),
+        ],
+    )
+
+
 def benchmark_rig(universes: int = 64) -> Doc:
     """The §19 reference rig: per universe, 4 Appendix A spots, 6 MH-X25,
     10 ML-56 and 9 COLORband PiX (500 channels). Across 64 universes that is
