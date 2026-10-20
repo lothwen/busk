@@ -98,18 +98,20 @@ session, as the web remote's commands do. `help` prints the grammar.
   own timing. In a chase, cue timing and triggers are ignored except the curve: the
   crossfade sets the step fade. Speed masters have no numbers, so they are named in quotes;
   `tap` and `bpm` without a name use the show's only speed master.
-* **Effects.** `effect add` adds an effect on the selection, in selection order (which sets
-  the phase spread), to the programmer, where it runs live at band 100 like its values;
-  `programmer` lists it (`effect fx1 'Circle' on 101, 102, bpm 'Speed 1' ×0.5, size 15`)
-  and `record cue` or `record slot` records it (`only` filters it by its attributes'
-  families, `merge` adds or replaces it by id, `remove` drops it). The template is the
-  show's of that name, else the built-in library's (Circle, Pulse, Wave, Chase, Saw,
-  Sweep, Flicker, Rainbow, listed by `library`), embedded into the show first. Defaults:
-  the library's size, `low`/`high` and phase for that template, ×1 on the show's only
-  speed master (else 1 Hz), and the id `fx<n>` that neither the programmer nor any cue
-  uses. A slot recorded with only effects gets a `size` fader. `list effects` lists the
-  show's templates, `list cues` counts each cue's effects, and `cue L/C effect <id> <prop>
-  <value>` edits a recorded instance.
+* **Effects** (busk effects; a fixture's own programs are the `effect` attribute, see
+  [Attributes](#attributes)). `effect add` adds an effect on the selection, in selection
+  order (which sets the phase spread), to the programmer, where it runs live at band 100
+  like its values; `programmer` lists it
+  (`effect fx1 'Circle' on 101, 102, bpm 'Speed 1' ×0.5, size 15`) and `record cue` or
+  `record slot` records it (`only` filters it by its attributes' families, `merge` adds
+  or replaces it by id, `remove` drops it). The template is the show's of that name,
+  else the built-in library's (Circle, Pulse, Wave, Chase, Saw, Sweep, Flicker, Rainbow,
+  listed by `library`), embedded into the show first. Defaults: the library's size,
+  `low`/`high` and phase for that template, ×1 on the show's only speed master (else 1
+  Hz), and the id `fx<n>` that neither the programmer nor any cue uses. A slot recorded
+  with only effects gets a `size` fader. `list effects` lists the show's templates,
+  `list cues` counts each cue's effects, and `cue L/C effect <id> <prop> <value>` edits
+  a recorded instance.
 * **Pages and surfaces.** `page N`, `page next` and `page prev` turn the
   engine's page (`list pages` marks it with `*`); `page add` creates one with empty slots,
   and `page P slot S playback N` fills a slot. `surface add osc` and `surface add web`
@@ -183,6 +185,24 @@ or a percentage (`80%`), a discrete value names one of the fixture's options
 named after its OFL or GDTF file. Nothing controlling them, a fixture outputs the option
 its own default selects, usually "no function" (`off`): on most fixtures a macro
 overrides the colour mix while it is set.
+
+`effect` picks one of a fixture's **fixture effects**, the programs it runs by itself: an
+LED bar's animations, a blinder's auto program, a head's pan/tilt macro (`set effect
+fuego`, `set effect off`). A fixture with two program channels has `effect2` too.
+`effectRate`, `effectFade`, `effectAdjust`, `effectRotation`, `effectSync` and
+`soundSensitivity` are their speed, fade, parameter, rotation, sync and sound
+sensitivity, whether a channel of their own or the range of a program (one slot drives
+both). Nothing controlling them, the fixture keeps its own defaults. They are in the
+`beam` family, so `record preset beam` and `only beam` carry them. Fixture effects are
+not **busk effects** (`effect add`, below), which are busk's own waveforms over
+attributes; a busk effect can move a fixture effect's rate.
+
+```
+busk> sel fixture 101
+busk> set effect fuego            # the LED bar's "Fuego" animation (DMX 69)
+busk> set effectRate 50%          # its speed channel at 128
+busk> set effect off              # back to the static colour
+```
 
 ## Scripts
 

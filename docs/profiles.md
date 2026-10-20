@@ -41,7 +41,7 @@ and also OFL `.json` and `.gdtf` files, which are imported when the library load
 
 ```bash
 busk import ofl tests/fixtures/ofl/tupperdmx/*.json --manufacturer TupperDMX --out profiles
-# tests/fixtures/ofl/tupperdmx/blinder.json: 'TupperDMX blinder' (modes 8ch) → profiles/ofl-tupperdmx-blinder.json; 3 notes (--report)
+# tests/fixtures/ofl/tupperdmx/blinder.json: 'TupperDMX blinder' (modes 8ch) → profiles/ofl-tupperdmx-blinder.json; 1 note (--report)
 # …
 # tests/fixtures/ofl/tupperdmx/moving-head.json: 'TupperDMX moving-head' (modes 12ch, 18ch) → profiles/ofl-tupperdmx-moving-head.json; 4 notes (--report)
 busk import gdtf FILE…
@@ -65,10 +65,27 @@ capability type to a busk attribute.
 - Gobo rotation is `WheelSlotRotation`. `WheelRotation` (the whole wheel spinning) is
   never output.
 - A `ColorPreset` channel is `colorMacro`. Each preset is a slot of a wheel made for the
-  channel, with the preset's colour, `NoFunction` is `off`, and every other range is an
-  option too: a program's speed becomes its `colorMacroRate` (slow 0, fast 1), a strobe's
-  its `strobeRate`. A channel of `ColorJump`/`ColorFade` programs with nothing else busk
-  drives is `colorEffect`.
+  channel, with the preset's colour, `NoFunction` is `off`, and every other range but
+  maintenance is an option too: a program's speed becomes its `colorMacroRate` (slow 0,
+  fast 1), a strobe's its `strobeRate`. A channel of `ColorJump`/`ColorFade` programs
+  with nothing else busk drives is `colorEffect`.
+- The programs built into a fixture (`Effect`: an LED bar's animations, a blinder's auto
+  program) are `effect`, and an element's second program channel `effect2`, when nothing
+  else on the channel maps to an attribute: a strobe channel with a few programs stays
+  `shutter`. Every range is an option, as on a colour macro, and a program's speed,
+  duration, parameter or sound sensitivity becomes its `effectRate`, `effectFade`,
+  `effectAdjust` or `soundSensitivity`.
+- `EffectSpeed`, `EffectDuration`, `EffectParameter` and `SoundSensitivity` channels are
+  `effectRate`, `effectFade`, `effectAdjust` and `soundSensitivity`, on 0…1 (`slow`,
+  `instant`, `low`, `off` 0; `fast`, `long`, `high` 1; seconds, Hz and plain numbers
+  rescaled over the channel's span). One slot then drives a program's range and its speed
+  channel. OFL does not say which channel a speed belongs to: in a mode with a colour
+  macro or colour effect and no effect channel, it is `colorMacroRate`. Reverse speeds are
+  never output.
+- `Maintenance` ranges (resets, lamp switching, settings such as "Dimmer mode") are never
+  output: on a macro or program channel they are no option, and such a channel whose
+  default selects one stays `control`, so an unprogrammed fixture runs no program it
+  would not run today.
 - A mode whose colours are only whites or UV makes each its own intensity element.
 - Speeds OFL gives only as `slow…fast` become estimates (strobe 1–20 Hz, rotation
   10–360 °/s), flagged in the report.
@@ -83,7 +100,12 @@ physical ranges and DMX defaults. `Fog1` and `Haze1` are intensity, as OFL's `Fo
 is. `ColorMacro1` and `ColorEffects1` are `colorMacro` and `colorEffect`, with every
 function and channel set an option (the slots of a linked wheel, `off` for "No function"
 and the like), and `ColorMacro1Rate` is `colorMacroRate`; the second macro or effect of
-a fixture is not imported. Mode masters, DMX breaks after the first and virtual channels
+a fixture is not imported. `Effects1` and `Effects2` are `effect` and `effect2`, taken
+from the logical channel only (a `Control1` channel that holds programs beside resets
+stays `control`); `Effects1Rate`, `Effects1Fade`, `Effects1Adjust1` and `EffectsSync` are
+`effectRate`, `effectFade`, `effectAdjust` and `effectSync` (a span other than 0…1 is
+rescaled, the larger value the faster or longer), and `Effects1PosRotate` is
+`effectRotation` in °/s, its index a dead band. Mode masters, DMX breaks after the first and virtual channels
 are reported, not imported. The XML is read with no `DOCTYPE` allowed, and the archive's `description.xml`
 is capped at 32 MB. The tests use synthetic GDTF files; real ones (the 5,733
 descriptions of the OpenGDTFLibrary, GDTF 1.0 and 1.1) have only been checked to import.
@@ -109,11 +131,19 @@ when a fixture's mode is missing from the new revision. Nothing is ever updated 
   from r, g, b; an explicit `w` is used as given. Explicit `a`/`uv` are used, otherwise 0.
   CMY is `1 − r`, `1 − g`, `1 − b`. Other emitters (lime, cyan, custom) output 0 until
   calibrated mixing exists. Virtual intensity scales every additive emitter.
-- **Options** (wheel slots, shutter functions, colour macros) output the centre of their
-  DMX range. A function option with a parameter (a strobe and its `strobeRate`, a program
-  and its `colorMacroRate`) maps the parameter across its range instead.
-- **Colour macros and effects**, uncontrolled, output the option holding the channel's
-  `defaultDmx`, else its first option.
+- **Options** (wheel slots, shutter functions, colour macros, fixture effects) output the
+  centre of their DMX range. A function option with a parameter (a strobe and its
+  `strobeRate`, a program and its `colorMacroRate` or `effectRate`) maps the parameter
+  across its range instead. Maintenance functions (`reset`, `lampOn`, `lampOff`,
+  `maintenance`) are never an option.
+- **Colour macros, colour effects and fixture effects**, uncontrolled, output the option
+  holding the channel's `defaultDmx`, else its first option.
+- **The programs' rates and parameters** (`colorMacroRate`, `effectRate`, `effectFade`,
+  `effectAdjust`, `effectRotation`, `effectSync`, `soundSensitivity`), uncontrolled, take
+  the value their channel's `defaultDmx` stands for, through the range that holds it, so
+  an unprogrammed fixture keeps its own speed (the TupperDMX LED bar's 255). A slot with no
+  channel of its own (a program's parameter only), or whose `defaultDmx` lies in a
+  function, takes the attribute's default (0.5 for the rates and `effectAdjust`, else 0).
 - **The shutter guard**: an uncontrolled shutter outputs `open`, never its `defaultDmx`,
   so a fixture with nothing up is not held dark by its shutter.
 - **Rounding** is half to even.

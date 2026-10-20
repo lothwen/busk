@@ -549,6 +549,17 @@ shebang). Each step is one commit.
    - the importers' module docstrings, written in steps 3–4;
    - CHANGELOG: Added (the attributes); Changed (imports, revisions, macro channels without
      maintenance options, and `colorMacroRate`'s default with Q2(a)).
+
+   **Done** (2026-10-20): docs only.
+   - The spec's §5.3 table and `console.md`'s attribute table came with step 1, the
+     importers' docstrings with steps 3 and 4.
+   - `profiles.md`: three OFL bullets (programs, their scalars, maintenance), the GDTF
+     paragraph, and how options, maintenance and the programs' scalars become DMX. The
+     import example's blinder now has 1 note, not 3.
+   - `console.md`: a paragraph on fixture effects beside the colour macros, with a
+     `set effect fuego` example; the Notes' **Effects** bullet says it means busk effects.
+   - `safety.md`: the strobe cap does not reach a fixture's own programs.
+   - The README is unchanged: it names no attribute but `colorWheel` and `colorMacro`.
 7. **Real-file sweep.** Import every OFL fixture (636) and GDTF description (5,733) at step 2's
    commit, before either importer changes, and at `HEAD`. Verify:
    - no import that succeeded now fails, and no mode is lost;

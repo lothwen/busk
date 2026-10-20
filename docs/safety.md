@@ -45,7 +45,9 @@ move intensity to at most that many flashes per second: an effect in Hz is clamp
 effect on the beat halves its cycles per beat until it is under the cap, so it stays on the
 beat grid (and re-rates without a jump when the tempo changes). A fixture whose slowest
 strobe is above the cap gets a validation warning, since its strobe cannot go slower.
-Chases and fast operator flashes are not capped.
+Chases and fast operator flashes are not capped, nor are a fixture's own programs: the
+cap clamps `strobeRate`, so a strobing fixture effect (`set effect strobo`) or a fast
+colour macro flashes at the rate the fixture gives it.
 
 ## Highlight
 

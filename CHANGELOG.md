@@ -24,6 +24,11 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   fixture outputs the option its own default selects.
 - Tab completes the options of a discrete attribute after `set` and `park`, from the
   selected or named fixtures.
+- Fixture effects: the attributes `effect` and `effect2` (the programs built into a
+  fixture: an LED bar's animations, a blinder's auto program), `effectRate`,
+  `effectFade`, `effectAdjust`, `effectRotation`, `effectSync` and `soundSensitivity`, in
+  the `beam` family ([attributes](docs/console.md#attributes)). Uncontrolled, a fixture
+  outputs the program its own default selects, and its own speed and parameters.
 
 ### Changed
 
@@ -34,8 +39,19 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   attribute: three OFL "Color Macro / Temperature" channels were `cto`, and GDTF
   channels whose logical attribute is `ColorMacro1` but whose functions are a colour
   wheel's (Robe's virtual colour wheels) were `colorWheel`.
-- Imported profiles get a new revision: the importer's version is part of it, so a show
-  that embeds an older import can take the new one with `profile update`.
+- The OFL import maps `Effect`, `EffectSpeed`, `EffectDuration`, `EffectParameter` and
+  `SoundSensitivity` on channels where nothing else maps; the GDTF import maps
+  `Effects1`, `Effects2`, `Effects1Rate`, `Effects1Fade`, `Effects1Adjust1`,
+  `Effects1PosRotate` and `EffectsSync` ([importing](docs/profiles.md#importing-ofl-and-gdtf-files)).
+  These channels were `control` channels held at their default.
+- Maintenance ranges (resets, lamp switching, settings) are never an option: colour macro
+  and effect channels drop them (Fun Generation's Pico macros lose `reset`), and such a
+  channel whose default selects one stays `control`.
+- `colorMacroRate` starts at its channel's own default instead of 0.5, as the new rates
+  do; a rate that is only a program's parameter still starts at 0.5.
+- Imported profiles get a new revision: the importer's version is part of it (version 3
+  with the fixture effects), so a show that embeds an older import can take the new one
+  with `profile update`.
 
 - Ctrl+C at the console prompt: on an empty line it now says how to quit, and a second
   Ctrl+C in a row quits like `quit`. Ctrl+C on a typed line still only clears it.
