@@ -369,7 +369,7 @@ def bar() -> bytes:
                 channel(str(k + 1), function(f"ColorAdd_{c}"), geometry="Pixel")
                 for k, c in enumerate("RGB")
             ),
-            channel("13", function("Effects1"), geometry="Bar"),
+            channel("13", function("Control1"), geometry="Bar"),
             geometry="Bar",
         ),
         name="Bar",
@@ -389,7 +389,7 @@ def test_a_four_cell_bar_from_geometry_references() -> None:
     ] == [
         (3 * e + k, e, "color", ("red", "green", "blue")[k]) for e in range(4) for k in range(3)
     ] + [(12, 0, "control", None)]
-    assert noted(report, "Bar_Effects1: no busk attribute (Effects1)")
+    assert noted(report, "Bar_Control1: no busk attribute (Control1)")
     profile = cast(Doc, report.profile)
     bar_fixture = {
         **fixture("bar", 1, profile["id"], 1, mode_id=first["id"]),
@@ -685,6 +685,159 @@ def test_a_rate_outside_0_to_1_is_rescaled() -> None:
                                                                   (0, 100)))))  # fmt: skip
     assert caps(report, 1) == [("range", 0, 255, (0, 1))]
     assert noted(report, "physical 0…100 taken as 0…1")
+
+
+# ------------------------------------------------------------------ fixture effects
+
+
+def test_an_effects_channel_of_named_sets_and_one_with_strobes() -> None:
+    """Ayrton's Huracan: "open", chases, then NoFeature; ACME's LED-ST5000:
+    programs beside strobe functions, which keep their strobeRate."""
+    report = imported(mode(
+        "3ch",
+        dimmer(),
+        channel("2", function("Effects1", "0/1", (0, 1), channel_set("No Effect", "0/1"),
+                              channel_set("Chase 1", "10/1"), channel_set("Chase 2", "20/1"),
+                              name="Effects"),
+                function("NoFeature", "140/1", (0, 1), channel_set("no function", "140/1"))),
+        channel("3", function("Effects1", "0/1", (0, 1), channel_set("Auto 1", "0/1"),
+                              channel_set("Auto 2", "64/1")),
+                function("Shutter1StrobeRandom", "128/1", (1, 20)),
+                function("Shutter1StrobePulse", "192/1", (2, 10))),
+    ))  # fmt: skip
+    assert at(report, 1)["attribute"] == "effect"
+    assert caps(report, 1) == [
+        ("function", 0, 9, "off"),
+        ("function", 10, 19, "chase1"),
+        ("function", 20, 139, "chase2"),
+        ("function", 140, 255, "off"),
+    ]
+    assert macro_default(report, 1) == "off"
+    assert at(report, 2)["attribute"] == "control"
+    assert noted(report, "a second effect channel; held as control")
+    strobes = imported(mode("2ch", dimmer(), channel(
+        "2", function("Effects1", "0/1", (0, 1), channel_set("Auto 1", "0/1"),
+                      channel_set("Auto 2", "64/1")),
+        function("Shutter1StrobeRandom", "128/1", (1, 20)),
+        function("Shutter1StrobePulse", "192/1", (2, 10)),
+    )))  # fmt: skip
+    assert caps(strobes, 1) == [
+        ("function", 0, 63, "auto1"),
+        ("function", 64, 127, "auto2"),
+        ("function", 128, 191, "random", (1.0, 20.0)),
+        ("function", 192, 255, "pulse", (2.0, 10.0)),
+    ]
+    assert at(strobes, 1)["capabilities"][2]["param"]["attribute"] == "strobeRate"
+    assert strobes.profile["physical"]["maxStrobeHz"] == 20
+
+
+def test_effect_rates_and_fades_are_normalised() -> None:
+    report = imported(mode(
+        "5ch",
+        dimmer(),
+        channel("2", function("Effects1", "0/1", (0, 1), channel_set("Chase", "0/1"))),
+        channel("3", function("Effects1Rate", "0/1", (0, 1)), initial=None),
+        channel("4", function("Effects1Fade", "0/1", (0.1, 25.5), name="Effect Time")),
+        channel("5", function("EffectsSync", "0/1", (0, 255), channel_set("No Sync", "0/1"),
+                              channel_set("Fixture Offset 10deg", "10/1"))),
+    ))  # fmt: skip
+    assert [c["attribute"] for c in channels_of(report)] == [
+        "intensity", "effect", "effectRate", "effectFade", "effectSync",
+    ]  # fmt: skip
+    assert caps(report, 2) == [("range", 0, 255, (0, 1))]
+    assert caps(report, 3) == [("range", 0, 255, (0, 1))]
+    assert caps(report, 4) == [("range", 0, 255, (0, 1))]
+    assert noted(report, "Effects1Fade", "physical 0.1…25.5 taken as 0…1")
+    assert noted(report, "physical 0…255 taken as 0…1")
+    hz = imported(mode("2ch", dimmer(), channel("2", function("Effects1Rate", "0/1", (1, 10)))))
+    assert caps(hz, 1) == [("range", 0, 255, (0, 1))]
+    assert noted(hz, "physical 1…10 taken as 0…1")
+
+
+def test_an_effect_rate_follows_its_channels_default() -> None:
+    """Ayrton's Huracan: Effects1Rate from CCW −1 to CW 1, default 128 (stop)."""
+    report = imported(mode("3ch", dimmer(),
+        channel("2", function("Effects1", "0/1", (0, 1), channel_set("Chase", "0/1"))),
+        channel("3", function("Effects1Rate", "0/1", (-1, 1), default="128/1")),
+    ))  # fmt: skip
+    assert caps(report, 2) == [("range", 0, 255, (0, 1))]
+    assert at(report, 2)["defaultDmx"] == 128
+    profile = cast(Doc, report.profile)
+    unit = {**fixture("f", 1, profile["id"], 1, mode_id=profile["modes"][0]["id"]),
+            "profileRevision": profile["revision"]}  # fmt: skip
+    compiled = compile_doc(show([profile], [unit]))
+    assert fast_convert(compiled, compiled.slots.defaultFrame)[0][2] == 128
+
+
+def test_an_adjust_is_driven_and_a_second_one_held() -> None:
+    report = imported(mode(
+        "4ch",
+        dimmer(),
+        channel("2", function("Effects1", "0/1", (0, 1), channel_set("Chase", "0/1"))),
+        channel("3", function("Effects1Adjust1", "0/1", (0, 1))),
+        channel("4", function("Effects1Adjust2", "0/1", (0, 1))),
+    ))  # fmt: skip
+    assert [c["attribute"] for c in channels_of(report)][2:] == ["effectAdjust", "control"]
+    assert noted(report, "no busk attribute (Effects1Adjust2)")
+
+
+def test_an_effect_index_is_a_dead_band_of_its_rotation() -> None:
+    """Robe's MegaPointe: an Effects1Pos channel, its index (−180…180°) and
+    then its rotation (±30 °/s), fixture-effects-plan Q6."""
+    report = imported(mode("2ch", dimmer(), channel(
+        "2",
+        function("Effects1Pos", "0/1", (-180, 180)),
+        function("Effects1PosRotate", "128/1", (-30, 30)),
+    )))  # fmt: skip
+    assert at(report, 1)["attribute"] == "effectRotation"
+    assert caps(report, 1) == [
+        ("range", 0, 0, (0, 0)),
+        ("function", 1, 127, "index"),
+        ("range", 128, 255, (-30, 30)),
+    ]
+
+
+def test_a_control_channel_with_programs_and_resets_stays_control() -> None:
+    """The logical channel chooses a program attribute, never a function
+    inside it: Control1 channels hold Effects1 beside resets."""
+    report = imported(mode("2ch", dimmer(), channel(
+        "2",
+        function("FixtureGlobalReset", "0/1", (0, 1)),
+        function("Effects1", "64/1", (0, 1), channel_set("Auto", "64/1")),
+        function("LampControl", "128/1", (0, 1)),
+    )))  # fmt: skip
+    assert at(report, 1)["attribute"] == "control"
+    assert noted(report, "no busk attribute (FixtureGlobalReset, Effects1, LampControl)")
+
+
+def test_effects2_is_effect2_and_its_rate_is_held() -> None:
+    """Lightline's LaserLink: Effects2 and Effects2Rate."""
+    report = imported(mode(
+        "5ch",
+        dimmer(),
+        channel("2", function("Effects1", "0/1", (0, 1), channel_set("Layer 1", "0/1"))),
+        channel("3", function("Effects1Rate", "0/1", (0, 1))),
+        channel("4", function("Effects2", "0/1", (0, 1), channel_set("Layer 2", "0/1"))),
+        channel("5", function("Effects2Rate", "0/1", (0, 1))),
+    ))  # fmt: skip
+    assert [c["attribute"] for c in channels_of(report)][1:] == [
+        "effect", "effectRate", "effect2", "control",
+    ]  # fmt: skip
+    assert caps(report, 3) == [("function", 0, 255, "layer2")]
+    assert noted(report, "no busk attribute (Effects2Rate)")
+
+
+def test_a_rate_inside_an_effect_channel_is_an_options_parameter() -> None:
+    report = imported(mode("2ch", dimmer(), channel(
+        "2",
+        function("Effects1", "0/1", (0, 1), channel_set("No Effect", "0/1")),
+        function("Effects1Rate", "128/1", (0.1, 25.5), name="Program speed"),
+    )))  # fmt: skip
+    assert caps(report, 1) == [
+        ("function", 0, 127, "off"),
+        ("function", 128, 255, "programSpeed", (0.0, 1.0)),
+    ]
+    assert at(report, 1)["capabilities"][1]["param"]["attribute"] == "effectRate"
 
 
 def test_unmapped_channels_are_control_held_at_their_default() -> None:

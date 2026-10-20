@@ -506,6 +506,29 @@ shebang). Each step is one commit.
    - `EffectsSync` at 0…255;
    - a `Control1` channel with `Effects1` and reset functions, which stays `control`;
    - `Effects2` (Q4) and `Effects2Rate` (held).
+
+   **Done** (2026-10-20): 3435 passed. Deviations from §5.4:
+   - **Logical channels only, for `effect` and `effect2`.** Applied to every attribute of
+     `MACRO_ATTRIBUTES`, the rule turned four Prolights colour channels to `control` (Aria 700
+     Profile's "Color1Mode" holds a `ColorMacro1` function, PixieWash XB a `ColorEffects1`).
+     Colour macros are unchanged, as §3.2 wants.
+   - **Program parameters only on effect channels.** A colour macro channel still takes
+     `colorMacroRate` and `strobeRate` only.
+   - **A default in a maintenance range holds the channel**, as in step 3. No GDTF effect
+     channel has one.
+   - **No real file reaches Q6.** Every `Effects1Pos` channel of the Robe Pointe family has
+     its functions behind a mode master, which busk does not import, so they stay `control`.
+     The synthetic test covers the dead band.
+   - **Directions** follow the physical values, as §5.4 says, though some files' set names
+     disagree: Robe's "Effect Speed" (0.1…25.5, 12 functions) has "max" at DMX 0, and so do 9
+     Terbly rates on 0…1 ("Max" … "Min"). There busk's `effectRate` 1 is the slowest. Ayrton's
+     Huracan rate runs CCW −1 … CW 1: rescaled, its stop is 0.5 (DMX 128, its default).
+   - The `bar()` test's control channel is `Control1` now: `Effects1` is driven.
+   - A sweep against step 2 (5,733 OpenGDTFLibrary descriptions): 5,683 import and 50 fail,
+     before and after; no mode lost; no driven channel changes; every changed uncontrolled
+     byte stays in the range that holds its default. 137 `effect`, 1 `effect2`, 133
+     `effectRate`, 67 `effectFade` and 25 `effectSync` mode channels; control channels
+     22,644 → 22,281.
 5. **Importer version 3.** Verify as in the colour macro plan's step 5:
    - the same file and the same busk give the same revision, and version 3 gives a new one;
    - with an old embedded copy, `list profiles` shows the library's revision, and `profile

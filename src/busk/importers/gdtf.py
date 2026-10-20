@@ -59,28 +59,42 @@ GDTF                                        busk
 ``PositionMSpeed``                          ``positionSpeed`` (0 = fastest)
 ``ColorMacro1``, ``ColorEffects1``          ``colorMacro``, ``colorEffect``
 ``ColorMacro1Rate``                         ``colorMacroRate`` (0…1)
+``Effects1``, ``Effects2``                  ``effect``, ``effect2``
+``Effects1Rate``, ``Effects1Fade``,         ``effectRate``, ``effectFade``,
+``Effects1Adjust1``, ``EffectsSync``        ``effectAdjust``, ``effectSync``
+                                            (0…1)
+``Effects1PosRotate``                       ``effectRotation`` (°/s)
 everything else                             a ``control`` channel held at its
                                             default and reported
 ==========================================  ===================================
 
+A fixture effect attribute comes only from a logical channel's own
+attribute: the ``Control1`` channels that hold ``Effects1`` beside resets
+stay ``control``.
+
 The channel's other functions are never output, except dead bands, as in the
 OFL import (:mod:`busk.importers.ofl`): ``NoFeature``, and the index
 (``…Pos``) function of a rotation channel, whose first DMX value is the
-attribute's rest value. Normalised attributes (``intensity``, ``focus``,
-``iris``, ``frost``) take the physical values when they lie in 0…1, else
-the channel's physical span is scaled to 0…1 (reported); ``cto`` outside
-0…1 is read as kelvin.
+attribute's rest value (``Effects1Pos`` too: the index of an effect wheel).
+Normalised attributes (``intensity``, ``focus``, ``iris``, ``frost``, the
+programs' rates, fades, adjusts and sync) take the physical values when they
+lie in 0…1, else the channel's physical span is scaled to 0…1, the larger
+value the faster or longer (reported); ``cto`` outside 0…1 is read as kelvin.
 
-**Colour macros.** On a ``colorMacro`` or ``colorEffect`` channel every
-function and channel set is an option. The channel sets of a colour
+**Colour macros and fixture effects.** On a ``colorMacro``,
+``colorEffect``, ``effect`` or ``effect2`` channel every function and
+channel set is an option. The channel sets of a colour
 function (``Color1``, ``ColorMacro1``, ``ColorEffects1``) linked to a wheel
 are slots of that wheel (by ``WheelSlotIndex``); every other set,
 and a function without sets, is a function named after it. ``NoFeature`` and
 sets named like "No function", "Safe", "Open" or "No macro" are ``off``. A
 strobe function keeps its rate as ``strobeRate`` (so the strobe cap holds),
-a ``ColorMacro1Rate`` function its own as ``colorMacroRate``. Nothing
-controlling the channel, it outputs the option its default selects.
-``ColorMacro2``, ``ColorEffects2`` and later are ``control``.
+a ``ColorMacro1Rate`` function its own as ``colorMacroRate``, and on an
+effect channel a function of a program scalar (``Effects1Rate`` …) its own
+as that scalar (``effectRate`` …). Nothing controlling the channel, it
+outputs the option its default selects; a default in a maintenance range
+holds the channel as ``control``.
+``ColorMacro2``, ``ColorEffects2``, ``Effects3`` and later are ``control``.
 
 **Elements.** One per ``GeometryReference`` under the mode's geometry, in
 DMX order, named after the reference: the mode's channels on the referenced
@@ -120,6 +134,7 @@ from busk.importers.ofl import (
     _check,
     _default_option,
     _function,
+    _maintenance_default,
     _slug,
     _top,
     _unique,
@@ -172,8 +187,20 @@ ATTRIBUTES: Final[Mapping[str, str]] = {
     "ColorMacro1": "colorMacro",
     "ColorMacro1Rate": "colorMacroRate",
     "ColorEffects1": "colorEffect",
+    "Effects1": "effect",
+    "Effects2": "effect2",
+    "Effects1Rate": "effectRate",
+    "Effects1Fade": "effectFade",
+    "Effects1Adjust1": "effectAdjust",
+    "Effects1PosRotate": "effectRotation",
+    "EffectsSync": "effectSync",
 }
 """GDTF attributes busk drives (colours apart), by busk attribute."""
+
+PROGRAM_PARAMETERS: Final = frozenset(
+    {"effectRate", "effectFade", "effectAdjust", "effectRotation", "effectSync"}
+)
+"""The scalars a function on a fixture effect channel parameterises its option with."""
 
 ADDITIVE: Final[Mapping[str, str]] = {
     "R": "red",
@@ -234,9 +261,12 @@ _XYZ_TO_SRGB: Final = (
 """CIE XYZ → linear sRGB (D65 white), IEC 61966-2-1."""
 
 _DMX: Final = re.compile(r"(\d+)(?:/([1-4])(s?))?")
-_INDEX: Final = re.compile(r"(Gobo[12]|Prism1)Pos")
+_INDEX: Final = re.compile(r"(Gobo[12]|Prism1|Effects1)Pos")
 """The index (angle) function of a rotation channel: a dead band."""
-_NORMALISED: Final = frozenset({"intensity", "focus", "iris", "frost", "colorMacroRate"})
+_NORMALISED: Final = frozenset({
+    "intensity", "focus", "iris", "frost", "colorMacroRate",
+    "effectRate", "effectFade", "effectAdjust", "effectSync",
+})  # fmt: skip
 _OFF: Final = re.compile(
     r"(no ?(function|fonction|feature|macro|colou?r ?macro|effect)s?|off|none|open|safe|normal)"
     r"\b.*",
@@ -832,12 +862,14 @@ class _ModeBuilder:
             channel = p.channel
             candidates = [(channel.attribute, channel.functions[0])]
             candidates += [(f.attribute, f) for f in channel.functions]
-            for attribute, function in candidates:
+            for k, (attribute, function) in enumerate(candidates):
                 component = self.fixture.component(attribute, function)
                 if component is not None:
                     p.attribute, p.component, p.source = "color", component, attribute
                     break
                 if attribute in ATTRIBUTES:
+                    if k and ATTRIBUTES[attribute] in ("effect", "effect2"):
+                        continue  # only a logical channel's own: Control1 holds resets too
                     p.attribute, p.source = ATTRIBUTES[attribute], attribute
                     break
         self._dedupe(placed)
@@ -912,6 +944,15 @@ class _ModeBuilder:
             self.fixture.note(
                 f"{channel.name}: offers no {option!r}, which busk outputs when nothing "
                 f"controls {definition['attribute']}; held at DMX {channel.default}"
+            )
+            definition["attribute"] = "control"
+            capabilities = self._controls(channel, nbytes)
+        elif definition["attribute"] in MACRO_ATTRIBUTES and _maintenance_default(
+            capabilities, channel.default
+        ):
+            self.fixture.note(
+                f"{channel.name}: its default selects a maintenance range, which busk never "
+                f"outputs; held at DMX {channel.default}"
             )
             definition["attribute"] = "control"
             capabilities = self._controls(channel, nbytes)
@@ -1019,6 +1060,7 @@ class _ModeBuilder:
                 taken.add(seen[k, text])
             return seen[k, text]
 
+        program = p.attribute in ("effect", "effect2")
         out: list[Capability] = []
         for k, f in enumerate(p.channel.functions):
             if f.attribute == "NoFeature":
@@ -1027,10 +1069,16 @@ class _ModeBuilder:
             default_name = re.fullmatch(re.escape(f.attribute) + r" \d+", f.name)
             own = f.attribute if not f.name or default_name else f.name
             rate = ATTRIBUTES.get(f.attribute)
-            if f.attribute in SHUTTER or rate in ("strobeRate", "colorMacroRate"):
+            if (
+                f.attribute in SHUTTER
+                or rate in ("strobeRate", "colorMacroRate")
+                or (program and rate in PROGRAM_PARAMETERS)
+            ):
                 option = _function(f.low, f.high, name(k, SHUTTER.get(f.attribute, own)))
-                if rate == "colorMacroRate":
-                    option["param"] = {"attribute": "colorMacroRate", "value": _unit(f.physical)}
+                if rate == "effectRotation":  # °/s, as given
+                    option["param"] = {"attribute": rate, "value": f.physical}
+                elif rate in ("colorMacroRate", *PROGRAM_PARAMETERS):
+                    option["param"] = {"attribute": rate, "value": _unit(f.physical)}
                 else:
                     self.fixture.widen("maxStrobeHz", max(f.physical))
                     option["param"] = {"attribute": "strobeRate", "value": f.physical}
@@ -1127,8 +1175,8 @@ def _rescaled(low: float, high: float) -> _Values:
 
 
 def _unit(physical: tuple[float, float]) -> tuple[float, float]:
-    """A rate's physical span as ``colorMacroRate``: as it is within 0…1, else
-    0…1 in its direction."""
+    """A rate's physical span as a normalised parameter (``colorMacroRate``,
+    ``effectRate`` …): as it is within 0…1, else 0…1 in its direction."""
     low, high = physical
     if min(low, high) >= 0 and max(low, high) <= 1:
         return physical
