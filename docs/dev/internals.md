@@ -1,7 +1,7 @@
 # How busk works
 
 How the engine, the console and the output fit together, for anyone changing busk. The
-architecture is specified in [`busking-console-architecture-python.md`](busking-console-architecture-python.md)
+architecture is specified in [`busking-console-architecture-python.md`](../busking-console-architecture-python.md)
 ("the spec"; section numbers such as §5.3 refer to it). [`development.md`](development.md)
 has the source layout and the tests.
 
@@ -9,7 +9,7 @@ has the source layout and the tests.
 
 `busk run` runs three processes: the **root** sends the output and watches the other two,
 the **engine** runs the pipeline, and the **console** holds the session, the prompt, the
-surfaces and the web remote. [Running a show](running.md#processes-and-the-watchdog)
+surfaces and the web remote. [Running a show](../running.md#processes-and-the-watchdog)
 describes them from the operator's side.
 
 ```

@@ -2,7 +2,7 @@
 
 Measured on the development machine as each phase finished; [`history.md`](history.md)
 explains the phases. The perf gates run with `uv run pytest -m perf -s`, the benches with
-the scripts in [`bench/`](../bench/) ([`development.md`](development.md#commands)).
+the scripts in [`bench/`](../../bench/) ([`development.md`](development.md#commands)).
 
 ## The engine and the output
 

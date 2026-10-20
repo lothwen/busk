@@ -1,19 +1,19 @@
 # How busk was built
 
-busk was built in phases, each with a plan in this directory, following the roadmap of the
-spec's §22 ([`busking-console-architecture-python.md`](busking-console-architecture-python.md)).
+busk was built in phases, each with a plan in [`plans/`](../plans/), following the roadmap of the
+spec's §22 ([`busking-console-architecture-python.md`](../busking-console-architecture-python.md)).
 This file keeps what the README used to say about them: what each phase added, the done
 criteria and how they were met, the decisions taken beyond the plans, and the gaps found in
 the spec. The manual checks of each phase are in [`checklists.md`](checklists.md).
 
 ## The phases
 
-**Status: Phase 8 — busk as a library** ([plan](phase-8-plan.md)), on top of Phase 7 —
-hardening ([plan](phase-7-plan.md)), the last phase of the spec's §22 roadmap, Phase 6 — surfaces and network ([plan](phase-6-plan.md)), Phase 5 —
-effects ([plan](phase-5-plan.md)), Phase 4 — time ([plan](phase-4-plan.md)), Phase 3 — programmer & recording ([plan](phase-3-plan.md)),
-Phase 2 — busking core ([plan](phase-2-plan.md)),
-Phase 1.5 — sACN output ([plan](phase-1.5-plan.md)), Phase 1 — fixtures
-([plan](phase-1-plan.md)) and the Phase 0 walking skeleton ([plan](phase-0-plan.md)).
+**Status: Phase 8 — busk as a library** ([plan](../plans/phase-8-plan.md)), on top of Phase 7 —
+hardening ([plan](../plans/phase-7-plan.md)), the last phase of the spec's §22 roadmap, Phase 6 — surfaces and network ([plan](../plans/phase-6-plan.md)), Phase 5 —
+effects ([plan](../plans/phase-5-plan.md)), Phase 4 — time ([plan](../plans/phase-4-plan.md)), Phase 3 — programmer & recording ([plan](../plans/phase-3-plan.md)),
+Phase 2 — busking core ([plan](../plans/phase-2-plan.md)),
+Phase 1.5 — sACN output ([plan](../plans/phase-1.5-plan.md)), Phase 1 — fixtures
+([plan](../plans/phase-1-plan.md)) and the Phase 0 walking skeleton ([plan](../plans/phase-0-plan.md)).
 Phases 0–2 are the spec's "minimum viable busking engine"; Phase 3 adds the editing half:
 the operator builds and changes the show from the console, live, while the output keeps
 running. Phase 4 sets it in motion: fades and curves per slot, cue lists with
@@ -53,8 +53,8 @@ on a clock the caller drives (`OfflineShow`) and run a show live inside another 
 (`LiveShow`). The library prints nothing (it logs), MIDI became the optional extra
 `busk[midi]`, and busk is an MIT-licensed package installed from its GitHub repository.
 The command line did not change: its transcripts are pinned byte for byte. See
-[Using busk as a library](../README.md#using-busk-as-a-library) and the guide,
-[`docs/library.md`](library.md).
+[Using busk as a library](../../README.md#using-busk-as-a-library) and the guide,
+[`docs/library.md`](../library.md).
 
 Phase 2 made the engine busk: playbacks running single-cue looks built from groups and
 scoped presets, merged by one resolver (HTP intensity per priority band, LTP layer stack
@@ -72,7 +72,7 @@ process, without the watchdog and the restarts.
 ## Done criteria
 
 The Phase 7 done criteria hold. **A, the safety show**: on the show the Phase 3–6 scripts
-save, the script [`tests/fixtures/phase7-safety.busk`](../tests/fixtures/phase7-safety.busk) adds, with
+save, the script [`tests/fixtures/phase7-safety.busk`](../../tests/fixtures/phase7-safety.busk) adds, with
 console commands only, a tilt limit of 10° on the heads (a low truss), an intensity limit
 of half on the bar, wash 4 **parked** dark and wash 3 parked on red, a **strobe cap** of
 3 Hz, a strobe look (10 Hz asked) and an 8 Hz pulse on page 2, and marker SET bound to
@@ -99,7 +99,7 @@ The split also closes the overrun misses of Phases 3–6: on the §19-sized rig,
 overrun 1 tick in 1 911 (10 % with threads) and surface load 0.4 % (2.3 %).
 
 The Phase 6 done criterion holds: on the show the Phase 3–5 scripts save, the script
-[`tests/fixtures/phase6-surfaces.busk`](../tests/fixtures/phase6-surfaces.busk) adds, with console
+[`tests/fixtures/phase6-surfaces.busk`](../../tests/fixtures/phase6-surfaces.busk) adds, with console
 commands only, soft takeover on the nanoKONTROL2, a web surface "Phone", a fade-time
 master "Fade", a **second page** "Washes" (four exclusive wash looks whose M buttons
 **swop**, a three-cue list run by hand on a **crossfade fader**, and the knob playbacks of
@@ -117,7 +117,7 @@ origin are refused, a show edit from the phone is refused, and a flash the phone
 off when the phone vanishes.
 
 The Phase 5 done criterion holds: on the show the Phase 3 and Phase 4 scripts save, the
-script [`tests/fixtures/phase5-effects.busk`](../tests/fixtures/phase5-effects.busk) adds, with console
+script [`tests/fixtures/phase5-effects.busk`](../../tests/fixtures/phase5-effects.busk) adds, with console
 commands only, a size master "FX" and a group master on the washes, three effect-only
 playbacks with `size` faders (a **circle** on the heads, half a revolution per beat with
 MH 2 a quarter turn behind, growing over 1 s; a **pulse** travelling across the washes; a
@@ -132,7 +132,7 @@ programmer holds a pan under a running circle, and the frames are byte-identical
 on an irregular tick schedule and after save → load.
 
 The Phase 4 done criterion holds: on the show the Phase 3 build saves, the script
-[`tests/fixtures/phase4-song.busk`](../tests/fixtures/phase4-song.busk) adds, with console commands only,
+[`tests/fixtures/phase4-song.busk`](../../tests/fixtures/phase4-song.busk) adds, with console commands only,
 a speed master, a five-cue **tracking song stack** (Intro, Verse, Pre, Chorus, Outro) with
 an eased fade, per-family timing, a `wait` cue, a `follow` cue and a release, a four-step
 **chase** bouncing across the washes, BPM-locked to the speed master, and nanoKONTROL2
@@ -144,7 +144,7 @@ steps on the 120 BPM grid and, after four taps, on the 128 BPM grid of the last 
 the frames are byte-identical at 100 Hz and on an irregular tick schedule.
 
 The Phase 3 done criterion holds: starting from `busk new`, the script
-[`tests/fixtures/phase3-build.busk`](../tests/fixtures/phase3-build.busk) builds a complete busking show
+[`tests/fixtures/phase3-build.busk`](../../tests/fixtures/phase3-build.busk) builds a complete busking show
 with console commands only (a universe, two Appendix A spots, four Eurolite ML-56 and a
 COLORband PiX from the Phase 1 library, four groups, global colour presets, per-head
 position presets, looks and bumps on page slots, exclusivity, an sACN route and the

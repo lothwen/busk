@@ -67,7 +67,7 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 ## [0.1.0] - Unreleased
 
 The first release with a public API. Phases 0–7 built the console and its `busk` command
-line; Phase 8 ([plan](docs/phase-8-plan.md)) made it a library too.
+line; Phase 8 ([plan](docs/plans/phase-8-plan.md)) made it a library too.
 
 ### Added
 

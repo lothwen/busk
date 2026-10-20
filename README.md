@@ -170,10 +170,10 @@ busk> fader 1 1                               # or the console does
 | [busk as a library](docs/library.md) | Installing, examples, the reference of the public API, stability. |
 | [The spec](docs/busking-console-architecture-python.md) | The architecture busk implements, and the show file schema. |
 
-For developers: [Developing busk](docs/development.md) (tests, benches, the source layout),
-[How busk works](docs/internals.md), [Benchmarks](docs/benchmarks.md),
-[How busk was built](docs/history.md) (design decisions and spec gaps) and the
-[manual checklists](docs/checklists.md). [`CHANGELOG.md`](CHANGELOG.md) lists the releases.
+For developers: [Developing busk](docs/dev/development.md) (tests, benches, the source layout),
+[How busk works](docs/dev/internals.md), [Benchmarks](docs/dev/benchmarks.md),
+[How busk was built](docs/dev/history.md) (design decisions and spec gaps) and the
+[manual checklists](docs/dev/checklists.md). [`CHANGELOG.md`](CHANGELOG.md) lists the releases.
 
 ## Using busk as a library
 
@@ -217,7 +217,7 @@ autosave or crash recovery. For a show on stage, use `busk run`.
 - **GDTF import** covers a subset, tested on synthetic files only.
 - **The strobe cap** does not apply to chases or fast operator flashes.
 
-[How busk was built](docs/history.md#spec-gaps) has the full list of open questions.
+[How busk was built](docs/dev/history.md#spec-gaps) has the full list of open questions.
 
 ## Development
 
@@ -228,7 +228,7 @@ uv run ruff check . && uv run ruff format --check .    # lint + format
 uv run mypy                                            # --strict on src/
 ```
 
-[Developing busk](docs/development.md) has the opt-in tests, the benches and the source
+[Developing busk](docs/dev/development.md) has the opt-in tests, the benches and the source
 layout.
 
 ## License

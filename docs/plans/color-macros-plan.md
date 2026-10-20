@@ -94,7 +94,7 @@ Its default is 0. It is the only colour control in those modes. Import today rep
      presets named "Off" would be taken for "no macro".
    - **(c) (a), plus colour follows on macro-only elements.** On an element with no colour
      mixing, an uncontrolled `colorMacro` takes the preset nearest the `color` slot's
-     colour (white by default). It closes `docs/history.md`'s open "colour → colour wheel"
+     colour (white by default). It closes `docs/dev/history.md`'s open "colour → colour wheel"
      item for macros (not for wheels) and is a separate step of its own (§6, step 2b).
 2. **The OFL side.**
    - **(a) Parity with GDTF *(user)*.** `Effect` ranges on a preset channel become

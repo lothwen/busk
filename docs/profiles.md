@@ -148,7 +148,7 @@ when a fixture's mode is missing from the new revision. Nothing is ever updated 
   so a fixture with nothing up is not held dark by its shutter.
 - **Rounding** is half to even.
 
-[`internals.md`](internals.md) describes how the conversion runs.
+[`internals.md`](dev/internals.md) describes how the conversion runs.
 
 ## Notes on the built-in fixtures
 

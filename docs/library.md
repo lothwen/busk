@@ -15,7 +15,7 @@ Everything public is importable from `busk` itself. This guide covers [installin
 [reference](#reference) of the 28 public names, [the errors](#errors),
 [logging](#logging), [what is public](#what-is-public) and [the stability promise](#stability).
 The [README](../README.md) covers the command line and links the other guides: the
-[console's commands](console.md), [running a show](running.md) and [how busk works inside](internals.md).
+[console's commands](console.md), [running a show](running.md) and [how busk works inside](dev/internals.md).
 
 ## Installing
 

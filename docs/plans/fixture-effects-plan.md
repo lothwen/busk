@@ -6,7 +6,7 @@
 > `Effects(n)PosRotate` and `EffectsSync`, so that the programs built into a fixture are
 > programmable in busk. Today both importers turn these channels into `control` channels held
 > at their default. This is the "generic fixture programs" item of
-> `docs/color-macros-plan.md` §9, built on the same machinery. The user took every
+> `docs/plans/color-macros-plan.md` §9, built on the same machinery. The user took every
 > recommendation of §3.1 on 2026-10-20: Q1(a) … Q6(a), marked *(user)*. The calls of §3.2
 > are the plan's, open to veto.
 
