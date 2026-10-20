@@ -3,9 +3,9 @@
   "name": "TupperDMX Blinder",
   "manufacturer": "TupperDMX",
   "model": "Blinder",
-  "revision": "1",
+  "revision": "2",
   "source": "user",
-  "notes": "Transcribed from TupperDMX's OFL file fixtures/blinder.json, 8ch mode. busk colour needs red, green and blue, so the four white dies are four elements, each dimmed by its own channel: Cold 1, Cold 2, Warm 1, Warm 2 (e.g. 201.3 thru 201.4 is the warm pair). The master brightness channel is a control held at 255, so the grand master and blackout dim the dies once, not twice. The built-in program and its speed are control channels held at 0 (manual). Strobe 8-255 is 0.5-10 Hz, mapped linearly; it is on Cold 1, the element that holds the fixture-wide channels.",
+  "notes": "Transcribed from TupperDMX's OFL file fixtures/blinder.json, 8ch mode. busk colour needs red, green and blue, so the four white dies are four elements, each dimmed by its own channel: Cold 1, Cold 2, Warm 1, Warm 2 (e.g. 201.3 thru 201.4 is the warm pair). The master brightness channel is a control held at 255, so the grand master and blackout dim the dies once, not twice. The built-in program is the effect attribute: off (manual, 0-9, the default), autoProgram (10-249, its speed slow to fast following effectRate) and soundActive (250-255); the program speed is effectRate, held at 0 when nothing controls it. Strobe 8-255 is 0.5-10 Hz, mapped linearly; it is on Cold 1, the element that holds the fixture-wide channels.",
   "physical": { "maxStrobeHz": 10 },
   "wheels": [],
   "modes": [
@@ -38,14 +38,15 @@
             { "kind": "function", "dmx": [8, 255], "fn": "strobe",
               "param": { "attribute": "strobeRate", "value": [0.5, 10] } }
           ] },
-        { "offset": 6, "element": 0, "attribute": "control", "bytes": 1, "defaultDmx": 0,
+        { "offset": 6, "element": 0, "attribute": "effect", "bytes": 1, "defaultDmx": 0,
           "capabilities": [
-            { "kind": "function", "dmx": [0, 9], "fn": "none" },
-            { "kind": "function", "dmx": [10, 249], "fn": "autoProgram" },
+            { "kind": "function", "dmx": [0, 9], "fn": "off" },
+            { "kind": "function", "dmx": [10, 249], "fn": "autoProgram",
+              "param": { "attribute": "effectRate", "value": [0, 1] } },
             { "kind": "function", "dmx": [250, 255], "fn": "soundActive" }
           ] },
-        { "offset": 7, "element": 0, "attribute": "control", "bytes": 1, "defaultDmx": 0,
-          "capabilities": [{ "kind": "function", "dmx": [0, 255], "fn": "programSpeed" }] }
+        { "offset": 7, "element": 0, "attribute": "effectRate", "bytes": 1, "defaultDmx": 0,
+          "capabilities": [{ "kind": "range", "dmx": [0, 255], "value": [0, 1] }] }
       ]
     }
   ]

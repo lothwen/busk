@@ -37,23 +37,52 @@ everything else                         a ``control`` channel held at the OFL
                                         ``defaultValue`` and reported
 ======================================  ==========================================
 
+Failing all of these, a channel takes the attribute of its first program
+capability (:data:`PROGRAMS`), so a strobe or wheel channel with programs
+keeps its attribute:
+
+======================================  ==========================================
+OFL                                     busk
+======================================  ==========================================
+``Effect``                              ``effect`` (``effect2`` for an element's
+                                        second effect channel; a third is held)
+``EffectSpeed``                         ``effectRate`` (``colorMacroRate`` in a
+                                        mode with a colour macro or effect and no
+                                        other effect channel: OFL does not say
+                                        whose speed it is)
+``EffectDuration``                      ``effectFade``
+``EffectParameter``                     ``effectAdjust``
+``SoundSensitivity``                    ``soundSensitivity``
+======================================  ==========================================
+
+These scalars are on 0…1: ``slow``, ``stop``, ``instant``, ``short``, ``off``,
+``low`` and ``small`` are 0, ``fast``, ``long``, ``high`` and ``big`` 1, and a
+percentage is its fraction; seconds, Hz, bpm and plain numbers are rescaled
+over the channel's span, ``stop`` and ``instant`` counting as 0 Hz and 0 s
+(reported). Reverse speeds are functions never output.
+
 The channel's other capabilities are functions busk never outputs, except
 two kinds of dead band: ``NoFunction`` and the angle (index) range of a
 rotation channel. On a scalar attribute a dead band's first DMX value is the
-attribute's rest value (intensity 0, rotation stopped) and the rest is never
-output; on ``shutter`` it is ``open``, on ``prism`` the ``off`` slot.
+attribute's rest value (intensity 0, rotation stopped, a program's speed or
+sensitivity 0) and the rest is never output; on ``shutter`` it is ``open``,
+on ``prism`` the ``off`` slot.
 
-**Colour macros.** On a ``colorMacro`` or ``colorEffect`` channel every
-capability is an option. A preset is a slot of a wheel made for the channel
-(``macro1`` …, its colour the mean of the preset's ``colors``; sweeps and
-colour temperatures have none), ``NoFunction`` is ``off``, and any other
-capability a function named after its effect name, comment or type. An
-``Effect``'s speed becomes the option's ``colorMacroRate`` (slow 0, fast 1,
-percentages of full speed), and a strobe's its ``strobeRate``, so the
-strobe cap holds. A repeated name is one option when the two
-capabilities are the same (the second "Red" of a chart), else a numbered
-one. Nothing controlling the channel, it outputs the option its
-``defaultValue`` selects.
+**Colour macros and fixture effects.** On a ``colorMacro``, ``colorEffect``,
+``effect`` or ``effect2`` channel every capability is an option, except
+``Maintenance`` (named ``maintenance``, never output). A preset is a slot of
+a wheel made for the channel (``macro1`` …, its colour the mean of the
+preset's ``colors``; sweeps and colour temperatures have none),
+``NoFunction`` is ``off``, and any other capability a function named after
+its effect name, comment or type. On a colour channel an ``Effect``'s speed
+becomes the option's ``colorMacroRate`` (slow 0, fast 1, percentages of full
+speed). On an effect channel a program's first speed, duration, parameter or
+sound sensitivity becomes its ``effectRate``, ``effectFade``,
+``effectAdjust`` or ``soundSensitivity`` (a second one is reported). A
+strobe keeps its ``strobeRate``, so the strobe cap holds. A repeated name is
+one option when the two capabilities are the same (the second "Red" of a
+chart), else a numbered one. Nothing controlling the channel, it outputs the
+option its ``defaultValue`` selects.
 
 **Modelling rules** (decision 20).
 
@@ -105,7 +134,9 @@ from busk.model.attributes import ATTRIBUTES, ColorValue
 from busk.model.common import ModeId
 from busk.model.profile import (
     MACRO_ATTRIBUTES,
+    MAINTENANCE_FUNCTIONS,
     Capability,
+    CapabilityParam,
     ChannelDefinition,
     ElementDefinition,
     Emitter,
@@ -158,6 +189,25 @@ FLAGS: Final[Mapping[str, str]] = {
 WHITES: Final = frozenset({"White", "Warm White", "Cold White", "UV"})
 """The colours of decision 20's white-only rule."""
 
+PROGRAMS: Final[Mapping[str, str]] = {
+    "Effect": "effect",
+    "EffectSpeed": "effectRate",
+    "EffectDuration": "effectFade",
+    "EffectParameter": "effectAdjust",
+    "SoundSensitivity": "soundSensitivity",
+}
+"""Capability types of the programs built into a fixture, and the attribute
+each gives a channel on which nothing else busk drives (the last resort)."""
+
+PROGRAM_PARAMETERS: Final = (
+    ("speed", "effectRate"),
+    ("duration", "effectFade"),
+    ("parameter", "effectAdjust"),
+    ("soundSensitivity", "soundSensitivity"),
+)
+"""The properties of a program capability that become an option's parameter,
+in the order in which the first one present wins."""
+
 _RESOLUTIONS: Final = {"8bit": 1, "16bit": 2, "24bit": 3}
 _REST: Final[Mapping[str, float]] = {
     "intensity": 0.0,
@@ -168,10 +218,35 @@ _REST: Final[Mapping[str, float]] = {
     "iris": 1.0,
     "frost": 0.0,
     "cto": 0.0,
+    "colorMacroRate": 0.0,
+    "effectRate": 0.0,
+    "effectFade": 0.0,
+    "effectAdjust": 0.0,
+    "effectRotation": 0.0,
+    "effectSync": 0.0,
+    "soundSensitivity": 0.0,
 }
 """The value a dead band stands for, per scalar attribute that has one."""
 
 _ENTITY = re.compile(r"^(-?\d+(?:\.\d+)?(?:e-?\d+)?)\s*(%|deg|Hz|bpm|rpm|s|ms|K|lm|m)?$")
+_WORDS: Final[Mapping[str, Mapping[str, float]]] = {
+    "speed": {"slow": 0, "stop": 0, "fast": 1},
+    "duration": {"instant": 0, "short": 0, "long": 1},
+    "parameter": {
+        "off": 0, "low": 0, "small": 0, "slow": 0, "instant": 0, "short": 0,
+        "high": 1, "big": 1, "fast": 1, "long": 1,
+    },
+    "soundSensitivity": {"off": 0, "low": 0, "high": 1},
+}  # fmt: skip
+"""The keywords of a program property, on 0…1."""
+_UNITS: Final[Mapping[str | None, tuple[str, float]]] = {
+    "Hz": ("Hz", 1.0),
+    "bpm": ("Hz", 1 / 60),
+    "s": ("s", 1.0),
+    "ms": ("s", 0.001),
+    None: ("", 1.0),
+}
+"""A program property's units with a physical value: its dimension and scale."""
 
 
 # ------------------------------------------------------------------ entry points
@@ -525,6 +600,9 @@ class _Fixture:
             if cap.type == "NoFunction":
                 options.append(("function", "off"))
                 continue
+            if cap.type == "Maintenance":  # never an option (MAINTENANCE_FUNCTIONS)
+                options.append(("function", "maintenance"))
+                continue
             rest = {k: v for k, v in cap.data.items() if k != "dmxRange"}
             same = json.dumps(rest, sort_keys=True)
             if same not in seen:
@@ -739,6 +817,15 @@ class _ModeBuilder:
             for p in channels:
                 if p.attribute == "intensity" and colours[p.channel.key] is None:
                     p.attribute = "master"  # held at full: the dies are the intensity
+        attributes = {p.attribute for p in channels}
+        if "effect" not in attributes and attributes & {"colorMacro", "colorEffect"}:
+            for p in channels:
+                if p.attribute == "effectRate":  # OFL says not whose speed it is
+                    p.attribute = "colorMacroRate"
+                    self.fixture.note(
+                        f"{p.channel.name}: an effect speed in a mode with colour programs "
+                        "and no other effect channel; taken as their colorMacroRate"
+                    )
         self._dedupe(channels)
 
     def _emitter(self, colour: str) -> str:
@@ -751,11 +838,15 @@ class _ModeBuilder:
         return ident
 
     def _attribute(self, channel: _Channel) -> str:
-        """The attribute of the channel's first capability busk can drive."""
+        """The attribute of the channel's first capability busk can drive;
+        failing that, of its first program capability (:data:`PROGRAMS`)."""
         for cap in channel.caps:
             attribute = self._candidate(channel, cap)
             if attribute is not None:
                 return attribute
+        for cap in channel.caps:
+            if cap.type in PROGRAMS:
+                return PROGRAMS[cap.type]
         return "control"
 
     def _candidate(self, channel: _Channel, cap: _Cap) -> str | None:
@@ -808,7 +899,16 @@ class _ModeBuilder:
             if p.attribute in ("control", "master", "held"):
                 continue
             slot = (p.element, p.attribute, p.component)
-            if slot in seen:
+            if slot in seen and p.attribute == "effect":
+                if (p.element, "effect2", None) not in seen:
+                    p.attribute, slot = "effect2", (p.element, "effect2", None)
+                else:
+                    self.fixture.note(
+                        f"{p.channel.name}: an effect channel after effect and effect2; "
+                        "held as control"
+                    )
+                    p.attribute = "held"  # reported above
+            elif slot in seen:
                 self.fixture.note(
                     f"{p.channel.name}: a second {p.attribute} channel; held as control"
                 )
@@ -892,6 +992,15 @@ class _ModeBuilder:
             )
             definition["attribute"] = "control"
             capabilities = self._controls(channel, nbytes)
+        elif definition["attribute"] in MACRO_ATTRIBUTES and _maintenance_default(
+            capabilities, default
+        ):
+            self.fixture.note(
+                f"{channel.name}: its default selects a maintenance range, which busk never "
+                f"outputs; held at DMX {default}"
+            )
+            definition["attribute"] = "control"
+            capabilities = self._controls(channel, nbytes)
         if p.component is not None and definition["attribute"] == "color":
             definition["component"] = p.component
         definition["defaultDmx"] = default
@@ -906,13 +1015,14 @@ class _ModeBuilder:
         """A driven channel's capabilities (raises :class:`_Unmapped`)."""
         channel, attribute = p.channel, p.attribute
         if attribute in MACRO_ATTRIBUTES:
-            return self._macro(channel, nbytes)
+            return self._macro(channel, attribute, nbytes)
         coloured = _colour(channel) is not None  # a colour component or a white die
         out: list[Capability] = []
         for cap, low, high in self._scaled(channel, nbytes):
-            if (coloured and cap.type == "ColorIntensity") or self._candidate(
-                channel, cap
-            ) == attribute:
+            mapped = self._candidate(channel, cap) or PROGRAMS.get(cap.type)
+            if attribute == "colorMacroRate" and mapped == "effectRate":  # _assign's speed
+                mapped = attribute
+            if (coloured and cap.type == "ColorIntensity") or mapped == attribute:
                 out.extend(self._mapped(channel, cap, attribute, low, high))
             elif cap.type == "NoFunction" or (
                 cap.type in ("WheelSlotRotation", "PrismRotation") and not _has_speed(cap.data)
@@ -920,14 +1030,20 @@ class _ModeBuilder:
                 out.extend(self._dead_band(channel, attribute, low, high, cap))
             else:
                 out.append(_function(low, high, _fn(cap)))
+        if ATTRIBUTES[cast(Any, attribute)].kind == "scalar" and not any(
+            capability["kind"] == "range" for capability in out
+        ):
+            raise _Unmapped(f"no range drives {attribute}")
         return out
 
     def _controls(self, channel: _Channel, nbytes: int) -> list[Capability]:
         return [_function(low, high, _fn(cap)) for cap, low, high in self._scaled(channel, nbytes)]
 
-    def _macro(self, channel: _Channel, nbytes: int) -> list[Capability]:
-        """A colour macro or effect channel: every capability an option."""
+    def _macro(self, channel: _Channel, attribute: str, nbytes: int) -> list[Capability]:
+        """A colour macro, colour effect or fixture effect channel: every
+        capability an option."""
         macro = self.fixture.macro(channel)
+        program = attribute in ("effect", "effect2")
         out: list[Capability] = []
         for cap, low, high in self._scaled(channel, nbytes):
             kind, option = macro.options[channel.caps.index(cap)]
@@ -939,6 +1055,10 @@ class _ModeBuilder:
             if cap.type == "ShutterStrobe" and _has_speed(cap.data):
                 rate = self._strobe(channel, cap)
                 capability["param"] = {"attribute": "strobeRate", "value": rate}
+            elif program:
+                param = self._program_parameter(channel, cap, option)
+                if param is not None:
+                    capability["param"] = param
             elif cap.type == "Effect" and _has_speed(cap.data):
                 try:
                     speed = _pair(cap.data, "speed", _macro_speed)
@@ -948,6 +1068,66 @@ class _ModeBuilder:
                     capability["param"] = {"attribute": "colorMacroRate", "value": speed}
             out.append(capability)
         return out
+
+    def _program_parameter(
+        self, channel: _Channel, cap: _Cap, option: str
+    ) -> CapabilityParam | None:
+        """A program option's parameter: the first of its speed, duration,
+        parameter and sound sensitivity (:data:`PROGRAM_PARAMETERS`)."""
+        if cap.type not in PROGRAMS:
+            return None
+        found = [
+            (prop, attribute)
+            for prop, attribute in PROGRAM_PARAMETERS
+            if prop in cap.data or f"{prop}Start" in cap.data
+        ]
+        if not found:
+            return None
+        (prop, attribute), *others = found
+        if others:
+            self.fixture.note(
+                f"{channel.name}: {option} takes its {prop} as {attribute}; its "
+                f"{', '.join(other for other, _ in others)} is not imported"
+            )
+        try:
+            value = _pair(cap.data, prop, lambda text: self._program_value(channel, prop, text))
+        except _Unmapped as exc:
+            self.fixture.note(f"{channel.name}: {option} has no {attribute} ({exc})")
+            return None
+        return CapabilityParam(attribute=attribute, value=value)
+
+    def _program_value(self, channel: _Channel, prop: str, text: str) -> float:
+        """A program property on 0…1: a keyword (``slow`` 0, ``fast`` 1 …; a
+        reverse speed counts as forward), a percentage, else a physical value
+        rescaled over the channel's span of that property, in which ``stop``
+        and ``instant`` are 0 Hz and 0 s (reported)."""
+        word = text.split()[0] if text.strip() else text
+        if word in _WORDS[prop]:
+            return float(_WORDS[prop][word])
+        number, unit = _entity(word)
+        if number is None or (unit not in _UNITS and unit != "%"):
+            raise _Unmapped(f"{prop} {text!r}")
+        if unit == "%":
+            return number / 100
+        dimension, scale = _UNITS[unit]
+        values: list[float] = []
+        for cap in channel.caps:
+            for key in (prop, f"{prop}Start", f"{prop}End"):
+                first = str(cap.data.get(key, "")).split()[:1]
+                if not first:
+                    continue
+                if {"stop": "Hz", "instant": "s"}.get(first[0]) == dimension:  # 0 Hz, 0 s
+                    values.append(0.0)
+                    continue
+                found, other = _entity(first[0])
+                if found is not None and other in _UNITS and _UNITS[other][0] == dimension:
+                    values.append(found * _UNITS[other][1])
+        low, high = min(values), max(values)
+        self.fixture.note(
+            f"{channel.name}: {prop} {_fmt(low)}…{_fmt(high)}{dimension and ' ' + dimension} "
+            "taken as 0…1"
+        )
+        return (number * scale - low) / (high - low) if high > low else 0.0
 
     def _scaled(self, channel: _Channel, nbytes: int) -> Iterator[tuple[_Cap, int, int]]:
         """The capabilities with their ranges at ``nbytes``; ranges that a
@@ -997,6 +1177,9 @@ class _ModeBuilder:
             wheel = self.fixture.prism_wheel(str(data.get("wheel", channel.key)))
             prism = next(s for s in wheel.slots if s["id"].startswith("prism"))
             return [SlotCapability(kind="slot", dmx=(low, high), wheel=wheel.id, slot=prism["id"])]
+        if attribute in ("effectRate", "colorMacroRate") and _reverse(data):
+            self.fixture.note(f"{channel.name}: reverse speeds are never output")
+            return [_function(low, high, "reverse")]
         values = self._values(channel, cap, attribute)
         return [RangeCapability(kind="range", dmx=(low, high), value=values)]
 
@@ -1070,6 +1253,9 @@ class _ModeBuilder:
             return _pair(data, "frostIntensity", _fraction({"off": 0, "low": 0, "high": 1}), (0, 1))
         if attribute == "cto":
             return _pair(data, "colorTemperature", self._cto, (0, 1))
+        prop = _PROPERTIES.get(attribute)
+        if prop is not None:
+            return _pair(data, prop, lambda text: self._program_value(channel, prop, text), (0, 1))
         raise _Unmapped(f"no mapping for {cap.type}")
 
     def _rotation(self, channel: _Channel, cap: _Cap) -> tuple[float, float]:
@@ -1133,6 +1319,18 @@ def _default_option(attribute: str) -> str | None:
     if definition.default == "channelDefault":
         return None
     return cast(str, cast(Mapping[str, Any], definition.default)["slot"])
+
+
+def _maintenance_default(capabilities: list[Capability], default: int) -> bool:
+    """Whether a program channel's ``defaultDmx`` lies in a maintenance range.
+    busk could then only output another of its options when nothing controls
+    it (perhaps a program the fixture does not run today), so the channel is
+    held instead."""
+    for capability in capabilities:
+        low, high = capability["dmx"]
+        if low <= default <= high:
+            return capability["kind"] == "function" and capability["fn"] in MAINTENANCE_FUNCTIONS
+    return False
 
 
 def _colour(channel: _Channel) -> str | None:
@@ -1222,6 +1420,22 @@ def _keyword_speed(word: str, estimate: tuple[float, float]) -> float:
 
 def _has_speed(data: Mapping[str, Any]) -> bool:
     return "speed" in data or "speedStart" in data
+
+
+_PROPERTIES: Final[Mapping[str, str]] = {
+    "colorMacroRate": "speed",
+    "effectRate": "speed",
+    "effectFade": "duration",
+    "effectAdjust": "parameter",
+    "soundSensitivity": "soundSensitivity",
+}
+"""The program property a scalar channel of these attributes maps."""
+
+
+def _reverse(data: Mapping[str, Any]) -> bool:
+    """Whether a speed runs in reverse (``slow reverse``, a negative percentage)."""
+    texts = [str(data[key]) for key in ("speed", "speedStart", "speedEnd") if key in data]
+    return any("reverse" in text or text.strip().startswith("-") for text in texts)
 
 
 def _angles(data: Mapping[str, Any]) -> tuple[float, float] | None:

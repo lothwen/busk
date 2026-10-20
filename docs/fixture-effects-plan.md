@@ -467,6 +467,37 @@ shebang). Each step is one commit.
    The TupperDMX check compares whole frames, so the LED bar's and the blinder's hand
    transcriptions (`examples/tupperdmx/profiles`) get the same `effect` and `effectRate`
    channels. Rebuild `tupper-demo.show`, and regolden `import-ofl.txt` (`BUSK_REGOLDEN=1`).
+
+   **Done** (2026-10-20): 3427 passed. Deviations from §5.3:
+   - **Tiers.** `_candidate` is unchanged (busk's existing attributes); `_attribute` falls
+     back to `PROGRAMS` (by capability type) only when no capability maps. `_capabilities`
+     maps a range when `_candidate(cap) or PROGRAMS[cap.type]` is the channel's attribute.
+   - **A default in a maintenance range holds the channel** (a call open to veto). On 21 OFL
+     mode channels (Elation Platinum and Proteus "Special functions", ADJ VBar Pak "Mode",
+     Briteq BT-LEDROTOR "Blades", Eurolite LED TMH-X12, ADJ Vizi Spot), `defaultValue`
+     selects a maintenance range such as "Dimmer mode" or "Colour change normal". With
+     Q5(a) busk cannot output it, and the first option, sometimes a program, would run on an
+     unprogrammed fixture. Such a macro or effect channel stays `control` at its default,
+     reported (`_maintenance_default`, shared with the GDTF import).
+   - **`stop` and `instant` are 0 Hz and 0 s** when a channel's speeds or durations are
+     rescaled: Panasonic's "Fade in" is instant, 0.5 s … 10 s, and over 0.5…10 s the 0.5 s
+     range would be unreachable.
+   - **Option parameters in Hz or seconds are rescaled** over the channel's span, as scalar
+     channels are. The colour macros' rule (Hz or bpm: no speed, reported) is unchanged.
+   - **Scalars with no range** (a speed channel of reverse speeds only) are held as control,
+     reported ("no range drives effectRate"), instead of giving a profile the validator
+     refuses. This applies to every scalar; the sweep found no old channel affected.
+   - The worked examples hold. Q3 is reported ("taken as their colorMacroRate"), because
+     OFL does not say whose speed it is.
+   - The TupperDMX transcriptions are at revision 2. `tupper-demo.show` took them with
+     `profile update` (no backup written), so its ids and other content are unchanged.
+   - The plan's "Cameo Pico" macro channels are Fun Generation's Pico family (`Program`
+     channels with a `Maintenance` "Reset").
+   - A sweep against step 2 (636 OFL fixtures at `2d74941`): 567 import and 69 fail, before
+     and after; no mode lost; no driven channel changes attribute; no uncontrolled byte of a
+     driven channel moves. Control channels 6,937 → 5,916. Two `colorEffect` channels lose
+     their maintenance ranges as options (Phocea Box LEDs, Mega-Lite Zoom 360). Step 7
+     redoes it with the GDTF import.
 4. **GDTF** (§5.4). Verify with synthetic descriptions in `test_gdtf.py`:
    - `Effects1` with "No Effect" and named sets, and with strobe functions;
    - `Effects1Rate` at 0…1 and at 1…10 Hz, and `Effects1Fade` at 0.1…25.5;

@@ -31,6 +31,7 @@ from busk.engine.loop import Engine
 from busk.importers import ImportFailed, ImportReport
 from busk.importers.ofl import import_ofl, read_ofl
 from busk.model.common import FixtureId, TargetRef
+from busk.model.profile import option_capabilities
 from busk.model.validate import validate_show
 from busk.persistence.show_file import new_show
 from busk.runner import OfflineShow
@@ -575,6 +576,299 @@ def test_a_per_pixel_macro_channel_shares_one_wheel_and_a_second_one_is_held() -
     assert noted(report, "Gel", "a second colorMacro channel; held as control")
 
 
+# ------------------------------------------------------------------ fixture effects
+
+
+def effect(name: str, **more: Any) -> Doc:
+    return {"type": "Effect", "effectName": name, **more}
+
+
+SLOW_FAST = {"speedStart": "slow", "speedEnd": "fast"}
+
+
+def driven(report: ImportReport, mode: str, *lines: str) -> list[int]:
+    """The DMX of the imported profile's ``mode``, patched at 1.1 as fixture 1
+    and selected, after the console ``lines``."""
+    profile = cast(Doc, report.profile)
+    chosen = next(m for m in profile["modes"] if m["name"] == mode)
+    unit = {**fixture("f", 1, profile["id"], 1, mode_id=chosen["id"]),
+            "profileRevision": profile["revision"]}  # fmt: skip
+    offline = OfflineShow(show_of(show([profile], [unit])))
+    for line in ("sel fixture 1", *lines):
+        reply = offline.execute(line)
+        assert reply.ok, (line, reply.text)
+    return list(offline.tick(offline.time).universes[1][: chosen["footprint"]])
+
+
+def options(report: ImportReport, offset: int, mode: int = 0) -> list[str]:
+    return [option for option, _ in option_capabilities(cast(Any, at(report, offset, mode)))]
+
+
+def test_the_led_bars_animations_are_a_fixture_effect_with_a_rate() -> None:
+    report = read_ofl(OFL / "ledbar.json", manufacturer="TupperDMX")
+    assert [at(report, k)["attribute"] for k in (4, 5, 6)] == ["effect", "effectRate", "control"]
+    assert options(report, 4)[:4] == ["on", "strobo", "fade", "loadingCortaArriba"]
+    assert options(report, 4)[-2:] == ["stroboRain", "off"]
+    assert len(options(report, 4)) == 36
+    # Unprogrammed: "On" (DMX 1, the centre of 0–3) and the speed's own 255.
+    assert driven(report, "7ch")[4:] == [1, 255, 0]
+    assert driven(report, "7ch", "set effect fuego")[4] == 69
+    assert driven(report, "7ch", "set effect off", "set effectRate 0.5")[4:6] == [197, 128]
+
+
+def test_the_blinders_auto_program_takes_its_speed_from_the_rate() -> None:
+    report = read_ofl(OFL / "blinder.json", manufacturer="TupperDMX")
+    assert options(report, 6) == ["off", "autoProgram", "soundActive"]
+    assert caps(report, 6)[1] == ("fn", (10, 249), "autoProgram", (0.0, 1.0))
+    assert driven(report, "8ch")[6:] == [4, 0]
+    # One effectRate slot drives the program's range and the speed channel.
+    assert driven(report, "8ch", "set effect autoProgram", "set effectRate 0.5")[6:] == [130, 128]
+    assert driven(report, "8ch", "set effect soundActive")[6] == 252
+
+
+def wild_wash_6ch() -> ImportReport:
+    """The Wild Wash Pro 648's 6Ch mode (the TupperDMX simulator's file),
+    without its strobe and with a shorter colour macro."""
+    starts = [17, 35, 49, 61, 74, 87, 100, 113, 126, 139, 152, 165, 178, 191, 204, 217, 230, 243]
+    ends = [*(start - 1 for start in starts[1:]), 255]
+    patterns = [(lo, hi, effect(f"Dimmer pattern {k + 1}"))
+                for k, (lo, hi) in enumerate(zip(starts, ends, strict=True))]  # fmt: skip
+    return imported({
+        "Dimmer": one({"type": "Intensity"}),
+        "Dimmer Pattern": many((0, 16, {"type": "NoFunction"}), *patterns),
+        "Dimmer Pattern Speed": many(
+            (0, 127, {"type": "EffectSpeed", **SLOW_FAST, "comment": "Change"}),
+            (128, 255, {"type": "EffectSpeed", **SLOW_FAST, "comment": "Gradual transient"})),
+        "Color Macro": many((0, 5, preset("LEDs off (blackout)", "#000000")),
+                            (6, 13, preset("Red", "#ff0000"))),
+        "Sound Control": many(
+            (0, 5, {"type": "NoFunction", "comment": "Sound control off"}),
+            (6, 255, {"type": "SoundSensitivity", "soundSensitivityStart": "low",
+                      "soundSensitivityEnd": "high", "comment": "Sound control on"})),
+    }, [{"name": "6Ch", "channels": ["Dimmer", "Dimmer Pattern", "Dimmer Pattern Speed",
+                                     "Color Macro", "Sound Control"]}])  # fmt: skip
+
+
+def test_the_wild_washs_dimmer_patterns_speed_and_sound_control() -> None:
+    report = wild_wash_6ch()
+    assert [c["attribute"] for c in channels_of(report)] == [
+        "intensity", "effect", "effectRate", "colorMacro", "soundSensitivity",
+    ]  # fmt: skip
+    assert options(report, 1) == ["off", *(f"dimmerPattern{k}" for k in range(1, 19))]
+    # The speed's second slow…fast range ("Gradual transient") is never output.
+    assert caps(report, 2) == [("range", (0, 127), (0.0, 1.0)), ("range", (128, 255), (0.0, 1.0))]
+    assert caps(report, 4) == [
+        ("range", (0, 0), (0.0, 0.0)), ("fn", (1, 5), "noFunction", None),
+        ("range", (6, 255), (0.0, 1.0)),
+    ]  # fmt: skip
+    assert driven(report, "6Ch")[1:] == [8, 0, 2, 0]
+    assert driven(report, "6Ch", "set effect dimmerPattern2", "set effectRate 1",
+                  "set soundSensitivity 0.5")[1:] == [41, 127, 2, 130]  # fmt: skip
+    assert not noted(report, "Dimmer Pattern")
+
+
+def test_maintenance_ranges_are_never_options() -> None:
+    """Fun Generation's PicoBeam: a reset inside the program channel; a colour
+    macro's reset is no option either (fixture-effects-plan Q5)."""
+    report = lamped({
+        "Program": many((0, 49, {"type": "NoFunction"}), (50, 99, effect("Program 1")),
+                        (100, 109, {"type": "Maintenance", "comment": "Reset"}),
+                        (110, 255, effect("Sound control", soundControlled=True))),
+        "Macro": many((0, 127, preset("Red", "#ff0000")),
+                      (128, 255, {"type": "Maintenance", "comment": "Reset"})),
+    })  # fmt: skip
+    assert caps(report, 0) == [
+        ("fn", (0, 49), "off", None), ("fn", (50, 99), "program1", None),
+        ("fn", (100, 109), "maintenance", None), ("fn", (110, 255), "soundControl", None),
+    ]  # fmt: skip
+    assert options(report, 0) == ["off", "program1", "soundControl"]
+    assert macro_default(report) == "off"
+    assert caps(report, 1) == [("slot", (0, 127), "red"), ("fn", (128, 255), "maintenance", None)]
+    assert options(report, 1) == ["red"]
+
+
+def test_a_program_channel_whose_default_is_maintenance_is_held() -> None:
+    """ADJ's VBar Pak "Mode": its default 0 is "Dimmer mode", a maintenance
+    range; its only option is a sound-active program, which the fixture does
+    not run today, so the channel stays control."""
+    report = lamped({"Mode": many(
+        (0, 51, {"type": "Maintenance", "comment": "Dimmer mode"}),
+        (52, 204, {"type": "Maintenance", "comment": "Color macro mode"}),
+        (205, 255, effect("Sound active mode", soundControlled=True)),
+        defaultValue=0,
+    )})  # fmt: skip
+    assert (at(report, 0)["attribute"], at(report, 0)["defaultDmx"]) == ("control", 0)
+    assert noted(report, "Mode", "its default selects a maintenance range", "held at DMX 0")
+    assert driven(report, "All")[0] == 0
+
+
+def test_speed_channels_stop_at_0_and_never_output_reverse() -> None:
+    report = lamped({
+        "Speed": many((0, 9, {"type": "EffectSpeed", "speed": "stop"}),
+                      (10, 127, {"type": "EffectSpeed", **SLOW_FAST}),
+                      (128, 255, {"type": "EffectSpeed", "speedStart": "slow reverse",
+                                  "speedEnd": "fast reverse"})),
+        "Other": one({"type": "EffectSpeed", **SLOW_FAST}),
+    })  # fmt: skip
+    assert caps(report, 0) == [
+        ("range", (0, 9), (0.0, 0.0)), ("range", (10, 127), (0.0, 1.0)),
+        ("fn", (128, 255), "reverse", None),
+    ]  # fmt: skip
+    assert noted(report, "Speed", "reverse speeds are never output")
+    assert noted(report, "Other", "a second effectRate channel; held as control")
+    # Hz and bpm over the channel's span, reported.
+    hz = lamped({"Hz": one({"type": "EffectSpeed", "speedStart": "1Hz", "speedEnd": "120bpm"})})
+    assert caps(hz, 0) == [("range", (0, 255), (0.0, 1.0))]
+    assert noted(hz, "Hz", "speed 1…2 Hz taken as 0…1")
+    percent = lamped({"Percent": one({"type": "EffectSpeed", "speedStart": "20%",
+                                      "speedEnd": "80%"})})  # fmt: skip
+    assert caps(percent, 0) == [("range", (0, 255), (0.2, 0.8))]
+    # Only reverse speeds: no range, so the channel is control.
+    back = lamped({"Back": one({"type": "EffectSpeed", "speedStart": "slow reverse",
+                                "speedEnd": "fast reverse"})})  # fmt: skip
+    assert at(back, 0)["attribute"] == "control"
+    assert noted(back, "Back", "no range drives effectRate")
+
+
+def test_a_speed_with_colour_programs_and_no_effect_channel_is_their_rate() -> None:
+    """OFL does not say which channel a speed drives (fixture-effects-plan Q3)."""
+    macro = many((0, 127, preset("Red", "#ff0000")),
+                 (128, 255, effect("Colour change", **SLOW_FAST)))  # fmt: skip
+    speed = one({"type": "EffectSpeed", **SLOW_FAST}, defaultValue=255)
+    report = lamped({"Macro": macro, "Speed": speed})
+    assert at(report, 1)["attribute"] == "colorMacroRate"
+    assert noted(report, "Speed", "taken as their colorMacroRate")
+    # One rate: the macro's program and the speed channel move together.
+    assert driven(report, "All", "set colorMacro colourChange")[:2] == [255, 255]
+    assert driven(report, "All", "set colorMacro colourChange",
+                  "set colorMacroRate 0.5")[:2] == [192, 128]  # fmt: skip
+    # With an effect channel too, the speed is the effect's.
+    both = lamped({"Macro": macro, "Speed": speed, "Auto": many((0, 255, effect("Auto")))})
+    assert [c["attribute"] for c in channels_of(both)][:3] == ["colorMacro", "effectRate", "effect"]
+
+
+def test_a_second_effect_channel_is_effect2_and_a_third_is_held() -> None:
+    report = lamped({
+        "Auto Programs": many((0, 127, {"type": "NoFunction"}), (128, 255, effect("Auto"))),
+        "Pan/Tilt Macro": many((0, 255, effect("Circle"))),
+        "Sound Mode": many((0, 255, effect("Sound", soundControlled=True))),
+    })  # fmt: skip
+    assert [c["attribute"] for c in channels_of(report)][:3] == ["effect", "effect2", "control"]
+    assert options(report, 1) == ["circle"]
+    assert noted(report, "Sound Mode", "an effect channel after effect and effect2")
+    assert driven(report, "All", "set effect2 circle", "set effect auto")[:2] == [191, 127]
+
+
+def test_an_options_parameter_is_its_first_speed_duration_parameter_or_sensitivity() -> None:
+    report = lamped({"Auto": many(
+        (0, 63, effect("Chase", **SLOW_FAST, parameterStart="small", parameterEnd="big")),
+        (64, 127, effect("Fade", durationStart="instant", durationEnd="long")),
+        (128, 191, effect("Size", parameterStart="1", parameterEnd="4")),
+        (192, 223, effect("Sound", soundControlled=True, soundSensitivityStart="20%",
+                          soundSensitivityEnd="high")),
+        (224, 239, effect("Hz", speedStart="1Hz", speedEnd="5Hz")),
+        (240, 255, {"type": "EffectDuration", "durationStart": "100ms", "durationEnd": "2s"}),
+    )})  # fmt: skip
+    params = [(c["fn"], c.get("param", {})) for c in at(report, 0)["capabilities"]]
+    found = [(fn, param.get("attribute"), tuple(param.get("value", ()))) for fn, param in params]
+    assert found == [
+        ("chase", "effectRate", (0.0, 1.0)),
+        ("fade", "effectFade", (0.0, 1.0)),
+        ("size", "effectAdjust", (0.0, 1.0)),  # 1…4 over the span
+        ("sound", "soundSensitivity", (0.2, 1.0)),
+        ("hz", "effectRate", (0.0, 1.0)),
+        ("effectDuration", "effectFade", (0.05, 1.0)),  # "instant" is 0 s
+    ]
+    assert noted(report, "Auto", "chase takes its speed as effectRate; its parameter is not")
+    assert noted(report, "Auto", "parameter 1…4 taken as 0…1")
+    assert noted(report, "Auto", "speed 1…5 Hz taken as 0…1")
+    assert noted(report, "Auto", "duration 0…2 s taken as 0…1")
+
+
+@pytest.mark.parametrize(
+    ("capability", "attribute", "values"),
+    [
+        ({"type": "EffectDuration", "durationStart": "instant", "durationEnd": "long"},
+         "effectFade", (0.0, 1.0)),
+        ({"type": "EffectDuration", "durationStart": "short", "durationEnd": "50%"},
+         "effectFade", (0.0, 0.5)),
+        ({"type": "EffectDuration", "durationStart": "1s", "durationEnd": "500ms"},
+         "effectFade", (1.0, 0.0)),
+        ({"type": "EffectParameter", "parameterStart": "low", "parameterEnd": "high"},
+         "effectAdjust", (0.0, 1.0)),
+        ({"type": "EffectParameter", "parameterStart": "10%", "parameterEnd": "big"},
+         "effectAdjust", (0.1, 1.0)),
+        ({"type": "EffectParameter", "parameterStart": "2", "parameterEnd": "8"},
+         "effectAdjust", (0.0, 1.0)),
+        ({"type": "SoundSensitivity", "soundSensitivityStart": "off",
+          "soundSensitivityEnd": "high"}, "soundSensitivity", (0.0, 1.0)),
+        ({"type": "SoundSensitivity", "soundSensitivityStart": "0%",
+          "soundSensitivityEnd": "100%"}, "soundSensitivity", (0.0, 1.0)),
+    ],
+)  # fmt: skip
+def test_durations_parameters_and_sensitivities_in_their_units(
+    capability: Doc, attribute: str, values: tuple[float, float]
+) -> None:
+    report = lamped({"Program": one(capability)})
+    assert at(report, 0)["attribute"] == attribute
+    assert caps(report, 0) == [("range", (0, 255), values)]
+
+
+def test_instant_and_stop_are_the_zero_of_a_span_in_seconds_or_hz() -> None:
+    """Panasonic's PT-RZ120 "Fade in": instant, then 0.5 s … 10 s."""
+    fade = lamped({"Fade in": many(
+        (0, 15, {"type": "EffectDuration", "duration": "instant"}),
+        (16, 31, {"type": "EffectDuration", "duration": "0.5s"}),
+        (32, 255, {"type": "EffectDuration", "durationStart": "1s", "durationEnd": "10s"}),
+    )})  # fmt: skip
+    assert caps(fade, 0) == [
+        ("range", (0, 15), (0.0, 0.0)), ("range", (16, 31), (0.05, 0.05)),
+        ("range", (32, 255), (0.1, 1.0)),
+    ]  # fmt: skip
+    assert noted(fade, "Fade in", "duration 0…10 s taken as 0…1")
+    speed = lamped({"Speed": many((0, 9, {"type": "EffectSpeed", "speed": "stop"}),
+                                  (10, 255, {"type": "EffectSpeed", "speedStart": "1Hz",
+                                             "speedEnd": "4Hz"}))})  # fmt: skip
+    assert caps(speed, 0) == [("range", (0, 9), (0.0, 0.0)), ("range", (10, 255), (0.25, 1.0))]
+
+
+def test_programs_on_a_channel_busk_drives_keep_its_attribute() -> None:
+    report = lamped({
+        "Strobe": many((0, 9, {"type": "ShutterStrobe", "shutterEffect": "Open"}),
+                       (10, 127, effect("Auto")),
+                       (128, 255, {"type": "ShutterStrobe", "shutterEffect": "Strobe"})),
+        "Programs": many((0, 99, effect("Auto")),
+                         (100, 255, {"type": "Effect", "effectPreset": "ColorFade"})),
+        "Speed": many((0, 9, {"type": "ShutterStrobe", "shutterEffect": "Open"}),
+                      (10, 255, {"type": "EffectSpeed", **SLOW_FAST})),
+    })  # fmt: skip
+    assert [c["attribute"] for c in channels_of(report)][:3] == [
+        "shutter",
+        "colorEffect",
+        "control",
+    ]
+    assert noted(report, "Speed", "a second shutter channel")
+
+
+def test_a_per_pixel_effect_channel_shares_its_option_names() -> None:
+    matrix = {
+        "matrix": {"pixelCount": [2, 1, 1]},
+        "templateChannels": {"Effect $pixelKey": many(
+            (0, 127, {"type": "NoFunction"}), (128, 255, effect("Twinkle", **SLOW_FAST)))},
+    }  # fmt: skip
+    insert = {"insert": "matrixChannels", "repeatFor": "eachPixelXYZ",
+              "channelOrder": "perPixel", "templateChannels": ["Effect $pixelKey"]}  # fmt: skip
+    report = imported(
+        {"Dimmer": one({"type": "Intensity"})},
+        [{"name": "Pixels", "channels": ["Dimmer", insert]}],
+        **matrix,
+    )
+    placed = [(c["offset"], c["element"], c["attribute"]) for c in channels_of(report)]
+    assert placed == [(0, 0, "intensity"), (1, 0, "effect"), (2, 1, "effect")]
+    assert options(report, 1) == options(report, 2) == ["off", "twinkle"]
+    assert caps(report, 2)[1] == ("fn", (128, 255), "twinkle", (0.0, 1.0))
+
+
 def test_a_wheel_or_shutter_without_its_default_option_is_held_as_control() -> None:
     """busk outputs ``open`` (``off`` for a prism) when nothing controls a
     discrete attribute, so its channel must offer it (validation)."""
@@ -593,8 +887,6 @@ def test_a_wheel_or_shutter_without_its_default_option_is_held_as_control() -> N
 @pytest.mark.parametrize(
     "capability",
     [
-        {"type": "Effect", "effectName": "Auto program"},
-        {"type": "EffectSpeed", "speedStart": "slow", "speedEnd": "fast"},
         {"type": "Maintenance", "comment": "Reset"},
         {"type": "Generic"},
         {"type": "Speed", "speedStart": "slow", "speedEnd": "fast"},

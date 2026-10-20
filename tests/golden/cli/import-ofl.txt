@@ -3,11 +3,7 @@ exit 0
 stdout:
   <repo>/tests/fixtures/ofl/tupperdmx/blinder.json: 'tupperdmx blinder' (modes 8ch) → <tmp>/profiles/ofl-tupperdmx-blinder.json
     brightness: the master intensity of white-only dies; held at full
-    Built-in program: no busk attribute (NoFunction, Effect); held at DMX 0
-    Program speed: no busk attribute (EffectSpeed); held at DMX 0
   <repo>/tests/fixtures/ofl/tupperdmx/ledbar.json: 'tupperdmx ledbar' (modes 7ch) → <tmp>/profiles/ofl-tupperdmx-ledbar.json
-    Animation: no busk attribute (Effect, NoFunction); held at DMX 0
-    Animation speed: no busk attribute (EffectSpeed); held at DMX 255
     Animation direction: no busk attribute (Generic); held at DMX 0
   <repo>/tests/fixtures/ofl/tupperdmx/moving-head.json: 'tupperdmx moving-head' (modes 12ch, 18ch) → <tmp>/profiles/ofl-tupperdmx-moving-head.json
     Shutter: strobe speeds given as slow…fast taken as 1–20 Hz (an estimate)
@@ -18,8 +14,8 @@ stdout:
   <repo>/tests/fixtures/ofl/tupperdmx/smoke-machine.json: 'tupperdmx smoke-machine' (modes 1ch, 2ch) → <tmp>/profiles/ofl-tupperdmx-smoke-machine.json
     Fog Type: no busk attribute (FogType); held at DMX 0
 stderr:
-sha256 ofl-tupperdmx-blinder.json b377d370d922db1ec41d0734720f0fb80edc258c731970ba45eb1aa158f1ccbf
-sha256 ofl-tupperdmx-ledbar.json 7eb5115c0edfb48359c559a25789ebce7bde68fec5dc33d3a6ba1fb198c47adf
+sha256 ofl-tupperdmx-blinder.json 86f968f96d40214f9432ee81d20def0321f3a18686d338b842a16f57e5481cce
+sha256 ofl-tupperdmx-ledbar.json 0faaa60a135bdbff8cdd3bb5a3982892a8556c7ea82a138de747d20123c63b7e
 sha256 ofl-tupperdmx-moving-head.json 301cae0776d01935181137aa96e3fece5f9a750be2591cc5e2d6ec2c931abaf8
 sha256 ofl-tupperdmx-par-rgbw.json 3aee633e7fdfa24d53e20c3679a64842ae739fd1cea5f196a7628c6bcef6b43f
 sha256 ofl-tupperdmx-smoke-machine.json bd03de26293fe6efca3c1080db57ea4964101d507322a601153f206cc6460879
