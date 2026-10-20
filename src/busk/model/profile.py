@@ -182,7 +182,13 @@ class FunctionCapability(TypedDict):
 
     kind: Literal["function"]
     dmx: tuple[NonNegativeInt, NonNegativeInt]
-    fn: Literal["open", "closed", "strobe", "pulse", "random", "reset", "lampOn", "lampOff"] | str
+    fn: (
+        Literal[
+            "open", "closed", "strobe", "pulse", "random", "reset", "lampOn", "lampOff",
+            "maintenance",
+        ]
+        | str
+    )  # fmt: skip
     param: NotRequired[CapabilityParam]
 
 
@@ -205,9 +211,13 @@ SHUTTER_FUNCTIONS: Final = frozenset({"open", "closed", "strobe", "pulse", "rand
 """``fn`` values of the function capabilities that are ``shutter`` options (§5.4).
 Every other function (reset, lamp on, custom effects) is never output."""
 
-MACRO_ATTRIBUTES: Final = frozenset({"colorMacro", "colorEffect"})
+MACRO_ATTRIBUTES: Final = frozenset({"colorMacro", "colorEffect", "effect", "effect2"})
 """Discrete attributes whose options are every slot and function capability: the
 colour presets, programs and effects built into a fixture, each chosen by name."""
+
+MAINTENANCE_FUNCTIONS: Final = frozenset({"reset", "lampOn", "lampOff", "maintenance"})
+"""``fn`` values that are never an option, on any channel: a fixture's resets,
+lamp switching and other maintenance are reachable only as control channels."""
 
 BUILTIN_EMITTERS: Final[Mapping[str, bool]] = MappingProxyType(
     {
@@ -262,8 +272,9 @@ def option_capabilities(
     * A wheel or prism channel's options are its ``slot`` capabilities.
     * A ``shutter`` channel's options are its function capabilities whose
       ``fn`` is one of :data:`SHUTTER_FUNCTIONS`.
-    * A ``colorMacro`` or ``colorEffect`` channel's options are all its slot
-      and function capabilities (:data:`MACRO_ATTRIBUTES`).
+    * A colour macro, colour effect or fixture effect channel's options are
+      all its slot and function capabilities (:data:`MACRO_ATTRIBUTES`)
+      except maintenance (:data:`MAINTENANCE_FUNCTIONS`).
 
     Options keep DMX order. When an id appears twice, the first capability
     wins: real charts repeat ranges (the Stairville MH-X25 has two "open"
@@ -304,7 +315,7 @@ def _option_id(attribute: str, capability: Capability) -> str | None:
     ):
         return capability["slot"]
     if capability["kind"] == "function" and (
-        attribute in MACRO_ATTRIBUTES
+        (attribute in MACRO_ATTRIBUTES and capability["fn"] not in MAINTENANCE_FUNCTIONS)
         or (attribute == "shutter" and capability["fn"] in SHUTTER_FUNCTIONS)
     ):
         return capability["fn"]

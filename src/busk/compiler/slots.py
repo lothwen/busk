@@ -240,15 +240,38 @@ def _default_value(
     definition: AttributeDefinition,
     channel: ChannelDefinition | None,
 ) -> AttributeValue:
-    """The registry default, with ``zoom``'s "profile midpoint" and the colour
-    macros' "channel default" resolved."""
+    """The registry default, with ``zoom``'s "profile midpoint", the fixture
+    programs' "channel default" and the scalars that follow their channel
+    resolved."""
     if definition.default == "profileMidpoint":
         return _profile_midpoint(fixture, element, definition.id)
     if definition.default == "channelDefault":
         # Validation guarantees the channel offers at least one option.
         option = channel_default_option(cast(ChannelDefinition, channel))
         return DiscreteValue(slot=cast(str, option))
+    if definition.followsChannel and channel is not None:
+        value = _channel_default_value(channel)
+        if value is not None:
+            return value
     return definition.default
+
+
+def _channel_default_value(channel: ChannelDefinition) -> float | None:
+    """The logical value a scalar channel's ``defaultDmx`` stands for: read
+    back through the first range capability that holds it, ``invert``
+    applied as the converter applies it; ``None`` when no range holds it."""
+    dmx = channel["defaultDmx"]
+    for capability in channel["capabilities"]:
+        if capability["kind"] != "range":
+            continue
+        (d0, d1), (v0, v1) = capability["dmx"], capability["value"]
+        if not d0 <= dmx <= d1:
+            continue
+        if channel.get("invert", False):
+            v0, v1 = v1, v0
+        t = (dmx - d0) / (d1 - d0) if d1 > d0 else 0.0
+        return float(v0 + t * (v1 - v0))
+    return None
 
 
 def _profile_midpoint(fixture: RigFixture, element: int, attribute: AttributeId) -> float:

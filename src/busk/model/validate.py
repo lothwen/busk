@@ -967,7 +967,7 @@ class _SemanticPass:
             if definition.id in WHEEL_ATTRIBUTES:
                 needed = "a slot capability"
             elif definition.id in MACRO_ATTRIBUTES:
-                needed = "a slot or function capability"
+                needed = "a slot or function capability other than maintenance"
             else:
                 needed = "a function capability among " + ", ".join(sorted(SHUTTER_FUNCTIONS))
             self._error(caps_path, f"A {definition.id!r} channel needs {needed}")

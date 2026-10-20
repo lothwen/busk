@@ -3,7 +3,8 @@
 ``colorMacro`` and ``colorEffect`` are discrete attributes whose options are
 every slot and function capability of their channel; ``colorMacroRate`` is the
 speed of a program, a channel of its own or the parameter of a program's
-range. Nothing controls them: the channel's own default option. The rig
+range. Nothing controls them: the channel's own default option, and the
+rate channel's own default (fixture-effects-plan Q2). The rig
 (:func:`builders.macro_rig`) has two RGB pars with macro, rate and effect
 channels (fixtures 1 and 2, at 1 and 11) and a macro-only fixture whose
 default is a black preset (fixture 3, at 21), like the Wild Wash Pro 648 in
@@ -41,9 +42,10 @@ def run(offline: OfflineShow, *lines: str) -> DmxFrame:
 
 def test_uncontrolled_macros_output_the_option_of_their_default(offline: OfflineShow) -> None:
     frame = offline.tick(0.0)
-    # off (0–9), the rate at its default 0.5, the effect off (0–9); fixture
-    # 3's default selects its black preset (0–5), as its own chart says.
-    assert dmx(frame, A_MACRO, A_RATE, A_EFFECT, B_MACRO, C_MACRO) == [4, 128, 4, 4, 2]
+    # off (0–9), the rate at its channel's default DMX 0, the effect off
+    # (0–9); fixture 3's default selects its black preset (0–5), as its own
+    # chart says.
+    assert dmx(frame, A_MACRO, A_RATE, A_EFFECT, B_MACRO, C_MACRO) == [4, 0, 4, 4, 2]
 
 
 def test_an_option_goes_to_every_selected_fixture_that_offers_it(offline: OfflineShow) -> None:
@@ -57,8 +59,10 @@ def test_an_option_goes_to_every_selected_fixture_that_offers_it(offline: Offlin
 
 def test_a_program_takes_its_speed_from_the_rate(offline: OfflineShow) -> None:
     frame = run(offline, "sel fixture 1, fixture 3", "set colorMacro colourChange")
-    # The rate's default 0.5 through 40–199 and 22–255, half to even.
-    assert dmx(frame, A_MACRO, A_RATE, C_MACRO) == [120, 128, 138]
+    # Fixture 1's rate follows its channel (DMX 0, so 0); fixture 3 has no
+    # rate channel, so its rate is the registry's 0.5: 22 + 0.5 × 233, half
+    # to even.
+    assert dmx(frame, A_MACRO, A_RATE, C_MACRO) == [40, 0, 138]
     frame = run(offline, "set colorMacroRate 1")
     assert dmx(frame, A_MACRO, A_RATE, C_MACRO) == [199, 255, 255]
     frame = run(offline, "set colorMacroRate 0")
@@ -104,7 +108,10 @@ def test_a_colour_preset_carries_a_macro_across_fixture_types(offline: OfflineSh
 
 
 def test_highlight_writes_the_macro_channels_highlight_dmx(offline: OfflineShow) -> None:
-    frame = run(offline, "sel fixture 1", "set colorEffect colorFade", "highlight on")
+    frame = run(
+        offline, "sel fixture 1", "set colorEffect colorFade", "set colorMacroRate 0.5",
+        "highlight on",
+    )  # fmt: skip
     # The macro channel's highlightDmx 35 (white); the effect has none and
     # keeps the programmer's value.
     assert dmx(frame, A_DIMMER, A_MACRO, A_EFFECT) == [255, 35, 192]

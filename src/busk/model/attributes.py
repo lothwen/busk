@@ -111,9 +111,15 @@ class AttributeDefinition:
     ``default`` is the value a slot takes when no source controls it. Two
     defaults are not an :data:`AttributeValue`, and the slot compiler resolves
     them per fixture: ``zoom``'s is "the profile's midpoint", the sentinel
-    ``"profileMidpoint"`` (Phase 1); ``colorMacro``'s and ``colorEffect``'s is
-    "the channel's default option", the sentinel ``"channelDefault"`` (see
-    :func:`~busk.model.profile.channel_default_option`).
+    ``"profileMidpoint"`` (Phase 1); the fixture programs' (``colorMacro``,
+    ``effect`` …) is "the channel's default option", the sentinel
+    ``"channelDefault"`` (see :func:`~busk.model.profile.channel_default_option`).
+
+    A scalar that ``followsChannel`` (the programs' rates and parameters)
+    starts instead at the value its channel's ``defaultDmx`` stands for, so
+    an unprogrammed fixture outputs its own default; ``default`` is then the
+    value of a slot without a channel, or whose ``defaultDmx`` lies in no
+    range.
     """
 
     id: AttributeId
@@ -127,6 +133,7 @@ class AttributeDefinition:
     wraps: bool | None = None  # e.g. continuous rotation index
     default: AttributeValue | Literal["profileMidpoint", "channelDefault"]
     home: AttributeValue | None = None  # optional value used by the HOME command
+    followsChannel: bool = False  # scalar only: start at the channel's defaultDmx
 
 
 _NORMALIZED = ScalarRange(min=0.0, max=1.0)
@@ -141,6 +148,7 @@ def _scalar(
     *,
     merge: Literal["HTP", "LTP"] = "LTP",
     fade: Literal["fade", "snap"] = "fade",
+    follows: bool = False,
 ) -> AttributeDefinition:
     """Build a scalar definition. Normalised scalars get the ``0..1`` range;
     degree, Hz and deg/s scalars have no registry range because their range
@@ -155,6 +163,7 @@ def _scalar(
         fade=fade,
         snapAt="start" if fade == "snap" else None,
         default=default,
+        followsChannel=follows,
     )
 
 
@@ -198,7 +207,7 @@ ATTRIBUTES: Mapping[AttributeId, AttributeDefinition] = MappingProxyType(
             _scalar("cto", "color", "normalized", 0.0),
             # Colour presets and programs built into the fixture, and their speed.
             _discrete("colorMacro", "color", None),
-            _scalar("colorMacroRate", "color", "normalized", 0.5),  # 0 slowest, 1 fastest
+            _scalar("colorMacroRate", "color", "normalized", 0.5, follows=True),  # 1 fastest
             _discrete("colorEffect", "color", None),
             _discrete("gobo1", "beam", "open"),
             _discrete("gobo2", "beam", "open"),
@@ -209,6 +218,15 @@ ATTRIBUTES: Mapping[AttributeId, AttributeDefinition] = MappingProxyType(
             _scalar("zoom", "beam", "degrees", "profileMidpoint"),
             _scalar("iris", "beam", "normalized", 1.0),  # 1 = open
             _scalar("frost", "beam", "normalized", 0.0),
+            # Programs built into the fixture ("fixture effects"), and their parameters.
+            _discrete("effect", "beam", None),
+            _discrete("effect2", "beam", None),
+            _scalar("effectRate", "beam", "normalized", 0.5, follows=True),  # 1 fastest
+            _scalar("effectFade", "beam", "normalized", 0.0, fade="snap", follows=True),
+            _scalar("effectAdjust", "beam", "normalized", 0.5, follows=True),
+            _scalar("effectRotation", "beam", "degPerSec", 0.0, follows=True),
+            _scalar("effectSync", "beam", "normalized", 0.0, fade="snap", follows=True),
+            _scalar("soundSensitivity", "beam", "normalized", 0.0, fade="snap", follows=True),
             _scalar("focus", "focus", "normalized", 0.5),
             _discrete("shutter", "shutter", "open"),
             _scalar("strobeRate", "shutter", "hz", 0.0),

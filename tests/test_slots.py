@@ -291,3 +291,74 @@ def test_colour_macros_default_to_the_option_holding_their_default_dmx(
     assert macro.options[int(index)] == option
     effect = find(compiled, "f", "colorEffect")
     assert effect.options[int(compiled.slots.defaultFrame[effect.lanes][0])] == "fade"
+
+
+def effects_show(**speed: object) -> dict:
+    """A fixture with a fixture effect channel (programs, a sound-active
+    one with a rate, maintenance ranges), a colour macro with a ``reset``, and
+    a speed channel built from ``speed`` (``channel`` keywords and ``caps``)."""
+    caps = speed.pop("caps", [rng(0, 255, 0, 1)])
+    effect = channel(
+        1,
+        "effect",
+        fn(0, 9, "off"),
+        fn(10, 19, "reset"),
+        fn(20, 99, "autoProgram", ("effectRate", 0, 1)),
+        fn(100, 109, "maintenance"),
+        fn(110, 199, "soundActive", ("soundSensitivity", 0, 1)),
+        fn(200, 255, "lampOff"),
+        default=15,  # in "reset": no option, so the first one
+    )
+    macro = channel(2, "colorMacro", fn(0, 127, "reset"), wheel_slot(128, 255, "red", "macro1"))
+    rate = channel(3, "effectRate", *caps, **speed)  # type: ignore[arg-type]
+    wheels = [{"id": "macro1", "kind": "color", "slots": [{"id": "red", "name": "Red"}]}]
+    return show(
+        [profile("p", mode([channel(0, "intensity"), effect, macro, rate]), wheels=wheels)],
+        [fixture("f", 1, "p", 1)],
+    )
+
+
+def default_of(compiled: CompiledShow, attribute: str) -> float:
+    return float(compiled.slots.defaultFrame[find(compiled, "f", attribute).lanes][0])
+
+
+def test_fixture_effect_options_leave_maintenance_out() -> None:
+    compiled = compile_doc(effects_show())
+    assert slot_list(compiled, "f") == [
+        (0, "intensity", 1),
+        (0, "colorMacro", 1),
+        (0, "effect", 1),
+        (0, "effectRate", 1),
+        (0, "soundSensitivity", 1),
+    ]
+    effect = find(compiled, "f", "effect")
+    assert effect.options == ("off", "autoProgram", "soundActive")
+    assert effect.options[int(default_of(compiled, "effect"))] == "off"
+    # The colour macro's reset is no option either.
+    assert find(compiled, "f", "colorMacro").options == ("red",)
+
+
+@pytest.mark.parametrize(
+    ("speed", "value"),
+    [
+        ({"default": 255}, 1.0),
+        ({"default": 51}, 0.2),
+        ({"default": 51, "invert": True}, 0.8),  # read back as the converter maps it
+        # Only the range holding defaultDmx counts: a dead band, then 1–255.
+        ({"default": 0, "caps": [rng(0, 0, 0, 0), rng(1, 255, 0.5, 1)]}, 0.0),
+        ({"default": 128, "caps": [rng(0, 0, 0, 0), rng(1, 255, 0.5, 1)]}, 0.75),
+        # In a function: the registry's number.
+        ({"default": 200, "caps": [rng(0, 127, 0, 1), fn(128, 255, "reverse")]}, 0.5),
+    ],
+)
+def test_a_rate_starts_at_its_channels_default(speed: dict, value: float) -> None:
+    compiled = compile_doc(effects_show(**speed))
+    assert default_of(compiled, "effectRate") == pytest.approx(value)
+    # The sound sensitivity is only a parameter: the registry's 0.
+    assert default_of(compiled, "soundSensitivity") == 0.0
+
+
+def test_scalars_that_do_not_follow_their_channel_keep_the_registry_default() -> None:
+    frost = channel(1, "frost", default=255)
+    doc = show([profile("p", mode([channel(0, "intensity"), frost]))], [fixture("f", 1, "p", 1)])
+    assert default_of(compile_doc(doc), "frost") == 0.0

@@ -28,6 +28,14 @@ SPEC_TABLE = [
     ("zoom", "beam", "scalar", "degrees", "LTP", "fade", "profileMidpoint"),
     ("iris", "beam", "scalar", "normalized", "LTP", "fade", 1.0),
     ("frost", "beam", "scalar", "normalized", "LTP", "fade", 0.0),
+    ("effect", "beam", "discrete", "none", "LTP", "snap", "channelDefault"),
+    ("effect2", "beam", "discrete", "none", "LTP", "snap", "channelDefault"),
+    ("effectRate", "beam", "scalar", "normalized", "LTP", "fade", 0.5),
+    ("effectFade", "beam", "scalar", "normalized", "LTP", "snap", 0.0),
+    ("effectAdjust", "beam", "scalar", "normalized", "LTP", "fade", 0.5),
+    ("effectRotation", "beam", "scalar", "degPerSec", "LTP", "fade", 0.0),
+    ("effectSync", "beam", "scalar", "normalized", "LTP", "snap", 0.0),
+    ("soundSensitivity", "beam", "scalar", "normalized", "LTP", "snap", 0.0),
     ("focus", "focus", "scalar", "normalized", "LTP", "fade", 0.5),
     ("shutter", "shutter", "discrete", "none", "LTP", "snap", {"slot": "open"}),
     ("strobeRate", "shutter", "scalar", "hz", "LTP", "fade", 0.0),
@@ -37,7 +45,7 @@ SPEC_TABLE = [
 
 def test_registry_holds_exactly_the_spec_attributes_in_table_order() -> None:
     assert list(ATTRIBUTES) == [row[0] for row in SPEC_TABLE]
-    assert len(ATTRIBUTES) == 23
+    assert len(ATTRIBUTES) == 31
 
 
 @pytest.mark.parametrize(
@@ -69,11 +77,26 @@ def test_each_default_shape_matches_its_kind() -> None:
         if definition.id == "zoom":
             # The profile midpoint is resolved per fixture by the slot compiler.
             assert definition.default == "profileMidpoint"
-        elif definition.id in ("colorMacro", "colorEffect"):
+        elif definition.id in ("colorMacro", "colorEffect", "effect", "effect2"):
             # So is the channel's default option.
             assert definition.default == "channelDefault"
         else:
             assert value_kind(definition.default) == definition.kind, definition.id
+
+
+def test_only_the_programs_rates_and_parameters_follow_their_channel() -> None:
+    # Their slot starts at the value the channel's defaultDmx stands for
+    # (fixture-effects-plan Q2); the registry number is for slots without one.
+    assert [a.id for a in ATTRIBUTES.values() if a.followsChannel] == [
+        "colorMacroRate",
+        "effectRate",
+        "effectFade",
+        "effectAdjust",
+        "effectRotation",
+        "effectSync",
+        "soundSensitivity",
+    ]
+    assert all(a.kind == "scalar" for a in ATTRIBUTES.values() if a.followsChannel)
 
 
 def test_normalised_scalars_have_unit_range_and_others_none() -> None:

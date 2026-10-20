@@ -156,7 +156,7 @@ or a percentage (`80%`), a discrete value names one of the fixture's options
 | `colorWheel` | color | discrete | — | LTP | snap | open |
 | `cto` | color | scalar | normalised | LTP | fade | 0 |
 | `colorMacro` | color | discrete | — | LTP | snap | the channel's default option |
-| `colorMacroRate` | color | scalar | normalised | LTP | fade | 0.5 (0 slowest, 1 fastest) |
+| `colorMacroRate` | color | scalar | normalised | LTP | fade | the channel's, else 0.5 (0 slowest, 1 fastest) |
 | `colorEffect` | color | discrete | — | LTP | snap | the channel's default option |
 | `gobo1`, `gobo2` | beam | discrete | — | LTP | snap | open |
 | `gobo1Rotation`, `gobo2Rotation` | beam | scalar | degPerSec | LTP | fade | 0 |
@@ -165,6 +165,13 @@ or a percentage (`80%`), a discrete value names one of the fixture's options
 | `zoom` | beam | scalar | degrees | LTP | fade | profile midpoint |
 | `iris` | beam | scalar | normalised | LTP | fade | 1 (open) |
 | `frost` | beam | scalar | normalised | LTP | fade | 0 |
+| `effect`, `effect2` | beam | discrete | — | LTP | snap | the channel's default option |
+| `effectRate` | beam | scalar | normalised | LTP | fade | the channel's, else 0.5 (0 slowest, 1 fastest) |
+| `effectFade` | beam | scalar | normalised | LTP | snap | the channel's, else 0 (snap or shortest) |
+| `effectAdjust` | beam | scalar | normalised | LTP | fade | the channel's, else 0.5 |
+| `effectRotation` | beam | scalar | degPerSec | LTP | fade | the channel's, else 0 |
+| `effectSync` | beam | scalar | normalised | LTP | snap | the channel's, else 0 |
+| `soundSensitivity` | beam | scalar | normalised | LTP | snap | the channel's, else 0 (off or lowest) |
 | `focus` | focus | scalar | normalised | LTP | fade | 0.5 |
 | `shutter` | shutter | discrete | — | LTP | snap | `open` |
 | `strobeRate` | shutter | scalar | hz | LTP | fade | 0 |
