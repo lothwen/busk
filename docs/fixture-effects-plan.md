@@ -574,6 +574,49 @@ shebang). Each step is one commit.
      - Robe MegaPointe: `Effects1PosRotate`.
 
    Write the numbers in step 7's Done note.
+
+   **Done** (2026-10-20), at `748d959` against `7ef1188` (step 2), and against `4b24c0b`
+   (before step 1) for the options. The scripts and the list of changed bytes lived in the
+   session scratchpad. Counts are of mode channels; §2 counts OFL channel definitions.
+   - **OFL** (636 fixtures at `2d74941`): 567 import and 69 fail, before and after; no mode
+     is lost. 243 fixtures get 385 `effect`, 82 `effect2`, 214 `effectRate`, 113
+     `colorMacroRate` (Q3), 168 `effectAdjust`, 34 `effectFade` and 25 `soundSensitivity`
+     channels. Control channels drop by 1,021 (6,937 → 5,916). No channel busk drove
+     changes attribute.
+   - **Options**: against `4b24c0b`, the Fun Generation Pico family's 10 `colorMacro` mode
+     channels lose `reset`, and two `colorEffect` channels their maintenance ranges (Phocea
+     Box LEDs Batterie, Mega-Lite Zoom 360). Nothing else changes.
+   - **Uncontrolled frames**: 472 bytes change in 208 fixtures, all on former control
+     channels (effect 349, effect2 75, effectRate 20, soundSensitivity 20, effectAdjust 4,
+     effectFade 2, colorMacroRate 2). 457 stay in the range that holds `defaultDmx`: an
+     option, or a one-value range, outputs its centre. 15, in 6 fixtures, leave it, because
+     their default lies in a function and the slot takes the registry's number (§5.2):
+     Ayrton Diablo S, Diablo TC and MagicBlade FX's chase speed (fast reverse at 0, now 193,
+     forward), Martin MAC Encore Performance (reverse at 0, now 192), JB-Lighting JBLED A7's
+     "Effects Delay" ("Time instant" at 0, now 130), Panasonic PT-RZ120 and PT-RZ120L's
+     "Fade in" ("No function" at 255, now 7, instant).
+   - **GDTF** (5,733 descriptions): 5,683 import and 50 fail, before and after; no mode is
+     lost. 84 fixture types get 137 `effect`, 1 `effect2`, 133 `effectRate`, 67
+     `effectFade` and 25 `effectSync` channels; none gets `effectRotation` (mode masters,
+     step 4) or `effectAdjust` (no file uses it). Control channels drop by 363 (22,644 →
+     22,281). No channel busk drove changes attribute, no option changes (against
+     `4b24c0b` too), and the 51 `Control1` channels with `Effects1` stay `control`. 98
+     bytes change in 48 types, all on effect channels and in their default's range.
+   - **By hand**, patched at 1.1 through `OfflineShow`, against the charts:
+     - TupperDMX LED bar 7ch: uncontrolled 1 (On, 0–3), speed 255; Fuego 69 (68–71); off
+       197 (140–255); Strobo+rain 137 (136–139); `effectRate 0.5` 128.
+     - TupperDMX blinder 8ch: uncontrolled 4 (Manual, 0–9), speed 0; Auto program at rate
+       0.5: 130 on the mode, 128 on the speed; Sound active 252 (250–255).
+     - Wild Wash Pro 648 6Ch: uncontrolled 8 (0–16); Dimmer pattern 2 41 (35–48), 18 249
+       (243–255); `effectRate 1` 127 (the end of "Change"); `soundSensitivity 0.5` 130.
+     - Robe Robin BMFL Blade: only `Effects1Fade` (Effect Time 0.1…25.5 s); 0.5 is 128, 1
+       is 255. It has no `Effects1` or `Effects1Rate`, so these were checked on the Robin
+       MegaPointe (Robe_Lighting), mode 1: uncontrolled 1 ("Open position/hole", 0–3);
+       Pattern 1 4 (4–5); Pattern 13 dynamic 52 (52–53). Its "Effect Speed" is one of
+       step 4's inverted rates: `effectRate 1` is DMX 255, the chart's "min".
+     - Martin VDO Dotron, DMX_Basic: `effectSync` uncontrolled 36 (its default), 0 is
+       "No Sync".
+     - Robe Robin MegaPointe `Effects1PosRotate`: held as `control` (mode masters).
 8. **The user's checks.**
    - In the TupperDMX simulator: the LED bar's animations and speed, the blinder's auto
      program, and the Wild Wash 6Ch's dimmer patterns and sound control.
