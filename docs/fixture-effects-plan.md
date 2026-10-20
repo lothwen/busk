@@ -533,6 +533,13 @@ shebang). Each step is one commit.
    - the same file and the same busk give the same revision, and version 3 gives a new one;
    - with an old embedded copy, `list profiles` shows the library's revision, and `profile
      update` takes it.
+
+   **Done** (2026-10-20): 3435 passed.
+   - `IMPORT_VERSION = 3`. The two revision tests (`test_ofl.py`, `test_gdtf.py`) patch the
+     old busk as version 2, the colour macros' import; the same file and busk already
+     gave the same revision.
+   - The CLI transcripts `import-ofl.txt` and `import-gdtf.txt` changed only in the sha256 of
+     the written profiles (`BUSK_REGOLDEN=1`).
 6. **Docs and changelog.**
    - `profiles.md`: the import bullets, options with parameters, scalar defaults from the
      channel, maintenance ranges;

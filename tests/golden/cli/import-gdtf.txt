@@ -5,4 +5,4 @@ stdout:
     Beam_Control1: no busk attribute (Control1); held at DMX 0
 stderr:
   busk: <tmp>/broken.gdtf: not a GDTF description: it has no GDTF/FixtureType
-sha256 gdtf-6e3a1f52-0d4b-4c3b-9f51-1a2b3c4d5e6f.json f258a2be8cc290babc9e10a38b1b98b5ec508ab5f5f2cc05ea8e41ba4f2fbe81
+sha256 gdtf-6e3a1f52-0d4b-4c3b-9f51-1a2b3c4d5e6f.json c1592fb8a7900e1addcd32cb35ba389c1c9ccd47bcbfa9b87e00eeac843d814f

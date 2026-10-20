@@ -14,8 +14,8 @@ stdout:
   <repo>/tests/fixtures/ofl/tupperdmx/smoke-machine.json: 'tupperdmx smoke-machine' (modes 1ch, 2ch) → <tmp>/profiles/ofl-tupperdmx-smoke-machine.json
     Fog Type: no busk attribute (FogType); held at DMX 0
 stderr:
-sha256 ofl-tupperdmx-blinder.json 86f968f96d40214f9432ee81d20def0321f3a18686d338b842a16f57e5481cce
-sha256 ofl-tupperdmx-ledbar.json 0faaa60a135bdbff8cdd3bb5a3982892a8556c7ea82a138de747d20123c63b7e
-sha256 ofl-tupperdmx-moving-head.json 301cae0776d01935181137aa96e3fece5f9a750be2591cc5e2d6ec2c931abaf8
-sha256 ofl-tupperdmx-par-rgbw.json 3aee633e7fdfa24d53e20c3679a64842ae739fd1cea5f196a7628c6bcef6b43f
-sha256 ofl-tupperdmx-smoke-machine.json bd03de26293fe6efca3c1080db57ea4964101d507322a601153f206cc6460879
+sha256 ofl-tupperdmx-blinder.json d42354e084cee0bc50659542e4ed09f3daf2b99f7b57f1c478f15814db4789dc
+sha256 ofl-tupperdmx-ledbar.json e77c55022744d0d597c7aedff1905e6a2f0b2c20046be06023822189a4bbad9c
+sha256 ofl-tupperdmx-moving-head.json 7aa825a199daa13520f08caa774f50d09d228145e92aa62b85f62d03c5061590
+sha256 ofl-tupperdmx-par-rgbw.json f6efc838e5f4c4a44d673d088318cbbe3226709046f157930db6ba22db3dba32
+sha256 ofl-tupperdmx-smoke-machine.json ddc8a7688793d21336e9239fd7406f3777a973ab6043bab51343875295793276

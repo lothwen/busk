@@ -1065,11 +1065,12 @@ def test_a_busk_that_imports_differently_makes_a_new_revision(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """IMPORT_VERSION (color-macros-plan Q5): a show embedding an older import
-    sees the library's revision, and ``profile update`` takes it."""
+    (version 2, before the fixture effects) sees the library's revision, and
+    ``profile update`` takes it."""
     folder = tmp_path / "acme"
     folder.mkdir()
     (folder / "wash.json").write_text(json.dumps(ofl({"Dimmer": one({"type": "Intensity"})})))
-    monkeypatch.setattr("busk.importers.ofl.IMPORT_VERSION", 1)
+    monkeypatch.setattr("busk.importers.ofl.IMPORT_VERSION", 2)
     old = OfflineShow(show_of(show([], [])), library=ProfileLibrary([folder], builtin=False))
     assert old.execute('fixture add 1 "acme Test" mode All at 1.1').ok
     embedded = old.show["profiles"][0]["revision"]

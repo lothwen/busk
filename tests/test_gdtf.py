@@ -1001,7 +1001,7 @@ def test_id_name_and_revision() -> None:
     assert edited["revision"] != profile["revision"]  # an edited file is a new revision
     assert import_gdtf(data).profile["revision"] == profile["revision"]
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr("busk.importers.ofl.IMPORT_VERSION", 1)  # GDTF shares OFL's _version
+        patch.setattr("busk.importers.ofl.IMPORT_VERSION", 2)  # GDTF shares OFL's _version
         older = import_gdtf(data).profile["revision"]
     assert older.startswith("2024-05-06-")
     assert older != profile["revision"]

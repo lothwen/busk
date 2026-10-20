@@ -21,11 +21,12 @@ from typing import Final
 from busk.errors import BuskError
 from busk.model.profile import FixtureProfile
 
-IMPORT_VERSION: Final = 2
+IMPORT_VERSION: Final = 3
 """The importers' version, mixed into every imported profile's revision. It
-goes up whenever an importer maps files differently (2: colour macros), so a
-show that embeds an older import sees a new revision in the library and
-``profile update`` takes it (§17), instead of keeping the old mapping."""
+goes up whenever an importer maps files differently (2: colour macros, 3:
+fixture effects), so a show that embeds an older import sees a new revision
+in the library and ``profile update`` takes it (§17), instead of keeping the
+old mapping."""
 
 
 @dataclass(frozen=True, kw_only=True)
