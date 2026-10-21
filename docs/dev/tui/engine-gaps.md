@@ -1,0 +1,579 @@
+# Engine gaps found while planning the TUI
+
+This lists what the busk TUI (`busk_tui`, planned in
+[`docs/dev/tui/implementation-plan.md`](../dev/tui/implementation-plan.md)) needs from the engine
+and cannot get today. It is input for future engine work. The TUI does not work around any of
+these with logic of its own: until a gap is closed, the feature is hidden, disabled, or shown
+read-only, as each entry says.
+
+Written 2026-10-21 against busk 0.1.0 (`3176f99`). The facts below were checked by running the
+commands on `OfflineShow` with `examples/club-night.busk`.
+
+## How the TUI talks to busk
+
+The TUI runs a `busk.LiveShow` in its own process. One module, `busk_tui/bridge.py`, imports
+`busk`, and only names in `busk.__all__`:
+
+- **Actions** go through `LiveShow.execute(line) -> Reply(text, ok)`, one console line per
+  action, echoed in the TUI's log. `submit()` is not used, so the UI teaches the command line.
+- **Reads** use the typed public state: `LiveShow.snapshot` (`EngineSnapshot`),
+  `LiveShow.frame` (`DmxFrame`, for the engine time), `LiveShow.show` (the `Show` document) and
+  `LiveShow.warnings`. The `busk.*` loggers feed the TUI's log pane.
+- **Text is not parsed.** `docs/library.md` says message text (`Reply.text`, CLI output, log
+  records) may change in any release, so the TUI never extracts data from the output of
+  `programmer`, `info`, `list …` or `library`. It may show such output verbatim.
+
+So a gap below is one of two kinds:
+
+- **a read**: data the TUI must display that is not in the typed public state. The suggested
+  shape is a read-only `LiveShow` property returning a frozen dataclass, published by reference
+  like `EngineSnapshot`, and exported in `busk.__all__`;
+- **an action**: something an operator does that has no console line. The suggested shape is a
+  new console line, so `execute()` covers it and the `busk run` prompt gets it too.
+
+Every new read should also reach `busk run`'s console process, so a later TUI attached to
+`busk run` ([GAP-11](#gap-11-running-the-tui-against-busk-run)) gets it too.
+
+## Priorities
+
+- **blocking**: a page or a core control of the spec cannot be delivered in a useful form.
+- **important**: a feature is noticeably degraded, or it is a safety or live-show concern.
+- **nice-to-have**: convenience or polish.
+
+## Summary
+
+| Gap | Kind | Priority | Needed by |
+|---|---|---|---|
+| [GAP-01](#gap-01-fixture-output-values) Fixture output values | read | blocking | F1 A/C, F2, F3 |
+| [GAP-02](#gap-02-programmer-state) Programmer state | read | blocking | status bar, prompt, F1, F2, F3, F5, F6 |
+| [GAP-03](#gap-03-session-state-undo-redo-unsaved-edits) Session state (undo, redo, unsaved edits) | read | important | prompt, quit |
+| [GAP-04](#gap-04-flash-and-playback-buttons-from-the-console) Flash and playback buttons from the console | action | important | F1 |
+| [GAP-05](#gap-05-relative-and-per-component-attribute-values) Relative and per-component attribute values | action | important | F2 |
+| [GAP-06](#gap-06-one-undo-step-for-a-gesture) One undo step for a gesture | action | important | F2 |
+| [GAP-07](#gap-07-output-route-status) Output route status | read | important | status bar, F8 |
+| [GAP-08](#gap-08-surface-status) Surface status | read | important | F9 |
+| [GAP-09](#gap-09-effect-runtime-state) Effect runtime state | read | important | F1 B, F5 |
+| [GAP-10](#gap-10-confirmation-before-dangerous-lines) Confirmation before dangerous lines | read | important | prompt |
+| [GAP-11](#gap-11-running-the-tui-against-busk-run) Running the TUI against `busk run` | host | important | everything, on stage |
+| [GAP-12](#gap-12-concurrency-contract-of-execute) Concurrency contract of `execute()` | contract | important | responsiveness |
+| [GAP-13](#gap-13-control-input-monitor) Control input monitor | read | nice-to-have | F9 |
+| [GAP-14](#gap-14-stop-and-restart-a-programmer-effect) Stop and restart a programmer effect | action | nice-to-have | F1 B, F5 |
+| [GAP-15](#gap-15-effect-template-library) Effect template library | read | nice-to-have | F5 |
+| [GAP-16](#gap-16-fixture-category) Fixture category | read | nice-to-have | F1 A/C, F8 |
+| [GAP-17](#gap-17-playback-colour) Playback colour | read | nice-to-have | F1 |
+| [GAP-18](#gap-18-quit-signal) Quit signal | read | nice-to-have | prompt |
+| [GAP-19](#gap-19-status-under-liveshow) `status` under `LiveShow` | action | nice-to-have | prompt |
+| [GAP-20](#gap-20-completion-and-hints) Completion and hints | read | nice-to-have | prompt |
+| [GAP-21](#gap-21-engine-health) Engine health | read | nice-to-have | status bar |
+
+---
+
+## GAP-01: Fixture output values
+
+**Needed by:** F1 layout A (OUTPUT grid colours, selection), F1 layout C (pan arrow and tilt on
+movers), F3 (live intensity, colour, pan, tilt, zoom and source columns), F2 (the encoders'
+value when the attribute is not in the programmer). Spec §4.2, §8.1, §8.3, §9 ("Fixture output,
+≥ 10 Hz").
+
+**Today:** `EngineSnapshot` has no per-fixture data. `LiveShow.frame` has the raw DMX bytes of
+each universe. Turning bytes back into logical values needs the compiled channel layout, fine
+bytes, inversion, curves and colour mixing, which is engine logic, so the TUI does not do it.
+
+**Engine should provide:** a read-only `LiveShow.output -> OutputSnapshot | None`, published by
+reference at most once per tick. Frontends poll it at 10–20 Hz. It holds the resolved logical
+values the engine has before conversion to DMX, after masters, blackout and limits:
+
+```python
+@dataclass(frozen=True, slots=True, kw_only=True)
+class FixtureOutput:
+    number: int                                  # fixture number, as typed (101)
+    element: int                                 # 1-based; 1 for single-element fixtures
+    intensity: float                             # 0..1, what the fixture emits
+    color: tuple[float, float, float] | None     # linear RGB 0..1; None: no colour control
+    pan: float | None                            # degrees; None: no pan
+    tilt: float | None
+    zoom: float | None                           # degrees
+    source: Mapping[str, Literal["programmer", "playback", "effect", "none"]]
+    # by family ("intensity", "color", "position", "beam"): what drives it now
+    playback: int | None                         # number of the playback that wins intensity
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class OutputSnapshot:
+    seq: int
+    time: float                                  # engine time of the tick
+    fixtures: tuple[FixtureOutput, ...]          # fixture number order, then element
+```
+
+**Priority:** blocking.
+
+**TUI until then:** the OUTPUT panel (layout A) is a fixture palette with no colours: one cell
+per element, click to select, and a dim note "live output not available yet". Layout C draws
+fixtures without pan arrows or tilt. F3 hides the live columns and the source legend. The F2
+encoders show no value (see GAP-02).
+
+## GAP-02: Programmer state
+
+**Needed by:** status bar (`PROG n`, BLIND chip, programmer `FADE`), prompt context (`sel n`),
+F1 header and SELECTION/PROGRAMMER panels, F2 (selection text, encoder values in magenta,
+PROGRAMMER CONTENTS table, a single BLIND toggle), F3 (selected-row marker), Shift-click
+toggling (`sel +` versus `sel -`), F5 (programmer effects as table rows), F6 ("applies to …").
+Spec §5, §8.1, §8.2, §8.3, §8.6, §9 ("Programmer: selection, per-fixture values, blind, fade").
+
+**Today:** only as text. `programmer` prints the selection, blind, highlight, fade time, each
+value (`201 color = preset color 2 'Red'`) and each effect. `info` prints counts. Neither is a
+stable format.
+
+**Engine should provide:** `LiveShow.programmer -> ProgrammerStatus`, replaced on every
+programmer change, with the same content `programmer` prints:
+
+```python
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ProgrammerValue:
+    target: str                    # as typed: "101", "301.3"
+    attribute: str                 # "intensity", "color", "pan", …
+    value: float | Mapping[str, object] | None   # scalar, ColorValue or DiscreteValue; None for a preset
+    preset: tuple[str, int, str] | None          # (pool, number, name) when the value is a preset
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ProgrammerEffect:
+    id: str                        # "fx5", what `effect remove` takes
+    template: str                  # template name
+    targets: str                   # as typed: "group 1" or "101, 102"
+    rate: str                      # "bpm 'Speed 1' ×1" or "2 Hz"
+    size: float
+    phase: tuple[float, float]
+    groups: int
+    blocks: int
+    wings: int
+    direction: str
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ProgrammerStatus:
+    version: int                   # +1 per change
+    selection: tuple[str, ...]     # in selection order, elements as "301.3"
+    blind: bool
+    highlight: bool
+    fadeTime: float                # seconds
+    values: tuple[ProgrammerValue, ...]
+    effects: tuple[ProgrammerEffect, ...]
+```
+
+**Priority:** blocking (BLIND on or off is a live-show safety signal, and selection feedback is
+the core of programming).
+
+**TUI until then:** the status bar has no `PROG`, BLIND or programmer `FADE` slot, and the prompt
+context shows no selection count. F2 shows the verbatim output of `programmer` in its
+PROGRAMMER CONTENTS panel, refreshed after each command the TUI runs and once a second while F2
+or F5 is visible. BLIND is two buttons (`blind on`, `blind off`) instead of a toggle.
+Shift-click always adds (`sel + fixture N`); removing is typed (`sel - fixture N`).
+
+## GAP-03: Session state (undo, redo, unsaved edits)
+
+**Needed by:** prompt context (`undo 3`), the quit dialog (save only when there are unsaved
+edits), and a modified marker next to the show name. Spec §5, §6.3.
+
+**Today:** `info` prints `undo: N steps, redo: M steps` and `file: …, unsaved edits` as text.
+The data exists inside the session (`SessionSnapshot.dirty`, `showVersion`,
+`Timeline.undo_count`).
+
+**Engine should provide:** `LiveShow.session -> SessionStatus`:
+
+```python
+@dataclass(frozen=True, slots=True, kw_only=True)
+class SessionStatus:
+    showVersion: int               # +1 per committed show change (edit, undo, redo, save)
+    programmerVersion: int
+    dirty: bool                    # unsaved edits
+    path: str | None               # where `save` writes
+    undoSteps: int
+    redoSteps: int
+    nextUndo: str | None           # the label `undo` would print ("added effect 'fx5' …")
+    nextRedo: str | None
+```
+
+`showVersion` also gives frontends a documented change signal. Today the TUI notices show changes
+by the identity of `LiveShow.show`, which works because the session replaces the document on
+every commit, but that is not a documented promise.
+
+**Priority:** important.
+
+**TUI until then:** no undo count in the prompt context. The quit dialog always offers *Save and
+quit / Quit without saving / Cancel*, and says it cannot tell whether there are unsaved edits.
+
+## GAP-04: Flash and playback buttons from the console
+
+**Needed by:** F1 FLASH buttons (all layouts). Spec §6.2 ("Flash buttons are momentary"),
+§8.1.
+
+**Today:** the typed commands exist (`FLASH`, `PLAYBACK_BUTTON`, `TOGGLE_PLAYBACK`, reachable
+through `submit()`, surfaces and the web remote), but no console line does. The TUI sends
+console lines only.
+
+**Engine should provide:** console lines, with the same replies as `go N` (empty text, errors
+like `error: no playback 99`):
+
+```
+flash N on|off              → FLASH {playbackId, down}
+button N <b> on|off         → PLAYBACK_BUTTON {playbackId, button: b-1, down}
+toggle N                    → TOGGLE_PLAYBACK {playbackId}
+```
+
+The engine could also release flashes a frontend still holds when that frontend stops, as the
+web remote does on disconnect.
+
+**Priority:** important.
+
+**TUI until then:** FLASH buttons are drawn disabled with "flash: not available yet". Even after
+this gap is closed, a flash is momentary only with the mouse (button down and up): terminals do
+not report key releases, so there is no momentary flash key.
+
+## GAP-05: Relative and per-component attribute values
+
+**Needed by:** F2 encoders: `[−]`/`[+]` (±5 %, ±15°) and the mouse wheel (±2 %, ±5°); the
+colour family as separate red, green, blue and white rows. Spec §8.2.
+
+**Today:** `set <attribute> <value>` takes absolute values only, and a colour only as a whole
+(`set color r g b [w x]`). **Trap:** `set intensity +5%` is accepted and stores an absolute 5 %,
+because `+5%` parses as a positive number. An operator who types it expecting a nudge gets a
+near-blackout.
+
+**Engine should provide:**
+
+```
+set <attribute> +<v> | -<v>        relative to the programmer value; for a target with no
+                                   programmer value, relative to the current output value
+                                   (needs GAP-01 inside the engine) or refused with an error
+set color.r|g|b|w|a|uv <value>     one colour component, the others kept
+```
+
+The reply is the same as `set` today (`intensity: 4 targets`). If relative values are not
+wanted, `+5%` should at least be refused instead of read as `5%`.
+
+**Priority:** important.
+
+**TUI until then:** no `[−]`/`[+]` buttons and no wheel on encoders. Each encoder sets an absolute
+value by click or drag on its bar. With the keyboard, Enter on an encoder row pre-fills
+`set <attribute> ` in the prompt. The colour family has a `set color` pre-fill and the colour
+presets, not per-component rows.
+
+## GAP-06: One undo step for a gesture
+
+**Needed by:** dragging an F2 encoder. Spec §6.2: "One undo snapshot is taken at drag start."
+
+**Today:** every programmer command is one step on the undo timeline, and nothing groups steps.
+A drag that sends 30 `set` lines needs 30 `undo`s. (Fader and master drags are performance
+commands and never on the timeline, so they are fine.)
+
+**Engine should provide:** console lines that group the steps between them:
+
+```
+undo group "<label>"     open a group: later programmer and show steps join it
+undo group end           close it; the timeline now has one step, labelled "<label>"
+```
+
+A group left open is closed by the next command that is not a programmer or show command, or
+after a timeout. `undo` inside a group closes it first.
+
+**Priority:** important.
+
+**TUI until then:** an encoder drag moves a local preview of the bar, clearly marked as pending,
+and sends one `set` on release. The light does not follow the drag live.
+
+## GAP-07: Output route status
+
+**Needed by:** status bar TX indicators (`● sACN·U1`, blinking green while sending, red on
+error) and the F8 ROUTES `tx` column. Spec §5, §8.8, §9 ("route TX status").
+
+**Today:** the routes are in `show["output"]["routes"]`. Their state (`DriverStatus` ok/detail)
+reaches the outside only as log records on `busk.output` (`sACN r1: send failed: …`,
+`… sending again`).
+
+**Engine should provide:** `LiveShow.routes -> tuple[RouteStatus, ...]`:
+
+```python
+@dataclass(frozen=True, slots=True, kw_only=True)
+class RouteStatus:
+    id: str
+    universe: int                  # universe number
+    label: str                     # "sACN r1"
+    enabled: bool
+    ok: bool
+    detail: str                    # the failure, or ""
+    lastSent: float | None         # engine time of the last packet sent
+```
+
+**Priority:** important (a failing output is the first thing an operator must see).
+
+**TUI until then:** the status bar lists the routes without a state dot. Route failures and
+recoveries appear in the log as warning and info lines, from the `busk.output` records.
+
+## GAP-08: Surface status
+
+**Needed by:** F9 SURFACES status dot (green connected, red missing). Spec §8.9.
+
+**Today:** surfaces and their bindings are in the show document. Whether a MIDI device is
+plugged in, an OSC port is open, or the web remote is serving (and on which URL) reaches the
+outside only as `busk.surfaces` log records.
+
+**Engine should provide:** `LiveShow.surfaces -> tuple[SurfaceStatus, ...]`:
+
+```python
+@dataclass(frozen=True, slots=True, kw_only=True)
+class SurfaceStatus:
+    id: str
+    name: str
+    kind: Literal["midi", "osc", "web"]
+    open: bool                     # connected / listening
+    detail: str                    # "unplugged; waiting for it", "install busk[midi]", …
+    urls: tuple[str, ...]          # web remote only
+```
+
+**Priority:** important (a controller unplugged mid-show).
+
+**TUI until then:** F9 lists surfaces without a dot. The surface lines appear in the log.
+
+## GAP-09: Effect runtime state
+
+**Needed by:** F5 `state` column (RUN/off) and `wave` sparkline, and the F1 layout B EFFECTS
+panel. Spec §4.3 (sparkline), §8.5, §9 ("Effects: … running, owning playback").
+
+**Today:** effect instances are stored in cues (`show["cueLists"][…]["cues"][…]["effects"]`) and
+in the programmer (GAP-02). Whether one is running, its phase and its waveform are computed only
+inside the engine. With tracking, a cue's effect can keep running after later cues, so a
+frontend cannot infer "running" from the playback state.
+
+**Engine should provide:** `LiveShow.effects -> tuple[EffectStatus, ...]`, the instances
+contributing at the snapshot's tick:
+
+```python
+@dataclass(frozen=True, slots=True, kw_only=True)
+class EffectStatus:
+    owner: Literal["programmer", "playback"]
+    playback: int | None           # playback number for a cue effect
+    cue: str | None                # the cue that started it
+    id: str                        # instance id (unique within its cue or the programmer)
+    template: str
+    size: float                    # after the size master and fade-in
+    rateHz: float                  # cycles per second now
+    phase: float                   # 0..1, the cycle position of the first member
+    wave: tuple[float, ...]        # 20 samples of the main layer across one cycle, 0..1
+```
+
+**Priority:** important.
+
+**TUI until then:** no `wave` or `state` column. For a cue effect, F5 shows the state of the
+playback that holds it, labelled as playback state ("P9 active"), not as the effect's.
+
+## GAP-10: Confirmation before dangerous lines
+
+**Needed by:** the prompt. `busk run` asks before `output off`; the TUI should too.
+
+**Today:** the question exists (`Console.confirmation(line)`) but is internal. The TUI cannot
+know which lines need confirmation without parsing them.
+
+**Engine should provide:** `LiveShow.confirmation(line) -> str | None`, the yes/no question to
+ask before running `line`, or `None`.
+
+**Priority:** important (safety).
+
+**TUI until then:** the TUI's own `[OUTPUT OFF]` button asks first. A typed `output off` runs at
+once, as in a script. The user guide says so.
+
+## GAP-11: Running the TUI against `busk run`
+
+**Needed by:** every page, whenever the TUI is used on stage.
+
+**Today:** the only public way to run a show live is `LiveShow`, which has no watchdog, no
+process isolation, no autosave, no crash recovery and no event log (`docs/library.md`). The
+engine thread shares the interpreter with the TUI's rendering. `busk run` keeps the engine in
+its own process, but its console process has a line prompt, and its seam for a frontend
+(`LiveShow._attached`) is private.
+
+**Engine should provide** one of:
+
+- `busk run --frontend MODULE:FUNCTION`: the console process calls the frontend with the
+  attached `LiveShow` instead of starting its line prompt. This is the smallest change: the
+  seam exists.
+- a public client, `busk.attach(state_dir) -> LiveShow`-like object, for a frontend in its own
+  process, talking to a running `busk run`.
+
+Either way the TUI keeps the same bridge API (`execute`, `snapshot`, `frame`, `show`, and the
+reads above).
+
+**Priority:** important.
+
+**TUI until then:** it runs a `LiveShow` with `tune_interpreter=True`, as `busk run` tunes its
+engine process. The startup banner and the user guide say that for a show on stage, `busk run`
+is the safer host. The TUI shows an `ENGINE` warning chip when frames stop arriving
+(see GAP-21).
+
+## GAP-12: Concurrency contract of `execute()`
+
+**Needed by:** responsiveness during a show.
+
+**Today:** `execute()` works off the main thread (the SIGINT hold is skipped there). Whether
+two threads may call it at once is not documented. Inside the session, performance commands
+never wait for an edit, but a frontend that sends every line through one worker still makes a
+`go` wait behind a slow `save`, `source` or a large edit's compile.
+
+**Engine should provide:** a documented contract: `LiveShow.execute()` is safe from several
+threads, and performance lines (`go`, `back`, `goto`, `fader`, `gm`, `master`, `blackout`,
+`tap`, `bpm`, `page`, `release`) never wait for an edit, a save or a script. Alternatively,
+`LiveShow.is_performance(line) -> bool`, so a frontend can route lines to a second worker
+without parsing them.
+
+**Priority:** important.
+
+**TUI until then:** one worker thread runs every line in order. The UI never waits: it shows
+`⧗ <line> 1.4s` while a line takes longer than 0.3 s and keeps accepting input. Repeated control
+moves (fader and master drags) replace their own queued, unsent line instead of piling up.
+
+## GAP-13: Control input monitor
+
+**Needed by:** F9 MONITOR (the last 14 incoming messages) and learn mode (the next incoming
+message pre-fills a `bind` line). Spec §8.9, §9 ("MIDI input").
+
+**Today:** inputs are resolved inside the session and the binding resolver; nothing is exposed.
+
+**Engine should provide:** a bounded, published log of inputs, `LiveShow.inputs ->
+tuple[InputEvent, ...]` (the newest N, with a sequence number so a frontend polls only what is
+new):
+
+```python
+@dataclass(frozen=True, slots=True, kw_only=True)
+class InputEvent:
+    seq: int
+    time: float                    # engine time
+    surface: str                   # surface name
+    input: str                     # as `bind` takes it: "cc 1 48", "note 1 0", 'osc "/x"', "clock"
+    value: float | None            # 0..1, None for notes and clock
+    action: str | None             # as `list bindings` prints it ("fader 1"), None if unbound
+```
+
+**Priority:** nice-to-have.
+
+**TUI until then:** F9 hides MONITOR and learn mode. The BINDINGS `val` column shows the level of
+the bound target (a playback's fader level, a master's level), not the device's raw value.
+
+## GAP-14: Stop and restart a programmer effect
+
+**Needed by:** the RUN/off toggle of standalone effects (F5, F1 layout B). Spec §8.5.
+
+**Today:** a programmer effect runs from `effect add` until `effect remove <id>` or `clear`.
+
+**Engine should provide:** `effect <id> stop|run`, keeping the instance in the programmer.
+The reply is like `effect add`: `stopped effect 'fx5'`.
+
+**Priority:** nice-to-have.
+
+**TUI until then:** the only control on a programmer effect is `✕` (`effect remove <id>`).
+
+## GAP-15: Effect template library
+
+**Needed by:** F5 TEMPLATES (name and a one-line description). Spec §8.5.
+
+**Today:** `effect add "<template>"` finds templates in the effect library. The library is not
+public (`ProfileLibrary` is; the effect library is not), so the only list is the text of
+`library`. The show's own templates are in `show["effects"]`.
+
+**Engine should provide:** a public `EffectLibrary` (like `ProfileLibrary`: iteration, `find`,
+`problems`), or `LiveShow.effect_templates -> tuple[EffectTemplateInfo, ...]` with `name`, the
+layers in one line (as `list effects` prints them) and the console defaults (size, low/high,
+phase).
+
+**Priority:** nice-to-have.
+
+**TUI until then:** TEMPLATES lists the show's templates. A line under it says "more built-in
+templates: type `library`".
+
+## GAP-16: Fixture category
+
+**Needed by:** F1 layout A rows (PARS, SPOTS, WASHES, BARS, STROBES), layout C glyphs
+(`■ ◆ ● ▲`), F8 DMX map colours by type. Spec §8.1, §8.8.
+
+**Today:** profiles have no category. OFL and GDTF files have one, and the importers drop it.
+
+**Engine should provide:** an optional `category` on `FixtureProfile` (for example `"par" |
+"spot" | "wash" | "beam" | "strobe" | "pixel" | "dimmer" | "effect" | "other"`), filled by
+`read_ofl`/`read_gdtf` and settable with `profile …`. This is an optional key, so it is not a
+breaking change.
+
+**Priority:** nice-to-have.
+
+**TUI until then:** rows, glyphs and map colours go by profile: one row per profile, labelled
+with its name, and colours assigned to profiles in show order.
+
+## GAP-17: Playback colour
+
+**Needed by:** F1 fader and bar colour ("colour = current cue colour"). Spec §8.1.
+
+**Today:** a playback has an optional static `uiColor` (`playback N uiColor "#ff8800"`), which
+the TUI uses. The colour of the current look depends on resolving the cue's values, presets and
+tracking, which is engine logic.
+
+**Engine should provide:** `PlaybackStatus.color: tuple[float, float, float] | None`, a
+representative colour of the playback's current output (for example the colour of the first
+target it drives), updated with the snapshot.
+
+**Priority:** nice-to-have.
+
+**TUI until then:** bars and faders use `uiColor` when it is set and parses as a colour, else the
+neutral foreground.
+
+## GAP-18: Quit signal
+
+**Needed by:** the prompt: typing `quit` should end the TUI as it ends `busk run`.
+
+**Today:** `execute("quit")` returns `Reply("", ok=True)` and sets a private flag.
+
+**Engine should provide:** `Reply.quit: bool = False` (a new field with a default, so it is not
+breaking), or `LiveShow.quit_requested`.
+
+**Priority:** nice-to-have.
+
+**TUI until then:** a line that is exactly `quit` opens the TUI's quit dialog instead of going to
+the engine. It is the only line the TUI intercepts.
+
+## GAP-19: `status` under `LiveShow`
+
+**Needed by:** typing `status` in the TUI prompt.
+
+**Today:** `LiveShow` builds its console without a status callable, so `status` answers
+`no engine is running` while the engine runs.
+
+**Engine should provide:** the same status line `busk run` prints, built from the snapshot.
+
+**Priority:** nice-to-have.
+
+**TUI until then:** `status` is sent to the engine like any other line, and the reply is shown as
+it is. The status bar has the same information.
+
+## GAP-20: Completion and hints
+
+**Needed by:** Tab completion beyond the first word, and richer hints. Spec §6.1, §7.2.
+
+**Today:** `busk run`'s prompt completes every word from `Console.expected(line)` (words, value
+placeholders, errors, whether the line is runnable), which is internal. The TUI does what the
+spec asks: it indexes the text of `help` by first word.
+
+**Engine should provide:** `LiveShow.expected(line) -> Expected`, with public fields `words`,
+`values`, `runnable` and `error`.
+
+**Priority:** nice-to-have.
+
+**TUI until then:** first-word completion and one or two matching `help` lines, as specified.
+If the format of `help` changes, hints degrade to nothing; commands still run.
+
+## GAP-21: Engine health
+
+**Needed by:** a status-bar warning when the engine stalls or overruns.
+
+**Today:** the TUI can only watch `LiveShow.frame.seq`. If no new frame arrives for 0.5 s, it shows
+a red `ENGINE` chip.
+
+**Engine should provide:** `LiveShow.health -> EngineHealth(running: bool, ticks: int,
+overruns: int, lastTickAge: float)`.
+
+**Priority:** nice-to-have.
+
+**TUI until then:** the `frame.seq` watch described above.
