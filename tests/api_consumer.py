@@ -86,6 +86,17 @@ def offline(directory: Path) -> bytes:
     speeds: tuple[busk.SpeedStatus, ...] = snapshot.speed
     page: busk.PageStatus | None = snapshot.page
     assert playing or speeds or page
+    output: busk.OutputSnapshot = show_.output
+    assert output.seq == frame.seq
+    for element in output.fixtures:
+        fixture: busk.FixtureOutput = element
+        color: tuple[float, float, float] | None = fixture.color
+        level: float = fixture.intensity if color is None else fixture.intensity * max(color)
+        pan: float | None = fixture.pan
+        driver: str | None = fixture.source.get("intensity")
+        number: int | None = fixture.playback
+        assert 0.0 <= level <= 1.0
+        assert (pan, driver, number) is not None
     return universes[1][:16]
 
 
@@ -102,6 +113,8 @@ def live(path: str, host: Callable[[busk.LiveShow], None]) -> busk.Show:
             assert states
         frame: busk.DmxFrame | None = live.frame
         assert frame is None or 1 in frame.universes
+        output: busk.OutputSnapshot | None = live.output
+        assert output is None or output.fixtures
         host(live)
     live.stop()  # idempotent
     return live.show

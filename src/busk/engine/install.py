@@ -82,7 +82,7 @@ from busk.compiler.compile import CompiledShow
 from busk.compiler.cues import EMPTY_CUE, CompiledCue
 from busk.compiler.effects import CompiledEffect
 from busk.compiler.slots import SlotTable
-from busk.engine.contributions import SequencedSource, Source, wire
+from busk.engine.contributions import PROGRAMMER, Origin, SequencedSource, Source, wire
 from busk.engine.effects import EffectBank, EffectScalars, EffectTiming, StrobeCap
 from busk.engine.fades import ContributionSet, SeqRule, Timing, Uniform
 from busk.engine.masters import SpeedMasterRuntime
@@ -209,7 +209,11 @@ class ProgrammerRuntime:
         self._seq = 0  # the last number an install took: the sort key of HTP-only lanes
         self._wired = -1  # the contributions version the source's arrays point at
         self.bank = EffectBank(
-            "programmer", PROGRAMMER_PRIORITY, {} if speed is None else speed, cap=cap
+            "programmer",
+            PROGRAMMER_PRIORITY,
+            {} if speed is None else speed,
+            cap=cap,
+            origin=Origin("effect"),
         )
         """The programmer's running effects (phase-5-plan §5.10)."""
         self._scalars = EffectScalars(sizeLevels={} if sizeLevels is None else sizeLevels)
@@ -305,7 +309,7 @@ class ProgrammerRuntime:
 
 def _source(cue: CompiledCue) -> Source:
     """A fully present programmer source playing ``cue``."""
-    source = Source.of_cue("programmer", PROGRAMMER_PRIORITY, cue)
+    source = Source.of_cue("programmer", PROGRAMMER_PRIORITY, cue, PROGRAMMER)
     source.htpWeight = source.intensityScale = source.ltpWeight = 1.0
     return source
 

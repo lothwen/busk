@@ -284,7 +284,7 @@ from busk.compiler.cues import CompiledCue
 from busk.compiler.playbacks import CompiledCueList, CompiledPlayback
 from busk.compiler.slots import SlotTable
 from busk.engine.chase import ChaseRuntime, chase_seed
-from busk.engine.contributions import Contributor, Relative, SequencedSource, Source, wire
+from busk.engine.contributions import Contributor, Origin, Relative, SequencedSource, Source, wire
 from busk.engine.cue_engine import CueTiming, next_cue, previous_cue, schedule
 from busk.engine.curves import curve_of
 from busk.engine.effects import EffectBank, EffectScalars, EffectTiming, StrobeCap
@@ -305,7 +305,7 @@ type PlaybackState = Literal["idle", "active", "releasing"]
 type ActivatedBy = Literal["button", "fader"]
 
 
-def _empty_source(sourceId: str, priority: int) -> Source:
+def _empty_source(sourceId: str, priority: int, origin: Origin) -> Source:
     """A source without lanes, absent until filled."""
     lanes, values = np.zeros(0, dtype=np.intp), np.zeros(0, dtype=np.float64)
     return Source(
@@ -319,6 +319,7 @@ def _empty_source(sourceId: str, priority: int) -> Source:
         snapLanes=lanes,
         snapValues=values,
         snapThresholds=values,
+        origin=origin,
     )
 
 
@@ -405,18 +406,22 @@ class PlaybackRuntime:
         self._lap = (-1.0, 0)  # (tick time, auto-GOs fired at it): one lap per tick
         self.contributions = ContributionSet(slots.laneSlot)
         self.laneFamily = slots.laneFamily
-        self.main = SequencedSource(_empty_source(playback.id, playback.priority))
+        own, effects = Origin("playback", playback.id), Origin("effect", playback.id)
+        self.main = SequencedSource(_empty_source(playback.id, playback.priority, own))
         self._wired = -1  # the contributions version main's arrays point at
         self.flash = Source.of_cue(
             f"{playback.id}/flash",
             playback.priority + playback.flashPriorityBoost,
             playback.cueList.first,
+            own,
         )
-        self.bank = EffectBank(playback.id, playback.priority, self.speed, self.rateLevel, self.cap)
+        self.bank = EffectBank(
+            playback.id, playback.priority, self.speed, self.rateLevel, self.cap, effects
+        )
         """Main's effects: the instances of the cue main plays (§5.7)."""
         self.scalars = EffectScalars(sizeLevels=self.sizeLevels)  # refilled per tick
         self.flashBank = EffectBank(
-            self.flash.sourceId, self.flash.priority, self.speed, self.rateLevel, self.cap
+            self.flash.sourceId, self.flash.priority, self.speed, self.rateLevel, self.cap, effects
         )
         """The flash's effects, while the flash is present and main is idle (decision 16)."""
         self.flashScalars = EffectScalars(sizeLevels=self.sizeLevels)  # refilled per tick

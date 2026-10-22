@@ -123,7 +123,7 @@ from numpy.typing import NDArray
 from busk.compiler.cues import CompiledCue, SlotTiming
 from busk.compiler.effects import CompiledEffect, CompiledLayer, EffectDirection
 from busk.engine.chase import beat_factor, grid_position, rate_factor
-from busk.engine.contributions import Relative, Source
+from busk.engine.contributions import Origin, Relative, Source
 from busk.engine.curves import curve_of
 from busk.engine.fades import Envelope, SeqRule, Timing, distinct
 from busk.engine.masters import SpeedMasterRuntime
@@ -533,7 +533,9 @@ class EffectRuntime:
         "versions",
     )
 
-    def __init__(self, key: str, seq: int, clock: EffectClock, sourceId: str) -> None:
+    def __init__(
+        self, key: str, seq: int, clock: EffectClock, sourceId: str, origin: Origin | None = None
+    ) -> None:
         self.key = key
         self.seq = seq
         self.clock = clock
@@ -551,6 +553,7 @@ class EffectRuntime:
             snapLanes=none,
             snapValues=np.zeros(0),
             snapThresholds=np.zeros(0),
+            origin=origin,
         )
         self.relatives: list[Relative] = []
         self._htp = self._ltp = self._snap = _Channel([], False)
@@ -606,6 +609,7 @@ class EffectRuntime:
                 amounts=channel.values,
                 weights=channel.weights,
                 clamp=channel.parts[0].layer.clamp,
+                origin=source.origin,
             )
             for key, channel in zip(relative, self._relative, strict=True)
         ]
@@ -698,7 +702,8 @@ class EffectBank:
 
     ``speed`` is the engine's dict of speed masters, shared and read live;
     ``rateLevel`` the owner's ``rate`` fader level (``None`` without one);
-    ``cap`` the engine's strobe cap, shared and read live.
+    ``cap`` the engine's strobe cap, shared and read live; ``origin`` what
+    its instances' sources and relative layers belong to (the readout's).
     Runtimes are kept oldest first: leaving instances, then the current
     ones in cue order, which is the order :meth:`contributors` hands them
     out, so a later instance wins a tie.
@@ -711,12 +716,14 @@ class EffectBank:
         speed: Mapping[MasterId, SpeedMasterRuntime],
         rateLevel: float | None = None,
         cap: StrobeCap | None = None,
+        origin: Origin | None = None,
     ) -> None:
         self.sourceId = sourceId
         self.priority = priority
         self.speed = speed
         self.rateLevel = rateLevel
         self.cap = StrobeCap() if cap is None else cap
+        self.origin = origin
         self.runtimes: dict[str, EffectRuntime] = {}
 
     @property
@@ -758,7 +765,7 @@ class EffectBank:
             if runtime is None:
                 clock = EffectClock(now, *self._tempo(effect, self.rateLevel))
                 runtime = EffectRuntime(
-                    effect.key, seqs.seq, clock, f"{self.sourceId}:{effect.key}"
+                    effect.key, seqs.seq, clock, f"{self.sourceId}:{effect.key}", self.origin
                 )
                 runtime.versions.append(Version(effect))
                 ends.append(runtime.ramp(now, runtime.newest, 1.0, timing.enter(effect), 1.0))

@@ -101,6 +101,24 @@
     },
     "module": "busk.engine.snapshot"
   },
+  "FixtureOutput": {
+    "fields": [
+      "number: int",
+      "element: int",
+      "intensity: float",
+      "color: tuple[float, float, float] | None",
+      "pan: float | None",
+      "tilt: float | None",
+      "zoom: float | None",
+      "source: Mapping[AttributeFamily, OutputSource]",
+      "playback: int | None"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, *, number: int, element: int, intensity: float, color: tuple[float, float, float] | None, pan: float | None, tilt: float | None, zoom: float | None, source: Mapping[AttributeFamily, OutputSource], playback: int | None) -> None"
+    },
+    "module": "busk.engine.snapshot"
+  },
   "FixtureProfile": {
     "keys": {
       "emitters": "NotRequired[list[Emitter]]",
@@ -167,6 +185,7 @@
       "__init__": "(self, show: Show, *, path: str | os.PathLike[str] | None = None, library: ProfileLibrary | None = None, output: bool = True, surfaces: bool = False, state_dir: str | os.PathLike[str] | None = None, tune_interpreter: bool = False) -> None",
       "execute": "(self, line: str) -> Reply",
       "frame": "property: DmxFrame | None",
+      "output": "property: OutputSnapshot | None",
       "run_script": "(self, path: str | os.PathLike[str]) -> list[str]",
       "save": "(self, path: str | os.PathLike[str] | None = None) -> CommandResult",
       "show": "property: Show",
@@ -183,6 +202,7 @@
     "members": {
       "__init__": "(self, show: Show, *, path: str | os.PathLike[str] | None = None, library: ProfileLibrary | None = None, ids: IdFactory | None = None) -> None",
       "execute": "(self, line: str) -> Reply",
+      "output": "property: OutputSnapshot",
       "run_script": "(self, path: str | os.PathLike[str]) -> list[str]",
       "save": "(self, path: str | os.PathLike[str] | None = None) -> CommandResult",
       "show": "property: Show",
@@ -193,6 +213,18 @@
       "warnings": "property: tuple[Issue, ...]"
     },
     "module": "busk.runner"
+  },
+  "OutputSnapshot": {
+    "fields": [
+      "seq: int",
+      "time: float",
+      "fixtures: tuple[FixtureOutput, ...]"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, *, seq: int, time: float, fixtures: tuple[FixtureOutput, ...]) -> None"
+    },
+    "module": "busk.engine.snapshot"
   },
   "PageStatus": {
     "fields": [

@@ -12,7 +12,7 @@ library that does the same things from your own code. With the library you can:
 
 Everything public is importable from `busk` itself. This guide covers [installing](#installing),
 [the three uses](#1-tooling-validate-a-show-import-a-profile) with examples, a
-[reference](#reference) of the 28 public names, [the errors](#errors),
+[reference](#reference) of the 30 public names, [the errors](#errors),
 [logging](#logging), [what is public](#what-is-public) and [the stability promise](#stability).
 The [README](../README.md) covers the command line and links the other guides: the
 [console's commands](console.md), [running a show](running.md) and [how busk works inside](dev/internals.md).
@@ -130,6 +130,23 @@ Reply(text='', ok=True)
 
 ```
 
+`output` is the same tick read back per fixture element, in the show's units instead of DMX
+bytes: intensity, colour, pan, tilt and zoom after the masters and the safety stage, and
+what drives each family of attributes (`"programmer"`, `"playback"`, `"effect"` or
+`"none"`). It lists every element of every fixture by number, a bar's cells one by one:
+
+```python
+>>> output = offline.output                                     # the tick above, per element
+>>> output.seq == frame.seq, len(output.fixtures)               # 2 heads, 4 washes, 12 cells
+(True, 18)
+>>> head = output.fixtures[0]
+>>> head.number, head.intensity, head.color, head.pan, head.zoom
+(101, 0.8, (1.0, 0.75, 0.45), 0.0, 21.0)
+>>> head.source["color"], head.source["position"], head.playback  # playback 1 drives it
+('playback', 'none', 1)
+
+```
+
 **Commands happen now.** Each `execute`, `submit` and script line has taken effect when
 the call returns, at the current engine time. Time moves only with `tick`, so a fade or
 a chase stays where it was until then. `ids=busk.CounterIds()` makes the ids of new
@@ -169,7 +186,10 @@ another): it sets `meta.modified` and backs up the file it replaces.
 `LiveShow` runs the show in real time in your process: the engine and the DMX output as
 threads, and, with `surfaces=True`, the show's control surfaces. It takes commands
 like `OfflineShow`, but its engine ticks on its own (`engineHz` times a second), and
-`snapshot` and `frame` follow it.
+`snapshot`, `frame` and `output` follow it. The engine reads its output back only once
+something has read `output`: the first read turns that on and returns `None`, and from
+the next tick on `output` is the newest tick's. A display polls it 10 to 20 times a
+second.
 
 ```python
 show, _ = busk.load_show("club.show")
@@ -210,7 +230,7 @@ opens no route, so nothing goes to the network; the frames are made all the same
 
 ## Reference
 
-The 28 names of `busk.__all__`. Each has a docstring with the details; path parameters
+The 30 names of `busk.__all__`. Each has a docstring with the details; path parameters
 take `str` or `os.PathLike`.
 
 | Name | What it is |
@@ -222,7 +242,7 @@ take `str` or `os.PathLike`.
 | `read_ofl` | `read_ofl(path, *, manufacturer=None) -> ImportReport`: convert an Open Fixture Library profile |
 | `read_gdtf` | `read_gdtf(path, *, manufacturer=None) -> ImportReport`: convert a GDTF file |
 | `ProfileLibrary` | The built-in profiles plus directories of profiles, for `fixture add`: `get(id)`, `find(id or name)`, iteration, `problems` |
-| `OfflineShow` | A show on a clock you drive: `submit`, `execute`, `run_script`, `save`, `tick`; `show`, `warnings`, `snapshot`, `time` |
+| `OfflineShow` | A show on a clock you drive: `submit`, `execute`, `run_script`, `save`, `tick`; `show`, `warnings`, `snapshot`, `output`, `time` |
 | `LiveShow` | A show in real time in your process: as `OfflineShow`, with `start`, `stop` and `with`, and `frame` instead of `tick` |
 | `DmxFrame` | One engine output: `seq`, `time`, and `universes`, a mapping of universe number to 512 bytes |
 | `Show` | The show file format, a `TypedDict` |
@@ -236,6 +256,8 @@ take `str` or `os.PathLike`.
 | `PlaybackStatus` | One playback in a snapshot: number, name, state, fader level, current cue |
 | `SpeedStatus` | One speed master in a snapshot: BPM, multiplier, beat |
 | `PageStatus` | The current page in a snapshot |
+| `OutputSnapshot` | The output of one tick per fixture element: `seq`, `time`, `fixtures` |
+| `FixtureOutput` | One element in it: `number`, `element`, `intensity`, `color`, `pan`, `tilt`, `zoom`, `source` (what drives each family), `playback` |
 | `IdFactory` | The protocol that makes new entity ids |
 | `CounterIds` | An `IdFactory` that counts: reproducible shows |
 | `BuskError` | The base of every error the API raises on purpose |

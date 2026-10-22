@@ -8,7 +8,7 @@ The public API
 ==============
 
 Every public name is importable from ``busk`` itself; ``__all__`` lists the
-28 of them. The library guide, ``docs/library.md``, has the examples and the
+30 of them. The library guide, ``docs/library.md``, has the examples and the
 reference.
 
 Show documents
@@ -22,13 +22,15 @@ Running a show
     threads, no sockets. :class:`LiveShow` runs the engine and the DMX output
     as threads in the caller's process, optionally with the show's surfaces.
     Both take commands (:meth:`~OfflineShow.submit`), console lines
-    (:meth:`~OfflineShow.execute`) and scripts.
+    (:meth:`~OfflineShow.execute`) and scripts, and read their output back
+    per fixture (:attr:`~OfflineShow.output`).
 Data types
     :class:`Show`, :class:`FixtureProfile` and :data:`Command`, the
     ``TypedDict``\\ s of the file and command formats; :class:`Issue`,
     :class:`CommandResult`, :class:`Reply`, :class:`ImportReport`;
     :class:`EngineSnapshot` with :class:`PlaybackStatus`,
     :class:`SpeedStatus` and :class:`PageStatus`; :class:`DmxFrame`;
+    :class:`OutputSnapshot` with :class:`FixtureOutput`;
     :class:`IdFactory` and :class:`CounterIds`.
 Errors
     :class:`BuskError` is the base of every error the API raises on purpose:
@@ -86,6 +88,7 @@ __all__ = [
     "CounterIds",
     "DmxFrame",
     "EngineSnapshot",
+    "FixtureOutput",
     "FixtureProfile",
     "IdFactory",
     "ImportFailed",
@@ -93,6 +96,7 @@ __all__ = [
     "Issue",
     "LiveShow",
     "OfflineShow",
+    "OutputSnapshot",
     "PageStatus",
     "PlaybackStatus",
     "ProfileLibrary",
@@ -133,6 +137,8 @@ _EXPORTS: dict[str, str] = {
     "PlaybackStatus": "busk.engine.snapshot",
     "SpeedStatus": "busk.engine.snapshot",
     "PageStatus": "busk.engine.snapshot",
+    "OutputSnapshot": "busk.engine.snapshot",
+    "FixtureOutput": "busk.engine.snapshot",
     "UnsupportedFeature": "busk.compiler.compile",
     "OfflineShow": "busk.runner",
     "LiveShow": "busk.runner",
@@ -147,6 +153,8 @@ if TYPE_CHECKING:  # what type checkers see: the same table, as explicit re-expo
     from busk.compiler.compile import UnsupportedFeature as UnsupportedFeature
     from busk.console.console import Reply as Reply
     from busk.engine.snapshot import EngineSnapshot as EngineSnapshot
+    from busk.engine.snapshot import FixtureOutput as FixtureOutput
+    from busk.engine.snapshot import OutputSnapshot as OutputSnapshot
     from busk.engine.snapshot import PageStatus as PageStatus
     from busk.engine.snapshot import PlaybackStatus as PlaybackStatus
     from busk.engine.snapshot import SpeedStatus as SpeedStatus

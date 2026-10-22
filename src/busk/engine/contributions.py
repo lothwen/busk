@@ -58,6 +58,14 @@ layer of a running effect hands the resolver one :class:`Relative` per tick:
 its lanes, its amounts and its weights. :func:`gather_relatives` collects
 the present ones in the order the relative pass applies them,
 ``(priority, seq, order)`` (phase-5-plan §5.6).
+
+Origins
+-------
+Each source and relative layer carries its :class:`Origin`: the programmer,
+a playback (its main and flash sources) or an effect (of a playback or of
+the programmer). The resolver ignores it; the output readout uses it to say
+what drives each lane (:mod:`busk.engine.readout`, GAP-01 of
+``docs/dev/tui/engine-gaps.md``).
 """
 
 from __future__ import annotations
@@ -72,6 +80,25 @@ from numpy.typing import NDArray
 
 from busk.compiler.cues import CompiledCue
 from busk.engine.fades import ContributionSet, distinct
+from busk.model.common import PlaybackId
+
+type OriginKind = Literal["programmer", "playback", "effect"]
+
+
+@dataclass(frozen=True, slots=True)
+class Origin:
+    """What a source or a relative layer belongs to (see the module docs).
+
+    ``playback`` is the playback's id for a playback's sources and for the
+    effects of its cues; ``None`` for the programmer and its effects.
+    """
+
+    kind: OriginKind
+    playback: PlaybackId | None = None
+
+
+PROGRAMMER: Final = Origin("programmer")
+"""The programmer's values, and its highlight."""
 
 
 @dataclass(slots=True, kw_only=True)
@@ -102,9 +129,12 @@ class Source:
     htpWeight: float = 0.0
     intensityScale: float = 1.0
     ltpWeight: float = 0.0
+    origin: Origin | None = None  # None: built by hand (tests); the readout names no driver
 
     @classmethod
-    def of_cue(cls, sourceId: str, priority: int, cue: CompiledCue) -> Source:
+    def of_cue(
+        cls, sourceId: str, priority: int, cue: CompiledCue, origin: Origin | None = None
+    ) -> Source:
         """A source playing ``cue``, absent (all weights 0) until filled."""
         return cls(
             sourceId=sourceId,
@@ -117,6 +147,7 @@ class Source:
             snapLanes=cue.snapLanes,
             snapValues=cue.snapValues,
             snapThresholds=cue.snapThresholds,
+            origin=origin,
         )
 
     @property
@@ -268,6 +299,7 @@ class SequencedSource:
             snapValues=np.empty(snap.size),
             snapThresholds=whole.snapThresholds[snap],
             snapWeights=per_lane(whole.snapWeights, snap.size),
+            origin=whole.origin,
         )
 
     def _fill(self) -> None:
@@ -340,6 +372,7 @@ class Relative:
     weights: NDArray[np.float64] | None = None
     weight: float = 0.0
     clamp: tuple[float, float] | None = None
+    origin: Origin | None = None  # the effect it is a layer of; None: built by hand
 
     @property
     def present(self) -> bool:

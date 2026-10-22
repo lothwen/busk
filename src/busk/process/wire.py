@@ -59,6 +59,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from busk.compiler.compile import CompiledShow, OutputLayout
+from busk.compiler.readout import EMPTY_READOUT
 from busk.compiler.slots import SlotTable
 from busk.convert.dmx import UNIVERSE_SIZE
 from busk.engine.install import Install
@@ -423,12 +424,18 @@ def _memoised[T](original: T, make: Callable[[T], T]) -> T:
 
 def engine_view(compiled: CompiledShow) -> CompiledShow:
     """``compiled`` without what the engine never reads (§5.3): no channels,
-    memo or warnings, and a slot table without its per-slot records and key
-    map (it keeps ``keys``). The same object gives the same view."""
+    memo, warnings or readout lookups, and a slot table without its per-slot
+    records and key map (it keeps ``keys``). The same object gives the same
+    view."""
     return _memoised(
         compiled,
         lambda show: replace(
-            show, slots=_slot_view(show.slots), channels=(), memo=None, warnings=()
+            show,
+            slots=_slot_view(show.slots),
+            readout=EMPTY_READOUT,
+            channels=(),
+            memo=None,
+            warnings=(),
         ),
     )
 

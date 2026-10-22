@@ -53,6 +53,17 @@ is the whole rig running while the input, broadcaster and feedback threads share
 with the engine; the bench's phone and probe run in the same process too, which a real
 phone does not. Phase 7's process split closes it: 0.4 % across processes (below).
 
+**The output readout** (GAP-01, 2026-10-22; measured with the perf suite's helpers, GC
+off). Capturing a tick's output on the engine thread (a copy of the frame and the
+attribution of every lane) takes **0.01 ms** on the Phase 3 show (18 elements, 90 lanes),
+whose tick takes 0.06 ms. On the reference rig (8 192 elements, 37 120 lanes) it takes
+0.6 ms median with the 60 looks and 0.9 ms with 20 effects over them: ticks go from 2.1 to
+2.8–2.9 ms mean and from 3.6–3.8 to 4.8 ms mean (p99 6.1 ms), inside the 10 ms tick. That
+is why the engine captures only while something reads `output`. Turning a capture into
+an `OutputSnapshot`, on the reader's thread, takes 0.04 ms on the Phase 3 show and
+10–11 ms on the reference rig (one `FixtureOutput` per element): polled 20 times a second,
+a fifth of a core.
+
 ## Misses
 
 **Two Phase 4 targets are missed** (details in phase-4-plan step 18):

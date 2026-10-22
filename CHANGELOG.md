@@ -10,6 +10,13 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- `OfflineShow.output` and `LiveShow.output`: the engine's output read back per fixture
+  element, as two new public types, `OutputSnapshot` and `FixtureOutput`
+  ([the library guide](docs/library.md#2-build-a-show-and-render-it-offlineshow)). Each
+  element has its intensity, colour, pan, tilt and zoom in the show's units, after the
+  masters and the safety stage, what drives each family of its attributes (the
+  programmer, a playback, an effect or nothing) and the playback that drives its
+  intensity. A `LiveShow`'s engine reads its output back only once `output` has been read.
 - Tab completion and `?` at the console prompt ([the prompt](docs/console.md#the-prompt)).
   Tab completes commands, keywords and names in quotes, and lists what may come next. `?`
   prints that and the forms of the command. Both follow the parser, the show and the

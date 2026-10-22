@@ -1,8 +1,9 @@
 """The public namespace and its boundary (phase-8-plan §5.3, step 8).
 
-* ``busk.__all__`` is the 28 names of §5.1. Each resolves lazily from the
-  module of the §5.1 table, and the type checkers' re-exports in
-  ``busk/__init__.py`` are the same table.
+* ``busk.__all__`` is the 28 names of §5.1, and the two of GAP-01
+  (``OutputSnapshot``, ``FixtureOutput``; ``docs/dev/tui/engine-gaps.md``).
+  Each resolves lazily from the module of the §5.1 table, and the type
+  checkers' re-exports in ``busk/__init__.py`` are the same table.
 * Nothing else is an attribute of ``busk``.
 * ``tests/golden/public_api.json`` pins the API: the signature of every
   public function and method, the fields of every public dataclass, the keys
@@ -63,6 +64,8 @@ PUBLIC = [
     "SpeedStatus",
     "PageStatus",
     "DmxFrame",
+    "OutputSnapshot",
+    "FixtureOutput",
     "IdFactory",
     "CounterIds",
     # Errors
@@ -72,7 +75,7 @@ PUBLIC = [
     "ImportFailed",
     "ScriptError",
 ]
-"""The §5.1 list, in its order."""
+"""The §5.1 list, in its order, with GAP-01's two after ``DmxFrame``."""
 
 DUNDERS = {"__init__", "__enter__", "__exit__", "__iter__", "__len__", "__str__"}
 """The special methods a public class documents; the rest come from Python."""
@@ -96,7 +99,7 @@ def run(script: str) -> str:
 
 
 def test_all_is_the_planned_list_sorted() -> None:
-    assert len(PUBLIC) == 28
+    assert len(PUBLIC) == 30
     assert busk.__all__ == sorted(PUBLIC)
 
 

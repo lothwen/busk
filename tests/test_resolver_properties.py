@@ -14,6 +14,8 @@
 * **Zero weight:** a source with both weights at 0 changes nothing.
 * **Relative pass:** random sources with random relative contributions
   equal the oracle's §7.5 with continuous suppression.
+* **Attribution** (GAP-01): what drives each lane equals the oracle's
+  per-slot answer, relatives included.
 """
 
 from __future__ import annotations
@@ -25,8 +27,9 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from busk.compiler.cues import cue_from_values
-from busk.engine.contributions import SORT_KEY, Relative, Source
-from reference_resolver import reference_resolve, resolve_contributions
+from busk.engine.contributions import SORT_KEY, Relative, Source, gather_relatives
+from busk.engine.resolver import Resolver
+from reference_resolver import reference_attribute, reference_resolve, resolve_contributions
 from resolver_strategies import (
     COMPILED,
     SLOTS,
@@ -82,6 +85,26 @@ def test_the_relative_pass_equals_the_per_slot_oracle(
     np.testing.assert_allclose(
         resolve(ordered, relative), expected, rtol=0, atol=1e-12, equal_nan=True
     )
+
+
+@given(sources(), relatives())
+def test_the_attribution_equals_the_per_slot_oracle(
+    ordered: list[Source], relative: list[Relative]
+) -> None:
+    present = gather_relatives(relative, [])
+    owners = np.empty(COMPILED.slots.laneCount, dtype=np.intp)
+    Resolver(COMPILED.slots).attribute(ordered, present, owners)
+    count = len(ordered)
+
+    def driver(k: int) -> str | int | None:
+        if k < 0:
+            return None
+        if k < count:
+            return ordered[k].sourceId
+        return next(i for i, r in enumerate(relative) if r is present[k - count])
+
+    expected = reference_attribute(COMPILED.slots, ordered, relative)
+    assert [driver(k) for k in owners.tolist()] == expected
 
 
 @given(drawn_contributors())

@@ -10,6 +10,8 @@ The compiled show holds:
   drives (control channels) keep their ``defaultDmx`` (§13.5);
 * the **slot table** and its default logical frame (§6.1–§6.2,
   :mod:`busk.compiler.slots`);
+* the **readout** lookups that read the logical frame back per fixture
+  element (GAP-01, :mod:`busk.compiler.readout`);
 * the **compiled channels**, one readable record per slot-driven channel
   (:mod:`busk.compiler.channels`);
 * the **conversion plan**, the same channels flattened into arrays for the
@@ -38,9 +40,9 @@ copy-on-write, so an entity the edit did not touch is the very same object
 in the new show. :func:`compile_show` with ``previous`` uses that instead of
 the spec's reverse dependency index:
 
-* the rig (universes, slots, channels, conversion plan, base images) is
-  reused when ``profiles``, ``fixtures`` and ``universes`` are the same
-  lists as before;
+* the rig (universes, slots, channels, conversion plan, base images,
+  readout) is reused when ``profiles``, ``fixtures`` and ``universes`` are
+  the same lists as before;
 * a compiled cue list is reused when, on top of that, the cue list is the
   same object at the same position and every group, preset and effect
   template its entries, releases and effects read is the same object as
@@ -75,6 +77,7 @@ from busk.compiler.playbacks import (
     compile_pages,
     compile_playbacks,
 )
+from busk.compiler.readout import ReadoutLayout, build_readout
 from busk.compiler.rig import RigFixture, byte_offsets, resolve_rig
 from busk.compiler.safety import CompiledSafety, compile_safety, dark_bytes, unpatched_warnings
 from busk.compiler.slots import SlotTable, build_slots
@@ -153,6 +156,7 @@ class CompiledShow:
     universes: tuple[CompiledUniverse, ...]  # sorted by number; index = row of baseImages
     baseImages: NDArray[np.uint8]  # shape (len(universes), 512); read-only
     slots: SlotTable
+    readout: ReadoutLayout  # GAP-01: the output readout's per-element lookups
     channels: tuple[CompiledChannel, ...]
     plan: ConversionPlan
     cueLists: Mapping[CueListId, CompiledCueList]
@@ -225,7 +229,7 @@ def compile_show(show: Show, previous: CompiledShow | None = None) -> CompiledSh
     if same_rig:
         assert previous is not None
         universes, slots, channels = previous.universes, previous.slots, previous.channels
-        base_images, plan = previous.baseImages, previous.plan
+        base_images, plan, readout = previous.baseImages, previous.plan, previous.readout
     else:
         for index, fixture in enumerate(show["fixtures"]):
             if fixture.get("elementPatch"):
@@ -239,6 +243,7 @@ def compile_show(show: Show, previous: CompiledShow | None = None) -> CompiledSh
         rows = {universe.id: row for row, universe in enumerate(universes)}
         rig = resolve_rig(show)
         slots = build_slots(rig)
+        readout = build_readout(rig, slots)
         channels = build_channels(rig, slots, rows)
         base_images = _base_images(rig, rows, len(universes))
         plan = build_plan(channels, slots, len(universes))
@@ -292,6 +297,7 @@ def compile_show(show: Show, previous: CompiledShow | None = None) -> CompiledSh
         universes=universes,
         baseImages=base_images,
         slots=slots,
+        readout=readout,
         channels=channels,
         plan=plan,
         cueLists=cue_lists,

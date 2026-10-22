@@ -20,6 +20,14 @@ takes ``A = max(c.weight for c in absolute contributions of the slot if
 c.priority > r.priority, default 0)``, then ``v + amount·W`` or
 ``v · lerp(1, amount, W)`` with ``W = weight · w · (1 − A)``; ``add``
 results with a clamp are clipped last.
+
+:func:`reference_attribute` (GAP-01) says, slot by slot, what drives each
+lane of that frame: on an LTP lane the last contribution in ``(priority,
+seq)`` order whose weight is above 0 (a snapping lane once it has
+snapped); on an intensity lane, per band with a presence, the contribution
+with the highest ``value · intensityScale · weight`` (the later one on a
+tie), the highest band winning; then the last relative whose ``W`` is above
+0.
 """
 
 from __future__ import annotations
@@ -221,3 +229,54 @@ def apply_relatives(
             low, high = r.clamp
             for lane in r.lanes:
                 frame[lane] = min(max(frame[lane], low), high)
+
+
+def reference_attribute(
+    slots: SlotTable, sources: Sequence[Source], relatives: Sequence[Relative] = ()
+) -> list[str | int | None]:
+    """What drives each lane of :func:`reference_resolve`'s frame: a
+    source's ``sourceId``, the index in ``relatives`` of a relative, or
+    ``None`` for the base (see the module docs)."""
+    by_slot = contributions(slots, sources)
+    owners: list[str | int | None] = [None] * slots.laneCount
+    for index, unsorted in by_slot.items():
+        slot_ = slots.slots[index]
+        cs = sorted(unsorted, key=lambda c: (c.priority, c.seq))
+        if slot_.attribute.merge == "HTP":
+            for _, members in itertools.groupby(cs, key=lambda c: c.priority):
+                best, winner = -1.0, None
+                for c in members:
+                    if c.weight[0] > 0:
+                        value = c.value[0] * c.intensityScale * c.weight[0]
+                        if value >= best:
+                            best, winner = value, c.sourceId
+                if winner is not None:
+                    owners[slot_.laneOffset] = winner
+            continue
+        for c in cs:
+            for lane in range(slot_.laneCount):
+                reached = snapped(slot_, lane, c.weight[lane])
+                if c.weight[lane] > 0 if reached is None else reached:
+                    owners[slot_.laneOffset + lane] = c.sourceId
+    owner = {
+        lane: slot_
+        for slot_ in slots.slots
+        for lane in range(slot_.laneOffset, slot_.laneOffset + slot_.laneCount)
+    }
+    ordered = sorted(
+        (k for k, r in enumerate(relatives) if r.weight > 0),
+        key=lambda k: (relatives[k].priority, relatives[k].seq, relatives[k].order),
+    )
+    for k in ordered:
+        r = relatives[k]
+        for position, lane in enumerate(int(x) for x in r.lanes):
+            slot_ = owner[lane]
+            above = [
+                float(c.weight[lane - slot_.laneOffset])
+                for c in by_slot.get(slot_.index, ())
+                if c.priority > r.priority
+            ]
+            own = 1.0 if r.weights is None else float(r.weights[position])
+            if r.weight * own * (1.0 - max(above, default=0.0)) > 0:
+                owners[lane] = k
+    return owners

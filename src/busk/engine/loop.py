@@ -55,7 +55,9 @@ these stages:
                             assignment (Python's §14.1 double-buffer swap:
                             readers never see a half-written frame, and no
                             lock is needed); an :class:`EngineSnapshot` when
-                            the state changed
+                            the state changed; while :attr:`Engine.captureOutput`
+                            is set, a :class:`~busk.engine.readout.Capture`
+                            of the stage 11 frame (GAP-01)
 ==========================  ==================================================
 
 **Determinism** (§2.7). Every runtime value is a function of the commands
@@ -74,8 +76,9 @@ it (``EngineStats.logDropped``).
 
 **Real-time rules** (§19). The tick does no I/O or logging. It allocates
 only the published ``bytes`` and :class:`Frame` objects, a snapshot when the
-state changed, and numpy temporaries; none of the per-tick ones are tracked
-by the cyclic garbage collector, so they add no GC pauses.
+state changed, a capture while the output is read, and numpy temporaries;
+none of the per-tick ones are tracked by the cyclic garbage collector, so
+they add no GC pauses.
 """
 
 from __future__ import annotations
@@ -113,6 +116,7 @@ from busk.engine.masters import (
     speed_masters,
 )
 from busk.engine.playback_runtime import PlaybackRuntime, Playbacks
+from busk.engine.readout import Capture, capture
 from busk.engine.resolver import Resolver
 from busk.engine.safety import apply_safety
 from busk.engine.snapshot import (
@@ -285,6 +289,13 @@ class Engine:
         """The event log's records (see the module docs); ``None``: no log.
         Set it before the first tick; the tick appends, a writer pops from
         the left."""
+        self.captureOutput = False
+        """Whether each tick publishes :attr:`output` (GAP-01). Any thread
+        may set it; the engine never does, so an engine nobody reads the
+        output of pays nothing for it."""
+        self.output: Capture | None = None
+        """The output of the newest tick that captured it, for
+        :func:`~busk.engine.readout.read_output`; ``None`` before."""
 
     @property
     def compiled(self) -> CompiledShow:
@@ -409,11 +420,30 @@ class Engine:
             layout=self._compiled.layout,
             outputEnabled=runtime.outputEnabled,
         )
+        if self.captureOutput:
+            self.output = self.capture()
         if self._dirty:
             self._dirty = False
             self._publish_snapshot(now)
         if synced is not None:
             self.synced = synced.token
+
+    def capture(self) -> Capture:
+        """The output of the last tick, with what drives each lane (GAP-01,
+        :mod:`busk.engine.readout`). Engine thread only, between two ticks:
+        it reads the last tick's sources. The tick calls it while
+        :attr:`captureOutput` is set; an engine ticked by its caller
+        (:class:`~busk.runner.OfflineShow`) may call it whenever it likes."""
+        return capture(
+            seq=self.stats.ticks,
+            time=self.runtime.now,
+            compiled=self._compiled,
+            frame=self._work,
+            resolver=self._resolver,
+            sources=self._sources,
+            relatives=self._relatives,
+            highlight=self._programmer.highlight,
+        )
 
     def run(self, stop: threading.Event, after_tick: Callable[[], None] | None = None) -> None:
         """Tick at ``engineHz`` until ``stop`` is set (§11.2).

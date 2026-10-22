@@ -259,6 +259,23 @@ presence on that lane among the absolute sources of higher bands. So the program
 higher band suspends a circle on the slots it takes, and fading it in fades the circle out
 instead of cutting it. Additions to attributes with a range are clamped after the pass.
 
+**The output readout** (`busk.compiler.readout`, `busk.engine.readout`; GAP-01 of
+[`tui/engine-gaps.md`](tui/engine-gaps.md)). `OfflineShow.output` and `LiveShow.output` read
+the frame the safety stage left back per fixture element, as the public `OutputSnapshot`.
+Every source and relative layer carries an `Origin` (the programmer, a playback, or an
+effect of either), and `Resolver.attribute` walks them in the resolver's order to say what
+drives each lane: the topmost source present on an LTP lane, on an intensity lane the
+strongest contribution of the highest band present, then the last relative that moves it.
+The highlight's lanes are the programmer's and parked lanes nobody's. While
+`Engine.captureOutput` is set, each tick publishes a `Capture` (a copy of the frame and the
+per-lane owners) by reference; `LiveShow` sets it on the first read of `output`, the engine
+host never does, and `OfflineShow` captures on demand after its tick. `read_output` turns a
+capture into `FixtureOutput`s on the reader's thread, with lookups the compiler builds once
+per rig (`CompiledShow.readout`, left out of the engine process's view): each element's
+lanes, the master dimmer that dims a cell without its own, the colours of its colour
+wheel's slots, and the runs of lanes of each family, so the per-family source is one
+`reduceat`.
+
 **Pages and buttons** (`busk.engine.surfaces`). The engine keeps the current page
 (`PageState`), one for every surface: it starts on the lowest-numbered page, `PAGE` moves
 it by number or by a delta that stops at the ends, and a live edit keeps it by id (a

@@ -22,7 +22,10 @@ where it was. Only :meth:`~OfflineShow.tick` moves time. A
 :class:`LiveShow`'s engine ticks on its own, ``engineHz`` times a second.
 
 Frames are :class:`DmxFrame`\\ s: the engine's frame by universe *number*,
-without its compiled show and output layout, which are internal.
+without its compiled show and output layout, which are internal. The
+``output`` of both facades is the same tick per fixture element, as logical
+values with what drives them (:class:`~busk.engine.snapshot.OutputSnapshot`,
+GAP-01 of ``docs/dev/tui/engine-gaps.md``).
 
 Errors (§5.8): constructing a facade raises
 :class:`~busk.persistence.show_file.ShowLoadError` for an invalid show and
@@ -63,7 +66,8 @@ from busk.engine.clock import SWITCH_INTERVAL, Clock, FakeClock, MonotonicClock
 from busk.engine.install import Stamp
 from busk.engine.link import EngineLink, LocalEngine
 from busk.engine.loop import Engine, Frame
-from busk.engine.snapshot import EngineSnapshot
+from busk.engine.readout import Capture, read_output
+from busk.engine.snapshot import EngineSnapshot, OutputSnapshot
 from busk.errors import ScriptError
 from busk.io.bindings import BindingResolver
 from busk.io.feedback import FeedbackWorker
@@ -263,6 +267,7 @@ class OfflineShow(_Facade):
             settle=self._settle,
         )
         self._time = 0.0
+        self._read: OutputSnapshot | None = None  # the last tick's output, once read
         self._tick(0.0)
 
     @property
@@ -271,6 +276,18 @@ class OfflineShow(_Facade):
         snapshot = self._engine.snapshot
         assert snapshot is not None  # the constructor's tick published one
         return snapshot
+
+    @property
+    def output(self) -> OutputSnapshot:
+        """The last tick's output, per fixture element: intensity, colour,
+        pan, tilt and zoom, and what drives them (see
+        :class:`~busk.engine.snapshot.FixtureOutput`). Made when first read
+        after a tick, then the same object until the next one."""
+        output = self._read
+        if output is None or output.seq != self._engine.stats.ticks:
+            output = read_output(self._engine.capture())
+            self._read = output
+        return output
 
     @property
     def time(self) -> float:
@@ -572,6 +589,7 @@ class LiveShow(_Facade):
         self._threads: list[threading.Thread] = []
         self._switch_interval: float | None = None  # to restore, when tuned
         self._latest: tuple[Frame, DmxFrame] | None = None
+        self._read: tuple[Capture, OutputSnapshot] | None = None  # the last output read
 
     # ----------------------------------------------------------- reading
 
@@ -593,6 +611,30 @@ class LiveShow(_Facade):
         if cached is None or cached[0] is not latest:
             cached = (latest, _dmx_frame(latest))
             self._latest = cached  # one assignment: other threads see the pair whole
+        return cached[1]
+
+    @property
+    def output(self) -> OutputSnapshot | None:
+        """The engine's newest output, per fixture element: intensity,
+        colour, pan, tilt and zoom, and what drives them (see
+        :class:`~busk.engine.snapshot.FixtureOutput`). Poll it, 10 to 20
+        times a second for a display.
+
+        The engine captures its output only once someone reads it: the
+        first read turns that on for good and returns ``None``, as do the
+        reads before the engine's next tick. ``None`` too for ``busk
+        run``'s show, whose engine runs in another process."""
+        engine = self._engine
+        if engine is None:
+            return None  # attached: the CLI's engine
+        engine.captureOutput = True
+        captured = engine.output  # one read: published by reference assignment
+        if captured is None:
+            return None
+        cached = self._read
+        if cached is None or cached[0] is not captured:
+            cached = (captured, read_output(captured))
+            self._read = cached  # one assignment: other threads see the pair whole
         return cached[1]
 
     # ---------------------------------------------------- start and stop

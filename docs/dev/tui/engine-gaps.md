@@ -1,13 +1,14 @@
 # Engine gaps found while planning the TUI
 
 This lists what the busk TUI (`busk_tui`, planned in
-[`docs/dev/tui/implementation-plan.md`](../dev/tui/implementation-plan.md)) needs from the engine
+[`docs/dev/tui/implementation-plan.md`](implementation-plan.md)) needs from the engine
 and cannot get today. It is input for future engine work. The TUI does not work around any of
 these with logic of its own: until a gap is closed, the feature is hidden, disabled, or shown
 read-only, as each entry says.
 
 Written 2026-10-21 against busk 0.1.0 (`3176f99`). The facts below were checked by running the
-commands on `OfflineShow` with `examples/club-night.busk`.
+commands on `OfflineShow` with `examples/club-night.busk`. A closed gap keeps its section, with
+a **Done** note on what was built; the summary's status column says which are closed.
 
 ## How the TUI talks to busk
 
@@ -17,8 +18,9 @@ The TUI runs a `busk.LiveShow` in its own process. One module, `busk_tui/bridge.
 - **Actions** go through `LiveShow.execute(line) -> Reply(text, ok)`, one console line per
   action, echoed in the TUI's log. `submit()` is not used, so the UI teaches the command line.
 - **Reads** use the typed public state: `LiveShow.snapshot` (`EngineSnapshot`),
-  `LiveShow.frame` (`DmxFrame`, for the engine time), `LiveShow.show` (the `Show` document) and
-  `LiveShow.warnings`. The `busk.*` loggers feed the TUI's log pane.
+  `LiveShow.frame` (`DmxFrame`, for the engine time), `LiveShow.show` (the `Show` document),
+  `LiveShow.warnings` and, since GAP-01, `LiveShow.output` (`OutputSnapshot`). The `busk.*`
+  loggers feed the TUI's log pane.
 - **Text is not parsed.** `docs/library.md` says message text (`Reply.text`, CLI output, log
   records) may change in any release, so the TUI never extracts data from the output of
   `programmer`, `info`, `list …` or `library`. It may show such output verbatim.
@@ -42,33 +44,35 @@ Every new read should also reach `busk run`'s console process, so a later TUI at
 
 ## Summary
 
-| Gap | Kind | Priority | Needed by |
-|---|---|---|---|
-| [GAP-01](#gap-01-fixture-output-values) Fixture output values | read | blocking | F1 A/C, F2, F3 |
-| [GAP-02](#gap-02-programmer-state) Programmer state | read | blocking | status bar, prompt, F1, F2, F3, F5, F6 |
-| [GAP-03](#gap-03-session-state-undo-redo-unsaved-edits) Session state (undo, redo, unsaved edits) | read | important | prompt, quit |
-| [GAP-04](#gap-04-flash-and-playback-buttons-from-the-console) Flash and playback buttons from the console | action | important | F1 |
-| [GAP-05](#gap-05-relative-and-per-component-attribute-values) Relative and per-component attribute values | action | important | F2 |
-| [GAP-06](#gap-06-one-undo-step-for-a-gesture) One undo step for a gesture | action | important | F2 |
-| [GAP-07](#gap-07-output-route-status) Output route status | read | important | status bar, F8 |
-| [GAP-08](#gap-08-surface-status) Surface status | read | important | F9 |
-| [GAP-09](#gap-09-effect-runtime-state) Effect runtime state | read | important | F1 B, F5 |
-| [GAP-10](#gap-10-confirmation-before-dangerous-lines) Confirmation before dangerous lines | read | important | prompt |
-| [GAP-11](#gap-11-running-the-tui-against-busk-run) Running the TUI against `busk run` | host | important | everything, on stage |
-| [GAP-12](#gap-12-concurrency-contract-of-execute) Concurrency contract of `execute()` | contract | important | responsiveness |
-| [GAP-13](#gap-13-control-input-monitor) Control input monitor | read | nice-to-have | F9 |
-| [GAP-14](#gap-14-stop-and-restart-a-programmer-effect) Stop and restart a programmer effect | action | nice-to-have | F1 B, F5 |
-| [GAP-15](#gap-15-effect-template-library) Effect template library | read | nice-to-have | F5 |
-| [GAP-16](#gap-16-fixture-category) Fixture category | read | nice-to-have | F1 A/C, F8 |
-| [GAP-17](#gap-17-playback-colour) Playback colour | read | nice-to-have | F1 |
-| [GAP-18](#gap-18-quit-signal) Quit signal | read | nice-to-have | prompt |
-| [GAP-19](#gap-19-status-under-liveshow) `status` under `LiveShow` | action | nice-to-have | prompt |
-| [GAP-20](#gap-20-completion-and-hints) Completion and hints | read | nice-to-have | prompt |
-| [GAP-21](#gap-21-engine-health) Engine health | read | nice-to-have | status bar |
+| Gap | Kind | Priority | Needed by | Status |
+|---|---|---|---|---|
+| [GAP-01](#gap-01-fixture-output-values) Fixture output values | read | blocking | F1 A/C, F2, F3 | **done** 2026-10-22 |
+| [GAP-02](#gap-02-programmer-state) Programmer state | read | blocking | status bar, prompt, F1, F2, F3, F5, F6 | open |
+| [GAP-03](#gap-03-session-state-undo-redo-unsaved-edits) Session state (undo, redo, unsaved edits) | read | important | prompt, quit | open |
+| [GAP-04](#gap-04-flash-and-playback-buttons-from-the-console) Flash and playback buttons from the console | action | important | F1 | open |
+| [GAP-05](#gap-05-relative-and-per-component-attribute-values) Relative and per-component attribute values | action | important | F2 | open |
+| [GAP-06](#gap-06-one-undo-step-for-a-gesture) One undo step for a gesture | action | important | F2 | open |
+| [GAP-07](#gap-07-output-route-status) Output route status | read | important | status bar, F8 | open |
+| [GAP-08](#gap-08-surface-status) Surface status | read | important | F9 | open |
+| [GAP-09](#gap-09-effect-runtime-state) Effect runtime state | read | important | F1 B, F5 | open |
+| [GAP-10](#gap-10-confirmation-before-dangerous-lines) Confirmation before dangerous lines | read | important | prompt | open |
+| [GAP-11](#gap-11-running-the-tui-against-busk-run) Running the TUI against `busk run` | host | important | everything, on stage | open |
+| [GAP-12](#gap-12-concurrency-contract-of-execute) Concurrency contract of `execute()` | contract | important | responsiveness | open |
+| [GAP-13](#gap-13-control-input-monitor) Control input monitor | read | nice-to-have | F9 | open |
+| [GAP-14](#gap-14-stop-and-restart-a-programmer-effect) Stop and restart a programmer effect | action | nice-to-have | F1 B, F5 | open |
+| [GAP-15](#gap-15-effect-template-library) Effect template library | read | nice-to-have | F5 | open |
+| [GAP-16](#gap-16-fixture-category) Fixture category | read | nice-to-have | F1 A/C, F8 | open |
+| [GAP-17](#gap-17-playback-colour) Playback colour | read | nice-to-have | F1 | open |
+| [GAP-18](#gap-18-quit-signal) Quit signal | read | nice-to-have | prompt | open |
+| [GAP-19](#gap-19-status-under-liveshow) `status` under `LiveShow` | action | nice-to-have | prompt | open |
+| [GAP-20](#gap-20-completion-and-hints) Completion and hints | read | nice-to-have | prompt | open |
+| [GAP-21](#gap-21-engine-health) Engine health | read | nice-to-have | status bar | open |
 
 ---
 
 ## GAP-01: Fixture output values
+
+**Status:** done 2026-10-22 (see **Done** at the end of this section).
 
 **Needed by:** F1 layout A (OUTPUT grid colours, selection), F1 layout C (pan arrow and tilt on
 movers), F3 (live intensity, colour, pan, tilt, zoom and source columns), F2 (the encoders'
@@ -110,6 +114,49 @@ class OutputSnapshot:
 per element, click to select, and a dim note "live output not available yet". Layout C draws
 fixtures without pan arrows or tilt. F3 hides the live columns and the source legend. The F2
 encoders show no value (see GAP-02).
+
+**Done** (2026-10-22). `OfflineShow.output -> OutputSnapshot` and `LiveShow.output ->
+OutputSnapshot | None`, with `OutputSnapshot` and `FixtureOutput` in `busk.__all__` (now 30
+names), fields as suggested above. `seq` and `time` are those of the tick, as in its
+`DmxFrame`. Documented in `docs/library.md` (section 2 and the reference), the classes'
+docstrings and `docs/dev/internals.md` ("The output readout"). Where it differs from the
+suggestion, or settles what the suggestion left open:
+
+- **Captured on demand.** Reading the output back costs the engine thread a copy of the frame
+  and the attribution of every lane: 0.01 ms a tick on the Phase 3 show, 0.6–0.9 ms on the
+  reference rig (`docs/dev/benchmarks.md`). So a `LiveShow`'s engine captures only once
+  `output` has been read: **the first read returns `None`**, and from the next tick on every
+  tick is captured, published by reference. `OfflineShow.output` is made on demand after its
+  tick. Turning a capture into `FixtureOutput`s runs on the reader's thread (0.04 ms on the
+  Phase 3 show, 10–11 ms for the reference rig's 8 192 elements).
+- **Not yet under `busk run`.** The attached show's `output` is `None`, like its `frame`: the
+  engine process sends the console process only snapshots. Carrying both is now part of
+  [GAP-11](#gap-11-running-the-tui-against-busk-run).
+- **`source`** has a key for every family the element has: `intensity`, `position`, `color`,
+  `beam`, and also `focus` and `shutter`. Within a family the programmer wins, then an
+  effect, then a playback. The highlight counts as the programmer; a parked attribute is
+  `"none"` (park holds it, whatever drives it). Masters and blackout change the value, not
+  the source. On a lane, what drives it is the topmost source present there; on an intensity
+  lane, the strongest of the highest band present (so a band fading in takes over at once,
+  even at 0); a relative effect (`add`, `multiply`) drives a lane it moves.
+- **`intensity`** is the element's own, times its fixture's master dimmer when it has no
+  dimmer of its own (a bar's cells on the first cell's dimmer, as OFL imports them); 1.0 when
+  nothing dims it. **`playback`** is the playback whose cue or effect drives that intensity.
+- **`color`** is the colour slot's `r, g, b` plus an explicit `w`, through the colour wheel's
+  filter when the profile gives the wheel slot a colour (white for an element with only a
+  wheel). CTO, explicit amber and UV, and colour macros are not shown. `None` when the
+  element has neither a colour nor a colour wheel.
+- **`pan`, `tilt`, `zoom`** are before the fixture's orientation (inversion, offsets, swap):
+  the show's coordinates, which is what a stage plot needs.
+- Unpatched fixtures are listed: they are programmable.
+- Tests: `tests/test_output_readout.py` (both facades, every rule above), the attribution in
+  `tests/test_resolver.py`, and a property test against a per-slot oracle
+  (`reference_attribute`) in `tests/test_resolver_properties.py`.
+
+The TUI can now fill everything this gap blocked, except the F2 encoders' programmer value
+(GAP-02): layout A's OUTPUT colours, layout C's pan arrows and tilt, F3's live columns and
+source colours, and the encoders' output value. The bridge polls `output` with the snapshot
+and treats its first `None` like the snapshot's.
 
 ## GAP-02: Programmer state
 
@@ -398,7 +445,9 @@ its own process, but its console process has a line prompt, and its seam for a f
   process, talking to a running `busk run`.
 
 Either way the TUI keeps the same bridge API (`execute`, `snapshot`, `frame`, `show`, and the
-reads above).
+reads above). Today the attached show's `frame` and `output` ([GAP-01](#gap-01-fixture-output-values))
+are `None`: the engine process sends the console process only snapshots, so either option
+must carry the frames and the output captures too.
 
 **Priority:** important.
 

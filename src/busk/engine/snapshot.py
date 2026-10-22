@@ -6,13 +6,20 @@ it shows changed: a command was applied or a release finished. Other threads
 (the CLI's status line now, the Phase 6 API later) read
 :attr:`Engine.snapshot <busk.engine.loop.Engine.snapshot>` and never see a
 half-built one.
+
+An :class:`OutputSnapshot` (GAP-01) is the other read: the output per
+fixture element. It changes every tick, so the engine publishes only its raw
+form, and only while asked (:mod:`busk.engine.readout`).
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import Literal
 
 from busk.engine.playback_runtime import PlaybackState
+from busk.model.attributes import AttributeFamily
 from busk.model.common import MasterId, PlaybackId
 from busk.model.playback import FaderFunction
 
@@ -108,6 +115,68 @@ class EngineSnapshot:
     page: PageStatus | None = None  # the current page; None when the show has none
     fadeTime: float | None = None  # seconds
     outputEnabled: bool = True
+
+
+type OutputSource = Literal["programmer", "playback", "effect", "none"]
+"""What drives an attribute in the output: the programmer (its values and its
+highlight), a playback (its cues, flash included), an effect (of a playback's
+cue or of the programmer), or nothing (the default, a ``--values`` frame, or
+park)."""
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class FixtureOutput:
+    """One fixture element as the engine outputs it (GAP-01 of
+    ``docs/dev/tui/engine-gaps.md``).
+
+    The values are the logical ones, after the masters, blackout, park,
+    limits and the highlight, and before the profile turns them into DMX.
+    So they are what the fixture is asked to do, in the show's units:
+
+    * ``intensity`` (0..1) is what the element emits: its own intensity, times
+      its fixture's master dimmer when it has none of its own (a bar's cells
+      on the first cell's dimmer). An element dimmed by nothing emits its
+      colour as it is: 1.0;
+    * ``color`` is linear RGB, 0..1, at full intensity: the colour slot's
+      ``r, g, b`` plus an explicit ``w``, through the colour wheel's filter
+      when the wheel slot has a colour in the profile. ``None``: the element
+      has neither a colour nor a colour wheel. CTO, explicit amber and UV,
+      and colour macros are not shown;
+    * ``pan``, ``tilt`` and ``zoom`` are in degrees, before the fixture's
+      orientation; ``None``: the element has no such attribute.
+
+    ``source`` says what drives each family of attributes the element has
+    (``"intensity"``, ``"position"``, ``"color"``, ``"beam"``, ``"focus"``,
+    ``"shutter"``): of the attributes of a family, the programmer wins, then
+    an effect, then a playback. ``playback`` is the number of the playback
+    whose cue or effect drives the intensity; ``None`` when it is the
+    programmer or nothing.
+    """
+
+    number: int  # the fixture's number (101)
+    element: int  # counted from 1, as the console counts them (301.3); 1 for one element
+    intensity: float
+    color: tuple[float, float, float] | None
+    pan: float | None
+    tilt: float | None
+    zoom: float | None
+    source: Mapping[AttributeFamily, OutputSource]
+    playback: int | None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class OutputSnapshot:
+    """The engine's output at one tick, per fixture element (GAP-01).
+
+    ``seq`` and ``time`` are those of the tick, as in the
+    :class:`~busk.runner.DmxFrame` it made. ``fixtures`` lists every
+    element of every fixture, patched or not, by fixture number, then
+    element.
+    """
+
+    seq: int
+    time: float
+    fixtures: tuple[FixtureOutput, ...]
 
 
 @dataclass(frozen=True, kw_only=True)

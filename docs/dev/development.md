@@ -83,8 +83,9 @@ The suite also passes on Python 3.12 and 3.13, for example
 | `test_limitations.py` | Appendix A has no ignored feature since Phase 7 (8 in Phase 3, 4 in Phase 4, 2 in Phase 5, 1 in Phase 6: its limits); every other ignored feature is reported with its path; what Phase 6 plays (pages, every button and fader function, soft pickup, fade-time masters, feedback, OSC and web surfaces, Art-Net and DMX-USB) and what Phase 7 enforces (limits, park, a stall that darkens) is no longer listed |
 | `test_curves.py` | The six curves and Bézier: formulas, endpoints, monotonicity, Bézier against CSS reference values, interning |
 | `test_fades.py` | Envelopes; `ContributionSet`: retarget semantics (unchanged slots keep their fade, a slot changes as a whole, scaled presences, NaN extras), the sequence rules, freeze, remap, and five invariants under random retargets (hypothesis) |
-| `test_resolver.py` | Every §7.3 and §7.4 behaviour, per-lane weights and per-lane snap thresholds, and Phase 5's relative pass (order, continuous suppression by higher bands, clamps), each checked against the per-slot oracle (`reference_resolver.py`) |
-| `test_resolver_properties.py` | Hypothesis: resolver == literal §7.7 oracle within 1e-12 (per-lane weights and relative contributions included); HTP in a band commutative and ≥ every input; LTP lanes in the hull of default and inputs; zero weight is a no-op |
+| `test_resolver.py` | Every §7.3 and §7.4 behaviour, per-lane weights and per-lane snap thresholds, and Phase 5's relative pass (order, continuous suppression by higher bands, clamps), each checked against the per-slot oracle (`reference_resolver.py`); GAP-01's attribution of each lane to what drives it |
+| `test_resolver_properties.py` | Hypothesis: resolver == literal §7.7 oracle within 1e-12 (per-lane weights and relative contributions included); HTP in a band commutative and ≥ every input; LTP lanes in the hull of default and inputs; zero weight is a no-op; the attribution == the oracle's, relatives included |
+| `test_output_readout.py` | GAP-01's `output` of both facades: every element by fixture number, in the show's units after masters, blackout, park, limits and the highlight; the colour wheel's filter and an explicit white; a bar's cells on its master dimmer; what drives each family (programmer, effect, playback, none) and which playback drives the intensity; a live edit's new rig; the readout compiled with the rig and left out of the engine process; a `LiveShow` captures only once read |
 | `test_seq_runs.py` | Per-slot sequence numbers: a contributor split into runs between the other contributors' numbers composites exactly in `(priority, seq)` order (hypothesis against the oracle) |
 | `test_playback_runtime.py` | The state machine, one case per row and state; weights per fader mode; the threshold latch; autoStart/autoRelease (`size` faders too); flash, `temp`, `priorityBoost`; exclusivity (own release times, never on flash); release timing; the flash bank's lifecycle |
 | `test_masters.py` | The GM scales intensity lanes only; blackout zeroes flashes and override bands; toggling either away and back gives an identical frame and identical runtime state; group masters multiply per member, intensity only, before the GM, and follow live edits |
@@ -153,7 +154,7 @@ The suite also passes on Python 3.12 and 3.13, for example
 src/busk/
   __init__.py            # the public API (Phase 8): __all__, lazy re-exports, the NullHandler
   errors.py              # BuskError, ScriptError (the public errors' base and the script one)
-  runner.py              # OfflineShow, LiveShow, DmxFrame; _LocalRun (engine and output threads)
+  runner.py              # OfflineShow, LiveShow, DmxFrame, their output; _LocalRun (engine and output threads)
   cli.py  __main__.py
   model/                 # persistent schema (§5.1–§5.17) as TypedDicts
     common.py            #   ids, EntityBase, TargetRef/TargetKey, STRICT, number aliases
@@ -194,6 +195,7 @@ src/busk/
     compile.py           #   CompiledShow, compile_show(), OutputLayout (what the root's output reads)
     rig.py               #   fixtures resolved against profiles; element analysis
     slots.py             #   Slot, SlotTable, build_slots(): lanes and the default frame
+    readout.py           #   ReadoutLayout, build_readout(): per-element lookups of the output readout (GAP-01)
     lanes.py             #   encode_value(): attribute value → lanes
     channels.py          #   CompiledChannel, build_channels()
     cues.py              #   CompiledCue, CueCompiler, cue_from_values(), TimingTable (§6.3)
@@ -217,12 +219,13 @@ src/busk/
     waveforms.py         #   the nine §10.3 waveforms, vectorised
     effects.py           #   EffectClock, EffectRuntime, EffectBank: running effects (§10)
     playback_runtime.py  #   PlaybackRuntime (state machine, cue position, chase, effect banks, manual crossfade), Playbacks (buttons, swop)
-    contributions.py     #   Source, SequencedSource (runs of per-slot numbers), gather(), Relative
+    contributions.py     #   Source, SequencedSource (runs of per-slot numbers), gather(), Relative, Origin
     resolver.py          #   Resolver: LTP layer stack + snapping, HTP per band, per-lane weights, relative pass (§7)
     masters.py           #   grand and group masters, blackout (§12; the engine leaves blackout to safety.py); SpeedMasterRuntime, tap tempo (§11.3); fade-time override
     safety.py            #   apply_safety(): highlight, park, blackout, limits, strobe lanes (§12, stage 11)
     surfaces.py          #   PageState, HeldButtons, Pickup: the page, held buttons, soft takeover
-    snapshot.py          #   EngineSnapshot, PlaybackStatus, SpeedStatus (beat anchors), PageStatus
+    snapshot.py          #   EngineSnapshot, PlaybackStatus, SpeedStatus (beat anchors), PageStatus; OutputSnapshot, FixtureOutput (GAP-01)
+    readout.py           #   Capture, capture(), read_output(): the output per fixture element and what drives it (GAP-01)
     install.py           #   Install, ProgrammerFrame, ProgrammerRuntime (fading, its effect bank), remap_lanes()
     loop.py              #   Frame, EngineStats, EngineRuntime, Engine (stages 1–13, restore, tick errors, bounded drain)
     link.py              #   EngineLink, LocalEngine: how other threads read and write an engine (LiveShow, --threads)

@@ -1,9 +1,10 @@
 """Resolver: each §7.3 (LTP) and §7.4 (HTP) behaviour, the snap thresholds,
-the per-lane weights of slot-by-slot fades, and the §7.5 relative pass with
-continuous suppression (phase-5-plan §5.6).
+the per-lane weights of slot-by-slot fades, the §7.5 relative pass with
+continuous suppression (phase-5-plan §5.6), and the attribution of each lane
+to what drives it (GAP-01).
 
-Every resolve here is also checked against the per-slot oracle
-(``reference_resolver.py``).
+Every resolve and attribution here is also checked against the per-slot
+oracle (``reference_resolver.py``).
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ from busk.compiler.compile import CompiledShow
 from busk.compiler.cues import cue_from_values
 from busk.engine.contributions import SORT_KEY, Relative, Source, gather, gather_relatives
 from busk.engine.resolver import Resolver
-from reference_resolver import reference_resolve
+from reference_resolver import reference_attribute, reference_resolve
 
 type Values = dict[tuple[str, str], list[float]]
 
@@ -562,3 +563,62 @@ def test_coverage_does_not_leak_from_one_tick_to_the_next(compiled: CompiledShow
         look = source(compiled, {(covered, "pan"): [0.0]}, seq=5, priority=150)
         resolver.resolve([base, look], compiled.slots.defaultFrame, frame, [circle])
     assert pan(compiled, frame) == -15.0
+
+
+# -------------------------------------------------------------- attribution
+
+
+def drivers(
+    compiled: CompiledShow,
+    *sources: Source,
+    relatives: Sequence[Relative] = (),
+    lanes: Sequence[tuple[str, str]] = (),
+) -> list[str | int | None]:
+    """What drives the first lane of each ``(fixture, attribute)`` of ``lanes``
+    (a ``sourceId``, the index of a relative in ``relatives``, ``None``),
+    with the production resolver, checked against the oracle."""
+    ordered = sorted(sources, key=SORT_KEY)
+    present = gather_relatives(relatives, [])
+    owners = np.empty(compiled.slots.laneCount, dtype=np.intp)
+    Resolver(compiled.slots).attribute(ordered, present, owners)
+
+    def driver(k: int) -> str | int | None:
+        if k < 0:
+            return None
+        if k < len(ordered):
+            return ordered[k].sourceId
+        return next(i for i, r in enumerate(relatives) if r is present[k - len(ordered)])
+
+    found = [driver(k) for k in owners.tolist()]
+    assert found == reference_attribute(compiled.slots, ordered, relatives)
+    return [found[slot_of(compiled, f, a).laneOffset] for f, a in lanes]
+
+
+def test_the_topmost_present_source_drives_an_ltp_lane(compiled: CompiledShow) -> None:
+    below = source(compiled, {("fx-mh1", "pan"): [10.0], ("fx-mh1", "tilt"): [5.0]}, seq=1)
+    fading = source(compiled, {("fx-mh1", "pan"): [20.0], ("fx-mh1", "tilt"): [9.0]}, seq=2)
+    fading.ltpWeight = 0.25  # on its way in: it drives already
+    weigh(compiled, fading, {("fx-mh1", "tilt"): 0.0})  # its tilt has not started yet
+    lanes = [("fx-mh1", "pan"), ("fx-mh1", "tilt"), ("fx-mh2", "pan")]
+    assert drivers(compiled, below, fading, lanes=lanes) == ["s2", "s1", None]
+
+
+def test_the_strongest_intensity_of_the_highest_band_drives(compiled: CompiledShow) -> None:
+    bright = source(compiled, {("fx-mh1", "intensity"): [0.8]}, seq=1)
+    dim = source(compiled, {("fx-mh1", "intensity"): [0.3]}, seq=2)  # newer, but weaker
+    lanes = [("fx-mh1", "intensity")]
+    assert drivers(compiled, bright, dim, lanes=lanes) == ["s1"]
+    tie = source(compiled, {("fx-mh1", "intensity"): [0.8]}, seq=3)
+    assert drivers(compiled, bright, dim, tie, lanes=lanes) == ["s3"]  # a tie: the later
+    above = source(compiled, {("fx-mh1", "intensity"): [0.0]}, seq=4, priority=100, htp=0.2)
+    assert drivers(compiled, bright, above, lanes=lanes) == ["s4"]  # taking over, even at 0
+
+
+def test_a_relative_drives_where_no_higher_band_covers_it(compiled: CompiledShow) -> None:
+    base = source(compiled, {**BASE_PAN, ("fx-mh2", "pan"): [-30.0]}, seq=1)
+    look = source(compiled, {("fx-mh1", "pan"): [0.0]}, seq=5, priority=150)
+    circle = relative(compiled, "add", {("fx-mh1", "pan"): 15.0, ("fx-mh2", "pan"): 15.0}, seq=2)
+    lanes = [("fx-mh1", "pan"), ("fx-mh2", "pan")]
+    assert drivers(compiled, base, look, relatives=[circle], lanes=lanes) == ["s5", 0]
+    look.ltpWeight = 0.5  # fading in: the circle still moves the pan, by half
+    assert drivers(compiled, base, look, relatives=[circle], lanes=lanes) == [0, 0]

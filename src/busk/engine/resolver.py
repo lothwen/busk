@@ -66,6 +66,17 @@ after the pass (§7.7 clamps last); every other step stays in range on its
 own (multiply amounts and weights are in ``0..1``). Without relatives the
 resolver does exactly what it did before.
 
+**Attribution** (GAP-01 of ``docs/dev/tui/engine-gaps.md``).
+:meth:`Resolver.attribute` walks the same sources and relatives in the same
+order and writes, per lane, which one drives it: the topmost source present
+on an LTP lane (its effective weight above 0; a snap lane once its
+threshold is reached), on an intensity lane the strongest
+``value · intensityScale · weight`` of the highest band present there (a
+tie goes to the later source), and over both the last relative layer that
+moves the lane (``W > 0`` after suppression). A lane nothing touched keeps
+the base. The engine runs it only for the output readout
+(:mod:`busk.engine.readout`), never to resolve a frame.
+
 **Cost.** Python loops run over sources and bands only, never over slots;
 each source costs a few fancy-index operations. The scratch arrays are
 allocated once.
@@ -93,6 +104,8 @@ class Resolver:
         self._presence = np.zeros(count)  # P of the current band
         self._max = np.zeros(count)  # M of the current band
         self._cover = np.zeros(slots.laneCount)  # A: coverage above a relative band, per lane
+        self._best = np.zeros(count)  # attribution: the strongest intensity of the band so far …
+        self._winner = np.zeros(count, dtype=np.intp)  # … and the source that brought it
 
     def resolve(
         self,
@@ -173,6 +186,68 @@ class Resolver:
         frame[self._intensity] = value
         if relatives:
             self._relative_pass(sources, frame, relatives)
+
+    def attribute(
+        self,
+        sources: Sequence[Source],
+        relatives: Sequence[Relative],
+        owners: NDArray[np.intp],
+    ) -> None:
+        """Write into ``owners`` what drives each lane of the frame that
+        :meth:`resolve` makes of the same ``sources`` and ``relatives`` (see
+        the module docs): the index of a source in ``sources``, ``len(sources)``
+        plus the index of a relative in ``relatives``, or ``-1`` for the base."""
+        owners.fill(-1)
+        best, winner = self._best, self._winner
+        index, count = 0, len(sources)
+        while index < count:
+            band = sources[index].priority
+            touched = False  # did any source of this band bring intensity?
+            while index < count and sources[index].priority == band:
+                source, k = sources[index], index
+                index += 1
+                weight = source.ltpWeight
+                if weight > 0.0:
+                    lanes = source.ltpLanes
+                    if lanes.size:
+                        weights = source.ltpWeights
+                        if weights is not None:
+                            lanes = lanes[_times(weights, weight) > 0.0]
+                        owners[lanes] = k
+                    lanes = source.snapLanes
+                    if lanes.size:
+                        weights = source.snapWeights
+                        reached = weight if weights is None else _times(weights, weight)
+                        owners[lanes[source.snapThresholds <= reached]] = k
+                weight = source.htpWeight
+                positions = source.htpPos
+                if weight > 0.0 and positions.size:
+                    if not touched:
+                        best.fill(-1.0)
+                        winner.fill(-1)
+                        touched = True
+                    weights = source.htpWeights
+                    w = weight if weights is None else _times(weights, weight)
+                    contribution = source.htpValues * source.intensityScale * w
+                    wins = contribution >= best[positions]
+                    if weights is not None:
+                        wins &= w > 0.0
+                    best[positions[wins]] = contribution[wins]
+                    winner[positions[wins]] = k
+            if touched:
+                held = winner >= 0
+                owners[self._intensity[held]] = winner[held]
+        if relatives:
+            cover = self._coverage(sources, relatives)
+            for j, relative in enumerate(relatives, start=count):
+                lanes = relative.lanes
+                moved: float | NDArray[np.float64] = relative.weight
+                if relative.weights is not None:
+                    moved = _times(relative.weights, relative.weight)
+                above = cover.get(relative.priority)
+                if above is not None:
+                    moved = moved * (1.0 - above[lanes])
+                owners[lanes[np.broadcast_to(np.greater(moved, 0.0), lanes.shape)]] = j
 
     def _relative_pass(
         self, sources: Sequence[Source], frame: NDArray[np.float64], relatives: Sequence[Relative]
