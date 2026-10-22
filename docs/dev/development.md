@@ -100,6 +100,7 @@ The suite also passes on Python 3.12 and 3.13, for example
 | `test_patch.py` | Copy-on-write patches: inverse ops restore the show exactly (hypothesis: random op sequences undone step by step and at once), untouched subtrees are the same objects, inputs are never mutated, id paths, protected paths |
 | `test_validate_edit.py` | Per-edit validation equals a full `validate_show` on random edits of Appendix A (hypothesis), issue for issue, and normalises exactly like a load; paths are show-level |
 | `test_edits.py` | The exact ops of `ADD` / `SET` / `DELETE` / `PATCH_FIXTURE` / `ASSIGN_PLAYBACK`; rejections before validation (protected paths, unknown ids) and by it (every reference to a deleted group, duplicate numbers, structure), and an edit that cannot compile |
+| `test_programmer_status.py` | GAP-02's `programmer` of both facades: the selection as `(number, element)` in order; values in the show's units, in the programmer's order; a preset reference with each element's own value; the modes; effects as the show file holds them; copies; dormant targets, values, preset references and effects left out and back with an undo; `version` per change of the content, a show edit alone changing it, and nothing new keeping the object; a `LiveShow` and `busk run`'s attached show |
 | `test_programmer.py` | Selection order under add/remove, groups, `select` playbacks; literal, spread (by selection index), per-target and preset sources; skipped targets counted; range and shape errors; `APPLY_PRESET` scope lookup; clear and blind; dormant values; JSON round trip; `ADD_EFFECT` / `REMOVE_EFFECT` (validated, replaced by id, cleared, dormant) |
 | `test_record_group.py` · `test_record_preset.py` · `test_record_cue.py` | Recording rules of phase-3-plan §5.5: the two worked cases (Appendix A's Blue cue rebuilt; the merge), group-cover tie-breaks, registry order, scope cascade and its fallbacks, preset references flattened in presets, shadowing entries removed on merge, `remove`, spread restriction keeping bit-identical lanes, `freeze`, numbering after `"3.5"`, layouts; Phase 4: a tracking list stores changes only; Phase 5: effects recorded, filtered by family, merged and removed by id, kept as group references, and tracked rather than stored when unchanged |
 | `test_session.py` | A rejected edit (or a batch whose last command fails) changes nothing anywhere; one undo timeline across programmer and show steps; redo cleared by a new step; blind and the fade time never undone; undo all → the initial show; dormant values return; installs in commit order; a performance command is queued while an edit holds the lock; `post` keeps order; `SELECT_PLAYBACK` on the current cue |
@@ -154,7 +155,7 @@ The suite also passes on Python 3.12 and 3.13, for example
 src/busk/
   __init__.py            # the public API (Phase 8): __all__, lazy re-exports, the NullHandler
   errors.py              # BuskError, ScriptError (the public errors' base and the script one)
-  runner.py              # OfflineShow, LiveShow, DmxFrame, their output; _LocalRun (engine and output threads)
+  runner.py              # OfflineShow, LiveShow, DmxFrame, their output and programmer; _LocalRun (engine and output threads)
   cli.py  __main__.py
   model/                 # persistent schema (§5.1–§5.17) as TypedDicts
     common.py            #   ids, EntityBase, TargetRef/TargetKey, STRICT, number aliases
@@ -176,6 +177,7 @@ src/busk/
     timeline.py          #   the one undo/redo timeline
     state.py             #   ShowState: a committed show, compiled, with its lookups
     programmer.py        #   Programmer (values and effects) and its handlers (§5.14)
+    status.py            #   ProgrammerStatus, ProgrammerValue, programmer_status(): the programmer as a display reads it (GAP-02)
     frame.py             #   build_frame(), slot_remap(): what the engine gets
     library.py           #   ProfileLibrary, EffectLibrary
     ids.py               #   RandomIds, CounterIds

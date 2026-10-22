@@ -6,7 +6,7 @@ behind the `tui` extra (`pip install busk[tui]`) with its own command, `busk-tui
 
 Inputs: the TUI specification and mockups (`busk_tui-specification.md`, `images/`,
 `Busk_TUI.html`, outside the repo) and the engine as it is. Companion document:
-[`docs/tui/engine-gaps.md`](../../tui/engine-gaps.md) (GAP-01 … GAP-21).
+[`docs/tui/engine-gaps.md`](engine-gaps.md) (GAP-01 … GAP-21).
 
 **The engine comes first.** The spec and the HTML prototype describe the intended look and
 workflow. Where they differ from busk (command syntax, attribute names, how cues, pages, effects

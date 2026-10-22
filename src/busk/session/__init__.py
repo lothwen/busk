@@ -12,6 +12,7 @@ frame, or both) through the engine's own command queue.
 ``state``       :class:`~busk.session.state.ShowState`: a committed show with its
                 compiled form and the lookups handlers share
 ``programmer``  the programmer value object and its command handlers
+``status``      the programmer as a display reads it (public: ``ProgrammerStatus``)
 ``frame``       programmer frames and slot remaps for the engine
 ``library``     the fixture profile library
 ``ids``         entity id factories

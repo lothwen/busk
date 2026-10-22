@@ -109,6 +109,7 @@ class SessionSnapshot:
 
     show: Show
     compiled: CompiledShow
+    state: ShowState  # the show, compiled, with its lookups (GAP-02's programmer status reads it)
     programmer: Programmer
     dirty: bool  # the show has edits that are not saved
     showVersion: int  # +1 per committed show change (edit, undo, redo, save)
@@ -581,6 +582,7 @@ class Session:
         self.snapshot = SessionSnapshot(
             show=state.show,
             compiled=state.compiled,
+            state=state,
             programmer=self._programmer,
             dirty=self._dirty,
             showVersion=self._versions[0],

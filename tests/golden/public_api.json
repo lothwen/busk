@@ -186,6 +186,7 @@
       "execute": "(self, line: str) -> Reply",
       "frame": "property: DmxFrame | None",
       "output": "property: OutputSnapshot | None",
+      "programmer": "property: ProgrammerStatus",
       "run_script": "(self, path: str | os.PathLike[str]) -> list[str]",
       "save": "(self, path: str | os.PathLike[str] | None = None) -> CommandResult",
       "show": "property: Show",
@@ -203,6 +204,7 @@
       "__init__": "(self, show: Show, *, path: str | os.PathLike[str] | None = None, library: ProfileLibrary | None = None, ids: IdFactory | None = None) -> None",
       "execute": "(self, line: str) -> Reply",
       "output": "property: OutputSnapshot",
+      "programmer": "property: ProgrammerStatus",
       "run_script": "(self, path: str | os.PathLike[str]) -> list[str]",
       "save": "(self, path: str | os.PathLike[str] | None = None) -> CommandResult",
       "show": "property: Show",
@@ -273,6 +275,36 @@
       "problems": "attribute: list[str]"
     },
     "module": "busk.session.library"
+  },
+  "ProgrammerStatus": {
+    "fields": [
+      "version: int",
+      "selection: tuple[tuple[int, int], ...]",
+      "blind: bool",
+      "highlight: bool",
+      "fadeTime: float",
+      "values: tuple[ProgrammerValue, ...]",
+      "effects: tuple[EffectInstance, ...]"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, *, version: int, selection: tuple[tuple[int, int], ...], blind: bool, highlight: bool, fadeTime: float, values: tuple[ProgrammerValue, ...], effects: tuple[EffectInstance, ...]) -> None"
+    },
+    "module": "busk.session.status"
+  },
+  "ProgrammerValue": {
+    "fields": [
+      "number: int",
+      "element: int",
+      "attribute: AttributeId",
+      "value: AttributeValue",
+      "preset: tuple[PresetPool, int, str] | None"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, *, number: int, element: int, attribute: AttributeId, value: AttributeValue, preset: tuple[PresetPool, int, str] | None) -> None"
+    },
+    "module": "busk.session.status"
   },
   "Reply": {
     "fields": [

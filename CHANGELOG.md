@@ -17,6 +17,13 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   masters and the safety stage, what drives each family of its attributes (the
   programmer, a playback, an effect or nothing) and the playback that drives its
   intensity. A `LiveShow`'s engine reads its output back only once `output` has been read.
+- `OfflineShow.programmer` and `LiveShow.programmer`: the programmer as a display shows it,
+  as two new public types, `ProgrammerStatus` and `ProgrammerValue`
+  ([the library guide](docs/library.md#2-build-a-show-and-render-it-offlineshow)): the
+  selection as fixture numbers and elements, each value in the show's units (a preset
+  reference with the preset's value for that element, and its pool, number and name), the
+  effects, blind, highlight and the fade time, and a `version` that grows when any of
+  them changes.
 - Tab completion and `?` at the console prompt ([the prompt](docs/console.md#the-prompt)).
   Tab completes commands, keywords and names in quotes, and lists what may come next. `?`
   prints that and the forms of the command. Both follow the parser, the show and the

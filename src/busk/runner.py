@@ -25,7 +25,9 @@ Frames are :class:`DmxFrame`\\ s: the engine's frame by universe *number*,
 without its compiled show and output layout, which are internal. The
 ``output`` of both facades is the same tick per fixture element, as logical
 values with what drives them (:class:`~busk.engine.snapshot.OutputSnapshot`,
-GAP-01 of ``docs/dev/tui/engine-gaps.md``).
+GAP-01 of ``docs/dev/tui/engine-gaps.md``), and their ``programmer`` is the
+programmer with fixtures by number (:class:`~busk.session.status.ProgrammerStatus`,
+GAP-02).
 
 Errors (§5.8): constructing a facade raises
 :class:`~busk.persistence.show_file.ShowLoadError` for an invalid show and
@@ -82,7 +84,8 @@ from busk.persistence.paths import web_key
 from busk.persistence.show_file import ShowLoadError, show_json
 from busk.session.ids import IdFactory
 from busk.session.library import ProfileLibrary
-from busk.session.session import CommandResult, InputSink, Report, Session
+from busk.session.session import CommandResult, InputSink, Report, Session, SessionSnapshot
+from busk.session.status import ProgrammerStatus, programmer_status
 from busk.web.api import WebLink
 
 _output_log = logging.getLogger("busk.output")
@@ -147,6 +150,7 @@ class _Facade:
 
     _session: Session
     _console: Console
+    _status: tuple[SessionSnapshot, ProgrammerStatus] | None = None  # the last programmer read
 
     # ----------------------------------------------------------- reading
 
@@ -154,6 +158,21 @@ class _Facade:
     def show(self) -> Show:
         """The committed show document, with every edit so far."""
         return self._session.show
+
+    @property
+    def programmer(self) -> ProgrammerStatus:
+        """The programmer: its selection, values and effects, blind,
+        highlight and fade time, with fixtures by number (see
+        :class:`~busk.session.status.ProgrammerStatus`). A new object, with
+        a higher ``version``, only once one of them has changed."""
+        snapshot = self._session.snapshot  # one read: published by reference assignment
+        cached = self._status
+        if cached is not None and cached[0] is snapshot:
+            return cached[1]
+        previous = None if cached is None else cached[1]
+        status = programmer_status(snapshot.state, snapshot.programmer, previous)
+        self._status = (snapshot, status)  # one assignment: other threads see the pair whole
+        return status
 
     @property
     def warnings(self) -> tuple[Issue, ...]:

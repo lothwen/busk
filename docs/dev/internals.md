@@ -460,6 +460,18 @@ a fade time (`fade 2`) every change fades: a set value, a clear, a blind switch,
 an undo. It also holds effects (`ADD_EFFECT`, `REMOVE_EFFECT`), which run in
 the programmer's own bank at band 100, entering, changing and leaving over its fade time.
 
+**The programmer status** (`busk.session.status`; GAP-02 of
+[`tui/engine-gaps.md`](tui/engine-gaps.md)). `OfflineShow.programmer` and
+`LiveShow.programmer` turn the programmer into the public `ProgrammerStatus`, on the
+reader's thread, from one `SessionSnapshot` (it carries the `ShowState`, so the show and
+the programmer are of the same moment), and only when that snapshot is a new one. Targets
+become `(number, element)` and a preset reference gets the value the §5.8 lookup gives its
+element, so a show edit alone (a renumbered fixture, an edited preset) can change the
+status too. `programmer_status` returns the previous status when the new one is equal,
+so `version` counts changes of the content. What is dormant is left out, by the rules
+`build_frame` uses: a gone target, a value without a slot, a preset value or its option,
+and an effect that no longer validates.
+
 **Recording** (`busk.commands.record`, §15.3). Recording turns programmer values into
 show data that keeps intent: a cue entry references a group whenever one covers the
 targets (a greedy cover over the groups whose members *with that attribute* fit), keeps

@@ -19,8 +19,8 @@ The TUI runs a `busk.LiveShow` in its own process. One module, `busk_tui/bridge.
   action, echoed in the TUI's log. `submit()` is not used, so the UI teaches the command line.
 - **Reads** use the typed public state: `LiveShow.snapshot` (`EngineSnapshot`),
   `LiveShow.frame` (`DmxFrame`, for the engine time), `LiveShow.show` (the `Show` document),
-  `LiveShow.warnings` and, since GAP-01, `LiveShow.output` (`OutputSnapshot`). The `busk.*`
-  loggers feed the TUI's log pane.
+  `LiveShow.warnings`, since GAP-01 `LiveShow.output` (`OutputSnapshot`) and since GAP-02
+  `LiveShow.programmer` (`ProgrammerStatus`). The `busk.*` loggers feed the TUI's log pane.
 - **Text is not parsed.** `docs/library.md` says message text (`Reply.text`, CLI output, log
   records) may change in any release, so the TUI never extracts data from the output of
   `programmer`, `info`, `list …` or `library`. It may show such output verbatim.
@@ -47,7 +47,7 @@ Every new read should also reach `busk run`'s console process, so a later TUI at
 | Gap | Kind | Priority | Needed by | Status |
 |---|---|---|---|---|
 | [GAP-01](#gap-01-fixture-output-values) Fixture output values | read | blocking | F1 A/C, F2, F3 | **done** 2026-10-22 |
-| [GAP-02](#gap-02-programmer-state) Programmer state | read | blocking | status bar, prompt, F1, F2, F3, F5, F6 | open |
+| [GAP-02](#gap-02-programmer-state) Programmer state | read | blocking | status bar, prompt, F1, F2, F3, F5, F6 | **done** 2026-10-22 |
 | [GAP-03](#gap-03-session-state-undo-redo-unsaved-edits) Session state (undo, redo, unsaved edits) | read | important | prompt, quit | open |
 | [GAP-04](#gap-04-flash-and-playback-buttons-from-the-console) Flash and playback buttons from the console | action | important | F1 | open |
 | [GAP-05](#gap-05-relative-and-per-component-attribute-values) Relative and per-component attribute values | action | important | F2 | open |
@@ -160,6 +160,8 @@ and treats its first `None` like the snapshot's.
 
 ## GAP-02: Programmer state
 
+**Status:** done 2026-10-22 (see **Done** at the end of this section).
+
 **Needed by:** status bar (`PROG n`, BLIND chip, programmer `FADE`), prompt context (`sel n`),
 F1 header and SELECTION/PROGRAMMER panels, F2 (selection text, encoder values in magenta,
 PROGRAMMER CONTENTS table, a single BLIND toggle), F3 (selected-row marker), Shift-click
@@ -213,6 +215,52 @@ context shows no selection count. F2 shows the verbatim output of `programmer` i
 PROGRAMMER CONTENTS panel, refreshed after each command the TUI runs and once a second while F2
 or F5 is visible. BLIND is two buttons (`blind on`, `blind off`) instead of a toggle.
 Shift-click always adds (`sel + fixture N`); removing is typed (`sel - fixture N`).
+
+**Done** (2026-10-22). `OfflineShow.programmer` and `LiveShow.programmer ->
+ProgrammerStatus`, with `ProgrammerStatus` and `ProgrammerValue` in `busk.__all__` (now 32
+names). `version`, `blind`, `highlight` and `fadeTime` are as suggested; `fadeTime` is the
+programmer's own (`fade`), not the snapshot's fade-time override. Documented in
+`docs/library.md` (section 2 and the reference), the classes' docstrings and
+`docs/dev/internals.md` ("The programmer status"). Where it differs from the suggestion,
+or settles what the suggestion left open:
+
+- **Targets are numbers, not text.** `selection` is `(number, element)` pairs and a
+  `ProgrammerValue` has `number` and `element` instead of `target: str`, the element
+  counted from 1 (1 for a fixture of one element), as in `FixtureOutput`. So the TUI
+  matches the selection to F3 rows, output cells and Shift-click without splitting
+  `"301.3"`, and formats the text itself.
+- **A preset reference has its value.** `value` is what the preset gives that element
+  (the target, profile and global scopes of §5.8), not `None`, so the F2 encoders and the
+  PROGRAMMER CONTENTS swatches can show it; `preset` is `(pool, number, name)`.
+- **Effects are the instances**, `effects: tuple[EffectInstance, ...]` as the show file
+  holds them (the format of a cue's `effects`), instead of a `ProgrammerEffect` with display
+  strings. F5 lists cue effects from `show` in that format already, so one formatter serves
+  both, looking the template, the speed master and the targets up by id in `show`. There
+  is no `ProgrammerEffect`.
+- **Made on read, not on every change.** The status is built on the reader's thread from
+  one session snapshot (a show and a programmer of the same moment), and only when that
+  snapshot is a new one. `version` is 1 at first and grows by one each time a read finds
+  the content changed (two changes between reads count once); while nothing changed, the
+  same object comes back. A show edit alone can change it (a renumbered fixture, a renamed
+  or re-recorded preset), and a change that shows nothing new keeps it (`save`, a new
+  universe, the same selection again).
+- **Only what is live.** A selected target whose fixture or element is gone, a value whose
+  slot, preset value or discrete option is gone, and an effect that no longer validates are
+  left out, by the rules the programmer frame uses. They stay in the programmer, dormant,
+  and come back with the undo that restores what they need. `programmer` still prints them
+  (`(gone)`).
+- **Under `busk run` too.** The session runs in the console process, so the attached
+  show's `programmer` works, unlike its `frame` and `output` (GAP-11).
+- Tests: `tests/test_programmer_status.py` (both facades and the attached show, every rule
+  above), the public API golden and `tests/api_consumer.py`.
+
+The TUI can now fill everything this gap blocked: `PROG n`, the BLIND chip and the
+programmer `FADE` in the status bar, `sel n` in the prompt, the F1 header and its SELECTION
+and PROGRAMMER panels, F2's selection text, programmer values in magenta (presets
+included), the PROGRAMMER CONTENTS table and a single BLIND toggle, F3's `▸` marker,
+Shift-click toggling between `sel +` and `sel -`, programmer effects as F5 rows, and F6's
+"applies to". The verbatim `programmer` panel and its once-a-second query are no longer
+needed: the bridge polls `programmer` with the snapshot and redraws when `version` changes.
 
 ## GAP-03: Session state (undo, redo, unsaved edits)
 

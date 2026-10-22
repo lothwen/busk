@@ -97,6 +97,15 @@ def offline(directory: Path) -> bytes:
         number: int | None = fixture.playback
         assert 0.0 <= level <= 1.0
         assert (pan, driver, number) is not None
+    programmer: busk.ProgrammerStatus = show_.programmer
+    selected: tuple[tuple[int, int], ...] = programmer.selection
+    for entry in programmer.values:
+        value: busk.ProgrammerValue = entry
+        preset: tuple[str, int, str] | None = value.preset
+        assert (value.number, value.element, value.attribute, preset) is not None
+    effects: list[str] = [effect["id"] for effect in programmer.effects]
+    assert programmer.version >= 1
+    assert (selected, effects, programmer.blind, programmer.fadeTime) is not None
     return universes[1][:16]
 
 
@@ -115,6 +124,8 @@ def live(path: str, host: Callable[[busk.LiveShow], None]) -> busk.Show:
         assert frame is None or 1 in frame.universes
         output: busk.OutputSnapshot | None = live.output
         assert output is None or output.fixtures
+        programmer: busk.ProgrammerStatus = live.programmer
+        assert programmer.version >= 1
         host(live)
     live.stop()  # idempotent
     return live.show
