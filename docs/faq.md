@@ -184,9 +184,9 @@ only while you patch. See [Fixture profiles](profiles.md).
   of page P). The playback and its cue list take the number S if it is free, else the
   next one after the highest, so slot 2.1 of the demo show holds playback 14. `cue L/C`
   is cue C of cue list L.
-- At the console, `fader N`, `go N` and `release N` name **playbacks**. A controller's
-  `fader S` and `button S B` bindings name **slots of the current page**, so they play
-  whatever that page holds.
+- At the console, `fader N`, `go N`, `release N` and `button N B` name **playbacks**. A
+  controller's `fader S` and `button S B` bindings name **slots of the current page**, so
+  they play whatever that page holds.
 
 `list playbacks`, `list pages` and the other `list` commands show the numbers.
 

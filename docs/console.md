@@ -63,7 +63,7 @@ session, as the web remote's commands do. `help` prints the grammar.
 | Timing, triggers | `cue 9/1 time 3 easeInOut`, `cue 9/3 time 1/3 delay 0/1`, `cue 9/2 time position 4 [delay 1] [easeOut]`, `… bezier 0.4 0 0.2 1`, `cue 9/3 wait 8`, `cue 9/5 follow 4`, `cue 9/2 go`, `cue 9/5 release group 1 [only pan tilt]` |
 | Cue lists, tempo | `cuelist 9 tracking true`, `cuelist 10 chase bpm ["Speed 1"] [x 2] [forward\|reverse\|bounce\|random] [crossfade 0.25]`, `cuelist 10 chase hz 4`, `cuelist 10 sequence`, `master add speed "Speed 1" [bpm 120] [steps 0.5, 1, 2]` |
 | Effects, masters | `effect add "Circle" [id fx1] [hz 0.5 \| bpm ["Speed 1"] [x 0.5]] [size 15] [low 0 high 1] [phase 0 180] [groups N] [blocks N] [wings 2] [forward\|reverse\|bounce] [fadein 1] [sizemaster "FX"] [speedmaster "Speed 1"]`, `effect remove fx1`, `effect clear`, `effect template add "Name" [{…layers…}]`, `cue 9/4 effect rainbow size 0.5`, `master add size "FX"`, `master add group "Wash level" group 2`, `master add fadetime "Fade"` |
-| Perform | `go 9`, `back 9`, `goto 9 4`, `release 3 [2]`, `fader 3 75%`, `gm 0.5`, `master "Speed 1" 0.75`, `tap ["Speed 1"]`, `bpm ["Speed 1"] 128`, `blackout on\|off` |
+| Perform | `go 9`, `back 9`, `goto 9 4`, `release 3 [2]`, `fader 3 75%`, `flash 3 on\|off`, `toggle 3`, `button 3 2 on\|off`, `gm 0.5`, `master "Speed 1" 0.75`, `tap ["Speed 1"]`, `bpm ["Speed 1"] 128`, `blackout on\|off` |
 | Safety, panic | `park fixture 204 intensity 0`, `park group 2 color 1 0 0`, `unpark fixture 204 [intensity]`, `unpark all`, `fixture 101 thru 102 limits tilt -90 10`, `fixture 301 limits intensity 50%`, `fixture 101 limits none`, `safety strobe 3\|off`, `highlight on\|off`, `release all [2]`, `output on\|off` |
 | Profiles | `profile update "Generic Spot 16ch"` (to the library's other revision), `list profiles` |
 | Session | `undo`, `redo`, `save [PATH]`, `list fixtures\|groups\|presets\|cuelists\|playbacks\|pages\|universes\|routes\|surfaces\|bindings\|masters\|profiles\|effects\|park`, `list cues 9`, `library`, `info`, `status`, `source FILE`, `quit` |
@@ -121,6 +121,14 @@ session, as the web remote's commands do. `help` prints the grammar.
   follows); `feedback "<surface>" <input> [thru <n>] led` adds feedback to the bindings
   already on those inputs (`none` removes it), and an input without a binding is an
   error. `list surfaces` and `list bindings` show ports, pickup and feedback.
+* **Buttons.** `flash N on` holds playback N's flash until `flash N off` (or `release
+  all`), as a held flash button does, whether or not the playback has one. `button N B
+  on|off` presses and releases the playback's button B as a bound control does: `go`,
+  `back`, `toggle`, `release` and `goto` act on `on`, `flash` and `swop` on both, and
+  `select` selects the playback's targets, as `sel playback N`. `toggle N` releases an
+  active playback and activates any other. These lines are for a frontend, which sends
+  `on` when its button goes down and `off` when it comes up; they name playbacks, not
+  slots.
 * **Safety, panic and profiles** (see [Safety](safety.md) and [Fixture profiles](profiles.md#updating-a-shows-profiles)). `park` replaces what
   was parked on the slots it names and `unpark` removes it, each as one undo step (park
   entries have no ids, so the whole list is set). `limits` sets one key of each fixture's

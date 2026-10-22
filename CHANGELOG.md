@@ -24,6 +24,11 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   reference with the preset's value for that element, and its pool, number and name), the
   effects, blind, highlight and the fade time, and a `version` that grows when any of
   them changes.
+- Console lines for playback buttons ([the console](docs/console.md#notes)): `flash N
+  on|off` holds a playback's flash until it is released, `button N B on|off` presses and
+  releases its button B as a bound control does, and `toggle N` activates or releases it.
+  A frontend's buttons, and the `busk run` prompt, no longer need a controller or the
+  web remote for these.
 - Tab completion and `?` at the console prompt ([the prompt](docs/console.md#the-prompt)).
   Tab completes commands, keywords and names in quotes, and lists what may come next. `?`
   prints that and the forms of the command. Both follow the parser, the show and the

@@ -49,7 +49,7 @@ Every new read should also reach `busk run`'s console process, so a later TUI at
 | [GAP-01](#gap-01-fixture-output-values) Fixture output values | read | blocking | F1 A/C, F2, F3 | **done** 2026-10-22 |
 | [GAP-02](#gap-02-programmer-state) Programmer state | read | blocking | status bar, prompt, F1, F2, F3, F5, F6 | **done** 2026-10-22 |
 | [GAP-03](#gap-03-session-state-undo-redo-unsaved-edits) Session state (undo, redo, unsaved edits) | read | important | prompt, quit | open |
-| [GAP-04](#gap-04-flash-and-playback-buttons-from-the-console) Flash and playback buttons from the console | action | important | F1 | open |
+| [GAP-04](#gap-04-flash-and-playback-buttons-from-the-console) Flash and playback buttons from the console | action | important | F1 | **done** 2026-10-22 |
 | [GAP-05](#gap-05-relative-and-per-component-attribute-values) Relative and per-component attribute values | action | important | F2 | open |
 | [GAP-06](#gap-06-one-undo-step-for-a-gesture) One undo step for a gesture | action | important | F2 | open |
 | [GAP-07](#gap-07-output-route-status) Output route status | read | important | status bar, F8 | open |
@@ -297,6 +297,8 @@ quit / Quit without saving / Cancel*, and says it cannot tell whether there are 
 
 ## GAP-04: Flash and playback buttons from the console
 
+**Status:** done 2026-10-22 (see **Done** at the end of this section).
+
 **Needed by:** F1 FLASH buttons (all layouts). Spec §6.2 ("Flash buttons are momentary"),
 §8.1.
 
@@ -321,6 +323,48 @@ web remote does on disconnect.
 **TUI until then:** FLASH buttons are drawn disabled with "flash: not available yet". Even after
 this gap is closed, a flash is momentary only with the mouse (button down and up): terminals do
 not report key releases, so there is no momentary flash key.
+
+**Done** (2026-10-22). The three console lines, as suggested, so `execute()`, scripts and
+the `busk run` prompt all take them:
+
+```
+flash N on|off              → FLASH {playbackId, down}
+button N <b> on|off         → PLAYBACK_BUTTON {playbackId, button: b-1, down}
+toggle N                    → TOGGLE_PLAYBACK {playbackId}
+```
+
+They reply as `go N` does: empty text, or `error: no playback 99` and the parser's other
+errors (`expected on or off`). No public name was added (`busk.__all__` stays at 32).
+Documented in `docs/console.md` (the Perform row and the **Buttons** note), in `help` and
+in the parser's module docs. Where it differs from the suggestion, or settles what the
+suggestion left open:
+
+- **A `select` button selects.** The engine does nothing with a `select` function; a
+  binding turns its press into the programmer's `SELECT_PLAYBACK`. `button N <b> on` does
+  the same, so the line means what pressing that button on a controller means. Its reply
+  is then `sel playback N`'s (`3 targets selected`), and it is one undo step. Its release
+  goes to the engine, which ignores it.
+- **A button the playback lacks is refused** (`playback 3 has 2 button(s); no button 3`,
+  `buttons are counted from 1`), where the typed command would do nothing. What a button
+  does is not checked further: a `goto` button without a goto cue, or a `none` button,
+  does nothing, as on a controller.
+- **`flash N` works on any playback**, with or without a `flash` button, as the typed
+  `FLASH` does. It and a `flash` button (a controller's, the web remote's, `button N <b>`)
+  hold the playback's one flash, so the first release lets it go. `release all` drops a
+  held flash too; `release N` does not.
+- **Nothing releases a frontend's flashes when it stops.** A `LiveShow` stops with its
+  frontend (the TUI's `main()` stops it in a `finally`), and its engine with it, so no
+  held flash outlives the frontend. A frontend that leaves a running engine behind comes
+  with [GAP-11](#gap-11-running-the-tui-against-busk-run), so releasing its held buttons,
+  as the web remote does on disconnect, belongs there.
+- Tests: `tests/test_console_buttons.py` (each line on `OfflineShow`, on a `LiveShow`, and
+  at a real `busk run` prompt), the grammar and its errors in `tests/test_console_parser.py`,
+  and completion in `tests/test_console_prompt.py`.
+
+The TUI can now enable its FLASH buttons: `flash N on` when the mouse button goes down on
+one, `flash N off` when it comes up (spec §6.2). A playback's other buttons can be drawn
+from `show.playbacks[].buttons` and sent as `button N <b> on|off`. The plan's question Q6
+(an exception to "console lines only" for FLASH) is no longer needed.
 
 ## GAP-05: Relative and per-component attribute values
 

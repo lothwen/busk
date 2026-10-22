@@ -1879,3 +1879,63 @@ def test_help_lists_the_phase_7_commands() -> None:
         'profile update "<name>"',
     ):
         assert row in rows
+
+
+# ------------------------------------------- playback buttons (GAP-04, engine-gaps.md)
+
+BUTTON_COMMANDS: list[tuple[str, dict[str, Any]]] = [
+    ("flash 3 on", {"type": "FLASH", "playbackId": "pb-blue", "down": True}),
+    ("FLASH 3 OFF", {"type": "FLASH", "playbackId": "pb-blue", "down": False}),
+    ("flash 1 on", {"type": "FLASH", "playbackId": "pb-song", "down": True}),  # no flash button
+    ("toggle 3", {"type": "TOGGLE_PLAYBACK", "playbackId": "pb-blue"}),
+    ("button 3 1 on",
+     {"type": "PLAYBACK_BUTTON", "playbackId": "pb-blue", "button": 0, "down": True}),
+    ("button 3 2 off",
+     {"type": "PLAYBACK_BUTTON", "playbackId": "pb-blue", "button": 1, "down": False}),
+]  # fmt: skip
+
+
+@pytest.mark.parametrize(("line", "expected"), BUTTON_COMMANDS, ids=[c[0] for c in BUTTON_COMMANDS])
+def test_playback_button_lines(line: str, expected: dict[str, Any]) -> None:
+    assert command(line) == expected
+
+
+def test_a_select_buttons_press_selects_as_a_binding_does() -> None:
+    """Its press is the programmer's ``SELECT_PLAYBACK``; its release goes to
+    the engine, which does nothing with it."""
+    doc = load_doc(APPENDIX_A)
+    doc["playbacks"][1]["buttons"] = ["toggle", "select"]
+    ctx = Context(show_of(doc), LIBRARY, CounterIds())
+    assert parse("button 3 2 on", ctx) == Submit(
+        {"type": "SELECT_PLAYBACK", "playbackId": "pb-blue", "mode": "replace"}
+    )
+    assert parse("button 3 2 off", ctx) == Submit(
+        {"type": "PLAYBACK_BUTTON", "playbackId": "pb-blue", "button": 1, "down": False}
+    )
+
+
+@pytest.mark.parametrize(
+    ("line", "error"),
+    [
+        ("flash 9 on", "no playback 9"),
+        ("flash 3", "expected on or off"),
+        ("flash 3 down", "expected on or off, got 'down'"),
+        ("flash 3 on now", "unexpected 'now'"),
+        ("toggle 9", "no playback 9"),
+        ("toggle 3 on", "unexpected 'on'"),
+        ("button 9 1 on", "no playback 9"),
+        ("button 3", "expected a button number (from 1)"),
+        ("button 3 flash on", "expected a button number (from 1), got 'flash'"),
+        ("button 3 0 on", "buttons are counted from 1"),
+        ("button 3 3 on", "playback 3 has 2 button(s); no button 3"),
+        ("button 3 1", "expected on or off"),
+    ],
+)
+def test_playback_button_errors(line: str, error: str) -> None:
+    with pytest.raises(ParseError) as raised:
+        parse(line, context())
+    assert raised.value.message == error
+
+
+def test_help_lists_the_playback_button_lines() -> None:
+    assert "flash N on|off | toggle N | button N <b> on|off" in [line.strip() for line in HELP]

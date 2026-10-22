@@ -54,6 +54,7 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
         <direction> = forward | reverse | bounce | random
     cuelist N sequence
     go N | back N | goto N <cue> | release N [<seconds>] | fader N <level>
+    flash N on|off | toggle N | button N <b> on|off
     gm <level> | master "<name>" <level> | blackout on|off
     release all [<seconds>] | output on|off
     park <targets> <attribute> <value> | unpark <targets> [<attribute>] | unpark all
@@ -139,6 +140,15 @@ library's other revision and moves its fixtures to it, refused when a
 fixture's mode is missing from that revision. ``list park`` lists what is
 parked; ``list profiles`` says which embedded profiles the library has in
 another revision.
+
+Playback buttons (GAP-04 of ``docs/dev/tui/engine-gaps.md``), for a
+frontend that holds a button while it is down. ``flash N on`` holds
+playback N's flash until ``flash N off`` (or ``release all``), whatever
+buttons the playback has. ``button N <b> on|off`` presses and releases the
+playback's button ``b`` as a bound control does: the function in its
+``buttons`` acts, and a ``select`` button's press selects, as ``sel
+playback N``. ``toggle N`` releases an active playback and activates any
+other.
 
 Completion (Tab and ``?`` at the prompt, :mod:`busk.console.prompt`).
 :func:`expected` parses a line up to the word being typed. Where the line
@@ -1762,6 +1772,41 @@ class _Parser:
 
     def _cmd_back(self) -> Action:
         return self.submit({"type": "BACK", "playbackId": self.playback_id()})
+
+    def _cmd_flash(self) -> Action:
+        playback = self.playback_id()
+        down = self.expect("on", "off") == "on"
+        return self.submit({"type": "FLASH", "playbackId": playback, "down": down})
+
+    def _cmd_toggle(self) -> Action:
+        return self.submit({"type": "TOGGLE_PLAYBACK", "playbackId": self.playback_id()})
+
+    def _cmd_button(self) -> Action:
+        """``button N <b> on|off``: a ``select`` button's press is the
+        programmer's ``SELECT_PLAYBACK``, as the binding resolver sends it;
+        every other press and release is ``PLAYBACK_BUTTON``."""
+        playback = self.by_number("playbacks", self.integer("a playback number"), "playback")
+        buttons = playback["buttons"]
+        button = self.integer("a button number (from 1)")
+        if button < 1:
+            raise ParseError("buttons are counted from 1")
+        if button > len(buttons):
+            raise ParseError(
+                f"playback {playback['number']} has {len(buttons)} button(s); no button {button}"
+            )
+        down = self.expect("on", "off") == "on"
+        if down and buttons[button - 1] == "select":
+            return self.submit(
+                {"type": "SELECT_PLAYBACK", "playbackId": playback["id"], "mode": "replace"}
+            )
+        return self.submit(
+            {
+                "type": "PLAYBACK_BUTTON",
+                "playbackId": playback["id"],
+                "button": button - 1,
+                "down": down,
+            }
+        )
 
     def _cmd_goto(self) -> Action:
         playback = self.playback_id()
