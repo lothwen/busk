@@ -12,6 +12,7 @@
     "members": [
       "AddCmd",
       "AddEffectCmd",
+      "AdjustAttributeCmd",
       "ApplyPresetCmd",
       "AssignPlaybackCmd",
       "BackCmd",

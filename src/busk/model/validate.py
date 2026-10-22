@@ -41,7 +41,7 @@ from typing import Any, Final, Literal, cast
 
 from pydantic import TypeAdapter, ValidationError
 
-from busk.commands.types import Command
+from busk.commands.types import ColorComponent, Command
 from busk.model.attributes import (
     ATTRIBUTES,
     AttributeDefinition,
@@ -243,6 +243,41 @@ def validate_effect(show: Show, instance: EffectInstance, path: str = "effect") 
     checker = _SemanticPass(show)
     checker._effect_instance(instance, path)
     return checker.issues
+
+
+COLOR_COMPONENTS: Final[tuple[ColorComponent, ...]] = typing.get_args(ColorComponent.__value__)
+"""The components of a colour value, in lane order."""
+
+
+def adjustment_problem(definition: AttributeDefinition, command: Mapping[str, Any]) -> str | None:
+    """What is wrong with an ``ADJUST_ATTRIBUTE`` of ``definition``'s
+    attribute, or ``None``: it gives exactly one of ``delta`` and ``value``,
+    a finite number; a colour names one of its components, and only a colour
+    does; a ``value`` is a component's, within ``0..1``; a discrete attribute
+    cannot be adjusted. The session and the binding validator both use it."""
+    given = [key for key in ("delta", "value") if key in command]
+    if len(given) != 1:
+        return "ADJUST_ATTRIBUTE needs exactly one of 'delta' and 'value'"
+    number = command[given[0]]
+    if isinstance(number, bool) or not isinstance(number, int | float) or not math.isfinite(number):
+        return f"{given[0]} must be a finite number"
+    component = command.get("component")
+    if definition.kind == "discrete":
+        return f"{definition.id} is discrete and cannot be adjusted"
+    if definition.kind == "scalar":
+        if component is not None:
+            return f"{definition.id} has no components"
+        if given == ["value"]:
+            return f"{definition.id} takes a delta here: SET_ATTRIBUTE sets its value"
+        return None
+    if component not in COLOR_COMPONENTS:
+        names = ", ".join(COLOR_COMPONENTS)
+        if component is None:
+            return f"{definition.id} is adjusted one component at a time: {names}"
+        return f"a colour has no component {component!r} ({names})"
+    if given == ["value"] and not 0 <= number <= 1:
+        return f"{definition.id}.{component} must be within 0..1, got {number:g}"
+    return None
 
 
 def _validate_entity(adapter: TypeAdapter[Any], entity: Any, path: str, issues: list[Issue]) -> Any:
@@ -1614,6 +1649,13 @@ class _SemanticPass:
                 command["attribute"], f"{path}.attribute", "programmer values"
             )
             self._value_source(definition, command["value"], f"{path}.value")
+        elif command["type"] == "ADJUST_ATTRIBUTE":
+            definition = self._busked_attribute(
+                command["attribute"], f"{path}.attribute", "programmer values"
+            )
+            problem = None if definition is None else adjustment_problem(definition, command)
+            if problem is not None:
+                self._error(path, problem)
         elif command["type"] == "APPLY_PRESET":
             self._ref(command["presetId"], self.presets, f"{path}.presetId", "preset")
         elif command["type"] == "RECORD_CUE":

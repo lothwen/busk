@@ -83,8 +83,13 @@ EXPECTED: list[tuple[str, tuple[str, ...], tuple[str, ...], bool]] = [
     ("fixture 101 thru 102 ", ("limits",), (), False),
     ("fixture add 5 ", ("thru", *PROFILES), (), False),
     ('fixture add 5 "Generic Spot 16ch" mode ', ("16ch",), (), False),
-    ("set ", tuple(ATTRIBUTES), (), False),
-    ("set pan ", ("spread", "preset"), ("a number",), False),
+    ("set ", (*ATTRIBUTES, "color.r", "color.g", "color.b", "color.w", "color.a", "color.uv"), (),
+     False),
+    ("set pan ", ("by", "spread", "preset"), ("a number",), False),
+    ("set pan by ", (), ("a change, e.g. 5% or -15",), False),
+    ("set color ", ("spread", "preset"), ("the colour's r",), False),
+    ("set color.r ", ("by",), ("the colour's r",), False),
+    ("set color.uv by ", (), ("a change, e.g. 5% or -15",), False),
     ("record ", ("group", "preset", "cue", "slot"), (), False),
     ("record cue 1/1 ", ("merge", "replace", "remove", "only", "freeze"),
      ("a name in quotes",), True),
@@ -134,6 +139,11 @@ def test_what_may_follow_a_line(
         ("sel fixture 99 ", "no fixture 99"),
         ("xyz ", "unknown command 'xyz' (try 'help')"),
         ('master "Sp', "unterminated quote at column 8"),
+        (
+            "set intensity +5% ",
+            "'+5%' has a plus sign: 'set intensity by +5%' changes intensity by 5%, "
+            "'set intensity 5%' sets it",
+        ),
     ],
 )
 def test_a_mistake_before_the_end_stops_the_line(line: str, error: str) -> None:

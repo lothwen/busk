@@ -22,6 +22,12 @@ A :class:`Programmer` is an immutable value: every handler returns a new one
 (copy-on-write values), which is what lets the undo timeline keep before and
 after states for free.
 
+``ADJUST_ATTRIBUTE`` (GAP-05 of ``docs/dev/tui/engine-gaps.md``) changes
+values the programmer holds: by a delta, or one colour component, on each
+selected target that has a value (a preset reference turns into the literal
+it gave, changed). It never sets a target that has none: the programmer
+does not know what the stage shows there.
+
 A value whose slot no longer exists (its fixture was deleted, say) is kept
 but ignored by output and recording; undoing the delete makes it live again.
 
@@ -57,7 +63,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from busk.commands.errors import CommandError
 from busk.commands.patch import deep_copy
-from busk.commands.types import Command
+from busk.commands.types import AdjustAttributeCmd, Command
 from busk.compiler.cues import spread_fraction, spread_value
 from busk.compiler.slots import Slot
 from busk.engine.snapshot import EngineSnapshot
@@ -65,7 +71,9 @@ from busk.model.attributes import (
     ATTRIBUTES,
     AttributeDefinition,
     AttributeValue,
+    ColorValue,
     DiscreteValue,
+    ScalarRange,
     value_kind,
 )
 from busk.model.common import (
@@ -79,7 +87,7 @@ from busk.model.common import (
 )
 from busk.model.effect import EffectInstance
 from busk.model.entry import LiteralSource, PresetSource, TargetSpec, ValueSource
-from busk.model.validate import validate_effect
+from busk.model.validate import adjustment_problem, validate_effect
 from busk.session.state import ShowState
 
 type SlotKey = str
@@ -175,6 +183,8 @@ def handle(
         return _select(programmer, targets, command["mode"])
     if command["type"] == "SET_ATTRIBUTE":
         return _set_attribute(state, programmer, command["attribute"], command["value"])
+    if command["type"] == "ADJUST_ATTRIBUTE":
+        return _adjust_attribute(state, programmer, command)
     if command["type"] == "APPLY_PRESET":
         return _apply_preset(state, programmer, command["presetId"])
     if command["type"] == "CLEAR_PROGRAMMER":
@@ -303,6 +313,89 @@ def _set_attribute(
     if reasons:
         message += f"; skipped {reasons}"
     return Change(replace(programmer, values=MappingProxyType(values)), message, frozenset(written))
+
+
+def _adjust_attribute(
+    state: ShowState, programmer: Programmer, command: AdjustAttributeCmd
+) -> Change:
+    """Change the programmer's value of an attribute on each selected target
+    that has one: a scalar by ``delta``, within the attribute's range if it
+    has one; a colour ``component`` by ``delta`` (from 0 when the colour has
+    none, within ``0..1``) or to ``value``, the other components kept. A
+    preset reference becomes the literal the preset gives that target,
+    changed. Targets without the attribute, or without a value for it, are
+    skipped."""
+    definition = _programmable(command["attribute"])
+    problem = adjustment_problem(definition, command)
+    if problem is not None:
+        raise CommandError(problem)
+    if not programmer.selection:
+        raise CommandError("nothing selected")
+    attribute = definition.id
+    values = dict(programmer.values)
+    written: set[SlotKey] = set()
+    stored = no_slot = unset = no_value = 0
+    for target in programmer.selection:
+        slot = state.compiled.slots.find(target, attribute)
+        key = slot_key(target, attribute)
+        source = programmer.values.get(key)
+        if slot is None:
+            no_slot += 1
+            continue
+        if source is None:
+            unset += 1
+            continue
+        if source["kind"] == "literal":
+            base: AttributeValue | None = source["value"]
+        else:
+            base = state.values.preset_value(source["presetId"], slot)
+        if base is None:
+            no_value += 1  # dormant: the preset no longer defines it here
+            continue
+        values[key] = LiteralSource(kind="literal", value=_adjusted(definition, base, command))
+        written.add(key)
+        stored += 1
+    skipped = [
+        (no_slot, f"no {attribute}"),
+        (unset, "not in the programmer"),
+        (no_value, "no value"),
+    ]
+    reasons = ", ".join(f"{n} {why}" for n, why in skipped if n)
+    if not stored:
+        raise CommandError(f"no selected target has {attribute} to change ({reasons})")
+    component = command.get("component")
+    name = attribute if component is None else f"{attribute}.{component}"
+    message = f"{name}: {_plural(stored, 'target')}"
+    if reasons:
+        message += f"; skipped {reasons}"
+    return Change(replace(programmer, values=MappingProxyType(values)), message, frozenset(written))
+
+
+_UNIT: Final = ScalarRange(min=0.0, max=1.0)
+
+
+def _adjusted(
+    definition: AttributeDefinition, base: AttributeValue, command: AdjustAttributeCmd
+) -> AttributeValue:
+    """``base`` changed as ``command`` says (:func:`_adjust_attribute`)."""
+    component = command.get("component")
+    if component is None:
+        return _bounded(cast(float, base) + command["delta"], definition.range)
+    color = cast(dict[str, float], deep_copy(base))
+    if "value" in command:
+        color[component] = command["value"]
+    else:
+        color[component] = _bounded(color.get(component, 0.0) + command["delta"], _UNIT)
+    return cast(ColorValue, color)
+
+
+def _bounded(number: float, bounds: ScalarRange | None) -> float:
+    """``number`` within ``bounds``, if any, and rounded to 9 decimals, so
+    that changes in steps record what they add up to (0.35 + 0.05 is 0.4,
+    not 0.39999999999999997)."""
+    if bounds is not None:
+        number = min(max(number, bounds.min), bounds.max)
+    return round(number, 9)
 
 
 def _apply_preset(state: ShowState, programmer: Programmer, preset_id: str) -> Change:

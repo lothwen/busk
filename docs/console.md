@@ -51,7 +51,7 @@ session, as the web remote's commands do. `help` prints the grammar.
 | Area | Commands |
 |---|---|
 | Selection | `sel fixture 101 thru 104`, `sel group 1, group 2`, `sel + fixture 201`, `sel - group 2`, `sel 301.3 thru 301.6`, `sel none`, `sel playback 3` |
-| Values | `set intensity 80%`, `set pan -45`, `set color 1 0.5 0 w 0.2`, `set gobo1 breakup`, `set pan spread -30 30 [center\|edges]`, `set color preset color 1`, `preset position 1` |
+| Values | `set intensity 80%`, `set pan -45`, `set color 1 0.5 0 w 0.2`, `set gobo1 breakup`, `set pan spread -30 30 [center\|edges]`, `set color preset color 1`, `preset position 1`, `set intensity by 5%`, `set pan by -15`, `set color.r 50%`, `set color.b by -10%` |
 | Programmer | `clear`, `blind on\|off`, `fade 2` (programmer changes fade over 2 s), `programmer` |
 | Record | `record group N`, `record preset <pool> N [global\|profile\|target]`, `record cue L/C [only <family>…] [freeze]`, `record slot S [only <family>…]`; each takes `merge`, `replace` or `remove` and a `"name"` |
 | Patch | `universe add 1 "Stage"`, `fixture add 101 thru 104 "Generic Spot 16ch" mode 16ch at 1.1`, `fixture 101 patch 2.1`, `fixture 101 patch none` |
@@ -73,6 +73,17 @@ session, as the web remote's commands do. `help` prints the grammar.
 * **Numbers.** Fixture `N` is every element of fixture `N`; `N.E` is element `E`, counted
   from 1 (`301.3` is the PiX's third cell). Page slots and buttons count from 1, like the
   physical controls. `thru` keeps its direction (`104 thru 101` selects backwards).
+* **Relative values.** `set <attribute> by <change>` adds the change to what the
+  programmer holds for each selected target: `set intensity by 5%`, `set pan by -15`. A
+  preset reference counts with the preset's value for that target, and becomes that value,
+  changed. `set color.r 50%` sets one component of the colour (`r`, `g`, `b`, `w`, `a` or
+  `uv`) and keeps the others; `set color.r by 10%` changes it. Changes stop at the ends of
+  a range (intensity and colour components at 0 and 1; pan and tilt have none), and a
+  component the colour does not have starts from 0 (for `w`, the fixture then stops
+  deriving its white). A target with nothing for that attribute in the programmer is
+  skipped and the reply says so: busk changes only what the programmer holds, so set a
+  value first. A colour changes only by component, a discrete attribute not at all. A plus
+  sign is refused where `by` may come: `set intensity +5%` would set 5%.
 * **Recording keeps intent.** A cue references a group wherever one covers the targets
   that have the attribute (the biggest first; ties go to the group with fewer members,
   then the lower number) and keeps preset references, so editing the group or the preset
@@ -154,7 +165,8 @@ The attributes are built into busk: a show cannot add one, and each fixture has 
 profile supports. `set`, `park` and `release … only` take an attribute's name, in any
 case; `record … only` takes a family (any but `control`). A normalised value is `0..1`
 or a percentage (`80%`), a discrete value names one of the fixture's options
-(`set gobo1 breakup`), and a colour is `r g b` with optional `w`, `a` and `uv`.
+(`set gobo1 breakup`), and a colour is `r g b` with optional `w`, `a` and `uv`, each
+one also settable on its own (`set color.w 20%`).
 
 | Attribute | Family | Kind | Unit | Merge | Fade | Default |
 |---|---|---|---|---|---|---|

@@ -50,7 +50,7 @@ Every new read should also reach `busk run`'s console process, so a later TUI at
 | [GAP-02](#gap-02-programmer-state) Programmer state | read | blocking | status bar, prompt, F1, F2, F3, F5, F6 | **done** 2026-10-22 |
 | [GAP-03](#gap-03-session-state-undo-redo-unsaved-edits) Session state (undo, redo, unsaved edits) | read | important | prompt, quit | open |
 | [GAP-04](#gap-04-flash-and-playback-buttons-from-the-console) Flash and playback buttons from the console | action | important | F1 | **done** 2026-10-22 |
-| [GAP-05](#gap-05-relative-and-per-component-attribute-values) Relative and per-component attribute values | action | important | F2 | open |
+| [GAP-05](#gap-05-relative-and-per-component-attribute-values) Relative and per-component attribute values | action | important | F2 | **done** 2026-10-22 |
 | [GAP-06](#gap-06-one-undo-step-for-a-gesture) One undo step for a gesture | action | important | F2 | open |
 | [GAP-07](#gap-07-output-route-status) Output route status | read | important | status bar, F8 | open |
 | [GAP-08](#gap-08-surface-status) Surface status | read | important | F9 | open |
@@ -368,6 +368,8 @@ from `show.playbacks[].buttons` and sent as `button N <b> on|off`. The plan's qu
 
 ## GAP-05: Relative and per-component attribute values
 
+**Status:** done 2026-10-22 (see **Done** at the end of this section).
+
 **Needed by:** F2 encoders: `[−]`/`[+]` (±5 %, ±15°) and the mouse wheel (±2 %, ±5°); the
 colour family as separate red, green, blue and white rows. Spec §8.2.
 
@@ -394,6 +396,72 @@ wanted, `+5%` should at least be refused instead of read as `5%`.
 value by click or drag on its bar. With the keyboard, Enter on an encoder row pre-fills
 `set <attribute> ` in the prompt. The colour family has a `set color` pre-fill and the colour
 presets, not per-component rows.
+
+**Done** (2026-10-22). Console lines on a new programmer command, `ADJUST_ATTRIBUTE`
+(`AdjustAttributeCmd` in `busk.commands.types`, a new member of `Command`; `busk.__all__`
+stays at 32), so `execute()`, scripts, the `busk run` prompt, `submit()` and bindings all
+take it:
+
+```
+set <attribute> by <change>          → ADJUST_ATTRIBUTE {attribute, delta}
+set color.r|g|b|w|a|uv <value>       → ADJUST_ATTRIBUTE {attribute: "color", component, value}
+set color.r|g|b|w|a|uv by <change>   → ADJUST_ATTRIBUTE {attribute: "color", component, delta}
+```
+
+The reply is `set`'s (`intensity: 4 targets`, `color.r: 2 targets; skipped 1 not in the
+programmer`), and each line is one undo step. Documented in `docs/console.md` (the Values
+row, the **Relative values** note, Attributes), in `help` and the parser's module docs,
+in `docs/dev/internals.md` (Programmer) and in the spec's §15.2. Where it differs from the
+suggestion, or settles what the suggestion left open:
+
+- **`by`, not a sign.** `set pan -45` is an absolute pan, and pan and tilt take negative
+  values, so a leading `-` cannot also mean "lower by". The change follows the word `by`,
+  with or without a sign: `set intensity by 5%`, `by -5%`, `by +5%`. Where `by` may come
+  (a scalar attribute, a colour component), a value with a plus sign is refused, and the
+  error gives both readings: `'+5%' has a plus sign: 'set intensity by +5%' changes
+  intensity by 5%, 'set intensity 5%' sets it`. That closes the trap. A whole colour
+  (`set color +1 0 0`) and a discrete attribute have no `by`, and read as before.
+- **Only what the programmer holds changes.** A selected target with no value for the
+  attribute in the programmer is skipped (`skipped 2 not in the programmer`), and the line
+  is refused when no target has one (`no selected target has intensity to change (4 not
+  in the programmer)`). It is never relative to the output value: GAP-01's readout comes
+  after the masters (with the grand master at 50 %, "output + 5 %" would turn an 80 % look
+  into 45 % in the programmer, 22.5 % on stage), it moves with effects, and under
+  `busk run` it is in the engine process, not the console process the session runs in.
+  `set color.r <value>` follows the same rule, since "the others kept" needs others.
+- **A preset reference counts with its value** for that target (the §5.8 lookup that
+  GAP-02's `ProgrammerValue.value` shows), and the change makes it a literal. A dormant
+  reference (the preset no longer gives a value there) is skipped as `no value`.
+- **Ranges.** A change stops at the ends of the attribute's registry range: 0 and 1 for
+  intensity and the other normalised attributes, 0 and 1 for a colour component. Pan,
+  tilt, zoom and rates have no registry range, so they go as far as `set` lets them; the
+  converter clamps to what the fixture can do, as for an absolute value. Results are
+  rounded to 9 decimals, so steps add up to what they look like (0.35 + 0.05 is 0.4, not
+  0.39999999999999997, in what gets recorded).
+- **Components.** A change of `w`, `a` or `uv` on a colour that does not have it starts
+  from 0. For `w`, the fixture then stops deriving its white from r, g and b, as with
+  `set color … w x`. A colour changes only by component (`set color by 5%` is refused and
+  names `color.r`), and a discrete attribute not at all.
+- **A typed command, not parser sugar.** The change reads the programmer under the
+  session lock, so it never adds to a stale base when a surface or another thread changes
+  the programmer between parsing the line and running it. It resolves presets with the
+  session's lookups, and `submit()` and bindings (a button that nudges a group) get it
+  too. The shape rules (`adjustment_problem` in `busk.model.validate`) are shared by the
+  session and the binding validator.
+- Tests: `tests/test_relative_values.py` (the command's rules, both facades, `submit`, a
+  `LiveShow`, a real `busk run` prompt, bindings), the grammar and its errors in
+  `tests/test_console_parser.py`, completion in `tests/test_console_prompt.py`, the replay
+  scenario of `tests/test_eventlog.py` (relative lines replay byte-identically), the
+  public API golden and `tests/api_consumer.py`.
+
+The TUI can now give its F2 encoders `[−]`/`[+]` (`set <attribute> by -5%` and `by 5%`,
+`by -15` and `by 15` for degrees) and the wheel (±2 %, ±5°), and split the colour family
+into R, G, B and W rows (`set color.r <value>` on a click or a drag, `set color.r by …` on
+`[−]`/`[+]` and the wheel). These act where the programmer holds the attribute for the
+selection, which GAP-02's status shows (the magenta value). Where it does not, an encoder
+shows GAP-01's output value, and `[−]`/`[+]` there send an absolute `set` built from the
+value shown, as the plan allows for a command's argument. Each line is one undo step: a
+drag still sends one `set` on release until GAP-06.
 
 ## GAP-06: One undo step for a gesture
 

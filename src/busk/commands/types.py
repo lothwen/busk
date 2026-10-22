@@ -42,6 +42,10 @@ Phase 7 adds ``RELEASE_ALL`` and ``OUTPUT`` (performance), the panic
 commands of §18, and ``HIGHLIGHT`` (programmer, a mode like ``BLIND``)
 (phase-7-plan decisions 12 and 15).
 
+GAP-05 of ``docs/dev/tui/engine-gaps.md`` adds ``ADJUST_ATTRIBUTE``
+(programmer): a change relative to the programmer's values, or of one colour
+component, for an encoder's ``−``/``+`` and wheel.
+
 Generic edits address the show with an :data:`EditPath`: a list whose
 string segments are object keys and whose :class:`IdSegment` segments pick
 the element of an id'd list with that ``id``, e.g.
@@ -276,6 +280,25 @@ class SetAttributeCmd(TypedDict):
     type: Literal["SET_ATTRIBUTE"]
     attribute: AttributeId
     value: ValueSource
+
+
+type ColorComponent = Literal["r", "g", "b", "w", "a", "uv"]
+"""A component of a :class:`~busk.model.attributes.ColorValue`."""
+
+
+@with_config(STRICT)
+class AdjustAttributeCmd(TypedDict):
+    """Change the programmer's value of an attribute on each selected target
+    that has one (GAP-05 of ``docs/dev/tui/engine-gaps.md``): a scalar by
+    ``delta``, or one ``component`` of the colour by ``delta`` or to
+    ``value``, the other components kept. Exactly one of ``delta`` and
+    ``value``; ``component`` for ``color`` only, and always there."""
+
+    type: Literal["ADJUST_ATTRIBUTE"]
+    attribute: AttributeId
+    component: NotRequired[ColorComponent]
+    delta: NotRequired[float]
+    value: NotRequired[float]
 
 
 @with_config(STRICT)
@@ -555,8 +578,9 @@ type Command = Annotated[
     | GoCmd | BackCmd | GotoCmd
     | SetFaderCmd | SetMasterCmd | TapCmd | SetBpmCmd | BlackoutCmd
     | PageCmd | PlaybackButtonCmd | ReleaseAllCmd | OutputCmd
-    | SelectCmd | SelectPlaybackCmd | SetAttributeCmd | ApplyPresetCmd | ClearProgrammerCmd
-    | BlindCmd | ProgrammerFadeCmd | AddEffectCmd | RemoveEffectCmd | HighlightCmd
+    | SelectCmd | SelectPlaybackCmd | SetAttributeCmd | AdjustAttributeCmd | ApplyPresetCmd
+    | ClearProgrammerCmd | BlindCmd | ProgrammerFadeCmd | AddEffectCmd | RemoveEffectCmd
+    | HighlightCmd
     | RecordCueCmd | RecordPresetCmd | RecordGroupCmd | PatchFixtureCmd | AssignPlaybackCmd
     | AddCmd | SetCmd | DeleteCmd | BatchCmd
     | UndoCmd | RedoCmd,

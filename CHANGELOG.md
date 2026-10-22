@@ -29,6 +29,12 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   releases its button B as a bound control does, and `toggle N` activates or releases it.
   A frontend's buttons, and the `busk run` prompt, no longer need a controller or the
   web remote for these.
+- Relative and per-component values ([the console](docs/console.md#notes)): `set
+  <attribute> by <change>` adds to what the programmer holds for each selected target
+  (`set intensity by 5%`, `set pan by -15`), and `set color.r 50%` or `set color.r by 10%`
+  sets or changes one colour component, keeping the others. Targets with nothing in the
+  programmer for that attribute are skipped. Library users and bindings have the new
+  command type `ADJUST_ATTRIBUTE`.
 - Tab completion and `?` at the console prompt ([the prompt](docs/console.md#the-prompt)).
   Tab completes commands, keywords and names in quotes, and lists what may come next. `?`
   prints that and the forms of the command. Both follow the parser, the show and the
@@ -74,6 +80,8 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 - Ctrl+C at the console prompt: on an empty line it now says how to quit, and a second
   Ctrl+C in a row quits like `quit`. Ctrl+C on a typed line still only clears it.
+- `set <attribute> +5%`, with a plus sign, is refused, and the error shows the two lines
+  you may have meant. It used to set 5%, a near blackout for someone who meant a change.
 
 ### Fixed
 

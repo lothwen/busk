@@ -71,6 +71,9 @@ def offline(directory: Path) -> bytes:
     reply: busk.Reply = show_.execute("fader 1 1")
     assert reply.ok, reply.text
     command: busk.Command = {"type": "BLACKOUT", "on": False}
+    nudge: busk.Command = {"type": "ADJUST_ATTRIBUTE", "attribute": "color", "component": "r",
+                           "delta": -0.1}  # fmt: skip
+    assert show_.submit(nudge).message
     result: busk.CommandResult = show_.submit(command)
     if not result.ok:
         raise SystemExit(result.message + "".join(str(issue) for issue in result.issues))

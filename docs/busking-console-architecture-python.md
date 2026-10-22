@@ -1607,7 +1607,7 @@ class CommandEnvelope(TypedDict):
 | Class | Examples | Undo | Persisted | Path |
 |---|---|---|---|---|
 | **Performance** | `TRIGGER_PLAYBACK`, `RELEASE_PLAYBACK`, `FLASH`, `GO`, `BACK`, `SET_FADER`, `SET_MASTER`, `TAP`, `BLACKOUT`, `PAGE` | no | no (logged) | lock-free queue, applied next tick |
-| **Programmer** | `SELECT`, `SET_ATTRIBUTE`, `APPLY_PRESET`, `ADD_EFFECT`, `CLEAR`, `HIGHLIGHT`, `BLIND` | programmer history | autosave | same queue |
+| **Programmer** | `SELECT`, `SET_ATTRIBUTE`, `ADJUST_ATTRIBUTE`, `APPLY_PRESET`, `ADD_EFFECT`, `CLEAR`, `HIGHLIGHT`, `BLIND` | programmer history | autosave | same queue |
 | **Show edit** | `RECORD_CUE`, `RECORD_PRESET`, `UPDATE_PRESET`, `PATCH_FIXTURE`, `EDIT_GROUP`, `ASSIGN_PLAYBACK`, `RENAME`, `DELETE` | yes | yes | validated → applied to show store → incremental recompile |
 
 ```python
@@ -1626,6 +1626,10 @@ SelectCmd          = TypedDict("SelectCmd", {"type": Literal["SELECT"], "targets
                                              "mode": Literal["replace", "add", "remove"]})
 SetAttributeCmd    = TypedDict("SetAttributeCmd", {"type": Literal["SET_ATTRIBUTE"], "attribute": AttributeId,
                                                    "value": ValueSource})             # applies to selection
+AdjustAttributeCmd = TypedDict("AdjustAttributeCmd", {"type": Literal["ADJUST_ATTRIBUTE"], "attribute": AttributeId,
+                                                      "component": NotRequired[ColorComponent],
+                                                      "delta": NotRequired[float], "value": NotRequired[float]})
+                                                      # changes the selection's programmer values
 ApplyPresetCmd     = TypedDict("ApplyPresetCmd", {"type": Literal["APPLY_PRESET"], "presetId": PresetId})
 ClearProgrammerCmd = TypedDict("ClearProgrammerCmd", {"type": Literal["CLEAR_PROGRAMMER"]})
 RecordCueCmd       = TypedDict("RecordCueCmd", {"type": Literal["RECORD_CUE"], "cueListId": CueListId,
@@ -1641,7 +1645,7 @@ PatchFixtureCmd    = TypedDict("PatchFixtureCmd", {"type": Literal["PATCH_FIXTUR
 type Command = (
     TriggerPlaybackCmd | ReleasePlaybackCmd | FlashCmd | GoCmd | BackCmd | GotoCmd
     | SetFaderCmd | SetMasterCmd | TapCmd | BlackoutCmd
-    | SelectCmd | SetAttributeCmd | ApplyPresetCmd | ClearProgrammerCmd
+    | SelectCmd | SetAttributeCmd | AdjustAttributeCmd | ApplyPresetCmd | ClearProgrammerCmd
     | RecordCueCmd | RecordPresetCmd | PatchFixtureCmd
     # | …
 )

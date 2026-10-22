@@ -459,6 +459,13 @@ holds slot by slot. Blind leaves it out of the live resolve; leaving blind appli
 a fade time (`fade 2`) every change fades: a set value, a clear, a blind switch,
 an undo. It also holds effects (`ADD_EFFECT`, `REMOVE_EFFECT`), which run in
 the programmer's own bank at band 100, entering, changing and leaving over its fade time.
+`ADJUST_ATTRIBUTE` (GAP-05, `set … by`, `set color.r`) changes values the programmer
+already holds, under the session lock like any programmer command, so a change never
+reads a stale base: it adds a delta (clamped to the registry range, rounded to 9
+decimals) or sets one colour component, and turns a preset reference into the literal
+the §5.8 lookup gave, changed. Where the programmer holds nothing it changes nothing: the
+session does not know the stage's value (the output readout is the engine's, after
+masters, and under `busk run` it lives in another process).
 
 **The programmer status** (`busk.session.status`; GAP-02 of
 [`tui/engine-gaps.md`](tui/engine-gaps.md)). `OfflineShow.programmer` and

@@ -7,7 +7,9 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
     sel <targets> | sel + <targets> | sel - <targets> | sel none | sel playback N
         <targets> = <t>[, <t>…];  <t> = fixture N[.E] [thru M[.F]] | group N
         (fixture N is every element of N; .E picks element E, counted from 1)
-    set <attribute> <value>
+    set <attribute> <value> | set <attribute> by <change>
+    set color.r|g|b|w|a|uv <value> | set color.r|g|b|w|a|uv by <change>
+        <change> = 5% | -5% | 15 | -15   (added to what the programmer holds)
     set <attribute> spread <from> [to] <to> [center|edges]
     set <attribute> preset <pool> N
     preset <pool> N
@@ -150,6 +152,18 @@ playback's button ``b`` as a bound control does: the function in its
 playback N``. ``toggle N`` releases an active playback and activates any
 other.
 
+Relative and per-component values (GAP-05 of
+``docs/dev/tui/engine-gaps.md``), for a frontend's encoders. ``set
+<attribute> by <change>`` adds the change to the value the programmer holds
+for each selected target (a preset reference counts with the preset's
+value), within the attribute's range when it has one; ``set color.<c>``
+sets one component of the colour, ``r``, ``g``, ``b``, ``w``, ``a`` or
+``uv``, keeping the others, and ``by`` changes it within ``0..1`` (from 0
+when the colour has none). Targets without a value in the programmer are
+skipped. A colour changes only by component and a discrete attribute not at
+all. Where ``by`` may come, a value with a plus sign is refused: ``set
+intensity +5%`` would set 5%.
+
 Completion (Tab and ``?`` at the prompt, :mod:`busk.console.prompt`).
 :func:`expected` parses a line up to the word being typed. Where the line
 runs out, the parser notes what it was looking for: keywords, names in
@@ -174,6 +188,7 @@ from busk.model.common import TargetRef
 from busk.model.cue import CUE_NUMBER
 from busk.model.profile import option_capabilities
 from busk.model.show import Show
+from busk.model.validate import COLOR_COMPONENTS
 from busk.session.ids import IdFactory, RandomIds
 from busk.session.library import EffectDefaults, EffectLibrary, ProfileLibrary, builtin_effects
 from busk.session.programmer import EMPTY, Programmer, split_slot_key
@@ -372,6 +387,7 @@ _DEFAULT_SCOPE: Final = {
     "all": "target",
 }
 _ATTRIBUTE_NAMES: Final = {attribute.lower(): attribute for attribute in ATTRIBUTES}
+_COMPONENT_WORDS: Final = tuple(f"color.{component}" for component in COLOR_COMPONENTS)
 _NUMBER: Final = re.compile(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)%?")
 _CUE: Final = re.compile(r"(\d+)(?:/(\d+(?:\.\d+)?))?")
 _SLOT: Final = re.compile(r"(?:(\d+)\.)?(\d+)")
@@ -744,7 +760,21 @@ class _Parser:
     # values
 
     def _cmd_set(self) -> Action:
-        definition = self.attribute()
+        token = self.peek()
+        if token is not None and token.lower.startswith("color."):
+            self.k += 1
+            return self._set_component(token.lower.removeprefix("color."))
+        definition = self.attribute(*_COMPONENT_WORDS)
+        if definition.kind == "scalar":
+            if self.keyword("by"):
+                return self._adjust(definition.id, delta=self.change())
+            self.unsigned(definition.id)
+        elif (token := self.peek()) is not None and token.lower == "by":
+            if definition.kind == "color":
+                raise ParseError(
+                    "a colour changes by component: set color.r by 5% (r, g, b, w, a or uv)"
+                )
+            raise ParseError(f"{definition.id} is discrete: it has no relative values")
         if self.keyword("spread"):
             start = self.value(definition)
             self.keyword("to")
@@ -759,8 +789,40 @@ class _Parser:
             source = {"kind": "literal", "value": self.value(definition)}
         return self.submit({"type": "SET_ATTRIBUTE", "attribute": definition.id, "value": source})
 
-    def attribute(self) -> AttributeDefinition:
-        token = self.take("an attribute", *ATTRIBUTES)
+    def _set_component(self, component: str) -> Action:
+        """``set color.<c> [by] <value>``: one component of the colour."""
+        if component not in COLOR_COMPONENTS:
+            names = ", ".join(COLOR_COMPONENTS)
+            raise ParseError(f"a colour has no component {component!r} ({names})")
+        if self.keyword("by"):
+            return self._adjust("color", component=component, delta=self.change())
+        self.unsigned(f"color.{component}")
+        value = self.number(f"the colour's {component}")
+        return self._adjust("color", component=component, value=value)
+
+    def _adjust(self, attribute: str, **fields: object) -> Action:
+        return self.submit({"type": "ADJUST_ATTRIBUTE", "attribute": attribute, **fields})
+
+    def change(self) -> float:
+        return self.number("a change, e.g. 5% or -15")
+
+    def unsigned(self, name: str) -> None:
+        """Refuse a value with a plus sign where ``by`` may come instead:
+        ``set intensity +5%`` would set 5%, not add it."""
+        token = self.peek()
+        if token is None or token.quoted or not token.text.startswith("+"):
+            return
+        if _NUMBER.fullmatch(token.text):
+            bare = token.text[1:]
+            raise ParseError(
+                f"{token.text!r} has a plus sign: 'set {name} by {token.text}' changes "
+                f"{name} by {bare}, 'set {name} {bare}' sets it"
+            )
+
+    def attribute(self, *also: str) -> AttributeDefinition:
+        """An attribute's name; where the line ends, :func:`expected` offers
+        the attributes, then ``also``."""
+        token = self.take("an attribute", *ATTRIBUTES, *also)
         name = _ATTRIBUTE_NAMES.get(token.lower)
         if name is None:
             raise ParseError(f"unknown attribute {token.text!r}")

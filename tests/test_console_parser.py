@@ -1939,3 +1939,61 @@ def test_playback_button_errors(line: str, error: str) -> None:
 
 def test_help_lists_the_playback_button_lines() -> None:
     assert "flash N on|off | toggle N | button N <b> on|off" in [line.strip() for line in HELP]
+
+
+# -------------------------- relative and per-component values (GAP-05, engine-gaps.md)
+
+ADJUST_COMMANDS: list[tuple[str, dict[str, Any]]] = [
+    ("set intensity by 5%", {"type": "ADJUST_ATTRIBUTE", "attribute": "intensity", "delta": 0.05}),
+    ("set pan by -15", {"type": "ADJUST_ATTRIBUTE", "attribute": "pan", "delta": -15}),
+    ("set Tilt BY +12.5", {"type": "ADJUST_ATTRIBUTE", "attribute": "tilt", "delta": 12.5}),
+    ("set color.r 50%",
+     {"type": "ADJUST_ATTRIBUTE", "attribute": "color", "component": "r", "value": 0.5}),
+    ("set COLOR.UV by -10%",
+     {"type": "ADJUST_ATTRIBUTE", "attribute": "color", "component": "uv", "delta": -0.1}),
+    ("set color.w by 0",
+     {"type": "ADJUST_ATTRIBUTE", "attribute": "color", "component": "w", "delta": 0}),
+    ("set pan -45",  # a negative value is still a value: pan and tilt have them
+     {"type": "SET_ATTRIBUTE", "attribute": "pan", "value": {"kind": "literal", "value": -45}}),
+]  # fmt: skip
+
+
+@pytest.mark.parametrize(("line", "expected"), ADJUST_COMMANDS, ids=[c[0] for c in ADJUST_COMMANDS])
+def test_relative_and_component_lines(line: str, expected: dict[str, Any]) -> None:
+    assert command(line) == expected
+
+
+@pytest.mark.parametrize(
+    ("line", "error"),
+    [
+        ("set intensity +5%",
+         "'+5%' has a plus sign: 'set intensity by +5%' changes intensity by 5%, "
+         "'set intensity 5%' sets it"),
+        ("set pan +45",
+         "'+45' has a plus sign: 'set pan by +45' changes pan by 45, 'set pan 45' sets it"),
+        ("set color.r +5%",
+         "'+5%' has a plus sign: 'set color.r by +5%' changes color.r by 5%, "
+         "'set color.r 5%' sets it"),
+        ("set color by 5%",
+         "a colour changes by component: set color.r by 5% (r, g, b, w, a or uv)"),
+        ("set gobo1 by 1", "gobo1 is discrete: it has no relative values"),
+        ("set color.x 1", "a colour has no component 'x' (r, g, b, w, a, uv)"),
+        ("set color.r", "expected the colour's r"),
+        ("set color.r spread 0 1", "expected the colour's r, got 'spread'"),
+        ("set color.r 1 0 0", "unexpected '0'"),
+        ("set intensity by", "expected a change, e.g. 5% or -15"),
+        ("set intensity by fast", "expected a change, e.g. 5% or -15, got 'fast'"),
+        ("set intensity by 5% 3", "unexpected '3'"),
+        ("park fixture 101 color.r 1", "unknown attribute 'color.r'"),
+    ],
+)  # fmt: skip
+def test_relative_and_component_errors(line: str, error: str) -> None:
+    with pytest.raises(ParseError) as raised:
+        parse(line, context())
+    assert raised.value.message == error
+
+
+def test_help_lists_the_relative_and_component_lines() -> None:
+    stripped = [line.strip() for line in HELP]
+    assert "set <attribute> <value> | set <attribute> by <change>" in stripped
+    assert "set color.r|g|b|w|a|uv <value> | set color.r|g|b|w|a|uv by <change>" in stripped

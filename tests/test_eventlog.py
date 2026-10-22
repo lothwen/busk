@@ -112,7 +112,8 @@ def empty_show() -> Show:
 
 def perform(run: LoggedRun) -> None:
     """The scenario: the Phase 3–5 builds (show edits with generated ids),
-    then performance, programmer changes, undo and redo, and a restore."""
+    then performance, programmer changes (GAP-05's relative ones too), undo
+    and redo, and a restore."""
     run.tick()
     for script in SCRIPTS:
         run.script(script)
@@ -120,9 +121,10 @@ def perform(run: LoggedRun) -> None:
     run.script(EFFECTS)
     run.run("fader 1 1", "go 9", "fader 9 1")
     run.tick(3)
-    run.run("go 9", "sel playback 9", "fade 0.5", "set intensity 0.4")
+    run.run("go 9", "sel playback 9", "fade 0.5", "set intensity 0.4", "set intensity by -10%")
     run.tick(4)
-    run.run("sel group 2", "set color 1 0 0", 'effect add "Pulse" size 0.5', "highlight on")
+    run.run("sel group 2", "set color 1 0 0", "set color.g by 50%", 'effect add "Pulse" size 0.5',
+            "highlight on")  # fmt: skip
     run.tick(2)
     run.run("sel + group 1", "highlight off", "blind on", "set pan 30", "blind off")
     run.run("record cue 10/7", "undo", "undo", "redo", "go 10", "fader 10 1")

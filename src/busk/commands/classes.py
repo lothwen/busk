@@ -48,6 +48,7 @@ COMMAND_CLASSES: Final[Mapping[str, CommandClass]] = MappingProxyType(
         "SELECT": "programmer",
         "SELECT_PLAYBACK": "programmer",
         "SET_ATTRIBUTE": "programmer",
+        "ADJUST_ATTRIBUTE": "programmer",  # GAP-05
         "APPLY_PRESET": "programmer",
         "CLEAR_PROGRAMMER": "programmer",
         "BLIND": "programmer",
