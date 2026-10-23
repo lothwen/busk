@@ -192,6 +192,10 @@ class CompiledCue:
     ``trigger`` and ``triggerDelay`` say what moves a playback *into* this
     cue: a manual GO, or an auto-GO ``triggerDelay`` seconds after the
     previous transition starts (``wait``) or completes (``follow``).
+
+    ``color`` is the colour a display shows for the cue, linear RGB 0..1
+    (GAP-17, :func:`~busk.compiler.readout.cue_color`); ``None`` when the
+    state holds no colour.
     """
 
     id: CueId
@@ -216,6 +220,7 @@ class CompiledCue:
     triggerDelay: float
     targets: tuple[TargetRef, ...]
     effects: tuple[CompiledEffect, ...]
+    color: tuple[float, float, float] | None = None
 
 
 EMPTY_CUE: Final = CompiledCue(

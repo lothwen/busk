@@ -59,6 +59,12 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   `spot` with a gobo wheel, else a `wash`), and `profile "<name>" category <category>|none`
   sets or removes it in a show; `list profiles` shows it. It is a label: no profile gets a
   new revision for it, and `profile update` keeps the show's. GDTF files have no category.
+- `PlaybackStatus.color` ([the library guide](docs/library.md#reference)): the colour of the
+  cue a playback is at, for displays that draw a playback in the colour of its look. It is
+  linear RGB, mixed as `FixtureOutput.color` is, of the brightest element whose colour the
+  cue holds, tracked colours included; `None` while idle or when the cue holds no colour.
+  The compiler works it out once per cue, so the fader, the masters and effects do not
+  change it. The web remote's `state` messages have it too.
 - `busk run --frontend MODULE:FUNCTION` ([Running a show](docs/running.md#frontends)):
   your own frontend instead of the prompt, called with the run's `LiveShow` in the
   console process, with `busk run`'s safety net (the engine in its own process, the

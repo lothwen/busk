@@ -89,6 +89,8 @@ def offline(directory: Path) -> bytes:
     assert not show_.warnings
     snapshot: busk.EngineSnapshot = show_.snapshot
     playing: list[busk.PlaybackStatus] = [p for p in snapshot.playbacks if p.state != "idle"]
+    tints: list[tuple[float, float, float] | None] = [p.color for p in playing]
+    assert all(tint is None or max(tint) <= 1.0 for tint in tints)
     speeds: tuple[busk.SpeedStatus, ...] = snapshot.speed
     page: busk.PageStatus | None = snapshot.page
     assert playing or speeds or page

@@ -21,21 +21,28 @@ such lane":
 
 Elements are listed by fixture number, then element: the order of the
 readout. Unpatched fixtures are listed too: they are programmable.
+
+:func:`emitted` reads an element's intensity and colour from a logical frame
+with these lookups. The output readout uses it, and so does
+:func:`cue_color`, the colour a display shows for a cue (GAP-17), which the
+compiler stores in each compiled cue.
 """
 
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Final
 
 import numpy as np
 from numpy.typing import NDArray
 
+from busk.compiler.cues import CompiledCue
 from busk.compiler.rig import RigFixture
 from busk.compiler.slots import FAMILY_CODES, Slot, SlotTable
-from busk.model.common import FixtureId, TargetRef
+from busk.model.common import FixtureId, TargetKey, TargetRef, target_key
 from busk.model.profile import ChannelDefinition, FixtureProfile, option_capabilities
 
 type IntArray = NDArray[np.intp]
@@ -48,6 +55,7 @@ class ReadoutLayout:
 
     numbers: tuple[int, ...]  # per element: its fixture's number
     elements: tuple[int, ...]  # per element: its index + 1
+    byTarget: Mapping[TargetKey, int]  # each element's position here, by its target key
     intensity: IntArray  # (E,) its intensity lane
     master: IntArray  # (E,) element 0's intensity lane, when it dims this element too
     rgb: IntArray  # (E, 3) its colour slot's r, g, b lanes
@@ -77,6 +85,7 @@ def _lanes(values: Sequence[int]) -> IntArray:
 EMPTY_READOUT: Final = ReadoutLayout(
     numbers=(),
     elements=(),
+    byTarget=MappingProxyType({}),
     intensity=_lanes([]),
     master=_lanes([]),
     rgb=_readonly(np.zeros((0, 3), dtype=np.intp)),
@@ -110,6 +119,7 @@ def build_readout(rig: Sequence[RigFixture], slots: SlotTable) -> ReadoutLayout:
         return -1 if found is None else found.laneOffset + offset
 
     intensity, master, white, wheel, pan, tilt, zoom = ([] for _ in range(7))
+    keys: list[TargetKey] = []
     rgb: list[tuple[int, int, int]] = []
     starts: list[int] = []
     counts: list[int] = []
@@ -117,6 +127,7 @@ def build_readout(rig: Sequence[RigFixture], slots: SlotTable) -> ReadoutLayout:
     colored: list[bool] = []
     for fixture, element in order:
         target = TargetRef(fixtureId=FixtureId(fixture.fixture["id"]), element=element)
+        keys.append(target_key(target))
         info, main = fixture.elements[element], fixture.elements[0]
         intensity.append(lane(target, "intensity"))
         dims = element != 0 and not info.hasDimmer and main.hasDimmer
@@ -157,6 +168,7 @@ def build_readout(rig: Sequence[RigFixture], slots: SlotTable) -> ReadoutLayout:
     return ReadoutLayout(
         numbers=tuple(fixture.fixture["number"] for fixture, _ in order),
         elements=tuple(element + 1 for _, element in order),
+        byTarget=MappingProxyType({key: k for k, key in enumerate(keys)}),
         intensity=_lanes(intensity),
         master=_lanes(master),
         rgb=_readonly(np.array(rgb, dtype=np.intp).reshape(len(rgb), 3)),
@@ -173,6 +185,74 @@ def build_readout(rig: Sequence[RigFixture], slots: SlotTable) -> ReadoutLayout:
         runElement=_lanes(run_element),
         runFamily=_lanes(run_family),
     )
+
+
+def emitted(
+    layout: ReadoutLayout, values: NDArray[np.float64], rows: IntArray | slice = slice(None)
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """The light the elements at ``rows`` of ``layout`` emit in the logical
+    frame ``values``, which ends with one more lane, ``NaN``, for lane ``-1``
+    ("no such lane") to read. Per element, as
+    :class:`~busk.engine.snapshot.FixtureOutput` has them:
+
+    * its intensity: its own, times its master dimmer's when it has one; an
+      element dimmed by nothing emits 1.0;
+    * its colour, an ``(n, 3)`` array of linear RGB at full intensity: ``r,
+      g, b`` plus an explicit ``w``, through the colour wheel's filter when
+      the wheel slot has a colour; white without a colour slot.
+    """
+    own, master = values[layout.intensity[rows]], values[layout.master[rows]]
+    intensity = np.where(np.isnan(own), 1.0, own) * np.where(np.isnan(master), 1.0, master)
+    rgb = values[layout.rgb[rows]]
+    rgb = np.where(np.isnan(rgb), 1.0, np.clip(rgb, 0.0, 1.0))  # no colour slot: white
+    white = np.clip(np.nan_to_num(values[layout.white[rows]], nan=0.0), 0.0, 1.0)
+    rgb = np.minimum(rgb + white[:, np.newaxis], 1.0)
+    count = layout.wheelCount[rows]
+    wheeled = np.flatnonzero(count)
+    if wheeled.size:
+        position = np.rint(values[layout.wheel[rows][wheeled]])
+        chosen = np.clip(position, 0, count[wheeled] - 1).astype(np.intp)
+        filters = layout.wheelColors[layout.wheelStart[rows][wheeled] + chosen]
+        known = ~np.isnan(filters).any(axis=1)
+        rgb[wheeled[known]] *= filters[known]
+    return intensity, rgb
+
+
+def cue_color(
+    layout: ReadoutLayout, slots: SlotTable, cue: CompiledCue
+) -> tuple[float, float, float] | None:
+    """The colour a display shows for ``cue`` (GAP-17 of
+    ``docs/dev/tui/engine-gaps.md``), from its tracked state.
+
+    Of the elements whose ``color`` or ``colorWheel`` the cue holds, it is
+    the colour of the one the cue lights brightest, the first in the cue's
+    ``targets`` among equals (so the first, when it lights none of them).
+    Each is read as the output readout reads it (:func:`emitted`), from the
+    cue's values over the defaults: the show's masters and effects do not
+    count. ``None`` when the cue holds no colour.
+    """
+    frame = np.append(slots.defaultFrame, math.nan)
+    held = np.zeros(frame.size, dtype=np.bool_)  # the padding lane stays False
+    frame[slots.intensityLanes[cue.htpPos]] = cue.htpValues
+    for lanes, values in ((cue.ltpLanes, cue.ltpValues), (cue.snapLanes, cue.snapValues)):
+        frame[lanes] = values
+        held[lanes] = True
+    # A cue holds every lane of a slot it holds: its colour's r lane says it holds the colour.
+    rows = np.flatnonzero(held[layout.rgb[:, 0]] | held[layout.wheel])
+    if not rows.size:
+        return None
+    intensity, colors = emitted(layout, frame, rows)
+    brightest = np.flatnonzero(intensity == intensity.max())
+    chosen = int(brightest[0])
+    if brightest.size > 1:  # the first of them in the cue's order, not the readout's
+        tied = {int(rows[k]): int(k) for k in brightest}
+        chosen = next(
+            tied[row]
+            for row in (layout.byTarget.get(target_key(target), -1) for target in cue.targets)
+            if row in tied
+        )
+    r, g, b = colors[chosen].tolist()
+    return (r, g, b)
 
 
 def _wheel_colors(

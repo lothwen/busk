@@ -14,7 +14,8 @@
 * **``busk run --frontend``**, real process trees running
   ``tests/process_site/frontend_probe.py``: the frontend gets the show
   (frames, output, effects, routes, the programmer, the effect templates,
-  lines that run, a profile's category) and busk run's lines as ``busk.run`` records, none printed
+  lines that run, a profile's category, the playbacks' colours) and busk run's lines as
+  ``busk.run`` records, none printed
   over it; one that raises is restarted with its console while the engine
   runs on; ``SIGTERM`` ends the run through it; with ``--threads`` too. A
   frontend that cannot be loaded ends the run with 1; the options it cannot
@@ -399,11 +400,13 @@ def test_busk_run_calls_the_frontend_with_its_show(
         monkeypatch,
         lines=[
             "go 6",
+            "go 3",
             "sel fixture 101",
             "route add 1 sacn 7 unicast 127.0.0.1",
             'profile "RGB Par 3ch" category par',
         ],
         effectOf=6,
+        colorOf=3,
         records=["universe 7"],  # the root's line for the new route
         routes=2,
     )
@@ -415,16 +418,17 @@ def test_busk_run_calls_the_frontend_with_its_show(
     assert report["timeout"] is None, report
     assert report["calls"] == 1
     replies = report["replies"]
-    assert [ok for _, _, ok in replies] == [True, True, True, True]
+    assert [ok for _, _, ok in replies] == [True, True, True, True, True]
     assert report["frame"]["seq"] > 0
     assert report["frame"]["universes"] == {"1": 512}
     assert [number for number, _, _ in report["output"]["fixtures"]] == [101, 102, 201]
     assert report["effects"] == [[6, "1", "ei-1"]]
-    route = replies[2][1].removeprefix("added route ")
+    route = replies[3][1].removeprefix("added route ")
     assert report["routes"] == [["r1", "ok"], [route, "ok"]]
     assert report["selection"] == [[101, 1]]
     assert report["templates"][:2] == [["Pulse", "show"], ["Circle", "library"]]
     assert report["categories"] == [["Generic Spot 16ch", None], ["RGB Par 3ch", "par"]]
+    assert report["colors"] == [[1, None], [3, [0.0, 0.0, 1.0]], [6, None]]  # Blue; an effect
     said = [message for name, level, message in report["records"] if name == "busk.run"]
     assert any(message.startswith(f"sACN {route}: U1 Stage → universe 7") for message in said)
     assert not any(

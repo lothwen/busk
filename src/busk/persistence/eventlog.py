@@ -177,13 +177,19 @@ def snapshot_from_json(data: Mapping[str, Any]) -> EngineSnapshot:
         time=data["time"],
         grandMaster=data["grandMaster"],
         blackout=data["blackout"],
-        playbacks=tuple(PlaybackStatus(**status) for status in data["playbacks"]),
+        playbacks=tuple(_playback_status(status) for status in data["playbacks"]),
         masterLevels=tuple((ident, level) for ident, level in data.get("masterLevels", ())),
         speed=tuple(SpeedStatus(**status) for status in data.get("speed", ())),
         page=None if page is None else PageStatus(**page),
         fadeTime=data.get("fadeTime"),
         outputEnabled=data.get("outputEnabled", True),
     )
+
+
+def _playback_status(data: Mapping[str, Any]) -> PlaybackStatus:
+    """One playback of :func:`snapshot_from_json` data: JSON made its colour a list."""
+    color = data.get("color")
+    return PlaybackStatus(**{**data, "color": None if color is None else tuple(color)})
 
 
 def encode(t: float, item: Item) -> bytes:

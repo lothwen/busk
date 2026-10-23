@@ -300,6 +300,15 @@ lanes, the master dimmer that dims a cell without its own, the colours of its co
 wheel's slots, and the runs of lanes of each family, so the per-family source is one
 `reduceat`.
 
+With the same lookups the compiler gives each compiled cue its `color` (GAP-17), which the
+snapshot shows as `PlaybackStatus.color` of a playback at that cue. `cue_color` writes the
+compiled cue's lane arrays over the default frame, takes the elements whose colour or
+colour wheel lanes the cue holds, and reads their intensity and colour with `emitted`, the
+readout's own mixing: the brightest wins, the first in the cue's targets among equals.
+Effects and the show's masters do not count. A compiled cue list is reused only with the
+same rig, so its colours stay valid, and the engine process gets them with the cue lists,
+without the readout lookups.
+
 **The effect status** (`busk.engine.effect_status`; GAP-09 of
 [`tui/engine-gaps.md`](tui/engine-gaps.md)). `OfflineShow.effects` and `LiveShow.effects`
 list the instances the tick ran, as the public `EffectSnapshot`. Each `EffectRuntime` keeps

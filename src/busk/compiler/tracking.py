@@ -51,7 +51,7 @@ Equal timings are interned per cue, so ``CompiledCue.timings`` stays small.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from busk.compiler.cues import (
     CompiledCue,
@@ -62,6 +62,7 @@ from busk.compiler.cues import (
     cue_from_values,
 )
 from busk.compiler.effects import CompiledEffect
+from busk.compiler.readout import ReadoutLayout, cue_color
 from busk.compiler.slots import FAMILIES, SlotIndex, SlotTable
 from busk.model.attributes import AttributeFamily
 from busk.model.common import TargetKey, TargetRef, target_key
@@ -249,12 +250,13 @@ def timing_table(
 
 
 def compile_cue_states(
-    compiler: CueCompiler, cue_list: CueList, path: str
+    compiler: CueCompiler, cue_list: CueList, path: str, readout: ReadoutLayout
 ) -> tuple[CompiledCue, ...]:
     """Every cue of ``cue_list`` (found at ``path``, ``cueLists[i]``, in the
     show) compiled to its tracked state, values and effects, with per-slot
     timing. A cue's targets are its state's value targets, then the targets
-    its effects drive."""
+    its effects drive. Its colour is read from it with the rig's ``readout``
+    (:func:`~busk.compiler.readout.cue_color`)."""
     cues = cue_list["cues"]
     own = [compiler.own(cue, f"{path}.cues[{c}]") for c, cue in enumerate(cues)]
     blocks = [cue.get("block", False) for cue in cues]
@@ -263,18 +265,17 @@ def compile_cue_states(
     for cue, mine, state in zip(cues, own, states, strict=True):
         trigger = cue["trigger"]
         delay = 0.0 if trigger["kind"] == "go" else trigger["delay"]
-        compiled.append(
-            cue_from_values(
-                compiler.slots,
-                state.values,
-                id=cue["id"],
-                number=cue["number"],
-                name=cue["name"],
-                timing=timing_table(compiler.slots, cue["timing"], state.values, mine.overrides),
-                trigger=trigger["kind"],
-                triggerDelay=delay,
-                targets=_with_effect_targets(state.targets, state.effects),
-                effects=tuple(state.effects.values()),
-            )
+        made = cue_from_values(
+            compiler.slots,
+            state.values,
+            id=cue["id"],
+            number=cue["number"],
+            name=cue["name"],
+            timing=timing_table(compiler.slots, cue["timing"], state.values, mine.overrides),
+            trigger=trigger["kind"],
+            triggerDelay=delay,
+            targets=_with_effect_targets(state.targets, state.effects),
+            effects=tuple(state.effects.values()),
         )
+        compiled.append(replace(made, color=cue_color(readout, compiler.slots, made)))
     return tuple(compiled)

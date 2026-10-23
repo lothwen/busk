@@ -8,6 +8,7 @@ attached show, and follows the plan in the JSON file ``$BUSK_TEST_FRONTEND``:
 * ``lines``: console lines to run, once the show's frame, output and effects
   have come (reading them asks for them);
 * ``effectOf``: then wait until that playback's effect runs;
+* ``colorOf``: then wait until that playback has a colour in the snapshot;
 * ``records``: then wait until a ``busk.run`` record contains each text;
 * ``routes``: then wait until the show has that many routes;
 * ``sleep``: then sleep that long, after writing a ``.sleeping`` file next to
@@ -86,6 +87,13 @@ def run(show: Any, plan: dict[str, Any], records: Records, report: dict[str, Any
 
     if effect_of is not None and not wait(f"the effect of playback {effect_of}", running):
         return
+    color_of = plan.get("colorOf")
+
+    def colored() -> bool:
+        return any(p.number == color_of and p.color is not None for p in show.snapshot.playbacks)
+
+    if color_of is not None and not wait(f"the colour of playback {color_of}", colored):
+        return
     for text in plan.get("records", []):
 
         def said(text: str = text) -> bool:
@@ -110,6 +118,7 @@ def run(show: Any, plan: dict[str, Any], records: Records, report: dict[str, Any
     report["selection"] = [list(target) for target in show.programmer.selection]
     report["templates"] = [[t.name, t.source] for t in show.effect_templates]
     report["categories"] = [[p["name"], p.get("category")] for p in show.show["profiles"]]
+    report["colors"] = [[p.number, p.color] for p in show.snapshot.playbacks]
 
 
 def _reply(reply: Any) -> list[Any]:

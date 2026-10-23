@@ -395,7 +395,7 @@ take `str` or `os.PathLike`.
 | `Reply` | What `execute` returns: `text`, `ok` |
 | `ImportReport` | What `read_ofl` and `read_gdtf` return: `profile`, `notes` |
 | `EngineSnapshot` | The engine's published state: grand master, blackout, playbacks, masters, page, tempo |
-| `PlaybackStatus` | One playback in a snapshot: number, name, state, fader level, current cue |
+| `PlaybackStatus` | One playback in a snapshot: number, name, state, fader level, current cue, and `color`, that cue's colour to draw the playback in (linear RGB 0..1, or `None`: idle, or the cue holds no colour) |
 | `SpeedStatus` | One speed master in a snapshot: BPM, multiplier, beat |
 | `PageStatus` | The current page in a snapshot |
 | `OutputSnapshot` | The output of one tick per fixture element: `seq`, `time`, `fixtures` |

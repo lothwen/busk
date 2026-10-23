@@ -40,6 +40,16 @@ class PlaybackStatus:
     is the playback's newest activation number: a restore after an engine
     restart activates playbacks in this order, so the LTP stack comes back
     as it was.
+
+    ``color`` (GAP-17 of ``docs/dev/tui/engine-gaps.md``) is the colour of
+    the cue ``cue`` names, for a display to draw the playback in: linear RGB
+    0..1, at full intensity, as :class:`FixtureOutput` has colours. Of the
+    elements whose ``color`` or ``colorWheel`` the cue holds (its own values
+    and those it tracks), it is the colour of the one the cue lights
+    brightest, the first in the cue's order among equals, and the first when
+    the cue lights none of them. It is the cue's colour, not the output's:
+    the fader, the masters, other playbacks, the programmer and effects do
+    not change it. ``None`` while idle, and when the cue holds no colour.
     """
 
     id: PlaybackId
@@ -57,6 +67,7 @@ class PlaybackStatus:
     cueName: str | None = None  # its name; None when idle or unnamed
     next: str | None = None  # the cue GO goes to; None at the end without wrap (or random chase)
     seq: int = 0  # the newest activation number (Phase 7); 0: never activated
+    color: tuple[float, float, float] | None = None  # the current cue's colour (GAP-17)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

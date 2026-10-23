@@ -34,6 +34,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from busk.compiler.compile import CompiledShow
+from busk.compiler.readout import emitted
 from busk.compiler.slots import FAMILIES, FAMILY_CODES
 from busk.engine.contributions import PROGRAMMER, Origin, OriginKind, Relative, Source
 from busk.engine.install import Highlight
@@ -122,23 +123,10 @@ def read_output(captured: Capture) -> OutputSnapshot:
     if layout.runStart.size:
         best = np.maximum.reduceat(lane_ranks[:-1], layout.runStart)
         np.maximum.at(families, (layout.runElement, layout.runFamily), best)
-    own, master = values[layout.intensity], values[layout.master]
-    intensity = np.where(np.isnan(own), 1.0, own) * np.where(np.isnan(master), 1.0, master)
+    intensity, rgb = emitted(layout, values)
     dimmer = np.where(layout.intensity >= 0, layout.intensity, layout.master)
     families[:, _INTENSITY] = lane_ranks[dimmer]
     drivers = owners[dimmer]
-
-    rgb = values[layout.rgb]
-    rgb = np.where(np.isnan(rgb), 1.0, np.clip(rgb, 0.0, 1.0))  # no colour slot: white
-    white = np.clip(np.nan_to_num(values[layout.white], nan=0.0), 0.0, 1.0)
-    rgb = np.minimum(rgb + white[:, np.newaxis], 1.0)
-    wheeled = np.flatnonzero(layout.wheelCount)
-    if wheeled.size:
-        position = np.rint(values[layout.wheel[wheeled]])
-        chosen = np.clip(position, 0, layout.wheelCount[wheeled] - 1).astype(np.intp)
-        filters = layout.wheelColors[layout.wheelStart[wheeled] + chosen]
-        known = ~np.isnan(filters).any(axis=1)
-        rgb[wheeled[known]] *= filters[known]
 
     fixtures = tuple(
         FixtureOutput(

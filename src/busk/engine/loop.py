@@ -787,6 +787,7 @@ class Engine:
             cueName=None if rt.cue < 0 else rt.current.name or None,
             next=None if after is None else cues.cues[after].number,
             seq=rt.activationSeq,
+            color=None if rt.cue < 0 else rt.current.color,
         )
 
     def _publish_snapshot(self, now: float) -> None:

@@ -28,7 +28,8 @@ The TUI runs a `busk.LiveShow` in its own process, or, since GAP-11, is run by `
   `LiveShow.effects` (`EffectSnapshot`), since GAP-10 `LiveShow.confirmation(line)`
   (the question to ask before a line) and since GAP-15 `LiveShow.effect_templates`
   (`EffectTemplateInfo`). Since GAP-16 a profile in `LiveShow.show` may have a
-  `category`. The `busk.*` loggers feed the TUI's log pane.
+  `category`, and since GAP-17 a playback in the snapshot has the `color` of its current
+  cue. The `busk.*` loggers feed the TUI's log pane.
 - **Text is not parsed.** `docs/library.md` says message text (`Reply.text`, CLI output, log
   records) may change in any release, so the TUI never extracts data from the output of
   `programmer`, `info`, `list …` or `library`. It may show such output verbatim.
@@ -70,7 +71,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-14](#gap-14-stop-and-restart-a-programmer-effect) Stop and restart a programmer effect | action | nice-to-have | F1 B, F5 | **done** 2026-10-23 |
 | [GAP-15](#gap-15-effect-template-library) Effect template library | read | nice-to-have | F5 | **done** 2026-10-23 |
 | [GAP-16](#gap-16-fixture-category) Fixture category | read | nice-to-have | F1 A/C, F8 | **done** 2026-10-24 |
-| [GAP-17](#gap-17-playback-colour) Playback colour | read | nice-to-have | F1 | open |
+| [GAP-17](#gap-17-playback-colour) Playback colour | read | nice-to-have | F1 | **done** 2026-10-24 |
 | [GAP-18](#gap-18-quit-signal) Quit signal | read | nice-to-have | prompt | open |
 | [GAP-19](#gap-19-status-under-liveshow) `status` under `LiveShow` | action | nice-to-have | prompt | open |
 | [GAP-20](#gap-20-completion-and-hints) Completion and hints | read | nice-to-have | prompt | open |
@@ -1368,6 +1369,8 @@ from `doc`, and adaptation 8 goes.
 
 ## GAP-17: Playback colour
 
+**Status:** done 2026-10-24 (see **Done** at the end of this section).
+
 **Needed by:** F1 fader and bar colour ("colour = current cue colour"). Spec §8.1.
 
 **Today:** a playback has an optional static `uiColor` (`playback N uiColor "#ff8800"`), which
@@ -1382,6 +1385,55 @@ target it drives), updated with the snapshot.
 
 **TUI until then:** bars and faders use `uiColor` when it is set and parses as a colour, else the
 neutral foreground.
+
+**Done** (2026-10-24). `PlaybackStatus.color: tuple[float, float, float] | None`, as
+suggested: the colour of the cue the playback is at, in the snapshot, so it changes with
+the cue (a GO, a GOTO, each chase step) and with an edit that recolours the cue. No public
+name was added (`busk.__all__` stays at 37); the golden's diff is the new field.
+Documented in the `PlaybackStatus` docstring, `docs/library.md` (the reference),
+`docs/dev/internals.md` (the compiler) and the compiler's module docs. Where it settles
+what the suggestion left open:
+
+- **The cue's colour, not the output's** (a call the user may veto). The snapshot is
+  published when the state changes, not every tick, so the colour belongs to the cue: the
+  compiler works it out once (`CompiledCue.color`, from `busk.compiler.readout.cue_color`),
+  and the fader, the masters, blackout, other playbacks, the programmer and effects do not
+  change it. A cue whose colour comes from an effect alone (a rainbow) has none. The live
+  colour of each fixture is `LiveShow.output` (GAP-01), and a running colour effect's
+  palette is `EffectStatus.colors` (GAP-09).
+- **Which element.** Of the elements whose `color` or `colorWheel` the cue holds, its own
+  values and the ones it tracks, it is the one the cue lights brightest. Among equals the
+  first in the cue's order wins (its entries' targets in order, then the tracked ones), so
+  it is the first when the cue lights none of them. A colour-only playback (a colour
+  preset on a busking page) shows its first fixture's colour. A cue that moves some heads
+  in black shows the colour of what it lights, where the suggested "first target it
+  drives" could pick a dark head. A cell counts as lit by its bar's master dimmer. A cue
+  that holds no colour (intensity only, or an effect only) has `None`. Colour macros,
+  CTO, amber and UV are not counted, as in the readout.
+- **Mixed as the readout mixes it**: linear RGB 0..1 at full intensity, `r, g, b` plus an
+  explicit `w`, through the colour wheel's filter, from the cue's values over the
+  defaults. One function, `emitted`, now does this for both, so a playback alone on stage
+  shows the colour `FixtureOutput.color` reads for that element.
+- **`None` while idle** (a call the user may veto), as `cue` and `cueName` are, also
+  while a flash plays an idle playback's first cue: `color` is the colour of the cue `cue`
+  names. While a crossfade fader drives a transition, that is the cue it goes to.
+- **Nothing on the tick.** The compiler computes it once per cue (a cue list is compiled
+  again only when it, its groups, presets or templates, or the rig change), with numpy on
+  the compiled cue's lanes, and the snapshot copies a reference. A full compile of the
+  busking reference rig (1856 fixtures, 60 cues of 695 targets on average) took 437 ms
+  against 425 ms without it, and the TupperDMX show 1.8 ms against 1.5 ms. Under `busk
+  run` the compiled cues carry it to the engine process, and its snapshots carry it back.
+  The event log's JSON keeps it (a restore record from before has none), and the web
+  remote's `state` messages have it.
+- Tests: `tests/test_playback_color.py` (20, the engine change mutation-checked), the
+  frontend probe's report in `tests/test_frontend.py` (a real `busk run --frontend`'s
+  playback colours, through both processes), the golden and `tests/api_consumer.py`.
+
+The TUI's F1 can now draw each playback's bar and fader in `PlaybackStatus.color`, read
+with the rest of the snapshot and quantised as spec §4.2 says, and fall back to `uiColor`
+(when it parses as a colour), then to the neutral foreground, while it is `None`. In the
+implementation plan, the §2.2 row "Colour = current cue colour" becomes **S**, from
+`snap`, and adaptation 9 becomes "the current cue's colour, `uiColor` while it has none".
 
 ## GAP-18: Quit signal
 

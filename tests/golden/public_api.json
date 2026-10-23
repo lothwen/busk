@@ -314,11 +314,12 @@
       "cue: str | None",
       "cueName: str | None",
       "next: str | None",
-      "seq: int"
+      "seq: int",
+      "color: tuple[float, float, float] | None"
     ],
     "kind": "frozen dataclass",
     "members": {
-      "__init__": "(self, *, id: PlaybackId, number: int, name: str, state: PlaybackState, faderLevel: float, flash: bool, swop: bool = False, progress: float | None = None, fader: FaderFunction = 'master', chase: bool = False, cueCount: int = 1, cue: str | None = None, cueName: str | None = None, next: str | None = None, seq: int = 0) -> None"
+      "__init__": "(self, *, id: PlaybackId, number: int, name: str, state: PlaybackState, faderLevel: float, flash: bool, swop: bool = False, progress: float | None = None, fader: FaderFunction = 'master', chase: bool = False, cueCount: int = 1, cue: str | None = None, cueName: str | None = None, next: str | None = None, seq: int = 0, color: tuple[float, float, float] | None = None) -> None"
     },
     "module": "busk.engine.snapshot"
   },

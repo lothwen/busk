@@ -18,7 +18,8 @@ The compiled show holds:
   vectorised converter (:mod:`busk.convert.plan`);
 * the **compiled cues** of every cue list, each the cue's tracked state
   with per-slot timing (:mod:`busk.compiler.cues`,
-  :mod:`busk.compiler.tracking`), and
+  :mod:`busk.compiler.tracking`) and the colour a display shows for it
+  (GAP-17, read with the readout lookups), and
   the **playbacks**, the **pages** and the **masters** the engine and
   the bindings run on (:mod:`busk.compiler.playbacks`);
 * the **safety** data: park entries and fixture limits as lane arrays
@@ -266,7 +267,7 @@ def compile_show(show: Show, previous: CompiledShow | None = None) -> CompiledSh
         cues.readPresets.clear()
         cues.readTemplates.clear()
         before = len(cues.warnings)
-        compiled_cues = compile_cue_states(cues, cue_list, f"cueLists[{i}]")
+        compiled_cues = compile_cue_states(cues, cue_list, f"cueLists[{i}]", readout)
         lists[cue_list["id"]] = _ListMemo(
             source=cue_list,
             index=i,
