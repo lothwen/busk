@@ -12,7 +12,7 @@ library that does the same things from your own code. With the library you can:
 
 Everything public is importable from `busk` itself. This guide covers [installing](#installing),
 [the three uses](#1-tooling-validate-a-show-import-a-profile) with examples, a
-[reference](#reference) of the 33 public names, [the errors](#errors),
+[reference](#reference) of the 34 public names, [the errors](#errors),
 [logging](#logging), [what is public](#what-is-public) and [the stability promise](#stability).
 The [README](../README.md) covers the command line and links the other guides: the
 [console's commands](console.md), [running a show](running.md) and [how busk works inside](dev/internals.md).
@@ -223,6 +223,22 @@ for route in live.routes or ():
     print(route.label, f"U{route.universe}", light, route.detail)   # sACN r1 U1 green
 ```
 
+`surfaces` is the show's control surfaces, in show order, each with what it does: `"ok"`
+(open: a MIDI controller connected, an OSC surface listening, a web remote serving),
+`"failed"` (it is not open; a MIDI surface opens once its device is plugged in, the others
+when an edit changes them), or `"ignored"` (`hid` and `internal` surfaces, which busk does
+not implement), with `detail` saying why. An open web remote has the addresses to open on a
+phone, key included, in `urls`. It is `None` before `start()` and with `surfaces=False`. It
+follows live edits and MIDI devices plugged in and out; while nothing changes, the same
+object comes back:
+
+```python
+for surface in live.surfaces or ():
+    print(surface.name, surface.kind, surface.state, surface.detail, *surface.urls)
+# nanoKONTROL2 midi failed unplugged; waiting for it
+# Phone web ok  http://10.0.0.5:8080/?k=…
+```
+
 ```python
 show, _ = busk.load_show("club.show")
 with busk.LiveShow(show, path="club.show", surfaces=True) as live:   # routes and surfaces open
@@ -262,7 +278,7 @@ opens no route, so nothing goes to the network; the frames are made all the same
 
 ## Reference
 
-The 33 names of `busk.__all__`. Each has a docstring with the details; path parameters
+The 34 names of `busk.__all__`. Each has a docstring with the details; path parameters
 take `str` or `os.PathLike`.
 
 | Name | What it is |
@@ -275,7 +291,7 @@ take `str` or `os.PathLike`.
 | `read_gdtf` | `read_gdtf(path, *, manufacturer=None) -> ImportReport`: convert a GDTF file |
 | `ProfileLibrary` | The built-in profiles plus directories of profiles, for `fixture add`: `get(id)`, `find(id or name)`, iteration, `problems` |
 | `OfflineShow` | A show on a clock you drive: `submit`, `execute`, `run_script`, `save`, `tick`; `show`, `warnings`, `snapshot`, `output`, `programmer`, `time` |
-| `LiveShow` | A show in real time in your process: as `OfflineShow`, with `start`, `stop` and `with`, `frame` instead of `tick`, and `routes` |
+| `LiveShow` | A show in real time in your process: as `OfflineShow`, with `start`, `stop` and `with`, `frame` instead of `tick`, `routes` and `surfaces` |
 | `DmxFrame` | One engine output: `seq`, `time`, and `universes`, a mapping of universe number to 512 bytes |
 | `Show` | The show file format, a `TypedDict` |
 | `FixtureProfile` | The fixture profile format, a `TypedDict` |
@@ -293,6 +309,7 @@ take `str` or `os.PathLike`.
 | `ProgrammerStatus` | The programmer: `version`, `selection` (`(number, element)` pairs), `blind`, `highlight`, `fadeTime`, `values`, `effects` (as the show file holds them) |
 | `ProgrammerValue` | One value in it: `number`, `element`, `attribute`, `value` (in the show's units), `preset` (`(pool, number, name)`, or `None`) |
 | `RouteStatus` | One output route of a `LiveShow`: `id`, `label`, `universe` (its number), `state` (`"ok"`, `"failed"`, `"disabled"`, `"ignored"`), `detail` (why), `packets`, `errors` |
+| `SurfaceStatus` | One control surface of a `LiveShow`: `id`, `name`, `kind`, `state` (`"ok"`, `"failed"`, `"ignored"`), `detail` (why), `urls` (a web remote's addresses) |
 | `IdFactory` | The protocol that makes new entity ids |
 | `CounterIds` | An `IdFactory` that counts: reproducible shows |
 | `BuskError` | The base of every error the API raises on purpose |
@@ -334,7 +351,7 @@ Wrong arguments raise `ValueError` or `TypeError`, never a `BuskError`.
 The library prints nothing. It reports through the loggers under `busk`: `busk.output`
 (route lines such as `sACN r1: …`; `LiveShow.routes` has the same news as data),
 `busk.surfaces` (surface lines, the web remote's
-URL among them), `busk.session` and `busk.eventlog`. News is INFO and failures are
+URL among them; `LiveShow.surfaces` has the same news as data), `busk.session` and `busk.eventlog`. News is INFO and failures are
 WARNING. `busk` has a `logging.NullHandler`, so a program that configures no logging
 sees none of it; `logging.basicConfig(level=logging.INFO)` shows it all.
 

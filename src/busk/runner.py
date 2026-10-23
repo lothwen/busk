@@ -28,7 +28,9 @@ values with what drives them (:class:`~busk.engine.snapshot.OutputSnapshot`,
 GAP-01 of ``docs/dev/tui/engine-gaps.md``), and their ``programmer`` is the
 programmer with fixtures by number (:class:`~busk.session.status.ProgrammerStatus`,
 GAP-02). A :class:`LiveShow`'s ``routes`` are its output routes and what
-each does (:class:`~busk.output.driver.RouteStatus`, GAP-07).
+each does (:class:`~busk.output.driver.RouteStatus`, GAP-07), and its
+``surfaces`` its control surfaces (:class:`~busk.io.surfaces.SurfaceStatus`,
+GAP-08).
 
 Errors (§5.8): constructing a facade raises
 :class:`~busk.persistence.show_file.ShowLoadError` for an invalid show and
@@ -74,7 +76,7 @@ from busk.engine.snapshot import EngineSnapshot, OutputSnapshot
 from busk.errors import ScriptError
 from busk.io.bindings import BindingResolver
 from busk.io.feedback import FeedbackWorker
-from busk.io.surfaces import SurfaceManager
+from busk.io.surfaces import SurfaceManager, SurfaceStatus
 from busk.model.show import Show
 from busk.model.validate import Issue, has_errors, validate_show
 from busk.output.artnet import ArtNetNetwork
@@ -688,6 +690,22 @@ class LiveShow(_Facade):
             return None
         return run.scheduler.route_status()
 
+    @property
+    def surfaces(self) -> tuple[SurfaceStatus, ...] | None:
+        """The show's control surfaces, in show order, each with what it
+        does: open (``"ok"``; a web remote with its ``urls``), ``"failed"``
+        and why, or ``"ignored"`` (see :class:`~busk.io.surfaces.SurfaceStatus`).
+        It follows live edits within :data:`MONITOR_S` s, and MIDI devices
+        plugged in and out at the next read of the port names (every 2 s).
+        Poll it with the others; while nothing changed, the same object comes
+        back.
+
+        ``None`` before :meth:`start` and with ``surfaces=False``: no surface
+        is open. After :meth:`stop`, the surfaces as they ended. ``busk
+        run``'s show has them too: its console process opens them."""
+        manager = self._surfaces
+        return None if manager is None else manager.status()
+
     # ---------------------------------------------------- start and stop
 
     def start(self) -> None:
@@ -805,14 +823,15 @@ class LiveShow(_Facade):
             clock=clock.now,
             key=self._web_key(),
         )
-        self._surfaces = SurfaceManager(resolver.handle, web, say=self._say, warn=self._warn)
-        self._surfaces.reconcile(compiled)
+        surfaces = SurfaceManager(resolver.handle, web, say=self._say, warn=self._warn)
+        surfaces.reconcile(compiled)
+        self._surfaces = surfaces  # opened: :attr:`surfaces` lists them all at once
         self._feedback = FeedbackWorker(
             lambda: link.compiled,
             lambda: link.snapshot,
             resolver.lastInput,
             clock=clock.now,
-            senders=self._surfaces.senders,
+            senders=surfaces.senders,
             report=self._warn,
             say=self._say,
             warn=self._warn,

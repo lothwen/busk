@@ -196,6 +196,7 @@
       "start": "(self) -> None",
       "stop": "(self) -> None",
       "submit": "(self, command: Command) -> CommandResult",
+      "surfaces": "property: tuple[SurfaceStatus, ...] | None",
       "warnings": "property: tuple[Issue, ...]"
     },
     "module": "busk.runner"
@@ -399,6 +400,21 @@
       "beats": "(self, t: float) -> float"
     },
     "module": "busk.engine.snapshot"
+  },
+  "SurfaceStatus": {
+    "fields": [
+      "id: str",
+      "name: str",
+      "kind: Literal['midi', 'osc', 'hid', 'web', 'internal']",
+      "state: SurfaceState",
+      "detail: str",
+      "urls: tuple[str, ...]"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, *, id: str, name: str, kind: Literal['midi', 'osc', 'hid', 'web', 'internal'], state: SurfaceState, detail: str, urls: tuple[str, ...]) -> None"
+    },
+    "module": "busk.io.surfaces"
   },
   "UnsupportedFeature": {
     "bases": [

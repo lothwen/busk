@@ -134,6 +134,7 @@ The suite also passes on Python 3.12 and 3.13, for example
 | `test_osc.py` | The OSC codec against the specification's examples (every type tag, bundles, malformed packets); values; input, feedback and the surface manager over localhost sockets |
 | `test_websocket.py` · `test_web_api.py` | The WebSocket subset (handshake, framing, limits, close codes, slow and vanished clients, no Nagle delay); the key and origin checks; the JSON protocol (hello, show, state, errors, performance commands only), 30 Hz throttling, held buttons released on disconnect; the page's command list |
 | `test_surface_manager.py` | MIDI, OSC and web surfaces open, change and close with live edits; a web surface restarts only on a port or host change |
+| `test_surface_status.py` | GAP-08's `surfaces`: every surface of the show in show order with its name, kind, state and detail (the reason its line gave), a web remote's addresses; a MIDI backend that cannot run; a device plugged in, unplugged and back; live edits that add, rename, move and remove surfaces; the same object while nothing changes, after close too; a `LiveShow` from start to stop, none without surfaces; `busk run`'s attached show |
 | `test_artnet.py` · `test_artnet_discovery.py` | ArtDmx against an independent parser; Port-Addresses, sequences, keep-alive, a taken port; ArtPoll every 2.5 s, ArtPollReply (ours and parsed), nodes found, unicast to them on the interface's network, forgotten after 10 s |
 | `test_dmxusb.py` | The Enttec messages and parameters; frames on change and keep-alive; partial writes; unplug and replug on a pseudo-terminal |
 | `test_surfaces_show.py` | **The Phase 6 done criterion:** the surfaces script on the effects show, golden show (`busk validate`: 0 errors, 0 warnings), 24 checkpoints driven by the controller and the phone together (levels and colours per group, LEDs, faders, page, progress, status), golden DMX, 100 Hz vs an irregular schedule, save → load, the phone over a real WebSocket |
@@ -158,7 +159,7 @@ The suite also passes on Python 3.12 and 3.13, for example
 src/busk/
   __init__.py            # the public API (Phase 8): __all__, lazy re-exports, the NullHandler
   errors.py              # BuskError, ScriptError (the public errors' base and the script one)
-  runner.py              # OfflineShow, LiveShow, DmxFrame, their output and programmer, LiveShow's routes; _LocalRun (engine and output threads)
+  runner.py              # OfflineShow, LiveShow, DmxFrame, their output and programmer, LiveShow's routes and surfaces; _LocalRun (engine and output threads)
   cli.py  __main__.py
   model/                 # persistent schema (§5.1–§5.17) as TypedDicts
     common.py            #   ids, EntityBase, TargetRef/TargetKey, STRICT, number aliases
@@ -240,7 +241,7 @@ src/busk/
     midi.py              #   MidiInput (mido + python-rtmidi), translate(), BeatCounter (MIDI clock), MidiOutput
     osc.py               #   OSC 1.0 codec, OscSurface (UDP input), OscFeedback
     feedback.py          #   feedback_values(), FeedbackWorker: LEDs, motor faders, labels at 30 Hz
-    surfaces.py          #   SurfaceManager: MIDI, OSC and web surfaces through live edits; MIDI hot-plug
+    surfaces.py          #   SurfaceManager: MIDI, OSC and web surfaces through live edits; MIDI hot-plug; SurfaceStatus (GAP-08)
     ratelimit.py         #   TokenBucket: the web and OSC rate limits
   importers/
     __init__.py          #   ImportReport, ImportFailed

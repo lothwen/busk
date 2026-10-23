@@ -368,8 +368,8 @@ class FeedbackWorker:
             self._warn(f"{label}: {MIDI_MISSING}")
             return None
         port = midi.MidiOutput(surface)
-        opened = open_midi(label, port, midi.output_names, say=self._say, warn=self._warn)
-        return port if opened else None
+        reason = open_midi(label, port, midi.output_names, say=self._say, warn=self._warn)
+        return port if reason is None else None
 
     def _follow_ports(self) -> None:
         """Open the feedback ports whose device appeared and close the ones

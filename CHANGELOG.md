@@ -29,6 +29,11 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   each route's state (`ok`, `failed`, `disabled` or `ignored`), why it failed or is
   ignored, and the packets and errors it has counted. The same news as the `sACN r1: …`
   log lines, as data.
+- `LiveShow.surfaces`: the show's control surfaces as a display shows them, as a new
+  public type, `SurfaceStatus` ([the library guide](docs/library.md#3-live-inside-your-own-application-liveshow)):
+  each surface's state (`ok`, `failed` or `ignored`), why it is not open (a MIDI device
+  unplugged, a port in use, the `midi` extra missing), and a web remote's addresses. The
+  same news as the `MIDI s-nano: …` log lines, as data.
 - Console lines for playback buttons ([the console](docs/console.md#notes)): `flash N
   on|off` holds a playback's flash until it is released, `button N B on|off` presses and
   releases its button B as a bound control does, and `toggle N` activates or releases it.

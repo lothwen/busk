@@ -43,6 +43,14 @@ takeover needs nothing more.
 MIDI *feedback* ports are not opened here: the feedback thread owns them
 (:class:`~busk.io.feedback.FeedbackWorker`), so a port is written by one
 thread only.
+
+**Surface status** (GAP-08 of ``docs/dev/tui/engine-gaps.md``). Whenever a
+surface opens, closes or fails, :meth:`SurfaceManager.status` gets a new
+tuple of :class:`SurfaceStatus`, one per surface of the show: open, or why
+not (what its line said), and the web remote's addresses. The supervisor
+publishes it by reference assignment, and only when it differs from the last
+one, so any thread reads it whole, and the same object while nothing
+changed. :meth:`~SurfaceManager.close` leaves it as it was.
 """
 
 from __future__ import annotations
@@ -50,8 +58,9 @@ from __future__ import annotations
 import logging
 import math
 from collections.abc import Callable
+from dataclasses import dataclass
 from functools import partial
-from typing import TYPE_CHECKING, Final, Protocol
+from typing import TYPE_CHECKING, Final, Literal, Protocol
 
 from busk.compiler.compile import CompiledShow
 from busk.io.events import InputEvent
@@ -76,6 +85,44 @@ MIDI_MISSING: Final = "unavailable: install busk[midi]"
 HOTPLUG_S: Final = 2.0
 """Seconds between two reads of the MIDI port names (decision 18)."""
 
+UNPLUGGED: Final = "unplugged; waiting for it"
+"""What a MIDI port whose device vanished reports (:func:`follow_midi`)."""
+
+
+type SurfaceState = Literal["ok", "failed", "ignored"]
+"""What a control surface of the show does (:class:`SurfaceStatus`)."""
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class SurfaceStatus:
+    """One control surface of the show, as a display shows it (GAP-08 of
+    ``docs/dev/tui/engine-gaps.md``).
+
+    ``state`` is what the surface does:
+
+    * ``"ok"``: it is open. A ``midi`` surface's input port is connected, an
+      ``osc`` surface listens on its port, a ``web`` remote serves its page;
+    * ``"failed"``: it is not open, and ``detail`` says why, as its line
+      did (``unplugged; waiting for it``, ``unavailable: install
+      busk[midi]``, ``cannot listen on udp 8000: Address already in use``).
+      A MIDI surface waits for its device: busk opens it once it is plugged
+      in. An OSC or web surface is tried again when an edit changes it;
+    * ``"ignored"``: a ``hid`` or ``internal`` surface, which busk does not
+      implement. ``detail`` says so.
+
+    ``urls`` are an open web remote's addresses to open on a phone, with
+    its key, as its lines printed them when it opened; empty otherwise. The
+    feedback port of a MIDI surface is not part of its status: its lines
+    say whether it opened.
+    """
+
+    id: str  # the surface's id in show["surfaces"]
+    name: str  # its name: "nanoKONTROL2", "Phone"
+    kind: Literal["midi", "osc", "hid", "web", "internal"]
+    state: SurfaceState
+    detail: str  # why it is failed or ignored; "" otherwise
+    urls: tuple[str, ...]
+
 
 class MidiPort(Protocol):
     """A MIDI input or output of a surface: what :func:`open_midi` and
@@ -99,23 +146,25 @@ def open_midi(
     *,
     say: Report = _log.info,
     warn: Report = _log.warning,
-) -> bool:
+) -> str | None:
     """Open ``port`` among the ports ``names()`` lists, and report the
     outcome after ``label``: the port's name through ``say``, or through
     ``warn`` why it did not open (for a missing device, the ports that do
-    exist). ``True`` when it opened."""
+    exist). Returns ``None`` when it opened, else that reason."""
     try:
         available = names()
         name = port.open(available)
     except Exception as exc:  # no ALSA sequencer, backend not loadable, …
-        warn(f"{label}: unavailable: {exc}")
-        return False
+        reason = f"unavailable: {exc}"
+        warn(f"{label}: {reason}")
+        return reason
     if name is None:
         wanted = repr(port.deviceName) if port.deviceName else "no match.deviceName"
-        warn(f"{label}: {wanted} not found; available: {', '.join(available) or 'none'}")
-        return False
+        reason = f"{wanted} not found; available: {', '.join(available) or 'none'}"
+        warn(f"{label}: {reason}")
+        return reason
     say(f"{label}: {name}")
-    return True
+    return None
 
 
 def follow_midi[P: MidiPort](
@@ -140,7 +189,7 @@ def follow_midi[P: MidiPort](
         if port.portName in names:
             return port
         port.close()
-        warn(f"{label}: unplugged; waiting for it")
+        warn(f"{label}: {UNPLUGGED}")
     found = make()
     try:
         name = found.open(names)
@@ -160,7 +209,7 @@ class SurfaceManager:
     inputs' own threads. ``web`` is what web surfaces read and submit to;
     without it they cannot open. The supervisor thread calls
     :meth:`reconcile`, :meth:`poll` and :meth:`close`; the feedback thread
-    calls :meth:`senders`.
+    calls :meth:`senders`, and any thread :meth:`status`.
     """
 
     def __init__(
@@ -178,6 +227,12 @@ class SurfaceManager:
         self._open: dict[SurfaceId, tuple[ControlSurface, Opened | None]] = {}
         """Each surface's definition as opened, and its input (``None`` when
         it could not open)."""
+        self._why: dict[SurfaceId, str] = {}
+        """Why each surface of ``_open`` without an input is not open, as its line said."""
+        self._urls: dict[SurfaceId, tuple[str, ...]] = {}
+        """The addresses each open web surface printed."""
+        self._status: tuple[SurfaceStatus, ...] = ()
+        """What :meth:`status` returns: replaced, never changed."""
         self._osc: dict[SurfaceId, OscSurface] = {}
         """The open OSC surfaces: replaced, never changed, so the feedback
         thread can read it while the supervisor reconciles."""
@@ -200,11 +255,14 @@ class SurfaceManager:
                 if port is not None:
                     port.close()
                 del self._open[ident]
+                self._why.pop(ident, None)
+                self._urls.pop(ident, None)
         for ident, surface in wanted.items():
             if ident not in self._open:
                 opening = {"midi": self._open_midi, "osc": self._open_osc, "web": self._open_web}
                 self._open[ident] = (surface, opening[surface["kind"]](surface))
         self._publish()
+        self._publish_status()
 
     def poll(self, now: float) -> None:
         """Follow MIDI devices plugged in and unplugged, reading the port
@@ -224,6 +282,7 @@ class SurfaceManager:
             names = midi.input_names()
         except Exception:  # no MIDI backend or no mido: reported when the surface opened
             return
+        changed = False
         for ident, surface, port in surfaces:
             assert port is None or isinstance(port, midi.MidiInput)
             make = partial(midi.MidiInput, surface, self._handle)
@@ -231,6 +290,14 @@ class SurfaceManager:
                 f"MIDI {ident}", port, make, names, say=self._say, warn=self._warn
             )
             self._open[ident] = (surface, followed)
+            if followed is not port:
+                changed = True
+                if followed is None:
+                    self._why[ident] = UNPLUGGED
+                else:
+                    self._why.pop(ident, None)
+        if changed:
+            self._publish_status()
 
     def _open_midi(self, surface: ControlSurface) -> midi.MidiInput | None:
         """Open a MIDI surface's input, reporting the outcome; without the
@@ -239,18 +306,21 @@ class SurfaceManager:
         try:
             from busk.io import midi
         except ImportError:
-            self._warn(f"{label}: {MIDI_MISSING}")
+            self._failed(label, surface, MIDI_MISSING)
             return None
         port = midi.MidiInput(surface, self._handle)
-        opened = open_midi(label, port, midi.input_names, say=self._say, warn=self._warn)
-        return port if opened else None
+        reason = open_midi(label, port, midi.input_names, say=self._say, warn=self._warn)
+        if reason is not None:
+            self._why[surface["id"]] = reason
+            return None
+        return port
 
     def _open_osc(self, surface: ControlSurface) -> OscSurface | None:
         """Open an OSC surface, reporting the outcome."""
         osc = OscSurface(surface, self._handle, report=self._warn)
         reason = osc.open()
         if reason is not None:
-            self._warn(f"OSC {surface['id']}: {reason}")
+            self._failed(f"OSC {surface['id']}", surface, reason)
             return None
         self._say(f"OSC {surface['id']}: {osc.describe()}")
         return osc
@@ -259,21 +329,65 @@ class SurfaceManager:
         """Open a web surface, printing the addresses to open on a phone."""
         label = f"Web {surface['id']}"
         if self._web is None:
-            self._warn(f"{label}: unavailable: no engine to serve")
+            self._failed(label, surface, "unavailable: no engine to serve")
             return None
         web = WebSurface(surface, self._web)
         reason = web.open()
         if reason is not None:
-            self._warn(f"{label}: {reason}")
+            self._failed(label, surface, reason)
             return None
-        for url in web.urls():
+        urls = tuple(web.urls())
+        for url in urls:
             self._say(f"{label}: {url}")
+        self._urls[surface["id"]] = urls
         return web
+
+    def _failed(self, label: str, surface: ControlSurface, reason: str) -> None:
+        """Report after ``label`` why ``surface`` did not open, and keep it
+        for :meth:`status`."""
+        self._warn(f"{label}: {reason}")
+        self._why[surface["id"]] = reason
 
     def _publish(self) -> None:
         self._osc = {
             ident: port for ident, (_, port) in self._open.items() if isinstance(port, OscSurface)
         }
+
+    def _publish_status(self) -> None:
+        """Publish what :meth:`status` returns, when it changed (one
+        assignment: other threads see the tuple whole). Call after every
+        change to the surfaces or their inputs."""
+        statuses = []
+        for surface in self._surfaces or ():
+            ident, kind = surface["id"], surface["kind"]
+            served = self._open.get(ident)
+            state: SurfaceState
+            if served is None:  # reconcile opens every other kind
+                state, detail = "ignored", f"{kind} surfaces are not implemented"
+            elif served[1] is None:
+                state, detail = "failed", self._why[ident]
+            else:
+                state, detail = "ok", ""
+            statuses.append(
+                SurfaceStatus(
+                    id=ident,
+                    name=surface["name"],
+                    kind=kind,
+                    state=state,
+                    detail=detail,
+                    urls=self._urls.get(ident, ()),
+                )
+            )
+        status = tuple(statuses)
+        if status != self._status:
+            self._status = status
+
+    def status(self) -> tuple[SurfaceStatus, ...]:
+        """Every surface of the show, in show order, with what it does (see
+        :class:`SurfaceStatus`); empty until :meth:`reconcile` first ran.
+        The same object while nothing changed; after :meth:`close`, the
+        surfaces as they were. Safe on any thread."""
+        return self._status
 
     def senders(self) -> dict[SurfaceId, OscFeedback]:
         """The feedback destination of each open OSC surface that has one

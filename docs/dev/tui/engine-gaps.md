@@ -20,8 +20,9 @@ The TUI runs a `busk.LiveShow` in its own process. One module, `busk_tui/bridge.
 - **Reads** use the typed public state: `LiveShow.snapshot` (`EngineSnapshot`),
   `LiveShow.frame` (`DmxFrame`, for the engine time), `LiveShow.show` (the `Show` document),
   `LiveShow.warnings`, since GAP-01 `LiveShow.output` (`OutputSnapshot`), since GAP-02
-  `LiveShow.programmer` (`ProgrammerStatus`) and since GAP-07 `LiveShow.routes`
-  (`RouteStatus`). The `busk.*` loggers feed the TUI's log pane.
+  `LiveShow.programmer` (`ProgrammerStatus`), since GAP-07 `LiveShow.routes`
+  (`RouteStatus`) and since GAP-08 `LiveShow.surfaces` (`SurfaceStatus`). The `busk.*`
+  loggers feed the TUI's log pane.
 - **Text is not parsed.** `docs/library.md` says message text (`Reply.text`, CLI output, log
   records) may change in any release, so the TUI never extracts data from the output of
   `programmer`, `info`, `list …` or `library`. It may show such output verbatim.
@@ -54,7 +55,7 @@ Every new read should also reach `busk run`'s console process, so a later TUI at
 | [GAP-05](#gap-05-relative-and-per-component-attribute-values) Relative and per-component attribute values | action | important | F2 | **done** 2026-10-22 |
 | [GAP-06](#gap-06-one-undo-step-for-a-gesture) One undo step for a gesture | action | important | F2 | open |
 | [GAP-07](#gap-07-output-route-status) Output route status | read | important | status bar, F8 | **done** 2026-10-23 |
-| [GAP-08](#gap-08-surface-status) Surface status | read | important | F9 | open |
+| [GAP-08](#gap-08-surface-status) Surface status | read | important | F9 | **done** 2026-10-23 |
 | [GAP-09](#gap-09-effect-runtime-state) Effect runtime state | read | important | F1 B, F5 | open |
 | [GAP-10](#gap-10-confirmation-before-dangerous-lines) Confirmation before dangerous lines | read | important | prompt | open |
 | [GAP-11](#gap-11-running-the-tui-against-busk-run) Running the TUI against `busk run` | host | important | everything, on stage | open |
@@ -582,6 +583,8 @@ The `busk.output` records still feed the log.
 
 ## GAP-08: Surface status
 
+**Status:** done 2026-10-23 (see **Done** at the end of this section).
+
 **Needed by:** F9 SURFACES status dot (green connected, red missing). Spec §8.9.
 
 **Today:** surfaces and their bindings are in the show document. Whether a MIDI device is
@@ -604,6 +607,68 @@ class SurfaceStatus:
 **Priority:** important (a controller unplugged mid-show).
 
 **TUI until then:** F9 lists surfaces without a dot. The surface lines appear in the log.
+
+**Done** (2026-10-23). `LiveShow.surfaces -> tuple[SurfaceStatus, ...] | None`, with
+`SurfaceStatus` in `busk.__all__` (now 34 names):
+
+```python
+@dataclass(frozen=True, slots=True, kw_only=True)
+class SurfaceStatus:
+    id: str                        # the surface's id in show["surfaces"]
+    name: str                      # its name: "nanoKONTROL2", "Phone"
+    kind: Literal["midi", "osc", "hid", "web", "internal"]
+    state: Literal["ok", "failed", "ignored"]
+    detail: str                    # why it is failed or ignored; "" otherwise
+    urls: tuple[str, ...]          # an open web remote's addresses
+```
+
+Documented in `docs/library.md` (section 3 and the reference), the class's docstring and
+`docs/dev/internals.md` ("The surface status"). Where it differs from the suggestion, or
+settles what the suggestion left open:
+
+- **`state` instead of `open`.** A surface is `"ok"` (a MIDI surface's input port is
+  connected, an OSC surface listens, a web remote serves), `"failed"`, or `"ignored"`: a
+  `hid` or `internal` surface, which busk does not implement (`busk run` lists them under
+  `Ignored in Phase 7:`), and which a boolean cannot tell from a failure. These are
+  `RouteStatus`'s words, so one legend serves F8 and F9.
+- **`detail` is the reason the surface's line gave**, after its label: `'nanoKONTROL2' not
+  found; available: Midi Through:…`, `unplugged; waiting for it`, `unavailable: install
+  busk[midi]`, `cannot listen on udp 8000: Address already in use`; for an ignored one,
+  `hid surfaces are not implemented`. `""` while it is open. A missing device's list of
+  available ports is the one read when the surface last tried to open.
+- **What is tried again** has not changed. A failed MIDI surface opens as soon as its
+  device appears (the hot-plug read, every 2 s). A failed OSC or web surface is tried again
+  only when an edit changes it.
+- **`urls`** are an open web remote's addresses, key included (`http://10.0.0.5:8080/?k=…`),
+  as its lines printed them when it opened: one per IPv4 interface, or its `host`. Empty
+  for the other kinds and while it is not open. Like the lines, they are not read again
+  when the interfaces change later.
+- **Every surface of the show**, in show order, so the TUI matches them to
+  `show.surfaces` by `id`. `name` and `kind` are the current definition's: a renamed web
+  remote keeps its server and shows its new name.
+- **The MIDI feedback port is not in the status.** The feedback worker owns it, and a
+  controller's input and output ports come and go together. Its lines (`MIDI s-nano
+  feedback: …`) still say whether it opened.
+- **`None` while no surface is open**: before `start()` and with `surfaces=False`. After
+  `stop()`, the surfaces as they ended. `OfflineShow` has no `surfaces`: it opens none.
+- **Published on change.** The surface manager builds the tuple when a surface opens,
+  closes or fails (a reconcile, a hot-plug read that changed a port) and publishes it by
+  reference only when it differs from the last one. A read costs nothing and returns the
+  same object while nothing changed. A live edit shows after the monitor's next pass
+  (0.1 s).
+- **Under `busk run` too, with no new message.** Its surfaces run with the session in the
+  console process, so the attached show's `surfaces` works, with processes and with
+  `--threads`.
+- Inside: `open_midi` returns why the port did not open (`None` when it opened, as
+  `OscSurface.open` and `WebSurface.open` do), and the unplugged text is `UNPLUGGED` in
+  `busk.io.surfaces`. The surface lines and their text are unchanged.
+- Tests: `tests/test_surface_status.py` (the manager with fake MIDI ports and real OSC and
+  web sockets, a `LiveShow`, `busk run`'s attached show), the missing `midi` extra in
+  `tests/test_no_midi.py`, the public API golden and `tests/api_consumer.py`.
+
+The TUI can now draw F9's SURFACES dots: green for `"ok"`, red for `"failed"` with its
+`detail`, dim for `"ignored"`, and show an open web remote's address on its row. The
+bridge polls `surfaces` with the snapshot. The `busk.surfaces` records still feed the log.
 
 ## GAP-09: Effect runtime state
 

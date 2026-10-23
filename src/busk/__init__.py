@@ -8,7 +8,7 @@ The public API
 ==============
 
 Every public name is importable from ``busk`` itself; ``__all__`` lists the
-33 of them. The library guide, ``docs/library.md``, has the examples and the
+34 of them. The library guide, ``docs/library.md``, has the examples and the
 reference.
 
 Show documents
@@ -25,7 +25,8 @@ Running a show
     (:meth:`~OfflineShow.execute`) and scripts, read their output back
     per fixture (:attr:`~OfflineShow.output`) and show their programmer
     (:attr:`~OfflineShow.programmer`); a :class:`LiveShow` also shows its
-    output routes (:attr:`~LiveShow.routes`).
+    output routes (:attr:`~LiveShow.routes`) and control surfaces
+    (:attr:`~LiveShow.surfaces`).
 Data types
     :class:`Show`, :class:`FixtureProfile` and :data:`Command`, the
     ``TypedDict``\\ s of the file and command formats; :class:`Issue`,
@@ -34,7 +35,8 @@ Data types
     :class:`SpeedStatus` and :class:`PageStatus`; :class:`DmxFrame`;
     :class:`OutputSnapshot` with :class:`FixtureOutput`;
     :class:`ProgrammerStatus` with :class:`ProgrammerValue`;
-    :class:`RouteStatus`; :class:`IdFactory` and :class:`CounterIds`.
+    :class:`RouteStatus`; :class:`SurfaceStatus`; :class:`IdFactory` and
+    :class:`CounterIds`.
 Errors
     :class:`BuskError` is the base of every error the API raises on purpose:
     :class:`ShowLoadError`, :class:`UnsupportedFeature`, :class:`ImportFailed`
@@ -111,6 +113,7 @@ __all__ = [
     "Show",
     "ShowLoadError",
     "SpeedStatus",
+    "SurfaceStatus",
     "UnsupportedFeature",
     "load_show",
     "new_show",
@@ -148,6 +151,7 @@ _EXPORTS: dict[str, str] = {
     "ProgrammerStatus": "busk.session.status",
     "ProgrammerValue": "busk.session.status",
     "RouteStatus": "busk.output.driver",
+    "SurfaceStatus": "busk.io.surfaces",
     "UnsupportedFeature": "busk.compiler.compile",
     "OfflineShow": "busk.runner",
     "LiveShow": "busk.runner",
@@ -173,6 +177,7 @@ if TYPE_CHECKING:  # what type checkers see: the same table, as explicit re-expo
     from busk.importers import ImportReport as ImportReport
     from busk.importers.gdtf import read_gdtf as read_gdtf
     from busk.importers.ofl import read_ofl as read_ofl
+    from busk.io.surfaces import SurfaceStatus as SurfaceStatus
     from busk.model.profile import FixtureProfile as FixtureProfile
     from busk.model.show import Show as Show
     from busk.model.validate import Issue as Issue

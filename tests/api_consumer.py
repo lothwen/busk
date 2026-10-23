@@ -133,6 +133,11 @@ def live(path: str, host: Callable[[busk.LiveShow], None]) -> busk.Show:
         for route in routes or ():
             light: tuple[str, str, int] = (route.label, route.state, route.packets)
             assert (route.id, route.universe, route.detail, route.errors, light) is not None
+        surfaces: tuple[busk.SurfaceStatus, ...] | None = live.surfaces
+        for surface in surfaces or ():
+            dot: tuple[str, str, str] = (surface.name, surface.kind, surface.state)
+            urls: tuple[str, ...] = surface.urls
+            assert (surface.id, surface.detail, dot, urls) is not None
         host(live)
     live.stop()  # idempotent
     return live.show

@@ -2,8 +2,9 @@
 
 * ``busk.__all__`` is the 28 names of §5.1, the two of GAP-01
   (``OutputSnapshot``, ``FixtureOutput``), the two of GAP-02
-  (``ProgrammerStatus``, ``ProgrammerValue``) and the one of GAP-07
-  (``RouteStatus``; ``docs/dev/tui/engine-gaps.md``).
+  (``ProgrammerStatus``, ``ProgrammerValue``), the one of GAP-07
+  (``RouteStatus``) and the one of GAP-08 (``SurfaceStatus``;
+  ``docs/dev/tui/engine-gaps.md``).
   Each resolves lazily from the module of the §5.1 table, and the type
   checkers' re-exports in ``busk/__init__.py`` are the same table.
 * Nothing else is an attribute of ``busk``.
@@ -71,6 +72,7 @@ PUBLIC = [
     "ProgrammerStatus",
     "ProgrammerValue",
     "RouteStatus",
+    "SurfaceStatus",
     "IdFactory",
     "CounterIds",
     # Errors
@@ -81,7 +83,8 @@ PUBLIC = [
     "ScriptError",
 ]
 """The §5.1 list, in its order, with GAP-01's two after ``DmxFrame``,
-GAP-02's two after them and GAP-07's one after those."""
+GAP-02's two after them, GAP-07's one after those and GAP-08's one
+after it."""
 
 DUNDERS = {"__init__", "__enter__", "__exit__", "__iter__", "__len__", "__str__"}
 """The special methods a public class documents; the rest come from Python."""
@@ -105,7 +108,7 @@ def run(script: str) -> str:
 
 
 def test_all_is_the_planned_list_sorted() -> None:
-    assert len(PUBLIC) == 33
+    assert len(PUBLIC) == 34
     assert busk.__all__ == sorted(PUBLIC)
 
 

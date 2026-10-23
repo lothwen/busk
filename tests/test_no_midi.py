@@ -4,7 +4,8 @@
 Each check runs in a fresh interpreter. :data:`BLOCK` makes ``import mido``
 fail there, as on an install without the extra. The console, OSC, the
 feedback worker and the surface manager still import and work. A MIDI
-surface says once that it needs the extra, and stays closed.
+surface says once that it needs the extra, and stays closed; its status
+says why.
 """
 
 from __future__ import annotations
@@ -98,6 +99,23 @@ def test_a_midi_surface_says_once_that_it_needs_the_extra() -> None:
     )
     assert done.stdout == ""
     assert done.stderr == "MIDI s-nano: unavailable: install busk[midi]\n"
+
+
+def test_a_midi_surface_without_the_extra_has_failed_and_says_why() -> None:
+    """Its status (GAP-08) has the reason its line gave."""
+    done = run(
+        BLOCK,
+        SURFACES,
+        """
+        manager = SurfaceManager(lambda event: None, say=say, warn=lambda text: None)
+        manager.reconcile(show(surface("s-nano", "midi", {"deviceName": "nanoKONTROL2"})))
+        manager.poll(5.0)
+        [status] = manager.status()
+        print(status.state, status.detail)
+        manager.close()
+        """,
+    )
+    assert done.stdout == "failed unavailable: install busk[midi]\n"
 
 
 def test_midi_feedback_says_once_that_it_needs_the_extra() -> None:

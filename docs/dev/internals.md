@@ -616,6 +616,20 @@ sends the console a `ROUTES` message when the statuses differ from the last ones
 and the last ones to a console that starts. The console's backend keeps them for its
 attached show. With `--threads` the backend reads its own scheduler.
 
+**The surface status** (`busk.io.surfaces`; GAP-08 of
+[`tui/engine-gaps.md`](tui/engine-gaps.md)). `LiveShow.surfaces` is
+`SurfaceManager.status()`: every surface of the show, in show order, as the public
+`SurfaceStatus` (`ok`, `failed` or `ignored`, a detail, and a web remote's addresses). For
+each surface it could not open, the manager keeps the reason its line gave (`open_midi`
+returns it, as `OscSurface.open` and `WebSurface.open` do, and an unplugged device's is
+`unplugged; waiting for it`), and for each web remote the addresses it printed. After a
+reconcile, and after a hot-plug read that opened or closed a port, the supervisor builds the
+tuple and publishes it by one reference assignment when it differs from the last one, so a
+reader on any thread gets the same object while nothing changed; `close` leaves it as it
+was. The surfaces run with the session, in `busk run`'s console process, so its attached
+show has the status without a message from the root. The MIDI feedback ports, which the
+feedback worker owns, are not part of it.
+
 **Import** (`busk.importers`). The OFL importer builds each mode from its channels'
 capabilities through a table (phase-7-plan §5.18): each capability becomes a range segment
 of a busk attribute, unmapped ones become `control` channels at their `defaultValue`, and
