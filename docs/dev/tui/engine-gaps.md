@@ -65,7 +65,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-11](#gap-11-running-the-tui-against-busk-run) Running the TUI against `busk run` | host | important | everything, on stage | **done** 2026-10-23 |
 | [GAP-12](#gap-12-concurrency-contract-of-execute) Concurrency contract of `execute()` | contract | important | responsiveness | **done** 2026-10-23 |
 | [GAP-13](#gap-13-control-input-monitor) Control input monitor | read | nice-to-have | F9 | open |
-| [GAP-14](#gap-14-stop-and-restart-a-programmer-effect) Stop and restart a programmer effect | action | nice-to-have | F1 B, F5 | open |
+| [GAP-14](#gap-14-stop-and-restart-a-programmer-effect) Stop and restart a programmer effect | action | nice-to-have | F1 B, F5 | **done** 2026-10-23 |
 | [GAP-15](#gap-15-effect-template-library) Effect template library | read | nice-to-have | F5 | open |
 | [GAP-16](#gap-16-fixture-category) Fixture category | read | nice-to-have | F1 A/C, F8 | open |
 | [GAP-17](#gap-17-playback-colour) Playback colour | read | nice-to-have | F1 | open |
@@ -1122,6 +1122,8 @@ the bound target (a playback's fader level, a master's level), not the device's 
 
 ## GAP-14: Stop and restart a programmer effect
 
+**Status:** done 2026-10-23 (see **Done** at the end of this section).
+
 **Needed by:** the RUN/off toggle of standalone effects (F5, F1 layout B). Spec §8.5.
 
 **Today:** a programmer effect runs from `effect add` until `effect remove <id>` or `clear`.
@@ -1132,6 +1134,75 @@ The reply is like `effect add`: `stopped effect 'fx5'`.
 **Priority:** nice-to-have.
 
 **TUI until then:** the only control on a programmer effect is `✕` (`effect remove <id>`).
+
+**Done** (2026-10-23). `effect stop <id>` and `effect run <id>`, on a new programmer
+command, `RUN_EFFECT` (`id`, `on`), and `ProgrammerStatus.stopped`, the ids of the
+stopped effects. No public name was added (`busk.__all__` stays at 36); the public
+dataclass gained a field and `Command` a member (the golden's diff). Documented in
+`docs/console.md` (the Effects note), `docs/library.md` (section 2 and the reference),
+the parser's and the programmer's module docs and `docs/dev/internals.md` (the programmer
+and recording). Where it differs from the suggestion, or settles what the suggestion left
+open:
+
+- **The verb first**, `effect stop fx5`, not `effect fx5 stop`, as `effect remove fx5`:
+  an id may be any word (`effect add "Pulse" id clear` is a valid line), so `effect <id>
+  …` would be ambiguous with `effect add`, `remove`, `clear` and `template`. Completion
+  after `effect stop ` offers the running effects' ids, after `effect run ` the stopped
+  ones'.
+- **The replies.** `stopped effect 'fx5'`, as suggested, and `started effect 'fx5'`.
+  Stopping a stopped effect, or running a running one, is not an error: it changes
+  nothing and says so (`effect 'fx5' is already stopped`), so a toggle clicked twice
+  before the first click's reply is harmless. An id the programmer lacks is refused as
+  `effect remove` refuses it: `the programmer has no effect 'fx9'`.
+- **On stage it is removing and adding.** The programmer keeps the stopped ids, and the
+  frame the session builds leaves those effects out, so the engine has nothing new. A
+  stopped effect fades out over the programmer's fade time; run before it has gone, it
+  fades back in on its clock; run after, it starts on a new clock, as a new effect does
+  (an Hz effect at the start of its cycle, a BPM one on its master's beat grid). A
+  started effect counts as the operator's latest action, as an added one does, so it
+  goes on top of programmer values set since. The tests check all of this byte for byte
+  against `effect remove` and `effect add`. Blind is separate: a stopped effect stays
+  stopped when blind goes off, and one run while blind waits for blind off.
+- **Stopping is content, not a mode.** Each stop and run is an undo step (undoing a stop
+  runs the effect again), and the stopped ids are autosaved (`stopped` in the
+  programmer's JSON; files from before have none) and in the event log, so `busk replay`
+  replays them. A mode like blind is never undone; the stopped mark belongs to one
+  instance and must follow it through an undo: removing a stopped effect and undoing it
+  brings it back stopped.
+- **Replacing keeps it stopped.** `effect add … id fx5` on a stopped `fx5` replaces its
+  settings and leaves it stopped (the reply ends `(stopped)`), so changing an effect's
+  settings off stage does not start it. `effect remove`, `effect clear` and `clear`
+  forget the mark: an effect added again with that id runs.
+- **A stopped effect is not recorded** (a call the user may veto). `record cue` and
+  `record slot` store what the programmer runs, so a cue never starts an effect that was
+  off when it was recorded. `merge` and `remove` leave the cue's own instance with that
+  id alone. The reply says what was left out (`recorded cue 9/4: 2 entries, 1 effect; 1
+  stopped effect not recorded`), and a programmer with nothing else to record is refused
+  with `(stopped effects are not recorded)` at the end. The other reading, recording
+  everything the programmer holds as blind does, would make a cue run an effect the
+  operator turned off.
+- **`stopped: frozenset[str]` on `ProgrammerStatus`**, instead of a key in the effect
+  dicts, which stay in the show file's format. It lists only ids of `effects`: a stopped
+  effect that no longer validates is left out of both, and comes back stopped with the
+  undo that restores what it needs. `programmer` marks the effect `(stopped)`.
+- **Under `busk run` too.** The session runs in the console process and the frame it
+  installs simply lacks the effect, so the engine process needs nothing new.
+- **Bindings** may carry `RUN_EFFECT`, checked for shape only, as `REMOVE_EFFECT` (the
+  programmer's ids are not show data).
+- Tests: `tests/test_effect_stop.py` (29, the engine change mutation-checked: every rule
+  above on `OfflineShow`, a `LiveShow`, and a real `busk run` whose sACN output stops and
+  moves again), the parser's rows and the help line in `tests/test_console_parser.py`,
+  completion in `tests/test_console_prompt.py`, a stop and a run (undone and redone) in
+  `tests/test_eventlog.py`'s replayed scenario, the command count in
+  `tests/test_schema.py`, the public API golden and `tests/api_consumer.py`.
+
+The TUI can now give a programmer effect its RUN/off toggle, on F5 and in the F1 layout B
+EFFECTS panel. The state is `off` while its id is in `programmer.stopped`, and `RUN`
+otherwise, dimmed while its `effects` entry fades in or out (GAP-09's `presence`). A
+click sends `effect stop <id>` or `effect run <id>`, from `commands.py`, on the ordered
+worker, since it is a programmer line and not a performance one (GAP-12). Each click is
+an undo step, so `undo` after a toggle toggles it back, as it does for a selection. `✕`
+stays `effect remove <id>`, and a cue effect's toggle stays `go N` / `release N`.
 
 ## GAP-15: Effect template library
 

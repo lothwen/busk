@@ -526,6 +526,13 @@ decimals) or sets one colour component, and turns a preset reference into the li
 the §5.8 lookup gave, changed. Where the programmer holds nothing it changes nothing: the
 session does not know the stage's value (the output readout is the engine's, after
 masters, and under `busk run` it lives in another process).
+`RUN_EFFECT` (GAP-14, `effect stop|run <id>`) keeps a stopped effect's id in
+`Programmer.stopped`, and `build_frame` leaves the effect out of the frame, so the
+engine needs nothing new: the bank sees it leave and enter exactly as for
+`REMOVE_EFFECT` and `ADD_EFFECT` (back in on its clock while it still fades out, a new
+clock once it has gone), and a started effect is touched, on top, as an added one. The
+set is content (`same_content`, undo, autosave, the event log's programmer records),
+and removing or clearing an effect drops its id.
 
 **The programmer status** (`busk.session.status`; GAP-02 of
 [`tui/engine-gaps.md`](tui/engine-gaps.md)). `OfflineShow.programmer` and
@@ -549,7 +556,8 @@ member becomes an explicit list; a spread becomes per-target values computed fro
 original fan, so nothing moves) before adding the new ones. Effects are recorded by
 instance id: `merge` replaces or appends them, `remove` drops them, targets equal to a
 group's members stay a group reference, and in a tracking list an instance equal to the
-one the cue already tracks is not stored.
+one the cue already tracks is not stored. A stopped effect (GAP-14) is not recorded, nor
+merged or removed by its id, and the message says how many were left out.
 
 **Live swap** (`busk.engine.install`). An install is applied at stage 1, in queue order:
 per-slot runtime arrays follow the slot remap in one vectorised step, and each running

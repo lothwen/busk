@@ -168,8 +168,9 @@ playback and no cue), how far it has faded in (`presence`), its `size` and its r
 `programmer` is the programmer as a display shows it: the selection as `(number, element)`
 pairs in selection order, each value in the show's units (a preset reference with the
 preset's value for that element, and the preset's pool, number and name), the effects as
-the show file holds them, and `blind`, `highlight` and `fadeTime`. Its `version` grows
-whenever any of that changes:
+the show file holds them with the ids of those that are stopped (`stopped`, `effect
+stop`), and `blind`, `highlight` and `fadeTime`. Its `version` grows whenever any of that
+changes:
 
 ```python
 >>> _ = offline.execute("sel fixture 101 thru 102, fixture 301.3")
@@ -384,7 +385,7 @@ take `str` or `os.PathLike`.
 | `FixtureOutput` | One element in it: `number`, `element`, `intensity`, `color`, `pan`, `tilt`, `zoom`, `source` (what drives each family), `playback` |
 | `EffectSnapshot` | The effect instances one tick ran: `seq`, `time`, `effects` |
 | `EffectStatus` | One instance in it: `playback`, `cue`, `id` (where it is defined), `presence`, `size`, `hz`, `phase`, `wave` and `colors` (its next cycle, 20 samples) |
-| `ProgrammerStatus` | The programmer: `version`, `selection` (`(number, element)` pairs), `blind`, `highlight`, `fadeTime`, `values`, `effects` (as the show file holds them) |
+| `ProgrammerStatus` | The programmer: `version`, `selection` (`(number, element)` pairs), `blind`, `highlight`, `fadeTime`, `values`, `effects` (as the show file holds them), `stopped` (the ids of the stopped effects) |
 | `ProgrammerValue` | One value in it: `number`, `element`, `attribute`, `value` (in the show's units), `preset` (`(pool, number, name)`, or `None`) |
 | `RouteStatus` | One output route of a `LiveShow`: `id`, `label`, `universe` (its number), `state` (`"ok"`, `"failed"`, `"disabled"`, `"ignored"`), `detail` (why), `packets`, `errors` |
 | `SurfaceStatus` | One control surface of a `LiveShow`: `id`, `name`, `kind`, `state` (`"ok"`, `"failed"`, `"ignored"`), `detail` (why), `urls` (a web remote's addresses) |

@@ -46,6 +46,9 @@ GAP-05 of ``docs/dev/tui/engine-gaps.md`` adds ``ADJUST_ATTRIBUTE``
 (programmer): a change relative to the programmer's values, or of one colour
 component, for an encoder's ``−``/``+`` and wheel.
 
+GAP-14 adds ``RUN_EFFECT`` (programmer): stop a programmer effect and run it
+again, keeping it in the programmer, for a frontend's RUN/off toggle.
+
 Generic edits address the show with an :data:`EditPath`: a list whose
 string segments are object keys and whose :class:`IdSegment` segments pick
 the element of an id'd list with that ``id``, e.g.
@@ -375,6 +378,17 @@ class RemoveEffectCmd(TypedDict):
     id: NotRequired[str]
 
 
+@with_config(STRICT)
+class RunEffectCmd(TypedDict):
+    """Run (``on``) or stop the programmer's effect ``id`` (GAP-14). A stopped
+    effect stays in the programmer, with its settings, but does not run and
+    is not recorded; running it again starts it as ``ADD_EFFECT`` would."""
+
+    type: Literal["RUN_EFFECT"]
+    id: str
+    on: bool
+
+
 # --------------------------------------------------------------- show edit
 
 
@@ -580,7 +594,7 @@ type Command = Annotated[
     | PageCmd | PlaybackButtonCmd | ReleaseAllCmd | OutputCmd
     | SelectCmd | SelectPlaybackCmd | SetAttributeCmd | AdjustAttributeCmd | ApplyPresetCmd
     | ClearProgrammerCmd | BlindCmd | ProgrammerFadeCmd | AddEffectCmd | RemoveEffectCmd
-    | HighlightCmd
+    | RunEffectCmd | HighlightCmd
     | RecordCueCmd | RecordPresetCmd | RecordGroupCmd | PatchFixtureCmd | AssignPlaybackCmd
     | AddCmd | SetCmd | DeleteCmd | BatchCmd
     | UndoCmd | RedoCmd,

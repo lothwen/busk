@@ -55,6 +55,7 @@ COMMAND_CLASSES: Final[Mapping[str, CommandClass]] = MappingProxyType(
         "PROGRAMMER_FADE": "programmer",  # Phase 4
         "ADD_EFFECT": "programmer",  # Phase 5
         "REMOVE_EFFECT": "programmer",  # Phase 5
+        "RUN_EFFECT": "programmer",  # GAP-14
         "HIGHLIGHT": "programmer",  # Phase 7
         # show edit
         "RECORD_CUE": "show",

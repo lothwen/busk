@@ -329,7 +329,9 @@ class Console:
             else:
                 shown = format_value(source["value"])
             lines.append(f"  {self.target(target)} {attribute} = {shown}")
-        lines += [f"  effect {self._effect(effect)}" for effect in programmer.effects]
+        for effect in programmer.effects:
+            stopped = " (stopped)" if effect["id"] in programmer.stopped else ""
+            lines.append(f"  effect {self._effect(effect)}{stopped}")
         return "\n".join(lines)
 
     def _effect(self, effect: EffectInstance) -> str:

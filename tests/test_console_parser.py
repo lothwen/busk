@@ -1126,6 +1126,8 @@ def test_the_default_id_is_unused_by_the_programmer_and_every_cue() -> None:
     ("line", "expected"),
     [
         ("effect remove fx1", {"type": "REMOVE_EFFECT", "id": "fx1"}),
+        ("effect stop fx1", {"type": "RUN_EFFECT", "id": "fx1", "on": False}),
+        ("Effect RUN fx1", {"type": "RUN_EFFECT", "id": "fx1", "on": True}),
         ("effect clear", {"type": "REMOVE_EFFECT"}),
         (
             'effect template add "Nod" [{"attribute": "tilt", "waveform": {"kind": "sine"}, '
@@ -1236,7 +1238,10 @@ def test_record_slot_weighs_values_and_effects_through_the_filter() -> None:
         ('effect add "Pulse" bpm "Nope"', "no speed master 'Nope'"),
         ('effect add "Pulse" groups 1.5', "expected a number of groups, got '1.5'"),
         ('effect add "Pulse" wobble', "unexpected 'wobble'"),
-        ("effect wobble", "expected add or remove or clear or template, got 'wobble'"),
+        (
+            "effect wobble",
+            "expected add or remove or clear or template or stop or run, got 'wobble'",
+        ),
         ('effect template add "Pulse" []', "a template named 'Pulse' exists"),
         (
             'effect template add "Nod" [{"attribute": "tilt",',
@@ -1997,3 +2002,11 @@ def test_help_lists_the_relative_and_component_lines() -> None:
     stripped = [line.strip() for line in HELP]
     assert "set <attribute> <value> | set <attribute> by <change>" in stripped
     assert "set color.r|g|b|w|a|uv <value> | set color.r|g|b|w|a|uv by <change>" in stripped
+
+
+# ------------------------------- stopping a programmer effect (GAP-14, engine-gaps.md)
+
+
+def test_help_lists_the_stop_and_run_lines() -> None:
+    stripped = [line.strip() for line in HELP]
+    assert "effect remove <id> | effect clear | effect stop <id> | effect run <id>" in stripped

@@ -73,7 +73,7 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
         [size <s>] [low <v> high <v>] [phase <start> <end>] [groups N] [blocks N]
         [wings N] [forward|reverse|bounce] [fadein <s>] [sizemaster "<name>"]
         [speedmaster "<name>"]
-    effect remove <id> | effect clear
+    effect remove <id> | effect clear | effect stop <id> | effect run <id>
     effect template add "<name>" <JSON layers>
     cue L/C effect <id> <prop[.sub…]> <value>
     undo | redo | save [PATH] | list <kind> | list cues L | library | info
@@ -163,6 +163,12 @@ when the colour has none). Targets without a value in the programmer are
 skipped. A colour changes only by component and a discrete attribute not at
 all. Where ``by`` may come, a value with a plus sign is refused: ``set
 intensity +5%`` would set 5%.
+
+Stopping a programmer effect (GAP-14). ``effect stop <id>`` stops one of
+the programmer's effects and keeps it there, with its settings, until
+``effect run <id>`` runs it again: it fades out and in over the programmer's
+fade time, as removing and adding it would, and a stopped effect is not
+recorded.
 
 Completion (Tab and ``?`` at the prompt, :mod:`busk.console.prompt`).
 :func:`expected` parses a line up to the word being typed. Where the line
@@ -884,7 +890,7 @@ class _Parser:
     # effects
 
     def _cmd_effect(self) -> Action:
-        verb = self.expect("add", "remove", "clear", "template")
+        verb = self.expect("add", "remove", "clear", "template", "stop", "run")
         if verb == "add":
             return self._effect_add()
         if verb == "template":
@@ -892,8 +898,15 @@ class _Parser:
             return self._template_add()
         if verb == "clear":
             return self.submit({"type": "REMOVE_EFFECT"})
-        ids = (effect["id"] for effect in self.ctx.programmer.effects)
-        return self.submit({"type": "REMOVE_EFFECT", "id": self.take("an effect id", *ids).text})
+        programmer = self.ctx.programmer
+        if verb == "remove":
+            ids = (effect["id"] for effect in programmer.effects)
+            ident = self.take("an effect id", *ids).text
+            return self.submit({"type": "REMOVE_EFFECT", "id": ident})
+        run = verb == "run"  # offered: the stopped effects to run, the running ones to stop
+        ids = (e["id"] for e in programmer.effects if (e["id"] in programmer.stopped) == run)
+        ident = self.take("an effect id", *ids).text
+        return self.submit({"type": "RUN_EFFECT", "id": ident, "on": run})
 
     def _effect_add(self) -> Action:
         """``effect add "<template>" [options]``: an instance of the template

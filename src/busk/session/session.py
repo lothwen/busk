@@ -342,6 +342,7 @@ class Session:
             or written_effects
             or dict(old.values) != dict(new.values)
             or old.effects != new.effects
+            or old.stopped != new.stopped
             or old.blind != new.blind
             or old.highlight != new.highlight
             or (new.highlight and old.selection != new.selection)  # highlight follows it

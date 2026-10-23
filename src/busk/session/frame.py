@@ -50,10 +50,10 @@ def build_frame(
     (blind switched off) every slot counts as touched, so leaving blind
     applies the programmer *now*.
 
-    The effects compile like a cue's (:func:`programmer_effects`), and
-    ``touchedEffects`` follows the same rule: the instances that differ
-    from the one with their ``id`` in ``previous_effects``, and the ids a
-    command ``written_effects``.
+    The effects compile like a cue's (:func:`programmer_effects`), except
+    the stopped ones (GAP-14), and ``touchedEffects`` follows the same rule:
+    the instances that differ from the one with their ``id`` in
+    ``previous_effects``, and the ids a command ``written_effects``.
 
     ``highlight`` is :func:`highlight_of` the programmer: it follows the
     selection whether or not the programmer is blind.
@@ -77,7 +77,8 @@ def build_frame(
             touched.append(slot.index)
     order = sorted(values)
     lanes_out = [lane for index in order for lane in values[index]]
-    effects = programmer_effects(state, programmer.effects)
+    running = [effect for effect in programmer.effects if effect["id"] not in programmer.stopped]
+    effects = programmer_effects(state, running)
     before = {effect["id"]: effect for effect in previous_effects}
     instances = {effect["id"]: effect for effect in programmer.effects}
     touched_effects = frozenset(

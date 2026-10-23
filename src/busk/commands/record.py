@@ -87,7 +87,9 @@ counts them: ``recorded cue 9/2: 3 entries; 4 values tracked from cue 9/1``.
 programmer's effect instances into the cue's ``effects``:
 
 - An instance is recorded if any layer of its template is in a filtered
-  family; one that no longer validates against the show (dormant) is not.
+  family; one that no longer validates against the show (dormant) is not,
+  nor is one that is stopped (GAP-14): the cue gets what the programmer
+  runs.
 - Its targets become a ``group`` reference when they are exactly a group's
   members, in order (the lowest group number if several are); a ``group``
   reference stays as it is. Otherwise, and always with ``freeze``, they
@@ -103,9 +105,10 @@ programmer's effect instances into the cue's ``effects``:
 
 The message counts the cue's effects once any are involved (recorded, or in
 the cue before or after the record): ``recorded cue 9/4: 0
-entries, 1 effect; 1 effect tracked from cue 9/3``. A record fails only when
-neither a value nor an effect matches the filter. ``RECORD_PRESET``
-ignores effects.
+entries, 1 effect; 1 effect tracked from cue 9/3``, and ends with the
+stopped effects it left out (``; 1 stopped effect not recorded``). A record
+fails only when neither a value nor an effect matches the filter.
+``RECORD_PRESET`` ignores effects.
 
 The cue list must exist; the console creates it in the same ``BATCH``.
 """
@@ -499,7 +502,8 @@ def record_cue(
     instances = _collect_effects(state, programmer, families)
     if not collected and not instances:
         only = "" if "filter" not in command else " " + "/".join(sorted(families))
-        raise CommandError(f"the programmer has no{only} values or effects to record")
+        note = " (stopped effects are not recorded)" if programmer.stopped else ""
+        raise CommandError(f"the programmer has no{only} values or effects to record{note}")
     number = command.get("cueNumber") or _next_number(cues)
     key = cue_number_key(number)
     if key is None:
@@ -573,6 +577,8 @@ def record_cue(
             _plural(n, word) for n, word in ((len(tracked), "value"), (len(tracks), "effect")) if n
         ]
         message += f"; {', '.join(counts)} tracked from {source}"
+    if programmer.stopped:
+        message += f"; {_plural(len(programmer.stopped), 'stopped effect')} not recorded"
     return Edit(ops=tuple(ops), message=message)
 
 
@@ -580,12 +586,14 @@ def _collect_effects(
     state: ShowState, programmer: Programmer, families: Iterable[str]
 ) -> list[EffectInstance]:
     """The programmer's effect instances with a template layer in
-    ``families``, in programmer order; dormant ones (that no longer validate
-    against the show) are left out."""
+    ``families``, in programmer order; stopped ones (GAP-14) and dormant ones
+    (that no longer validate against the show) are left out."""
     wanted = set(families)
     templates = {template["id"]: template for template in state.show["effects"]}
     found: list[EffectInstance] = []
     for instance in programmer.effects:
+        if instance["id"] in programmer.stopped:
+            continue
         if any(issue.severity == "error" for issue in validate_effect(state.show, instance)):
             continue  # dormant
         layers = templates[instance["templateId"]]["layers"]

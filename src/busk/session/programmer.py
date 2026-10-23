@@ -42,6 +42,13 @@ recorded and autosaved like values. An instance is checked against the show
 when it is added; one whose template or targets vanish later stays,
 dormant, like a value whose slot is gone.
 
+``RUN_EFFECT`` (GAP-14 of ``docs/dev/tui/engine-gaps.md``) stops an effect
+and runs it again: a stopped effect keeps its place and settings in the
+programmer (``stopped`` holds its id), but the frame leaves it out, so it
+fades out as if removed and starts again as if added, and recording leaves
+it out too. Stopping is content: undone and autosaved like the effects.
+Replacing a stopped effect (``ADD_EFFECT`` with its id) keeps it stopped.
+
 Three **modes** sit beside the content: ``blind``, from Phase 4 the
 ``fadeTime`` that live programmer changes fade over (phase-4-plan §5.10),
 and from Phase 7 ``highlight``, which lights the selection full, white and
@@ -120,23 +127,26 @@ class Programmer:
     ``values`` keeps insertion order, and that order is the programmer's
     *target order* (each target where it first got a value): recording lists
     remaining targets in it. ``effects`` are the effect instances, in the
-    order they were added, with unique ids.
+    order they were added, with unique ids; ``stopped`` the ids of those that
+    are stopped (GAP-14).
     """
 
     selection: tuple[TargetRef, ...] = ()
     values: Mapping[SlotKey, ProgSource] = field(default_factory=lambda: MappingProxyType({}))
     effects: tuple[EffectInstance, ...] = ()
+    stopped: frozenset[str] = frozenset()
     blind: bool = False
     fadeTime: float = 0.0  # seconds; value changes, clears and blind switches fade over it
     highlight: bool = False
 
     def same_content(self, other: Programmer) -> bool:
-        """Equal selection, values and effects (``blind``, ``fadeTime`` and
-        ``highlight`` are modes, not content)."""
+        """Equal selection, values, effects and stopped effects (``blind``,
+        ``fadeTime`` and ``highlight`` are modes, not content)."""
         return (
             self.selection == other.selection
             and dict(self.values) == dict(other.values)
             and self.effects == other.effects
+            and self.stopped == other.stopped
         )
 
 
@@ -188,12 +198,16 @@ def handle(
     if command["type"] == "APPLY_PRESET":
         return _apply_preset(state, programmer, command["presetId"])
     if command["type"] == "CLEAR_PROGRAMMER":
-        cleared = replace(programmer, selection=(), values=MappingProxyType({}), effects=())
+        cleared = replace(
+            programmer, selection=(), values=MappingProxyType({}), effects=(), stopped=frozenset()
+        )
         return Change(cleared, "programmer cleared")
     if command["type"] == "ADD_EFFECT":
         return _add_effect(state, programmer, command["effect"])
     if command["type"] == "REMOVE_EFFECT":
         return _remove_effect(programmer, command.get("id"))
+    if command["type"] == "RUN_EFFECT":
+        return _run_effect(programmer, command["id"], command["on"])
     if command["type"] == "BLIND":
         on = command["on"]
         return Change(replace(programmer, blind=on), f"blind {'on' if on else 'off'}")
@@ -428,8 +442,9 @@ def _apply_preset(state: ShowState, programmer: Programmer, preset_id: str) -> C
 
 def _add_effect(state: ShowState, programmer: Programmer, instance: EffectInstance) -> Change:
     """Add ``instance``, or replace the programmer effect with its ``id`` in
-    place. It must pass the validator's instance rules against the show
-    (template, targets, masters, rate, size, range) and have targets."""
+    place (a stopped one stays stopped). It must pass the validator's
+    instance rules against the show (template, targets, masters, rate, size,
+    range) and have targets."""
     ident = instance["id"]
     errors = [issue for issue in validate_effect(state.show, instance) if issue.severity == "error"]
     if errors:
@@ -447,6 +462,8 @@ def _add_effect(state: ShowState, programmer: Programmer, instance: EffectInstan
         effects[index] = stored
         verb = "replaced"
     message = f"{verb} effect {ident!r} on {_plural(count, 'target')}"
+    if ident in programmer.stopped:
+        message += " (stopped)"
     return Change(
         replace(programmer, effects=tuple(effects)), message, writtenEffects=frozenset({ident})
     )
@@ -456,11 +473,30 @@ def _remove_effect(programmer: Programmer, ident: str | None) -> Change:
     """Remove the programmer effect ``ident``, or every one when ``None``."""
     if ident is None:
         count = len(programmer.effects)
-        return Change(replace(programmer, effects=()), f"removed {_plural(count, 'effect')}")
+        cleared = replace(programmer, effects=(), stopped=frozenset())
+        return Change(cleared, f"removed {_plural(count, 'effect')}")
     kept = tuple(effect for effect in programmer.effects if effect["id"] != ident)
     if len(kept) == len(programmer.effects):
         raise CommandError(f"the programmer has no effect {ident!r}")
-    return Change(replace(programmer, effects=kept), f"removed effect {ident!r}")
+    removed = replace(programmer, effects=kept, stopped=programmer.stopped - {ident})
+    return Change(removed, f"removed effect {ident!r}")
+
+
+def _run_effect(programmer: Programmer, ident: str, on: bool) -> Change:
+    """Run the programmer effect ``ident`` again (``on``), or stop it. Either
+    one when it already is changes nothing. A started effect counts as
+    touched, as an added one does."""
+    if not any(effect["id"] == ident for effect in programmer.effects):
+        raise CommandError(f"the programmer has no effect {ident!r}")
+    stopped = ident in programmer.stopped
+    if on != stopped:
+        return Change(programmer, f"effect {ident!r} is already {'running' if on else 'stopped'}")
+    if on:
+        started = replace(programmer, stopped=programmer.stopped - {ident})
+        return Change(started, f"started effect {ident!r}", writtenEffects=frozenset({ident}))
+    return Change(
+        replace(programmer, stopped=programmer.stopped | {ident}), f"stopped effect {ident!r}"
+    )
 
 
 # ------------------------------------------------------------------ checks
@@ -536,6 +572,7 @@ def to_json(programmer: Programmer) -> dict[str, Any]:
         "selection": [dict(target) for target in programmer.selection],
         "values": {key: deep_copy(source) for key, source in programmer.values.items()},
         "effects": [deep_copy(effect) for effect in programmer.effects],
+        "stopped": [e["id"] for e in programmer.effects if e["id"] in programmer.stopped],
         "blind": programmer.blind,
         "fadeTime": programmer.fadeTime,
         "highlight": programmer.highlight,
@@ -552,8 +589,9 @@ def from_json(data: Any) -> tuple[Programmer, list[str]]:
 
     Entries that are malformed (a recovered file may come from another
     version) are dropped one by one, never the whole programmer; so is an
-    effect whose ``id`` an earlier one has. Whether the effects still fit
-    the show is the caller's check (:func:`drop_invalid_effects`).
+    effect whose ``id`` an earlier one has. ``stopped`` keeps the ids of
+    the effects kept. Whether the effects still fit the show is the
+    caller's check (:func:`drop_invalid_effects`).
     """
     dropped: list[str] = []
     if not isinstance(data, dict):
@@ -585,6 +623,9 @@ def from_json(data: Any) -> tuple[Programmer, list[str]]:
             effects[effect["id"]] = effect
     if not isinstance(listed, list):
         dropped.append("programmer.effects")
+    stopped = data.get("stopped", [])  # files from before GAP-14 have none
+    if not isinstance(stopped, list) or not all(isinstance(i, str) for i in stopped):
+        stopped, dropped = [], [*dropped, "programmer.stopped"]
     blind = data.get("blind") is True
     fade = data.get("fadeTime", 0.0)  # files from before Phase 4 have none
     if not _is_seconds(fade):
@@ -593,6 +634,7 @@ def from_json(data: Any) -> tuple[Programmer, list[str]]:
         selection=_unique(selection),
         values=MappingProxyType(values),
         effects=tuple(effects.values()),
+        stopped=frozenset(ident for ident in stopped if ident in effects),
         blind=blind,
         fadeTime=float(fade),
         highlight=data.get("highlight") is True,  # files from before Phase 7 have none
@@ -603,7 +645,8 @@ def from_json(data: Any) -> tuple[Programmer, list[str]]:
 def drop_invalid_effects(state: ShowState, programmer: Programmer) -> tuple[Programmer, list[str]]:
     """``programmer`` without the effects that do not validate against
     ``state``'s show (crash recovery: the show may have changed since), and
-    one message per effect dropped, naming its first error."""
+    one message per effect dropped, naming its first error. A dropped
+    effect is no longer stopped either."""
     kept: list[EffectInstance] = []
     dropped: list[str] = []
     for effect in programmer.effects:
@@ -612,7 +655,8 @@ def drop_invalid_effects(state: ShowState, programmer: Programmer) -> tuple[Prog
             dropped.append(f"programmer effect {effect['id']!r}: {errors[0].message}")
         else:
             kept.append(effect)
-    return replace(programmer, effects=tuple(kept)), dropped
+    ids = {effect["id"] for effect in kept}
+    return replace(programmer, effects=tuple(kept), stopped=programmer.stopped & ids), dropped
 
 
 # ------------------------------------------------------------------ helpers

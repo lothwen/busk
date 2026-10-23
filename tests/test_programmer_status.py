@@ -139,6 +139,7 @@ def test_a_new_show_has_an_empty_programmer(offline: OfflineShow) -> None:
         fadeTime=0.0,
         values=(),
         effects=(),
+        stopped=frozenset(),
     )
     assert offline.programmer is status  # nothing changed: the same object
 

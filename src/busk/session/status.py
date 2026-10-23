@@ -69,12 +69,15 @@ class ProgrammerStatus:
     order the programmer holds them, each target where it first got a value.
     ``effects`` are the programmer's effect instances, in the show file's
     format (as in a cue's ``effects``), in the order they were added; their
-    ``id`` is what ``effect remove`` takes. ``fadeTime`` is the time, in
-    seconds, that programmer changes fade over (``fade``).
+    ``id`` is what ``effect remove`` takes. ``stopped`` holds the ids of
+    those that are stopped (``effect stop``, GAP-14): they stay in
+    ``effects`` but do not run. ``fadeTime`` is the time, in seconds, that
+    programmer changes fade over (``fade``).
 
     Only what is live is listed: a target whose fixture is gone, or a value
     or effect that no longer reaches the stage, stays in the programmer,
-    dormant, but not here.
+    dormant, but not here. A stopped effect is listed: the operator stopped
+    it, and can run it again.
     """
 
     version: int
@@ -84,6 +87,7 @@ class ProgrammerStatus:
     fadeTime: float
     values: tuple[ProgrammerValue, ...]
     effects: tuple[EffectInstance, ...]
+    stopped: frozenset[str]
 
 
 def programmer_status(
@@ -143,6 +147,7 @@ def programmer_status(
         fadeTime=programmer.fadeTime,
         values=tuple(values),
         effects=effects,
+        stopped=frozenset(effect["id"] for effect in effects) & programmer.stopped,
     )
     if previous is not None and status == previous:
         return previous

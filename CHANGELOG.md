@@ -71,6 +71,12 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   sets or changes one colour component, keeping the others. Targets with nothing in the
   programmer for that attribute are skipped. Library users and bindings have the new
   command type `ADJUST_ATTRIBUTE`.
+- Stopping a programmer effect ([the console](docs/console.md#notes)): `effect stop fx1`
+  stops it and keeps it in the programmer, with its settings, and `effect run fx1` runs it
+  again. It fades out and back in over the programmer's fade time, as removing and adding
+  it would, and `record cue` leaves a stopped effect out. `programmer` marks it
+  `(stopped)`, and `ProgrammerStatus.stopped` lists the stopped ids. Library users and
+  bindings have the new command type `RUN_EFFECT`.
 - Tab completion and `?` at the console prompt ([the prompt](docs/console.md#the-prompt)).
   Tab completes commands, keywords and names in quotes, and lists what may come next. `?`
   prints that and the forms of the command. Both follow the parser, the show and the

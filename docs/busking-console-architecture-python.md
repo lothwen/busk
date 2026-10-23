@@ -1607,7 +1607,7 @@ class CommandEnvelope(TypedDict):
 | Class | Examples | Undo | Persisted | Path |
 |---|---|---|---|---|
 | **Performance** | `TRIGGER_PLAYBACK`, `RELEASE_PLAYBACK`, `FLASH`, `GO`, `BACK`, `SET_FADER`, `SET_MASTER`, `TAP`, `BLACKOUT`, `PAGE` | no | no (logged) | lock-free queue, applied next tick |
-| **Programmer** | `SELECT`, `SET_ATTRIBUTE`, `ADJUST_ATTRIBUTE`, `APPLY_PRESET`, `ADD_EFFECT`, `CLEAR`, `HIGHLIGHT`, `BLIND` | programmer history | autosave | same queue |
+| **Programmer** | `SELECT`, `SET_ATTRIBUTE`, `ADJUST_ATTRIBUTE`, `APPLY_PRESET`, `ADD_EFFECT`, `RUN_EFFECT`, `CLEAR`, `HIGHLIGHT`, `BLIND` | programmer history | autosave | same queue |
 | **Show edit** | `RECORD_CUE`, `RECORD_PRESET`, `UPDATE_PRESET`, `PATCH_FIXTURE`, `EDIT_GROUP`, `ASSIGN_PLAYBACK`, `RENAME`, `DELETE` | yes | yes | validated → applied to show store → incremental recompile |
 
 ```python

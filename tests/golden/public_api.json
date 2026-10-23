@@ -37,6 +37,7 @@
       "ReleaseAllCmd",
       "ReleasePlaybackCmd",
       "RemoveEffectCmd",
+      "RunEffectCmd",
       "SelectCmd",
       "SelectPlaybackCmd",
       "SetAttributeCmd",
@@ -321,11 +322,12 @@
       "highlight: bool",
       "fadeTime: float",
       "values: tuple[ProgrammerValue, ...]",
-      "effects: tuple[EffectInstance, ...]"
+      "effects: tuple[EffectInstance, ...]",
+      "stopped: frozenset[str]"
     ],
     "kind": "frozen dataclass",
     "members": {
-      "__init__": "(self, *, version: int, selection: tuple[tuple[int, int], ...], blind: bool, highlight: bool, fadeTime: float, values: tuple[ProgrammerValue, ...], effects: tuple[EffectInstance, ...]) -> None"
+      "__init__": "(self, *, version: int, selection: tuple[tuple[int, int], ...], blind: bool, highlight: bool, fadeTime: float, values: tuple[ProgrammerValue, ...], effects: tuple[EffectInstance, ...], stopped: frozenset[str]) -> None"
     },
     "module": "busk.session.status"
   },

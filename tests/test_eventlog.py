@@ -112,8 +112,8 @@ def empty_show() -> Show:
 
 def perform(run: LoggedRun) -> None:
     """The scenario: the Phase 3–5 builds (show edits with generated ids),
-    then performance, programmer changes (GAP-05's relative ones too), undo
-    and redo, and a restore."""
+    then performance, programmer changes (GAP-05's relative ones and
+    GAP-14's stopped effect too), undo and redo, and a restore."""
     run.tick()
     for script in SCRIPTS:
         run.script(script)
@@ -125,8 +125,10 @@ def perform(run: LoggedRun) -> None:
     run.tick(4)
     run.run("sel group 2", "set color 1 0 0", "set color.g by 50%", 'effect add "Pulse" size 0.5',
             "highlight on")  # fmt: skip
+    pulse = run.session.programmer.effects[-1]["id"]
     run.tick(2)
-    run.run("sel + group 1", "highlight off", "blind on", "set pan 30", "blind off")
+    run.run(f"effect stop {pulse}", "sel + group 1", "highlight off", "blind on", "set pan 30",
+            "blind off", f"effect run {pulse}")  # fmt: skip
     run.run("record cue 10/7", "undo", "undo", "redo", "go 10", "fader 10 1")
     run.tick(3)
     run.run("gm 0.6", "blackout on", "release 1 0.4")

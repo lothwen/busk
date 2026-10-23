@@ -74,6 +74,7 @@ def offline(directory: Path) -> bytes:
     command: busk.Command = {"type": "BLACKOUT", "on": False}
     nudge: busk.Command = {"type": "ADJUST_ATTRIBUTE", "attribute": "color", "component": "r",
                            "delta": -0.1}  # fmt: skip
+    halt: busk.Command = {"type": "RUN_EFFECT", "id": "fx1", "on": False}
     assert show_.submit(nudge).message
     result: busk.CommandResult = show_.submit(command)
     if not result.ok:
@@ -118,6 +119,9 @@ def offline(directory: Path) -> bytes:
         preset: tuple[str, int, str] | None = value.preset
         assert (value.number, value.element, value.attribute, preset) is not None
     effects: list[str] = [effect["id"] for effect in programmer.effects]
+    stopped: frozenset[str] = programmer.stopped
+    assert stopped <= set(effects)
+    assert show_.submit(halt).message
     assert programmer.version >= 1
     assert (selected, effects, programmer.blind, programmer.fadeTime) is not None
     return universes[1][:16]
