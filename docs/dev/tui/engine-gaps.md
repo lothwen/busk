@@ -25,8 +25,9 @@ The TUI runs a `busk.LiveShow` in its own process, or, since GAP-11, is run by `
   `LiveShow.warnings`, since GAP-01 `LiveShow.output` (`OutputSnapshot`), since GAP-02
   `LiveShow.programmer` (`ProgrammerStatus`), since GAP-07 `LiveShow.routes`
   (`RouteStatus`), since GAP-08 `LiveShow.surfaces` (`SurfaceStatus`), since GAP-09
-  `LiveShow.effects` (`EffectSnapshot`) and since GAP-10 `LiveShow.confirmation(line)`
-  (the question to ask before a line). The `busk.*` loggers feed the TUI's log pane.
+  `LiveShow.effects` (`EffectSnapshot`), since GAP-10 `LiveShow.confirmation(line)`
+  (the question to ask before a line) and since GAP-15 `LiveShow.effect_templates`
+  (`EffectTemplateInfo`). The `busk.*` loggers feed the TUI's log pane.
 - **Text is not parsed.** `docs/library.md` says message text (`Reply.text`, CLI output, log
   records) may change in any release, so the TUI never extracts data from the output of
   `programmer`, `info`, `list …` or `library`. It may show such output verbatim.
@@ -66,7 +67,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-12](#gap-12-concurrency-contract-of-execute) Concurrency contract of `execute()` | contract | important | responsiveness | **done** 2026-10-23 |
 | [GAP-13](#gap-13-control-input-monitor) Control input monitor | read | nice-to-have | F9 | open |
 | [GAP-14](#gap-14-stop-and-restart-a-programmer-effect) Stop and restart a programmer effect | action | nice-to-have | F1 B, F5 | **done** 2026-10-23 |
-| [GAP-15](#gap-15-effect-template-library) Effect template library | read | nice-to-have | F5 | open |
+| [GAP-15](#gap-15-effect-template-library) Effect template library | read | nice-to-have | F5 | **done** 2026-10-23 |
 | [GAP-16](#gap-16-fixture-category) Fixture category | read | nice-to-have | F1 A/C, F8 | open |
 | [GAP-17](#gap-17-playback-colour) Playback colour | read | nice-to-have | F1 | open |
 | [GAP-18](#gap-18-quit-signal) Quit signal | read | nice-to-have | prompt | open |
@@ -1206,6 +1207,8 @@ stays `effect remove <id>`, and a cue effect's toggle stays `go N` / `release N`
 
 ## GAP-15: Effect template library
 
+**Status:** done 2026-10-23 (see **Done** at the end of this section).
+
 **Needed by:** F5 TEMPLATES (name and a one-line description). Spec §8.5.
 
 **Today:** `effect add "<template>"` finds templates in the effect library. The library is not
@@ -1221,6 +1224,62 @@ phase).
 
 **TUI until then:** TEMPLATES lists the show's templates. A line under it says "more built-in
 templates: type `library`".
+
+**Done** (2026-10-23). `OfflineShow.effect_templates` and `LiveShow.effect_templates`, a
+tuple of a new public dataclass, `EffectTemplateInfo` (`name`, `id`, `source`, `summary`,
+`size`, `low`, `high`, `phase`). `busk.__all__` has 37 names; the golden's diff is the new
+class and the two properties. Documented in `docs/library.md` (section 2 and the
+reference), the runner's, console's and parser's module docs and `docs/dev/internals.md`
+(the effect templates). Where it differs from the suggestion, or settles what the
+suggestion left open:
+
+- **A read on the facades, not a public `EffectLibrary`.** The TUI needs what `effect add
+  "<name>"` takes, and which template a name takes is engine logic: the show's copy wins
+  over the library's, found by the library template's id or by the name as an id or a
+  name, in any case. With the library alone the TUI would have to merge it with
+  `show["effects"]` by that rule. The library stays internal; a facade cannot be given
+  another one anyway, the console always uses the built-in one.
+- **One list, the show's and the library's.** The show's templates in show order, then
+  the library's that the show has no copy of, in library order. `source` says which:
+  `"show"`, or `"library"` for a template `effect add` embeds into the show first, after
+  which it is the show's, with the same id. So F5 needs no merge of its own.
+- **Listed by the rule `effect add` uses.** The parser's lookup became a function,
+  `find_template`, and the list is made with it: every name of the show's templates, then
+  of the library's, is looked up, and each template is kept the first time a name finds
+  it, under that name. So for every entry `effect add "<name>"` takes that template, with
+  those defaults; the tests check each entry on shows with a renamed copy of a library
+  template, a show template named like a library one, and a repeated name. A template no
+  name reaches is left out: a show template named like an earlier one (in any case), or a
+  library one whose name a show template has taken. `effect add "<id>"` still reaches the
+  first kind; the TUI does not offer it.
+- **`summary`** is the layers in one line, as `list effects` and `library` print them
+  (`pan add sine, tilt add sine +90°`): text to show as it is, like `RouteStatus.label`.
+  A library template's layers are not public otherwise; once it is the show's, they are
+  in `show["effects"]`.
+- **The defaults are the library's, as `library` prints them**, and `None` where it has
+  none: `size`, `low`, `high`, and `phase` as `(start, end)` in degrees. A show's copy of
+  a library template keeps them (they are found by its id); a template the show made
+  (`effect template add`) has none. `None` is not the value `effect add` then uses
+  (size 1, no low or high, phase 0 0), so that a display shows only what the template
+  brings, as `library` does (a call the user may veto). The rate is not here: its default
+  (BPM ×1 on the show's only speed master, else 1 Hz) is the show's, not the template's.
+- **The same tuple until a template changes.** The facades list again only for a new
+  show object (an edit replaces the show), and keep the previous tuple when the new one is
+  equal, so a frontend may compare by identity. It reads only the console's show and
+  library: safe from any thread, and under `busk run --frontend` it works in the console
+  process, with nothing from the engine process.
+- Tests: `tests/test_effect_templates.py` (21, the engine change mutation-checked), the
+  frontend probe's report in `tests/test_frontend.py` (a real `busk run --frontend`), the
+  count and the golden in `tests/test_public_api.py`, `tests/api_consumer.py`, and the
+  guide's example in `tests/test_docs.py`.
+
+The TUI's F5 TEMPLATES can now be `LiveShow.effect_templates` as it is, read by the
+bridge with the show (a new tuple only when a template changed): one row per entry with
+its `name`, `summary` and the defaults it has (`size 20`), the `library` ones marked until
+the first `effect add` embeds them. A click sends `effect add "<name>"` from
+`commands.py`, so the library's defaults apply. The "type `library`" line goes, and F5
+needs no `library` text. In the implementation plan's §2.6 the built-in library row
+becomes **S**, from `doc`.
 
 ## GAP-16: Fixture category
 

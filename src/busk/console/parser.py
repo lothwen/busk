@@ -108,6 +108,9 @@ uses. ``effect template add`` adds a template made of JSON layers.
 ``cue L/C effect <id> …`` sets a property of one of a cue's effect
 instances. ``record slot`` gives a new playback a ``size`` fader when its
 cue will hold only effects. ``list effects`` lists the show's templates.
+The facades' ``effect_templates`` (GAP-15) lists every template ``effect
+add`` takes, the library's too, found by :func:`find_template`, the rule
+above.
 
 Phase 6 sugar (phase-6-plan §5.17). ``page N``, ``next`` and ``prev`` change
 the engine's page, shared by every surface; it reaches the engine a tick
@@ -192,6 +195,7 @@ from busk.commands.types import Command, EditPath
 from busk.model.attributes import ATTRIBUTES, AttributeDefinition
 from busk.model.common import TargetRef
 from busk.model.cue import CUE_NUMBER
+from busk.model.effect import EffectTemplate
 from busk.model.profile import option_capabilities
 from busk.model.show import Show
 from busk.model.validate import COLOR_COMPONENTS
@@ -332,6 +336,30 @@ def expected(line: str, context: Context) -> Expected:
     return Expected(
         tuple(dict.fromkeys(parser.offers)), tuple(dict.fromkeys(parser.needs)), runnable, error
     )
+
+
+def find_template(
+    show: Show, effects: EffectLibrary, name: str
+) -> tuple[EffectTemplate, EffectDefaults, bool] | None:
+    """The template ``effect add "<name>"`` uses, its console defaults and
+    whether it must be embedded: the show's copy if it has one (the
+    library's template id, or ``name`` as an id or a name, any case), else
+    the library's; ``None`` if neither has it. The defaults are the
+    library's for that template id, if any."""
+    library = effects.find(name)
+    folded = name.casefold()
+    embedded = next(
+        (t for t in show["effects"]
+         if (library is not None and t["id"] == library.template["id"])
+         or t["id"] == name or t["name"].casefold() == folded),
+        None,
+    )  # fmt: skip
+    if embedded is not None:
+        known = effects.get(embedded["id"])
+        return embedded, (known.defaults if known is not None else {}), False
+    if library is None:
+        return None
+    return library.template, library.defaults, True
 
 
 # ---------------------------------------------------------------- tokenizer
@@ -990,23 +1018,11 @@ class _Parser:
 
     def _template(self, name: str) -> tuple[Mapping[str, Any], EffectDefaults, bool]:
         """The template to use, its console defaults and whether it must be
-        embedded: the show's copy if it has one (the library's template id,
-        or ``name`` as an id or a name, any case), else the library's. The
-        defaults are the library's for that template id, if any."""
-        library = self.ctx.effects.find(name)
-        folded = name.casefold()
-        embedded = next(
-            (t for t in self.show["effects"]
-             if (library is not None and t["id"] == library.template["id"])
-             or t["id"] == name or t["name"].casefold() == folded),
-            None,
-        )  # fmt: skip
-        if embedded is not None:
-            known = self.ctx.effects.get(embedded["id"])
-            return embedded, (known.defaults if known is not None else {}), False
-        if library is None:
+        embedded (:func:`find_template`)."""
+        found = find_template(self.show, self.ctx.effects, name)
+        if found is None:
             raise ParseError(f"no template {name!r} in the library (see 'library')")
-        return library.template, library.defaults, True
+        return found
 
     def _default_rate(self) -> dict[str, Any]:
         """BPM ×1 on the show's only speed master, else 1 Hz."""

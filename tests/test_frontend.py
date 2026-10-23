@@ -13,12 +13,12 @@
   :class:`RemoteBus`.
 * **``busk run --frontend``**, real process trees running
   ``tests/process_site/frontend_probe.py``: the frontend gets the show
-  (frames, output, effects, routes, the programmer, lines that run) and
-  busk run's lines as ``busk.run`` records, none printed over it; one that
-  raises is restarted with its console while the engine runs on; ``SIGTERM``
-  ends the run through it; with ``--threads`` too. A frontend that cannot be
-  loaded ends the run with 1; the options it cannot be combined with are
-  refused.
+  (frames, output, effects, routes, the programmer, the effect templates,
+  lines that run) and busk run's lines as ``busk.run`` records, none printed
+  over it; one that raises is restarted with its console while the engine
+  runs on; ``SIGTERM`` ends the run through it; with ``--threads`` too. A
+  frontend that cannot be loaded ends the run with 1; the options it cannot
+  be combined with are refused.
 * **The lines**: ``say`` and ``warn`` diverted, the root's ``NEWS`` and
   the engine's stderr, the console process saying ``NEWS``.
 """
@@ -418,6 +418,7 @@ def test_busk_run_calls_the_frontend_with_its_show(
     route = replies[2][1].removeprefix("added route ")
     assert report["routes"] == [["r1", "ok"], [route, "ok"]]
     assert report["selection"] == [[101, 1]]
+    assert report["templates"][:2] == [["Pulse", "show"], ["Circle", "library"]]
     said = [message for name, level, message in report["records"] if name == "busk.run"]
     assert any(message.startswith(f"sACN {route}: U1 Stage → universe 7") for message in said)
     assert not any(

@@ -546,6 +546,19 @@ so `version` counts changes of the content. What is dormant is left out, by the 
 `build_frame` uses: a gone target, a value without a slot, a preset value or its option,
 and an effect that no longer validates.
 
+**The effect templates** (`busk.console.console`; GAP-15 of
+[`tui/engine-gaps.md`](tui/engine-gaps.md)). `effect add` finds its template with
+`find_template` (`busk.console.parser`): the show's copy if it has one (the library
+template's id, or the name as an id or a name, any case), else the effect library's,
+which the line embeds first. `Console.effect_templates`, which the facades'
+`effect_templates` is, lists what that rule reaches: it looks up every name of the
+show's templates, then of the library's, and keeps each template the first time a name
+finds it, under that name. So each entry is what `effect add "<name>"` takes, with the
+defaults it gives, and a template no name reaches (a show template named like an earlier
+one) is left out. The facades list again only for a new show object (an edit replaces
+the show) and keep the previous tuple when the new one is equal. Only the console's show
+and library are read, so under `busk run` the engine process has nothing to send.
+
 **Recording** (`busk.commands.record`, §15.3). Recording turns programmer values into
 show data that keeps intent: a cue entry references a group whenever one covers the
 targets (a greedy cover over the groups whose members *with that attribute* fit), keeps

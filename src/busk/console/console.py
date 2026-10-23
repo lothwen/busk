@@ -48,7 +48,7 @@ from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from types import FrameType
-from typing import Any, Final, cast
+from typing import Any, Final, Literal, cast
 
 from busk.commands.classes import command_class
 from busk.console.parser import (
@@ -65,6 +65,7 @@ from busk.console.parser import (
     Submit,
     SubmitAll,
     expected,
+    find_template,
     parse,
 )
 from busk.console.prompt import PROMPT, Editing, hints
@@ -88,6 +89,37 @@ class Reply:
 
     text: str
     ok: bool = True
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class EffectTemplateInfo:
+    """One effect template that ``effect add`` takes, as a display lists it
+    (GAP-15 of ``docs/dev/tui/engine-gaps.md``).
+
+    ``name`` is the name ``effect add "<name>"`` takes for it. ``source`` is
+    ``"show"`` for a template the show holds (in ``show["effects"]``, with
+    ``id``), and ``"library"`` for one of the effect library's that the show
+    has no copy of: ``effect add`` embeds it into the show first, and from
+    then on it is the show's, with the same id. ``summary`` is its layers in
+    one line, as ``list effects`` and ``library`` print them, text to show as
+    it is.
+
+    ``size``, ``low``, ``high`` and ``phase`` (start and end, in degrees)
+    are the library's defaults for an instance, as ``library`` prints them,
+    also once the show holds the template. ``None`` where the library has
+    none, as for a template the show made itself (``effect template add``):
+    then ``effect add`` gives size 1, no low or high, and phase 0 0. An
+    option on the line overrides each.
+    """
+
+    name: str
+    id: str
+    source: Literal["show", "library"]
+    summary: str  # "pan add sine, tilt add sine +90°"
+    size: float | None
+    low: float | None
+    high: float | None
+    phase: tuple[float, float] | None
 
 
 class Console:
@@ -171,6 +203,34 @@ class Console:
     def expected(self, line: str) -> Expected:
         """What may follow ``line`` at the prompt (Tab completion and ``?``)."""
         return expected(line, self._context())
+
+    def effect_templates(self, show: Show) -> tuple[EffectTemplateInfo, ...]:
+        """Every template ``effect add`` takes in ``show``, once, as it finds
+        them by name (:func:`~busk.console.parser.find_template`): the show's
+        in show order, then the effect library's that the show has no copy
+        of. Each is listed under the first name that finds it; one that no
+        name finds is left out (a show template named like an earlier one,
+        a library template whose name a show template has)."""
+        names = [t["name"] for t in show["effects"]] + [e.template["name"] for e in self.effects]
+        found: dict[str, EffectTemplateInfo] = {}
+        for name in names:
+            resolved = find_template(show, self.effects, name)
+            assert resolved is not None  # each name finds at least its own template
+            template, defaults, embed = resolved
+            if template["id"] in found:
+                continue
+            phase = defaults.get("phase")
+            found[template["id"]] = EffectTemplateInfo(
+                name=name,
+                id=template["id"],
+                source="library" if embed else "show",
+                summary=_layers(template["layers"]),
+                size=defaults.get("size"),
+                low=defaults.get("low"),
+                high=defaults.get("high"),
+                phase=None if phase is None else (phase["start"], phase["end"]),
+            )
+        return tuple(found.values())
 
     def _context(self) -> Context:
         session = self.session

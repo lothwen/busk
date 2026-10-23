@@ -46,6 +46,12 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   `output off`), or `None` for a line that runs at once
   ([the library guide](docs/library.md#3-live-inside-your-own-application-liveshow)). A
   frontend asks the same without parsing the line; `execute` never asks.
+- `OfflineShow.effect_templates` and `LiveShow.effect_templates`: the effect templates
+  `effect add` takes, as a new public type, `EffectTemplateInfo`
+  ([the library guide](docs/library.md#2-build-a-show-and-render-it-offlineshow)): the
+  show's, then the built-in library's that the show has no copy of yet, each with the
+  name `effect add` takes, its layers in one line and the library's defaults (size,
+  low/high, phase). Before, the library's templates were only in the text of `library`.
 - `busk run --frontend MODULE:FUNCTION` ([Running a show](docs/running.md#frontends)):
   your own frontend instead of the prompt, called with the run's `LiveShow` in the
   console process, with `busk run`'s safety net (the engine in its own process, the

@@ -108,6 +108,7 @@ def run(show: Any, plan: dict[str, Any], records: Records, report: dict[str, Any
     report["effects"] = [[e.playback, e.cue, e.id] for e in effects.effects]
     report["routes"] = [[r.id, r.state] for r in show.routes or ()]
     report["selection"] = [list(target) for target in show.programmer.selection]
+    report["templates"] = [[t.name, t.source] for t in show.effect_templates]
 
 
 def _reply(reply: Any) -> list[Any]:

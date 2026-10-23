@@ -33,7 +33,9 @@ GAP-09), and their ``programmer`` is the programmer with fixtures by number
 (:class:`~busk.output.driver.RouteStatus`, GAP-07), and its ``surfaces`` its
 control surfaces (:class:`~busk.io.surfaces.SurfaceStatus`, GAP-08).
 ``confirmation(line)`` is the question ``busk run``'s prompt asks before a
-dangerous line (GAP-10), for a frontend to ask too.
+dangerous line (GAP-10), for a frontend to ask too, and ``effect_templates``
+the templates ``effect add`` takes, the show's and the effect library's
+(:class:`~busk.console.console.EffectTemplateInfo`, GAP-15).
 
 Errors (§5.8): constructing a facade raises
 :class:`~busk.persistence.show_file.ShowLoadError` for an invalid show and
@@ -79,7 +81,7 @@ from typing import Final, Literal, Self
 
 from busk.commands.types import Command
 from busk.compiler.compile import CompiledShow, compile_show
-from busk.console.console import Console, Reply
+from busk.console.console import Console, EffectTemplateInfo, Reply
 from busk.engine.clock import SWITCH_INTERVAL, Clock, FakeClock, MonotonicClock
 from busk.engine.effect_status import EffectCapture, read_effects
 from busk.engine.install import Stamp
@@ -169,6 +171,7 @@ class _Facade:
     _session: Session
     _console: Console
     _status: tuple[SessionSnapshot, ProgrammerStatus] | None = None  # the last programmer read
+    _templates: tuple[Show, tuple[EffectTemplateInfo, ...]] | None = None  # and templates read
 
     # ----------------------------------------------------------- reading
 
@@ -191,6 +194,23 @@ class _Facade:
         status = programmer_status(snapshot.state, snapshot.programmer, previous)
         self._status = (snapshot, status)  # one assignment: other threads see the pair whole
         return status
+
+    @property
+    def effect_templates(self) -> tuple[EffectTemplateInfo, ...]:
+        """The effect templates ``effect add "<name>"`` takes: the show's, in
+        show order, then the effect library's that the show has no copy of,
+        in library order, each with its layers in one line and the library's
+        defaults (see :class:`~busk.console.console.EffectTemplateInfo`). The
+        same tuple until one of them changes."""
+        show = self._session.show  # one read: replaced, never changed, by an edit
+        cached = self._templates
+        if cached is not None and cached[0] is show:
+            return cached[1]
+        templates = self._console.effect_templates(show)
+        if cached is not None and cached[1] == templates:
+            templates = cached[1]
+        self._templates = (show, templates)  # one assignment, as for the programmer
+        return templates
 
     @property
     def warnings(self) -> tuple[Issue, ...]:

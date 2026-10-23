@@ -8,7 +8,7 @@ The public API
 ==============
 
 Every public name is importable from ``busk`` itself; ``__all__`` lists the
-34 of them. The library guide, ``docs/library.md``, has the examples and the
+37 of them. The library guide, ``docs/library.md``, has the examples and the
 reference.
 
 Show documents
@@ -24,9 +24,11 @@ Running a show
     Both take commands (:meth:`~OfflineShow.submit`), console lines
     (:meth:`~OfflineShow.execute`) and scripts, read their output back
     per fixture (:attr:`~OfflineShow.output`) and show their running
-    effects (:attr:`~OfflineShow.effects`) and their programmer
-    (:attr:`~OfflineShow.programmer`); a :class:`LiveShow` also shows its
-    output routes (:attr:`~LiveShow.routes`) and control surfaces
+    effects (:attr:`~OfflineShow.effects`), their programmer
+    (:attr:`~OfflineShow.programmer`) and the effect templates ``effect
+    add`` takes (:attr:`~OfflineShow.effect_templates`); a
+    :class:`LiveShow` also shows its output routes
+    (:attr:`~LiveShow.routes`) and control surfaces
     (:attr:`~LiveShow.surfaces`).
 Data types
     :class:`Show`, :class:`FixtureProfile` and :data:`Command`, the
@@ -36,9 +38,9 @@ Data types
     :class:`SpeedStatus` and :class:`PageStatus`; :class:`DmxFrame`;
     :class:`OutputSnapshot` with :class:`FixtureOutput`;
     :class:`EffectSnapshot` with :class:`EffectStatus`;
-    :class:`ProgrammerStatus` with :class:`ProgrammerValue`;
-    :class:`RouteStatus`; :class:`SurfaceStatus`; :class:`IdFactory` and
-    :class:`CounterIds`.
+    :class:`EffectTemplateInfo`; :class:`ProgrammerStatus` with
+    :class:`ProgrammerValue`; :class:`RouteStatus`; :class:`SurfaceStatus`;
+    :class:`IdFactory` and :class:`CounterIds`.
 Errors
     :class:`BuskError` is the base of every error the API raises on purpose:
     :class:`ShowLoadError`, :class:`UnsupportedFeature`, :class:`ImportFailed`
@@ -96,6 +98,7 @@ __all__ = [
     "DmxFrame",
     "EffectSnapshot",
     "EffectStatus",
+    "EffectTemplateInfo",
     "EngineSnapshot",
     "FixtureOutput",
     "FixtureProfile",
@@ -146,6 +149,7 @@ _EXPORTS: dict[str, str] = {
     "CounterIds": "busk.session.ids",
     "CommandResult": "busk.session.session",
     "Reply": "busk.console.console",
+    "EffectTemplateInfo": "busk.console.console",
     "EngineSnapshot": "busk.engine.snapshot",
     "PlaybackStatus": "busk.engine.snapshot",
     "SpeedStatus": "busk.engine.snapshot",
@@ -170,6 +174,7 @@ _EXPORTS: dict[str, str] = {
 if TYPE_CHECKING:  # what type checkers see: the same table, as explicit re-exports
     from busk.commands.types import Command as Command
     from busk.compiler.compile import UnsupportedFeature as UnsupportedFeature
+    from busk.console.console import EffectTemplateInfo as EffectTemplateInfo
     from busk.console.console import Reply as Reply
     from busk.engine.snapshot import EffectSnapshot as EffectSnapshot
     from busk.engine.snapshot import EffectStatus as EffectStatus

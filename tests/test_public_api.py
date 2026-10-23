@@ -3,8 +3,9 @@
 * ``busk.__all__`` is the 28 names of §5.1, the two of GAP-01
   (``OutputSnapshot``, ``FixtureOutput``), the two of GAP-02
   (``ProgrammerStatus``, ``ProgrammerValue``), the one of GAP-07
-  (``RouteStatus``), the one of GAP-08 (``SurfaceStatus``) and the two of
-  GAP-09 (``EffectSnapshot``, ``EffectStatus``; ``docs/dev/tui/engine-gaps.md``).
+  (``RouteStatus``), the one of GAP-08 (``SurfaceStatus``), the two of
+  GAP-09 (``EffectSnapshot``, ``EffectStatus``) and the one of GAP-15
+  (``EffectTemplateInfo``; ``docs/dev/tui/engine-gaps.md``).
   Each resolves lazily from the module of the §5.1 table, and the type
   checkers' re-exports in ``busk/__init__.py`` are the same table.
 * Nothing else is an attribute of ``busk``.
@@ -75,6 +76,7 @@ PUBLIC = [
     "SurfaceStatus",
     "EffectSnapshot",
     "EffectStatus",
+    "EffectTemplateInfo",
     "IdFactory",
     "CounterIds",
     # Errors
@@ -86,7 +88,7 @@ PUBLIC = [
 ]
 """The §5.1 list, in its order, with GAP-01's two after ``DmxFrame``,
 GAP-02's two after them, GAP-07's one after those, GAP-08's one
-after it and GAP-09's two after that."""
+after it, GAP-09's two after that and GAP-15's one after them."""
 
 DUNDERS = {"__init__", "__enter__", "__exit__", "__iter__", "__len__", "__str__"}
 """The special methods a public class documents; the rest come from Python."""
@@ -110,7 +112,7 @@ def run(script: str) -> str:
 
 
 def test_all_is_the_planned_list_sorted() -> None:
-    assert len(PUBLIC) == 36
+    assert len(PUBLIC) == 37
     assert busk.__all__ == sorted(PUBLIC)
 
 

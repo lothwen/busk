@@ -119,6 +119,7 @@ The suite also passes on Python 3.12 and 3.13, for example
 | `test_console_buttons.py` | GAP-04's playback-button lines: a flash up from `on` to `off`, `toggle` both ways, each button function on its edges, a `select` button's press selecting (one undo step), `release all` dropping a flash held from the console, a missing playback refused as `go` refuses it; a `LiveShow`, and a real `busk run` prompt |
 | `test_concurrent_lines.py` | GAP-12's lines from several threads: performance lines applied while another thread's edit compiles, save writes or script runs; any other line (programmer, query, edit, `undo`, `save`) waiting for it and then seeing it; `source` and `run_script` whole; a line parsed again when another thread changed the show (two `effect add` of one new template); the ids of one parse; Ctrl+C staying with the main thread; queries surviving another thread's `submit`; eight threads at once; `busk run`'s show sending `go` while an edit compiles |
 | `test_confirmation.py` | GAP-10's `confirmation` of both facades: `output off` asks however it is typed, every other line (a binding of `output off`, `source`, a line that does not parse) runs at once, `execute` never asks; asking uses up no id (the club-night script builds the same show asked about line by line) and commits nothing; a `LiveShow` from another thread, and `busk run`'s prompt asking what its attached show answers |
+| `test_effect_templates.py` | GAP-15's `effect_templates` of both facades: a new show's library in its order; the show's templates first, then the library's it has no copy of, with the layers and defaults `library` and `list effects` print; the club-night show; which one is listed (a renamed copy once by its new name, a show template named like a library one in its place, a repeated name once, each under the first name that finds it); the contract: `effect add` with each listed name takes that template, embeds it exactly when it is the library's, and gives its defaults; adding a library template and undoing it; the same tuple until a template changes; a `LiveShow` from another thread; a saved show; `busk run --frontend` in `test_frontend.py` |
 | `test_console_prompt.py` | What may follow a line, per grammar area (keywords, names from the show and the libraries, described values, `<Enter>`, mistakes), with no id taken; every word of `examples/club-night.busk` offered where it stands; the `?` help and the grammar forms it picks; the completer's choices for GNU readline and libedit; a real prompt on a pseudo-terminal (Tab, `?`, Ctrl+C twice) |
 | `test_build_from_scratch.py` | **The Phase 3 done criterion:** the build script from `busk new`, golden show and golden DMX (checked by hand), a live preset edit, undo all / redo all, save → load |
 | `test_song_stack.py` | **The Phase 4 done criterion:** the song script on the built show, golden show, 34 checkpoints of hand-computed logical values and golden DMX, GOTO equals stepping, the tap and multiplier alignment, 100 Hz vs an irregular schedule, save → load |
@@ -165,7 +166,7 @@ The suite also passes on Python 3.12 and 3.13, for example
 src/busk/
   __init__.py            # the public API (Phase 8): __all__, lazy re-exports, the NullHandler
   errors.py              # BuskError, ScriptError (the public errors' base and the script one)
-  runner.py              # OfflineShow, LiveShow, DmxFrame, their output, effects, programmer and confirmation, LiveShow's routes and surfaces; _LocalRun (engine and output threads)
+  runner.py              # OfflineShow, LiveShow, DmxFrame, their output, effects, programmer, effect templates and confirmation, LiveShow's routes and surfaces; _LocalRun (engine and output threads)
   cli.py  __main__.py
   model/                 # persistent schema (§5.1–§5.17) as TypedDicts
     common.py            #   ids, EntityBase, TargetRef/TargetKey, STRICT, number aliases
@@ -194,8 +195,8 @@ src/busk/
   library/profiles/      # the built-in profiles (Appendix A's two, Phase 1's three)
   library/effects.json   # the built-in effect templates and their console defaults
   console/
-    parser.py            #   parse(): a console line → an action (pure); expected()
-    console.py           #   Console.execute() (from any thread), run_script(), interact()
+    parser.py            #   parse(): a console line → an action (pure); expected(); find_template()
+    console.py           #   Console.execute() (from any thread), run_script(), interact(); EffectTemplateInfo
     prompt.py            #   Tab completion and ? on readline (GNU readline and libedit)
   persistence/
     show_file.py         #   load_show(), save_show(), atomic_write(), backups, new_show()

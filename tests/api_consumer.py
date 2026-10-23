@@ -124,6 +124,15 @@ def offline(directory: Path) -> bytes:
     assert show_.submit(halt).message
     assert programmer.version >= 1
     assert (selected, effects, programmer.blind, programmer.fadeTime) is not None
+    for listed in show_.effect_templates:
+        offered: busk.EffectTemplateInfo = listed
+        embeds: bool = offered.source == "library"
+        phase: tuple[float, float] | None = offered.phase
+        size: float = 1.0 if offered.size is None else offered.size
+        assert show_.execute("sel fixture 101").ok
+        assert show_.execute(f'effect add "{offered.name}"').ok
+        assert (offered.id, offered.summary, offered.low, offered.high, embeds, phase) is not None
+        assert size > 0
     return universes[1][:16]
 
 
@@ -149,6 +158,8 @@ def live(path: str, host: Callable[[busk.LiveShow], None]) -> busk.Show:
         assert running is None or running.time >= 0.0
         programmer: busk.ProgrammerStatus = live.programmer
         assert programmer.version >= 1
+        templates: tuple[busk.EffectTemplateInfo, ...] = live.effect_templates
+        assert all(template.name for template in templates)
         routes: tuple[busk.RouteStatus, ...] | None = live.routes
         for route in routes or ():
             light: tuple[str, str, int] = (route.label, route.state, route.packets)

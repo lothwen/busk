@@ -12,7 +12,7 @@ library that does the same things from your own code. With the library you can:
 
 Everything public is importable from `busk` itself. This guide covers [installing](#installing),
 [the three uses](#1-tooling-validate-a-show-import-a-profile) with examples, a
-[reference](#reference) of the 36 public names, [the errors](#errors),
+[reference](#reference) of the 37 public names, [the errors](#errors),
 [logging](#logging), [what is public](#what-is-public) and [the stability promise](#stability).
 The [README](../README.md) covers the command line and links the other guides: the
 [console's commands](console.md), [running a show](running.md) and [how busk works inside](dev/internals.md).
@@ -181,6 +181,23 @@ changes:
 >>> value = programmer.values[2]
 >>> value.number, value.element, value.attribute, value.value, value.preset
 (301, 3, 'color', {'r': 1.0, 'g': 0.0, 'b': 0.0}, ('color', 2, 'Red'))
+
+```
+
+`effect_templates` lists the effect templates `effect add` takes: the show's, then those
+of busk's built-in library that the show has no copy of yet, which `effect add` embeds
+into the show first (`source` says which). Each has the name `effect add` takes, its
+layers in one line as `list effects` prints them (`summary`), and the library's defaults
+for a new instance (`size`, `low`, `high` and `phase`, `None` where it has none). It is
+the same tuple until a template changes:
+
+```python
+>>> templates = offline.effect_templates                        # the script used four
+>>> [(t.name, t.source) for t in templates][3:6]
+[('Rainbow', 'show'), ('Chase', 'library'), ('Saw', 'library')]
+>>> circle = templates[0]
+>>> circle.name, circle.summary, circle.size
+('Circle', 'pan add sine, tilt add sine +90°', 20.0)
 
 ```
 
@@ -355,7 +372,7 @@ edited was done 32–45 ms after it was due at the 99th percentile.
 
 ## Reference
 
-The 36 names of `busk.__all__`. Each has a docstring with the details; path parameters
+The 37 names of `busk.__all__`. Each has a docstring with the details; path parameters
 take `str` or `os.PathLike`.
 
 | Name | What it is |
@@ -367,7 +384,7 @@ take `str` or `os.PathLike`.
 | `read_ofl` | `read_ofl(path, *, manufacturer=None) -> ImportReport`: convert an Open Fixture Library profile |
 | `read_gdtf` | `read_gdtf(path, *, manufacturer=None) -> ImportReport`: convert a GDTF file |
 | `ProfileLibrary` | The built-in profiles plus directories of profiles, for `fixture add`: `get(id)`, `find(id or name)`, iteration, `problems` |
-| `OfflineShow` | A show on a clock you drive: `submit`, `execute`, `confirmation`, `run_script`, `save`, `tick`; `show`, `warnings`, `snapshot`, `output`, `effects`, `programmer`, `time` |
+| `OfflineShow` | A show on a clock you drive: `submit`, `execute`, `confirmation`, `run_script`, `save`, `tick`; `show`, `warnings`, `snapshot`, `output`, `effects`, `programmer`, `effect_templates`, `time` |
 | `LiveShow` | A show in real time in your process: as `OfflineShow`, with `start`, `stop` and `with`, `frame` instead of `tick`, `routes` and `surfaces` |
 | `DmxFrame` | One engine output: `seq`, `time`, and `universes`, a mapping of universe number to 512 bytes |
 | `Show` | The show file format, a `TypedDict` |
@@ -385,6 +402,7 @@ take `str` or `os.PathLike`.
 | `FixtureOutput` | One element in it: `number`, `element`, `intensity`, `color`, `pan`, `tilt`, `zoom`, `source` (what drives each family), `playback` |
 | `EffectSnapshot` | The effect instances one tick ran: `seq`, `time`, `effects` |
 | `EffectStatus` | One instance in it: `playback`, `cue`, `id` (where it is defined), `presence`, `size`, `hz`, `phase`, `wave` and `colors` (its next cycle, 20 samples) |
+| `EffectTemplateInfo` | One effect template `effect add` takes: `name` (as it takes it), `id`, `source` (`"show"` or `"library"`), `summary` (its layers in one line), `size`, `low`, `high`, `phase` (the library's defaults, or `None`) |
 | `ProgrammerStatus` | The programmer: `version`, `selection` (`(number, element)` pairs), `blind`, `highlight`, `fadeTime`, `values`, `effects` (as the show file holds them), `stopped` (the ids of the stopped effects) |
 | `ProgrammerValue` | One value in it: `number`, `element`, `attribute`, `value` (in the show's units), `preset` (`(pool, number, name)`, or `None`) |
 | `RouteStatus` | One output route of a `LiveShow`: `id`, `label`, `universe` (its number), `state` (`"ok"`, `"failed"`, `"disabled"`, `"ignored"`), `detail` (why), `packets`, `errors` |

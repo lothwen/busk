@@ -114,6 +114,23 @@
     },
     "module": "busk.engine.snapshot"
   },
+  "EffectTemplateInfo": {
+    "fields": [
+      "name: str",
+      "id: str",
+      "source: Literal['show', 'library']",
+      "summary: str",
+      "size: float | None",
+      "low: float | None",
+      "high: float | None",
+      "phase: tuple[float, float] | None"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, *, name: str, id: str, source: Literal['show', 'library'], summary: str, size: float | None, low: float | None, high: float | None, phase: tuple[float, float] | None) -> None"
+    },
+    "module": "busk.console.console"
+  },
   "EngineSnapshot": {
     "fields": [
       "seq: int",
@@ -216,6 +233,7 @@
       "__exit__": "(self, exc_type: type[BaseException] | None, exc: BaseException | None, traceback: TracebackType | None) -> None",
       "__init__": "(self, show: Show, *, path: str | os.PathLike[str] | None = None, library: ProfileLibrary | None = None, output: bool = True, surfaces: bool = False, state_dir: str | os.PathLike[str] | None = None, tune_interpreter: bool = False) -> None",
       "confirmation": "(self, line: str) -> str | None",
+      "effect_templates": "property: tuple[EffectTemplateInfo, ...]",
       "effects": "property: EffectSnapshot | None",
       "execute": "(self, line: str) -> Reply",
       "frame": "property: DmxFrame | None",
@@ -239,6 +257,7 @@
     "members": {
       "__init__": "(self, show: Show, *, path: str | os.PathLike[str] | None = None, library: ProfileLibrary | None = None, ids: IdFactory | None = None) -> None",
       "confirmation": "(self, line: str) -> str | None",
+      "effect_templates": "property: tuple[EffectTemplateInfo, ...]",
       "effects": "property: EffectSnapshot",
       "execute": "(self, line: str) -> Reply",
       "output": "property: OutputSnapshot",
