@@ -65,7 +65,7 @@ session, as the web remote's commands do. `help` prints the grammar.
 | Effects, masters | `effect add "Circle" [id fx1] [hz 0.5 \| bpm ["Speed 1"] [x 0.5]] [size 15] [low 0 high 1] [phase 0 180] [groups N] [blocks N] [wings 2] [forward\|reverse\|bounce] [fadein 1] [sizemaster "FX"] [speedmaster "Speed 1"]`, `effect remove fx1`, `effect clear`, `effect stop fx1`, `effect run fx1`, `effect template add "Name" [{…layers…}]`, `cue 9/4 effect rainbow size 0.5`, `master add size "FX"`, `master add group "Wash level" group 2`, `master add fadetime "Fade"` |
 | Perform | `go 9`, `back 9`, `goto 9 4`, `release 3 [2]`, `fader 3 75%`, `flash 3 on\|off`, `toggle 3`, `button 3 2 on\|off`, `gm 0.5`, `master "Speed 1" 0.75`, `tap ["Speed 1"]`, `bpm ["Speed 1"] 128`, `blackout on\|off` |
 | Safety, panic | `park fixture 204 intensity 0`, `park group 2 color 1 0 0`, `unpark fixture 204 [intensity]`, `unpark all`, `fixture 101 thru 102 limits tilt -90 10`, `fixture 301 limits intensity 50%`, `fixture 101 limits none`, `safety strobe 3\|off`, `highlight on\|off`, `release all [2]`, `output on\|off` |
-| Profiles | `profile update "Generic Spot 16ch"` (to the library's other revision), `list profiles` |
+| Profiles | `profile update "Generic Spot 16ch"` (to the library's other revision), `profile "Generic Spot 16ch" category wash\|none`, `list profiles` |
 | Session | `undo`, `redo`, `save [PATH]`, `list fixtures\|groups\|presets\|cuelists\|playbacks\|pages\|universes\|routes\|surfaces\|bindings\|masters\|profiles\|effects\|park`, `list cues 9`, `library`, `info`, `status`, `source FILE`, `quit` |
 
 ## Notes
@@ -152,6 +152,11 @@ session, as the web remote's commands do. `help` prints the grammar.
   commands, like `go`, and can be bound; `bind` adds a binding next to those already on an
   input, so `unbind "<surface>" <input> [thru N]` frees it first. `info` adds the
   processes, their restarts and the event log file.
+* **Categories** (see [Fixture profiles](profiles.md#categories)). `profile "<name>"
+  category <category>` labels a profile the show embeds as a `par`, `spot`, `wash`,
+  `beam`, `pixel`, `strobe`, `blinder`, `dimmer`, `effect`, `fog` or `other`, for
+  displays that group fixtures by kind; `none` removes it. The output never depends on
+  it, the profile keeps its revision, and `profile update` keeps it.
 * **Undo** walks one timeline of show edits and programmer changes (1000 steps): the last
   action, whatever it was. Blind and the programmer's fade time are modes and are never
   undone. Saving is not a step.

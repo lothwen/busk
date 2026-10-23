@@ -28,6 +28,7 @@ from busk.console.parser import (
 )
 from busk.console.prompt import Editing, grammar, hints, split
 from busk.model.attributes import ATTRIBUTES
+from busk.model.profile import PROFILE_CATEGORIES
 from busk.runner import OfflineShow
 from busk.session.ids import CounterIds
 from busk.session.library import ProfileLibrary, builtin_effects
@@ -120,6 +121,10 @@ EXPECTED: list[tuple[str, tuple[str, ...], tuple[str, ...], bool]] = [
     ("effect ", ("add", "remove", "clear", "template", "stop", "run"), (), False),
     ("effect add ", TEMPLATES, (), False),
     ("effect stop ", (), ("an effect id",), False),
+    ("profile ", ("update", '"Generic Spot 16ch"', '"RGB Par 3ch"'), (), False),
+    ('profile "RGB Par 3ch" ', ("category",), (), False),
+    ('profile "RGB Par 3ch" category ', (*PROFILE_CATEGORIES, "none"), (), False),
+    ('profile "RGB Par 3ch" category par ', (), (), True),
     ("universe add 2 ", (), ("a name in quotes",), True),
     ("save ", (), ("a path",), True),
     ("quit ", (), (), True),

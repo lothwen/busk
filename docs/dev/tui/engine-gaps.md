@@ -27,7 +27,8 @@ The TUI runs a `busk.LiveShow` in its own process, or, since GAP-11, is run by `
   (`RouteStatus`), since GAP-08 `LiveShow.surfaces` (`SurfaceStatus`), since GAP-09
   `LiveShow.effects` (`EffectSnapshot`), since GAP-10 `LiveShow.confirmation(line)`
   (the question to ask before a line) and since GAP-15 `LiveShow.effect_templates`
-  (`EffectTemplateInfo`). The `busk.*` loggers feed the TUI's log pane.
+  (`EffectTemplateInfo`). Since GAP-16 a profile in `LiveShow.show` may have a
+  `category`. The `busk.*` loggers feed the TUI's log pane.
 - **Text is not parsed.** `docs/library.md` says message text (`Reply.text`, CLI output, log
   records) may change in any release, so the TUI never extracts data from the output of
   `programmer`, `info`, `list …` or `library`. It may show such output verbatim.
@@ -68,7 +69,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-13](#gap-13-control-input-monitor) Control input monitor | read | nice-to-have | F9 | open |
 | [GAP-14](#gap-14-stop-and-restart-a-programmer-effect) Stop and restart a programmer effect | action | nice-to-have | F1 B, F5 | **done** 2026-10-23 |
 | [GAP-15](#gap-15-effect-template-library) Effect template library | read | nice-to-have | F5 | **done** 2026-10-23 |
-| [GAP-16](#gap-16-fixture-category) Fixture category | read | nice-to-have | F1 A/C, F8 | open |
+| [GAP-16](#gap-16-fixture-category) Fixture category | read | nice-to-have | F1 A/C, F8 | **done** 2026-10-24 |
 | [GAP-17](#gap-17-playback-colour) Playback colour | read | nice-to-have | F1 | open |
 | [GAP-18](#gap-18-quit-signal) Quit signal | read | nice-to-have | prompt | open |
 | [GAP-19](#gap-19-status-under-liveshow) `status` under `LiveShow` | action | nice-to-have | prompt | open |
@@ -1283,6 +1284,8 @@ becomes **S**, from `doc`.
 
 ## GAP-16: Fixture category
 
+**Status:** done 2026-10-24 (see **Done** at the end of this section).
+
 **Needed by:** F1 layout A rows (PARS, SPOTS, WASHES, BARS, STROBES), layout C glyphs
 (`■ ◆ ● ▲`), F8 DMX map colours by type. Spec §8.1, §8.8.
 
@@ -1297,6 +1300,71 @@ breaking change.
 
 **TUI until then:** rows, glyphs and map colours go by profile: one row per profile, labelled
 with its name, and colours assigned to profiles in show order.
+
+**Done** (2026-10-24). An optional `category` on `FixtureProfile`, of a new type alias,
+`ProfileCategory` (`busk.model.profile`, public as the model's aliases are); the built-in
+profiles and the OFL import fill it, and a console line, `profile "<name>" category
+<category>|none`, sets or removes it in a show. No public name was added (`busk.__all__`
+stays at 37); the golden's diff is the new key. Documented in `docs/profiles.md` (a
+Categories section, and a column in the built-in table), `docs/console.md` (the Profiles
+row and a note), `docs/library.md` (the reference), the spec's §5.5, the parser's, the
+OFL and the GDTF importers' module docs and `docs/dev/internals.md` (the import). Where it
+differs from the suggestion, or settles what the suggestion left open:
+
+- **Eleven categories**: the suggested nine and `blinder` and `fog`. OFL has both
+  (`Blinder`; `Smoke`, `Hazer`), and so does the TupperDMX rig, whose blinders and smoke
+  machine would otherwise be `dimmer` and `other`. `par` is a static wash light, `wash` a
+  moving one, as the spec's PARS and WASHES rows; the spec's bars are `pixel`. The key is
+  a `Literal`, so the show file, a library file and a command refuse anything else.
+- **OFL**: the fixture's first OFL category busk knows (OFL lists the main one first),
+  through a table of all 17 (`ofl.CATEGORIES`). OFL says "Moving Head" or "Scanner", not
+  spot or wash: busk makes it a `spot` when the file has a gobo wheel, else a `wash`, and
+  never guesses a `beam`. A file with no category busk knows (none, unknown or malformed)
+  gives none. The TupperDMX files are `blinder`, `pixel`, `spot`, `par` and `fog`. The
+  import notes say nothing about it: a category changes no DMX.
+- **GDTF has none**, unlike what this gap said: DIN SPEC 15800's `FixtureType` has no
+  category attribute. The closest data, a `Beam` geometry's `BeamType` (`Wash` by
+  default, `Spot`, `PC`, …) and `Axis` geometries, would only be a guess, and busk does
+  not guess one (a call the user may veto: a rule like OFL's movers is possible, pan and
+  tilt making a `spot` or `wash` by the gobo wheel, cells a `pixel`, colour a `par`).
+- **A label, not a revision** (a call the user may veto). A revision says what the DMX
+  means, and fixtures record it; a category changes no DMX. So setting one keeps the
+  profile's revision, the built-in profiles got theirs at revision `1`, and imports keep
+  their revisions (`IMPORT_VERSION` stays 3). The price: a show saved before has profiles
+  without a category, at the library's revision, so `profile update` does not bring one
+  (`already at the library's revision`); one `profile "<name>" category …` line per
+  profile does. The other reading, new revisions for the built-in profiles and
+  `IMPORT_VERSION` 4, would have marked every saved show's profiles `→ … in the library`
+  for a label.
+- **`profile update` keeps the show's category** (a call the user may veto); a copy with
+  none takes the library's. It used to delete every key the library's revision lacks, so
+  it would have dropped a category the operator set.
+- **The line.** The name first, as `surface "<name>" pickup`: names are quoted, so
+  `profile update` stays unambiguous. It names a profile the show embeds, by name in any
+  case or by id, as `profile update` does; a library profile is embedded with its
+  category by `fixture add`. The reply is `set the category of profile 'RGB Par 3ch' to
+  par` or `removed the category of profile 'RGB Par 3ch'`, one undo step; `none` on a
+  profile with no category is refused, as `safety strobe off` with no cap is. Completion
+  offers `update` and the names, then `category`, then the categories and `none`. `list
+  profiles` prints it (`RGB Par 3ch (par, revision 1): 3ch`).
+- **No new read.** The category is in the show document, which the TUI already reads as
+  `LiveShow.show`, under `busk run --frontend` too (the console process's document).
+- Tests: `tests/test_profile_category.py` (50, the engine change mutation-checked), the
+  frontend probe's report in `tests/test_frontend.py` (a category set and read on a real
+  `busk run --frontend`), completion in `tests/test_console_prompt.py`, `profile update`
+  taking the library's category in `tests/test_console_parser.py` and
+  `tests/test_console.py`, the golden shows (the built-in profiles' categories), the `busk
+  import ofl` transcript, the golden and `tests/api_consumer.py`.
+
+The TUI can now group by `category`, read from `show["profiles"]` with the rest of the
+document: layout A's OUTPUT rows (PARS, SPOTS, WASHES, PIXELS, STROBES, … in the TUI's own
+order), layout C's glyphs (`■` par, `◆` spot, `●` wash, `▲` strobe, `█` pixel) and F8's
+map colours (par amber, spot cyan, wash magenta, pixel green, strobe the foreground), each
+from a small table in the TUI, as command words are. A profile with no category keeps the
+behaviour above: a row of its own, named after the profile. F3 or F8 may offer the pre-fill
+`profile "<name>" category `. In the implementation plan, the §2.2 rows "one row per
+fixture type" and "glyph per type" and the §2.9 row "colour by fixture type" become **S**,
+from `doc`, and adaptation 8 goes.
 
 ## GAP-17: Playback colour
 

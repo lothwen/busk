@@ -388,7 +388,7 @@ take `str` or `os.PathLike`.
 | `LiveShow` | A show in real time in your process: as `OfflineShow`, with `start`, `stop` and `with`, `frame` instead of `tick`, `routes` and `surfaces` |
 | `DmxFrame` | One engine output: `seq`, `time`, and `universes`, a mapping of universe number to 512 bytes |
 | `Show` | The show file format, a `TypedDict` |
-| `FixtureProfile` | The fixture profile format, a `TypedDict` |
+| `FixtureProfile` | The fixture profile format, a `TypedDict`; its optional `category` says what kind of fixture it is ([categories](profiles.md#categories)) |
 | `Command` | The union of the command `TypedDict`s that `submit` takes, tagged by `type` |
 | `Issue` | One validation finding: `severity` (`"error"` or `"warning"`), `path`, `message` |
 | `CommandResult` | What `submit` and `save` return: `ok`, `message`, `issues` |

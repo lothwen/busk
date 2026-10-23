@@ -5,6 +5,7 @@
   "model": "Par",
   "revision": "1",
   "source": "user",
+  "category": "par",
   "physical": {},
   "wheels": [],
   "modes": [

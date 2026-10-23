@@ -63,7 +63,9 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
     fixture N [thru M] limits pan|tilt <min> <max>
     fixture N [thru M] limits intensity <max> | fixture N [thru M] limits none
     safety strobe <hz> | safety strobe off
-    profile update "<name>"
+    profile update "<name>" | profile "<name>" category <category>|none
+        <category> = par | spot | wash | beam | pixel | strobe | blinder | dimmer
+                   | effect | fog | other
     tap ["<master>"] | bpm ["<master>"] <bpm>
         (without a name: the show's only speed master)
     master add speed "<name>" [bpm <x>] [steps <a>, <b>…]
@@ -173,6 +175,12 @@ the programmer's effects and keeps it there, with its settings, until
 fade time, as removing and adding it would, and a stopped effect is not
 recorded.
 
+Profile categories (GAP-16). ``profile "<name>" category <category>`` sets
+the category of a profile the show embeds (by name, any case, or id), for
+displays that group fixtures by kind; ``none`` removes it. It is a label:
+the profile keeps its revision, and ``profile update`` keeps the show's
+category.
+
 Completion (Tab and ``?`` at the prompt, :mod:`busk.console.prompt`).
 :func:`expected` parses a line up to the word being typed. Where the line
 runs out, the parser notes what it was looking for: keywords, names in
@@ -196,7 +204,7 @@ from busk.model.attributes import ATTRIBUTES, AttributeDefinition
 from busk.model.common import TargetRef
 from busk.model.cue import CUE_NUMBER
 from busk.model.effect import EffectTemplate
-from busk.model.profile import option_capabilities
+from busk.model.profile import PROFILE_CATEGORIES, option_capabilities
 from busk.model.show import Show
 from busk.model.validate import COLOR_COMPONENTS
 from busk.session.ids import IdFactory, RandomIds
@@ -2134,8 +2142,10 @@ class _Parser:
         """``profile update "<name>"`` (§5.20): the library's revision of a
         profile the show embeds, as one undo step. Each top-level key that
         differs is set (or deleted), so the profile keeps its place in the
-        show, and each of its fixtures records the new revision."""
-        self.expect("update")
+        show, and each of its fixtures records the new revision. The show's
+        category stays: it takes the library's only when it has none."""
+        if not self.keyword("update"):
+            return self._category()
         what = 'a profile name in quotes, e.g. "Generic Spot 16ch"'
         token = self.take(what, *_quoted(p["name"] for p in self.show["profiles"]))
         if not token.quoted:
@@ -2171,12 +2181,17 @@ class _Parser:
                     f"which revision {new['revision']!r} of {old['name']!r} lacks"
                 )
         path: EditPath = ["profiles", {"id": old["id"]}]
+        kept = {"id", "category"} if "category" in old else {"id"}
         commands: list[dict[str, Any]] = [
             {"type": "SET", "path": [*path, key], "value": deep_copy(value)}
             for key, value in new.items()
-            if key != "id" and old.get(key) != value
+            if key not in kept and old.get(key) != value
         ]
-        commands += [{"type": "DELETE", "path": [*path, key]} for key in old if key not in new]
+        commands += [
+            {"type": "DELETE", "path": [*path, key]}
+            for key in old
+            if key not in new and key not in kept
+        ]
         commands += [
             {"type": "SET", "path": ["fixtures", {"id": f["id"]}, "profileRevision"],
              "value": new["revision"]}
@@ -2185,6 +2200,40 @@ class _Parser:
         label = (f"updated profile {old['name']!r} to revision {new['revision']!r} "
                  f"({len(users)} fixture{'' if len(users) == 1 else 's'})")  # fmt: skip
         return Submit(_labelled(label, *commands))
+
+    def _category(self) -> Action:
+        """``profile "<name>" category <category>|none`` (GAP-16): the
+        category of a profile the show embeds, found by name (any case) or
+        id. A label for displays: the revision stays."""
+        what = 'update or a profile name in quotes, e.g. "Generic Spot 16ch"'
+        token = self.take(what, *_quoted(p["name"] for p in self.show["profiles"]))
+        if not token.quoted:
+            raise ParseError(f"expected {what}, got {token.text!r}")
+        folded = token.text.casefold()
+        profile = next(
+            (p for p in self.show["profiles"]
+             if p["id"] == token.text or p["name"].casefold() == folded),
+            None,
+        )  # fmt: skip
+        if profile is None:
+            raise ParseError(f"the show has no profile {token.text!r} (see 'list profiles')")
+        self.expect("category")
+        word = self.take("a category, or none", *PROFILE_CATEGORIES, "none")
+        category = word.lower
+        if category != "none" and category not in PROFILE_CATEGORIES:
+            raise ParseError(
+                f"expected a category ({', '.join(PROFILE_CATEGORIES)}) or none, got {word.text!r}"
+            )
+        self.done()
+        path: EditPath = ["profiles", {"id": profile["id"]}, "category"]
+        if category == "none":
+            if "category" not in profile:
+                raise ParseError(f"profile {profile['name']!r} has no category")
+            delete = {"type": "DELETE", "path": path}
+            return Submit(_labelled(f"removed the category of profile {profile['name']!r}", delete))
+        command = {"type": "SET", "path": path, "value": category}
+        label = f"set the category of profile {profile['name']!r} to {category}"
+        return Submit(_labelled(label, command))
 
     # session
 

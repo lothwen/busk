@@ -722,7 +722,12 @@ profile. The GDTF importer reads `description.xml` from the archive with expat, 
 any `DOCTYPE` (so no entity can be declared) and anything over 32 MB inflated, then maps
 DMX modes, channel functions, wheels and emitters the same way, with GDTF's DMX notation
 (`128/1` mirrored to `0x8080` on 16 bit) and CIE xyY converted to linear RGB. Both return
-the profile and an `ImportReport` of notes.
+the profile and an `ImportReport` of notes. The OFL importer also gives the profile a
+`category` (GAP-16): its first OFL category busk knows, through `ofl.CATEGORIES`, a moving
+head or scanner being a `spot` when the file has a gobo wheel and a `wash` otherwise. GDTF
+has no category, so a GDTF profile has none. A category is display data: the compiler never
+reads it, and it is not part of a revision (no `IMPORT_VERSION` bump), so `profile
+"<name>" category` sets it in a show without a new revision, and `profile update` keeps it.
 
 **The event log** (`busk.persistence.eventlog`, `busk.replay`, §15.5). The engine appends
 each applied item to a record deque in the drain, with the tick's time: a command

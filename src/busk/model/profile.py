@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from types import MappingProxyType
-from typing import Annotated, Final, Literal, NotRequired, TypedDict
+from typing import Annotated, Final, Literal, NotRequired, TypedDict, get_args
 
 from pydantic import Field, with_config
 
@@ -47,6 +47,19 @@ class FixturePhysical(TypedDict, total=False):
     weightKg: float
 
 
+type ProfileCategory = Literal[
+    "par", "spot", "wash", "beam", "pixel", "strobe", "blinder", "dimmer", "effect", "fog",
+    "other",
+]  # fmt: skip
+"""What kind of fixture a profile is, for a display to group and draw its
+fixtures by (GAP-16 of ``docs/dev/tui/engine-gaps.md``): ``par`` a static
+wash light (a par, a PC, an LED colour changer), ``spot``, ``wash`` and
+``beam`` moving heads, ``pixel`` a bar, strip or matrix of cells, ``strobe``,
+``blinder``, ``dimmer`` a dimmed channel, ``effect`` a light effect (a
+flower, a laser, a barrel scanner), ``fog`` a smoke or haze machine, and
+``other``. Nothing busk outputs depends on it."""
+
+
 @with_config(STRICT)
 class FixtureProfile(EntityBase[ProfileId]):
     """A device model with one or more DMX modes."""
@@ -55,6 +68,7 @@ class FixtureProfile(EntityBase[ProfileId]):
     model: str
     revision: str  # bump when edited; fixtures record the revision they were patched with
     source: Literal["gdtf", "ofl", "user"]
+    category: NotRequired[ProfileCategory]  # a label: setting it is no new revision
     physical: FixturePhysical
     wheels: list[Wheel]
     emitters: NotRequired[list[Emitter]]  # for additive/subtractive colour mixing (§13.3)
@@ -203,6 +217,9 @@ over ``0..1`` (§13.2). Show data stores a table as a list; compiled data as a
 tuple, so it can live in frozen dataclasses."""
 
 # ------------------------------------------------------- profile interpretation
+
+PROFILE_CATEGORIES: Final[tuple[ProfileCategory, ...]] = get_args(ProfileCategory.__value__)
+"""The categories a profile may have, in the order of :data:`ProfileCategory`."""
 
 WHEEL_ATTRIBUTES: Final = frozenset({"colorWheel", "gobo1", "gobo2", "prism"})
 """Discrete attributes whose options are ``slot`` capabilities (wheel positions)."""

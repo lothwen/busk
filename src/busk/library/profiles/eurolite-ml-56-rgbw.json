@@ -5,6 +5,7 @@
   "model": "LED ML-56 RGBW 36x3W",
   "revision": "1",
   "source": "user",
+  "category": "par",
   "notes": "Transcribed from the Eurolite manual (v1.0, DMX protocol, 4-channel mode); matches OFL eurolite/led-ml-56-rgbw. Channel 4 is 'cool white'. The 4-channel mode has no dimmer, so intensity is virtual. The 6-channel mode (dimmer, strobe/sound) is not transcribed.",
   "physical": {
     "powerW": 150,

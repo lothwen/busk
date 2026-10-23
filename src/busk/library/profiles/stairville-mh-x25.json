@@ -5,6 +5,7 @@
   "model": "MH-X25 LED Spot",
   "revision": "1",
   "source": "user",
+  "category": "spot",
   "notes": "Transcribed from the Thomann user manual (DMX chart 7.6, 12-channel mode) and cross-checked against OFL stairville/mh-x25. Disagreements, manual wins unless it is self-contradictory: (1) the manual gives the colour wheel's white as 0-7, overlapping yellow at 5-9, a typo; 0-4 is used, as in OFL. (2) The manual describes gobo wheel 128-255 as a 'rainbow effect', copied from the colour wheel; it is gobo wheel spin, as in OFL. (3) Sound-control programmes follow the manual's 16-value ranges (136-151 ... 248-255); OFL has 15-value ranges. (4) Pan/tilt speed: the manual gives no direction; OFL says DMX 0 is fastest. Estimates: strobeRate 0-13 Hz across 8-215 is the manual's spec-sheet shutter frequency mapped linearly (unmeasured); gobo1Rotation 10-360 deg/s (CW positive, CCW negative) is a guess, the chart only says 'increasing speed'. Gobo rotation DMX 0 is the 0-degree index position, used as 'stopped'; indexed angles 1-63 have no attribute yet. Pan/tilt ranges assume the fixture menu is set to 540/270 degrees. Colour wheel slot colours are OFL's sRGB, linearised. The manual's 6-channel mode is not transcribed.",
   "physical": {
     "panRange": 540,

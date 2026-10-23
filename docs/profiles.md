@@ -9,18 +9,19 @@ the profile turns them into DMX. A show embeds a copy of every profile it uses, 
 - [Profile libraries](#profile-libraries)
 - [Importing OFL and GDTF files](#importing-ofl-and-gdtf-files)
 - [Updating a show's profiles](#updating-a-shows-profiles)
+- [Categories](#categories)
 - [How values become DMX](#how-values-become-dmx)
 - [Notes on the built-in fixtures](#notes-on-the-built-in-fixtures)
 
 ## The built-in library
 
-| Profile | Mode |
-|---|---|
-| Generic Spot 16ch | `16ch` |
-| RGB Par 3ch (Generic) | `3ch` |
-| Stairville MH-X25 LED Spot | `12-channel` |
-| Eurolite LED ML-56 RGBW | `4-channel` |
-| Chauvet DJ COLORband PiX | `36-CH` (12 cells) |
+| Profile | Mode | Category |
+|---|---|---|
+| Generic Spot 16ch | `16ch` | `spot` |
+| RGB Par 3ch (Generic) | `3ch` | `par` |
+| Stairville MH-X25 LED Spot | `12-channel` | `spot` |
+| Eurolite LED ML-56 RGBW | `4-channel` | `par` |
+| Chauvet DJ COLORband PiX | `36-CH` (12 cells) | `pixel` |
 
 The last three were transcribed from their manufacturers' manuals and checked against
 their DMX charts; [`examples/real-fixtures.json`](../examples/real-fixtures.json) is a show
@@ -116,6 +117,50 @@ descriptions of the OpenGDTFLibrary, GDTF 1.0 and 1.1) have only been checked to
 revision. `profile update "<name>"` replaces the show's copy of a profile with the
 library's other revision and moves its fixtures to it, as one undo step. It is refused
 when a fixture's mode is missing from the new revision. Nothing is ever updated silently.
+The show's [category](#categories) stays; a copy with none takes the library's.
+
+## Categories
+
+A profile may say what kind of fixture it is, so that a display can group and draw
+fixtures by kind (rows of pars and spots, a colour per kind on a DMX map). busk's output
+never depends on it.
+
+| Category | For |
+|---|---|
+| `par` | a static wash light: a par, a PC, an LED colour changer |
+| `spot`, `wash`, `beam` | moving heads |
+| `pixel` | a bar, strip or matrix of cells |
+| `strobe`, `blinder` | strobes, audience blinders |
+| `dimmer` | a dimmed channel |
+| `effect` | a light effect: a flower, a laser, a barrel scanner |
+| `fog` | a smoke or haze machine |
+| `other` | anything else |
+
+- The built-in profiles have one (see [the table](#the-built-in-library)).
+- **OFL**: the fixture's first OFL category busk knows (OFL lists the main one first).
+  `Color Changer` is `par`; `Moving Head` and `Scanner` are `spot` when the fixture has a
+  gobo wheel, else `wash`; `Pixel Bar` and `Matrix` are `pixel`; `Smoke` and `Hazer` are
+  `fog`; `Effect`, `Flower`, `Barrel Scanner` and `Laser` are `effect`; `Strobe`,
+  `Blinder` and `Dimmer` keep their names; `Fan`, `Stand` and `Other` are `other`. busk
+  never guesses `beam`.
+- **GDTF** gives a fixture type no category, so a GDTF profile has none.
+- A busk profile file may have one: `"category": "spot"`, next to `"source"`.
+
+At the console, `profile "<name>" category <category>` sets the category of a profile the
+show embeds, and `profile "<name>" category none` removes it. `list profiles` shows it:
+
+```
+busk> profile "Generic Spot 16ch" category wash
+set the category of profile 'Generic Spot 16ch' to wash
+busk> list profiles
+Generic Spot 16ch (wash, revision 1): 16ch
+RGB Par 3ch (par, revision 1): 3ch
+```
+
+A category is a label, not part of what a revision describes: setting it is one undo step
+and leaves the profile at its revision, and the built-in and imported profiles got theirs
+without a new one. A show made before categories keeps profiles without one until you set
+them.
 
 ## How values become DMX
 

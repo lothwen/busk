@@ -52,6 +52,13 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   show's, then the built-in library's that the show has no copy of yet, each with the
   name `effect add` takes, its layers in one line and the library's defaults (size,
   low/high, phase). Before, the library's templates were only in the text of `library`.
+- Fixture categories ([profiles](docs/profiles.md#categories)): a profile's optional
+  `category` (`par`, `spot`, `wash`, `beam`, `pixel`, `strobe`, `blinder`, `dimmer`,
+  `effect`, `fog` or `other`), for displays that group fixtures by kind. The built-in
+  profiles have one, the OFL import takes the fixture's OFL category (a moving head is a
+  `spot` with a gobo wheel, else a `wash`), and `profile "<name>" category <category>|none`
+  sets or removes it in a show; `list profiles` shows it. It is a label: no profile gets a
+  new revision for it, and `profile update` keeps the show's. GDTF files have no category.
 - `busk run --frontend MODULE:FUNCTION` ([Running a show](docs/running.md#frontends)):
   your own frontend instead of the prompt, called with the run's `LiveShow` in the
   console process, with `busk run`'s safety net (the engine in its own process, the

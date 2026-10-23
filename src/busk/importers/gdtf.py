@@ -110,7 +110,10 @@ curves (imported as linear), relations and macros.
 **Identity.** The id is ``gdtf-<FixtureTypeID>``, the name ``<Manufacturer>
 <Name>``, and the revision the newest revision's date plus a short hash of
 ``description.xml`` and :data:`~busk.importers.IMPORT_VERSION`, so an edited
-file, or a busk that imports it differently, is a new revision (§17).
+file, or a busk that imports it differently, is a new revision (§17). GDTF
+gives a fixture type no category (DIN SPEC 15800's ``FixtureType`` has
+none), so the profile has none (GAP-16): ``profile "<name>" category``
+sets one in a show.
 """
 
 from __future__ import annotations

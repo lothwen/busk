@@ -32,6 +32,7 @@ def tooling(show_path: str, ofl_path: Path) -> list[str]:
     report: busk.ImportReport = busk.read_ofl(ofl_path, manufacturer="TupperDMX")
     profile: busk.FixtureProfile = report.profile
     lines.append(profile["name"])
+    lines.append(profile.get("category", "no category"))
     lines.extend(mode["name"] for mode in profile["modes"])
     lines.extend(report.notes)
     try:

@@ -15,6 +15,7 @@
       "model": "Spot",
       "revision": "1",
       "source": "user",
+      "category": "spot",
       "physical": {
         "panRange": 540.0,
         "tiltRange": 270.0,
@@ -339,6 +340,7 @@
       "model": "LED ML-56 RGBW 36x3W",
       "revision": "1",
       "source": "user",
+      "category": "par",
       "physical": {
         "powerW": 150.0,
         "weightKg": 5.0
@@ -454,6 +456,7 @@
       "model": "COLORband PiX",
       "revision": "1",
       "source": "user",
+      "category": "pixel",
       "physical": {
         "maxStrobeHz": 30.0,
         "powerW": 86.0,

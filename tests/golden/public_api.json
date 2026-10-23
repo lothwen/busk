@@ -170,6 +170,7 @@
   },
   "FixtureProfile": {
     "keys": {
+      "category": "NotRequired[ProfileCategory]",
       "emitters": "NotRequired[list[Emitter]]",
       "id": "TId",
       "manufacturer": "str",

@@ -109,12 +109,19 @@ channel keeps the channel its trigger's default selects (reported).
 group, in ``repeatFor`` order, ``perPixel`` or ``perChannel``. Channels
 outside the matrix go on element 0, the first pixel.
 
+**Category** (GAP-16). The profile's ``category`` is that of the fixture's
+first OFL category (OFL lists the main one first), by :data:`CATEGORIES`. A
+moving head or scanner is a ``spot`` when the fixture has a gobo wheel,
+else a ``wash``; busk never guesses a ``beam``. A fixture with no category
+busk knows has none.
+
 **Identity.** The id is ``ofl-<manufacturer>-<key>``, the name
 ``<manufacturer> <OFL name>``, and the revision the OFL ``lastModifyDate``
 plus a short hash of the fixture's content and
 :data:`~busk.importers.IMPORT_VERSION`, so an edited file, or a busk that
 imports it differently, is a new revision (§17: a show never takes it
-silently).
+silently). The category is a label, not part of what a revision describes:
+importing it changed no revision.
 """
 
 from __future__ import annotations
@@ -144,12 +151,34 @@ from busk.model.profile import (
     FixturePhysical,
     FixtureProfile,
     FunctionCapability,
+    ProfileCategory,
     RangeCapability,
     SlotCapability,
     Wheel,
     WheelSlot,
     option_capabilities,
 )
+
+CATEGORIES: Final[Mapping[str, ProfileCategory]] = {
+    "Barrel Scanner": "effect",
+    "Blinder": "blinder",
+    "Color Changer": "par",
+    "Dimmer": "dimmer",
+    "Effect": "effect",
+    "Fan": "other",
+    "Flower": "effect",
+    "Hazer": "fog",
+    "Laser": "effect",
+    "Matrix": "pixel",
+    "Moving Head": "spot",
+    "Other": "other",
+    "Pixel Bar": "pixel",
+    "Scanner": "spot",
+    "Smoke": "fog",
+    "Stand": "other",
+    "Strobe": "strobe",
+}
+"""OFL's categories as busk's. A ``spot`` without a gobo wheel is a ``wash``."""
 
 STROBE_ESTIMATE: Final = (1.0, 20.0)
 """Hz taken for a strobe speed given only as ``slow`` … ``fast``."""
@@ -431,6 +460,7 @@ class _Fixture:
 
     def profile(self, modes: list[FixtureMode], manufacturer: str, key: str) -> FixtureProfile:
         name = str(self.data.get("name", key))
+        category = self.category()
         profile: dict[str, Any] = {
             "id": f"ofl-{_slug(manufacturer)}-{_slug(key)}",
             "name": f"{manufacturer} {name}",
@@ -438,6 +468,7 @@ class _Fixture:
             "model": name,
             "revision": _revision(self.data),
             "source": "ofl",
+            **({} if category is None else {"category": category}),
             "notes": f"Imported from the Open Fixture Library fixture {key!r}."
             + (f" {self.data['comment']}" if self.data.get("comment") else ""),
             "physical": self._physical(),
@@ -447,6 +478,17 @@ class _Fixture:
         if self.emitters:
             profile["emitters"] = list(self.emitters.values())
         return cast(FixtureProfile, profile)
+
+    def category(self) -> ProfileCategory | None:
+        """The busk category of the first OFL category busk knows, if any."""
+        names = self.data.get("categories")
+        for name in names if isinstance(names, list) else []:
+            category = CATEGORIES.get(name) if isinstance(name, str) else None
+            if category == "spot" and all(w.kind != "gobo" for w in self.wheels.values()):
+                return "wash"
+            if category is not None:
+                return category
+        return None
 
     # -- channels
 

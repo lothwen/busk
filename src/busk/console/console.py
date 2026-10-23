@@ -591,17 +591,18 @@ class Console:
         return [f"{t['name']:<20} {_layers(t['layers'])}" for t in show["effects"]]
 
     def _list_profiles(self, show: Show) -> list[str]:
-        """Each embedded profile, its revision (``→ <revision> in the library``
-        when the library has another one: ``profile update`` takes it) and
-        its modes."""
+        """Each embedded profile, its category, its revision (``→ <revision>
+        in the library`` when the library has another one: ``profile
+        update`` takes it) and its modes."""
         lines = []
         for profile in show["profiles"]:
             revision = profile["revision"]
             library = self.library.get(profile["id"])
             if library is not None and library["revision"] != revision:
                 revision += f" → {library['revision']} in the library"
+            category = f"{profile['category']}, " if "category" in profile else ""
             modes = ", ".join(mode["name"] for mode in profile["modes"])
-            lines.append(f"{profile['name']} (revision {revision}): {modes}")
+            lines.append(f"{profile['name']} ({category}revision {revision}): {modes}")
         return lines
 
     def _library(self) -> str:

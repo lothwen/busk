@@ -365,11 +365,15 @@ class FixturePhysical(TypedDict, total=False):
     powerW: float
     weightKg: float
 
+type ProfileCategory = Literal["par", "spot", "wash", "beam", "pixel", "strobe",
+                               "blinder", "dimmer", "effect", "fog", "other"]
+
 class FixtureProfile(EntityBase[ProfileId]):
     manufacturer: str
     model: str
     revision: str                             # bump when edited; shows record it
     source: Literal["gdtf", "ofl", "user"]
+    category: NotRequired[ProfileCategory]    # for displays; a label, not revisioned
     physical: FixturePhysical
     wheels: list[Wheel]
     emitters: NotRequired[list[Emitter]]      # for additive/subtractive mixing (§13.3)

@@ -5,6 +5,7 @@
   "model": "Spot",
   "revision": "1",
   "source": "user",
+  "category": "spot",
   "physical": {
     "panRange": 540,
     "tiltRange": 270,

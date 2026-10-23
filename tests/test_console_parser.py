@@ -1760,6 +1760,7 @@ def test_profile_update_sets_what_changed_and_moves_the_fixtures(tmp_path: Path)
     assert dict(action.command) == labelled(
         "updated profile 'Generic Spot 16ch' to revision '2' (2 fixtures)",
         {"type": "SET", "path": [*spot, "revision"], "value": "2"},
+        {"type": "SET", "path": [*spot, "category"], "value": "spot"},  # the show has none
         {"type": "SET", "path": [*spot, "physical"],
          "value": {"panRange": 540, "tiltRange": 270, "maxStrobeHz": 25}},
         {"type": "DELETE", "path": [*spot, "notes"]},
@@ -1881,7 +1882,7 @@ def test_help_lists_the_phase_7_commands() -> None:
         "park <targets> <attribute> <value> | unpark <targets> [<attribute>] | unpark all",
         "fixture N [thru M] limits pan|tilt <min> <max>",
         "safety strobe <hz> | safety strobe off",
-        'profile update "<name>"',
+        'profile update "<name>" | profile "<name>" category <category>|none',
     ):
         assert row in rows
 

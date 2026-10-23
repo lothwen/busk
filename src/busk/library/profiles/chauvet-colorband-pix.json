@@ -5,6 +5,7 @@
   "model": "COLORband PiX",
   "revision": "1",
   "source": "user",
+  "category": "pixel",
   "notes": "Transcribed from the Chauvet DJ user manual Rev. 6 (36-CH personality: 12 zones of red, green and blue); matches OFL chauvet-dj/colorband-pix. No dimmer channel in this personality, so each cell is dimmed virtually. Other personalities are not transcribed.",
   "physical": {
     "maxStrobeHz": 30,

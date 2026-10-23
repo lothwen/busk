@@ -587,8 +587,9 @@ def test_list_profiles_and_profile_update(live: Live, tmp_path: Path) -> None:
     assert run(console, 'profile update "Generic Spot 16ch"') == [
         "updated profile 'Generic Spot 16ch' to revision '2' (2 fixtures)"
     ]
-    assert (
-        run(console, "list profiles")[0].splitlines()[0] == "Generic Spot 16ch (revision 2): 16ch"
+    assert (  # the show's copy had no category: it takes the library's
+        run(console, "list profiles")[0].splitlines()[0]
+        == "Generic Spot 16ch (spot, revision 2): 16ch"
     )
     show = live.session.show
     assert show["profiles"][0]["physical"]["maxStrobeHz"] == 25
