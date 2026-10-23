@@ -19,8 +19,9 @@ The TUI runs a `busk.LiveShow` in its own process. One module, `busk_tui/bridge.
   action, echoed in the TUI's log. `submit()` is not used, so the UI teaches the command line.
 - **Reads** use the typed public state: `LiveShow.snapshot` (`EngineSnapshot`),
   `LiveShow.frame` (`DmxFrame`, for the engine time), `LiveShow.show` (the `Show` document),
-  `LiveShow.warnings`, since GAP-01 `LiveShow.output` (`OutputSnapshot`) and since GAP-02
-  `LiveShow.programmer` (`ProgrammerStatus`). The `busk.*` loggers feed the TUI's log pane.
+  `LiveShow.warnings`, since GAP-01 `LiveShow.output` (`OutputSnapshot`), since GAP-02
+  `LiveShow.programmer` (`ProgrammerStatus`) and since GAP-07 `LiveShow.routes`
+  (`RouteStatus`). The `busk.*` loggers feed the TUI's log pane.
 - **Text is not parsed.** `docs/library.md` says message text (`Reply.text`, CLI output, log
   records) may change in any release, so the TUI never extracts data from the output of
   `programmer`, `info`, `list …` or `library`. It may show such output verbatim.
@@ -52,7 +53,7 @@ Every new read should also reach `busk run`'s console process, so a later TUI at
 | [GAP-04](#gap-04-flash-and-playback-buttons-from-the-console) Flash and playback buttons from the console | action | important | F1 | **done** 2026-10-22 |
 | [GAP-05](#gap-05-relative-and-per-component-attribute-values) Relative and per-component attribute values | action | important | F2 | **done** 2026-10-22 |
 | [GAP-06](#gap-06-one-undo-step-for-a-gesture) One undo step for a gesture | action | important | F2 | open |
-| [GAP-07](#gap-07-output-route-status) Output route status | read | important | status bar, F8 | open |
+| [GAP-07](#gap-07-output-route-status) Output route status | read | important | status bar, F8 | **done** 2026-10-23 |
 | [GAP-08](#gap-08-surface-status) Surface status | read | important | F9 | open |
 | [GAP-09](#gap-09-effect-runtime-state) Effect runtime state | read | important | F1 B, F5 | open |
 | [GAP-10](#gap-10-confirmation-before-dangerous-lines) Confirmation before dangerous lines | read | important | prompt | open |
@@ -488,6 +489,8 @@ and sends one `set` on release. The light does not follow the drag live.
 
 ## GAP-07: Output route status
 
+**Status:** done 2026-10-23 (see **Done** at the end of this section).
+
 **Needed by:** status bar TX indicators (`● sACN·U1`, blinking green while sending, red on
 error) and the F8 ROUTES `tx` column. Spec §5, §8.8, §9 ("route TX status").
 
@@ -513,6 +516,69 @@ class RouteStatus:
 
 **TUI until then:** the status bar lists the routes without a state dot. Route failures and
 recoveries appear in the log as warning and info lines, from the `busk.output` records.
+
+**Done** (2026-10-23). `LiveShow.routes -> tuple[RouteStatus, ...] | None`, with
+`RouteStatus` in `busk.__all__` (now 33 names):
+
+```python
+@dataclass(frozen=True, slots=True, kw_only=True)
+class RouteStatus:
+    id: str                        # the route's id in show["output"]["routes"]
+    label: str                     # "sACN r1", as the route lines name it
+    universe: int                  # the number of the show universe it sends
+    state: Literal["ok", "failed", "disabled", "ignored"]
+    detail: str                    # why it is failed or ignored; "" otherwise
+    packets: int                   # packets sent since the route opened
+    errors: int                    # sends that failed since then
+```
+
+Documented in `docs/library.md` (section 3 and the reference), the class's docstring and
+`docs/dev/internals.md` ("The route status"). Where it differs from the suggestion, or
+settles what the suggestion left open:
+
+- **`state` instead of `enabled` and `ok`.** A route is `"ok"` (open, and its last send
+  succeeded), `"failed"` (it does not open, or its sends fail; busk keeps opening it
+  again), `"disabled"`, or `"ignored"`: a DMX-USB interface busk does not drive
+  (`enttecOpen`), which two booleans cannot say. `detail` is the error or the reason, as
+  in the route lines.
+- **`packets` and `errors` instead of `lastSent`.** They are what the drivers count
+  already. A display blinks a route's light when `packets` changed since its last poll:
+  a static look still sends a keep-alive about once a second, so a healthy route blinks
+  about once a second, and a changing look keeps it lit. A time of the last packet would
+  need every driver to note it, and a clock the reader shares. The counts start again
+  when a live edit changes the route (a new driver), and go on across the reopening of a
+  failing one.
+- **Every route of the show**, in show order, sent or not, so the TUI matches them to
+  `show.output.routes` by `id`. `universe` is the show universe's number, as `DmxFrame`
+  keys it, not the sACN universe or the Art-Net port address (those are in the show).
+- **`None` while nothing runs the output**: before `start()` and with `output=False`. After
+  `stop()` it keeps the routes as they ended. `OfflineShow` has no `routes`: it has no
+  output.
+- **Made on read.** The output thread publishes its routes by reference whenever they
+  change (opened, reconciled, a retry that opens one or fails with another error), and a
+  read adds each open driver's status, so nothing is built while nobody reads. While
+  nothing changed, the same object comes back.
+- **Output off.** While `EngineSnapshot.outputEnabled` is false no route sends: the
+  states stay as they were and `packets` stops. The TUI's OUTPUT OFF chip comes from the
+  snapshot.
+- **Under `busk run` too.** Its root runs the output, and on each pass of its main loop
+  (10 Hz) sends the console process a `ROUTES` message when the statuses changed, and
+  the last ones to a console that starts; `--threads` reads its own output. So the
+  attached show's `routes` works, unlike its `frame` and `output`
+  ([GAP-11](#gap-11-running-the-tui-against-busk-run)).
+- Inside: a `RouteNotice` about a route that is not sent now names the route and why
+  (`route`, `detail`), and `build_routes` hands its notices to the `OutputScheduler`.
+  The route lines and their text are unchanged.
+- Tests: `tests/test_route_status.py` (the scheduler's table, a `LiveShow`, `busk run
+  --threads`, the root's `ROUTES` and the console process keeping them), the notices in
+  `tests/test_output_scheduler.py` and `tests/test_dmxusb.py`, the public API golden and
+  `tests/api_consumer.py`.
+
+The TUI can now draw the status bar's dots: green for `"ok"`, blinking when `packets`
+changed since the last poll, red for `"failed"`, dim for `"disabled"` and `"ignored"`. F8's
+ROUTES `tx` column shows the same state with its `detail`, and may show a packet rate
+from `packets` over its own poll interval. The bridge polls `routes` with the snapshot.
+The `busk.output` records still feed the log.
 
 ## GAP-08: Surface status
 

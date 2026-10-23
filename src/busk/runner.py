@@ -27,7 +27,8 @@ without its compiled show and output layout, which are internal. The
 values with what drives them (:class:`~busk.engine.snapshot.OutputSnapshot`,
 GAP-01 of ``docs/dev/tui/engine-gaps.md``), and their ``programmer`` is the
 programmer with fixtures by number (:class:`~busk.session.status.ProgrammerStatus`,
-GAP-02).
+GAP-02). A :class:`LiveShow`'s ``routes`` are its output routes and what
+each does (:class:`~busk.output.driver.RouteStatus`, GAP-07).
 
 Errors (§5.8): constructing a facade raises
 :class:`~busk.persistence.show_file.ShowLoadError` for an invalid show and
@@ -78,6 +79,7 @@ from busk.model.show import Show
 from busk.model.validate import Issue, has_errors, validate_show
 from busk.output.artnet import ArtNetNetwork
 from busk.output.console import ConsoleOutput
+from busk.output.driver import RouteStatus
 from busk.output.sacn import Sequences
 from busk.output.scheduler import OutputScheduler, build_routes
 from busk.persistence.paths import web_key
@@ -383,6 +385,7 @@ class _LocalRun:
                 layout=compiled.layout,
                 sequences=sequences,
                 artnet=artnet,
+                notices=notices,
             )
         self._reported: dict[str, tuple[bool, str]] = {}  # route id → (ok, detail)
         self._stops = (threading.Event(), threading.Event())  # engine, output
@@ -527,6 +530,7 @@ class LiveShow(_Facade):
         status: Callable[[], str],
         about: Callable[[], Sequence[str]],
         poll: Callable[[], None],
+        routes: Callable[[], tuple[RouteStatus, ...] | None],
         say: Report,
         warn: Report,
     ) -> Self:
@@ -540,7 +544,8 @@ class LiveShow(_Facade):
         ``clock``. ``show`` was loaded (and validated) and ``compiled`` by
         the CLI, so neither is done again. The session gets ``path``,
         ``dirty`` (a recovered show), ``stamp`` and ``causes`` (the event
-        log); the console ``iface``, ``status`` and ``about``. ``say`` and
+        log); the console ``iface``, ``status`` and ``about``. ``routes``
+        gives :attr:`routes`, as the CLI's output knows them. ``say`` and
         ``warn`` print the surface lines, the session's failures and the web
         key's.
 
@@ -574,6 +579,7 @@ class LiveShow(_Facade):
             warn=warn,
         )
         live._on_poll = poll
+        live._route_source = routes
         return live
 
     def _setup(
@@ -600,6 +606,8 @@ class LiveShow(_Facade):
         self._open_surfaces = False
         self._tune = False
         self._on_poll: Callable[[], None] | None = None  # the first part of each poll
+        self._route_source: Callable[[], tuple[RouteStatus, ...] | None] = self._local_routes
+        self._routes: tuple[RouteStatus, ...] | None = None  # the last routes read
         self._phase: Literal["new", "running", "stopped"] = "new"
         self._run: _LocalRun | None = None
         self._surfaces: SurfaceManager | None = None
@@ -655,6 +663,30 @@ class LiveShow(_Facade):
             cached = (captured, read_output(captured))
             self._read = cached  # one assignment: other threads see the pair whole
         return cached[1]
+
+    @property
+    def routes(self) -> tuple[RouteStatus, ...] | None:
+        """The show's output routes, in show order, each with what it does:
+        open (``"ok"``), ``"failed"`` and why, ``"disabled"`` or
+        ``"ignored"``, and its packet and error counts (see
+        :class:`~busk.output.driver.RouteStatus`). Poll it with the others;
+        while nothing changed, the same object comes back.
+
+        ``None`` before :meth:`start` and with ``output=False``: nothing
+        runs the output. After :meth:`stop`, the routes as they ended. ``busk
+        run``'s show has them from the process that runs its output."""
+        routes = self._route_source()
+        if routes is not None and routes == self._routes:
+            return self._routes
+        self._routes = routes
+        return routes
+
+    def _local_routes(self) -> tuple[RouteStatus, ...] | None:
+        """:attr:`routes` of a show that runs its own engine and output."""
+        run = self._run
+        if run is None or run.scheduler is None:
+            return None
+        return run.scheduler.route_status()
 
     # ---------------------------------------------------- start and stop
 

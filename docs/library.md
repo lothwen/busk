@@ -12,7 +12,7 @@ library that does the same things from your own code. With the library you can:
 
 Everything public is importable from `busk` itself. This guide covers [installing](#installing),
 [the three uses](#1-tooling-validate-a-show-import-a-profile) with examples, a
-[reference](#reference) of the 32 public names, [the errors](#errors),
+[reference](#reference) of the 33 public names, [the errors](#errors),
 [logging](#logging), [what is public](#what-is-public) and [the stability promise](#stability).
 The [README](../README.md) covers the command line and links the other guides: the
 [console's commands](console.md), [running a show](running.md) and [how busk works inside](dev/internals.md).
@@ -210,6 +210,19 @@ the next tick on `output` is the newest tick's. A display polls it 10 to 20 time
 second. `programmer` is not the engine's: a command has changed it when `execute`
 returns, and a display polls it with the others.
 
+`routes` is the show's output routes, in show order, each with what it does: `"ok"`
+(open), `"failed"` (it does not open, or its sends fail; busk keeps trying), `"disabled"`
+or `"ignored"` (a DMX-USB interface busk does not drive), with `detail` saying why, and
+the packets and errors counted since it opened. It is `None` before `start()` and with
+`output=False`. A display polls it with the others, shows a failed route in red and blinks
+a route's light when `packets` changed; while nothing changes, the same object comes back:
+
+```python
+for route in live.routes or ():
+    light = "red" if route.state == "failed" else "green" if route.state == "ok" else "grey"
+    print(route.label, f"U{route.universe}", light, route.detail)   # sACN r1 U1 green
+```
+
 ```python
 show, _ = busk.load_show("club.show")
 with busk.LiveShow(show, path="club.show", surfaces=True) as live:   # routes and surfaces open
@@ -249,7 +262,7 @@ opens no route, so nothing goes to the network; the frames are made all the same
 
 ## Reference
 
-The 32 names of `busk.__all__`. Each has a docstring with the details; path parameters
+The 33 names of `busk.__all__`. Each has a docstring with the details; path parameters
 take `str` or `os.PathLike`.
 
 | Name | What it is |
@@ -262,7 +275,7 @@ take `str` or `os.PathLike`.
 | `read_gdtf` | `read_gdtf(path, *, manufacturer=None) -> ImportReport`: convert a GDTF file |
 | `ProfileLibrary` | The built-in profiles plus directories of profiles, for `fixture add`: `get(id)`, `find(id or name)`, iteration, `problems` |
 | `OfflineShow` | A show on a clock you drive: `submit`, `execute`, `run_script`, `save`, `tick`; `show`, `warnings`, `snapshot`, `output`, `programmer`, `time` |
-| `LiveShow` | A show in real time in your process: as `OfflineShow`, with `start`, `stop` and `with`, and `frame` instead of `tick` |
+| `LiveShow` | A show in real time in your process: as `OfflineShow`, with `start`, `stop` and `with`, `frame` instead of `tick`, and `routes` |
 | `DmxFrame` | One engine output: `seq`, `time`, and `universes`, a mapping of universe number to 512 bytes |
 | `Show` | The show file format, a `TypedDict` |
 | `FixtureProfile` | The fixture profile format, a `TypedDict` |
@@ -279,6 +292,7 @@ take `str` or `os.PathLike`.
 | `FixtureOutput` | One element in it: `number`, `element`, `intensity`, `color`, `pan`, `tilt`, `zoom`, `source` (what drives each family), `playback` |
 | `ProgrammerStatus` | The programmer: `version`, `selection` (`(number, element)` pairs), `blind`, `highlight`, `fadeTime`, `values`, `effects` (as the show file holds them) |
 | `ProgrammerValue` | One value in it: `number`, `element`, `attribute`, `value` (in the show's units), `preset` (`(pool, number, name)`, or `None`) |
+| `RouteStatus` | One output route of a `LiveShow`: `id`, `label`, `universe` (its number), `state` (`"ok"`, `"failed"`, `"disabled"`, `"ignored"`), `detail` (why), `packets`, `errors` |
 | `IdFactory` | The protocol that makes new entity ids |
 | `CounterIds` | An `IdFactory` that counts: reproducible shows |
 | `BuskError` | The base of every error the API raises on purpose |
@@ -318,7 +332,8 @@ Wrong arguments raise `ValueError` or `TypeError`, never a `BuskError`.
 ## Logging
 
 The library prints nothing. It reports through the loggers under `busk`: `busk.output`
-(route lines such as `sACN r1: …`), `busk.surfaces` (surface lines, the web remote's
+(route lines such as `sACN r1: …`; `LiveShow.routes` has the same news as data),
+`busk.surfaces` (surface lines, the web remote's
 URL among them), `busk.session` and `busk.eventlog`. News is INFO and failures are
 WARNING. `busk` has a `logging.NullHandler`, so a program that configures no logging
 sees none of it; `logging.basicConfig(level=logging.INFO)` shows it all.

@@ -130,6 +130,7 @@ class Kind(IntEnum):
     ENGINE = 12  # to the console: the watchdog's news (stalled, restarting, failed)
     READY = 13  # from the console: its command loop runs (--duration counts from here)
     PROCESSES = 14  # to the console: the pids and restarts of the run (for `info`)
+    ROUTES = 15  # to the console: the output routes' RouteStatus tuple, when it changed
     # the link, console → engine
     HELLO = 20  # the console's session id; restarted or not
     COMMAND = 21  # a CommandEnvelope

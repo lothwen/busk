@@ -15,6 +15,9 @@ Two deviations from §14.5 (phase-1.5-plan decision 6):
   :class:`~busk.engine.loop.Frame` carries, and :class:`DriverStatus` holds
   packet and error counters instead of ``packetsPerSec``, which needs a
   time window and arrives with the UI (Phase 6).
+
+:class:`RouteStatus` (GAP-07) is a route of the show as a display reads it:
+its driver's status, or why it has no driver.
 """
 
 from __future__ import annotations
@@ -53,6 +56,45 @@ class RouteNotice:
 
     text: str  # e.g. "sACN r2: disabled"
     failed: bool  # an error (printed to stderr), rather than a route disabled or ignored
+    route: str | None = None  # the id of the route it says is not sent
+    detail: str = ""  # … and why: the error opening it, or why it is ignored
+
+
+type RouteState = Literal["ok", "failed", "disabled", "ignored"]
+"""What a route of the show does (:class:`RouteStatus`)."""
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class RouteStatus:
+    """One output route of the show, as a display shows it (GAP-07 of
+    ``docs/dev/tui/engine-gaps.md``).
+
+    ``state`` is what the route does:
+
+    * ``"ok"``: it is open, and its last send succeeded (or it has not sent
+      yet);
+    * ``"failed"``: it does not open (an interface that is not up, a DMX-USB
+      widget that is not plugged in), or its sends fail. ``detail`` says
+      why. busk keeps opening it again, every few seconds, until it works;
+    * ``"disabled"``: its ``enabled`` is false;
+    * ``"ignored"``: it is a DMX-USB interface busk does not drive.
+      ``detail`` says why.
+
+    ``packets`` and ``errors`` count the packets sent and the sends that
+    failed since the route opened (0 for a route that never opened). A live
+    edit that changes the route starts them again. A display blinks a
+    route's light when ``packets`` changed since it last looked. While the
+    show's output is off (``EngineSnapshot.outputEnabled``) no route sends:
+    the states stay as they were and ``packets`` stops.
+    """
+
+    id: str  # the route's id in show["output"]["routes"]
+    label: str  # how busk's route lines name it: "sACN r1"
+    universe: int  # the number of the show universe it sends
+    state: RouteState
+    detail: str  # why it is failed or ignored; "" otherwise
+    packets: int
+    errors: int
 
 
 class OutputDriver(Protocol):

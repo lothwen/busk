@@ -97,6 +97,7 @@ from busk.engine.snapshot import EngineSnapshot
 from busk.model.show import Show
 from busk.model.validate import Issue, has_errors
 from busk.output.console import ConsoleOutput
+from busk.output.driver import RouteStatus
 from busk.persistence.autosave import AutosaveWorker, Recovery, read_recovery
 from busk.persistence.eventlog import EventLog, LogPump
 from busk.persistence.paths import state_directory
@@ -237,6 +238,11 @@ class Backend(Protocol):
         """The lines ``info`` adds: the run's processes and restarts."""
         ...
 
+    def routes(self) -> tuple[RouteStatus, ...] | None:
+        """The output routes' status, the show's :attr:`~busk.runner.LiveShow.routes`;
+        ``None`` until the output has opened them."""
+        ...
+
     def disarm(self) -> None:
         """Shutdown begins: signals no longer interrupt it."""
         ...
@@ -328,6 +334,10 @@ class ThreadsBackend:
             log_line(not self._options.no_log, path),
         ]
 
+    def routes(self) -> tuple[RouteStatus, ...] | None:
+        run = self._run
+        return None if run is None or run.scheduler is None else run.scheduler.route_status()
+
     def disarm(self) -> None:
         pass
 
@@ -355,8 +365,9 @@ class ProcessBackend:
     A thread reads the control link from construction on: ``ATTACH`` hands
     the bus a new engine link (one that comes before :meth:`connect` waits
     for it), ``ENGINE`` is the watchdog's news, ``PROCESSES`` the run's pids
-    and restarts (for ``info``), and end of file means the root is gone: the
-    process ends at once (decision 9).
+    and restarts (for ``info``), ``ROUTES`` the output routes' status (for
+    :meth:`routes`), and end of file means the root is gone: the process
+    ends at once (decision 9).
     """
 
     ownsDuration = False
@@ -379,6 +390,7 @@ class ProcessBackend:
         self._terminating = False
         self._state = "running"  # the root's last ENGINE news
         self._processes: Processes | None = None  # the root's last PROCESSES
+        self._routes: tuple[RouteStatus, ...] | None = None  # the root's last ROUTES
         self._reconnects = 0  # the bus's reconnects already reported
         threading.Thread(target=self._read_control, name="busk-control", daemon=True).start()
 
@@ -481,6 +493,10 @@ class ProcessBackend:
             log_line(self._log, path),
         ]
 
+    def routes(self) -> tuple[RouteStatus, ...] | None:
+        """The routes' status as the root last said (``ROUTES``)."""
+        return self._routes
+
     def disarm(self) -> None:
         self._armed = False
 
@@ -519,6 +535,8 @@ class ProcessBackend:
                 self._state = loads(message.payload)
             elif message.kind == Kind.PROCESSES:
                 self._processes = loads(message.payload)
+            elif message.kind == Kind.ROUTES:
+                self._routes = loads(message.payload)
             else:
                 for fd in message.fds:
                     os.close(fd)
@@ -604,6 +622,7 @@ def run_console(options: RunOptions, backend: Backend, *, restarted: str | None 
         status=lambda: _status(link, backend),
         about=backend.about,
         poll=status.poll,
+        routes=backend.routes,
         say=say,
         warn=warn,
     )

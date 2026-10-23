@@ -188,6 +188,7 @@
       "frame": "property: DmxFrame | None",
       "output": "property: OutputSnapshot | None",
       "programmer": "property: ProgrammerStatus",
+      "routes": "property: tuple[RouteStatus, ...] | None",
       "run_script": "(self, path: str | os.PathLike[str]) -> list[str]",
       "save": "(self, path: str | os.PathLike[str] | None = None) -> CommandResult",
       "show": "property: Show",
@@ -317,6 +318,22 @@
       "__init__": "(self, text: str, ok: bool = True) -> None"
     },
     "module": "busk.console.console"
+  },
+  "RouteStatus": {
+    "fields": [
+      "id: str",
+      "label: str",
+      "universe: int",
+      "state: RouteState",
+      "detail: str",
+      "packets: int",
+      "errors: int"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, *, id: str, label: str, universe: int, state: RouteState, detail: str, packets: int, errors: int) -> None"
+    },
+    "module": "busk.output.driver"
   },
   "ScriptError": {
     "bases": [

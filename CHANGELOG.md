@@ -24,6 +24,11 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   reference with the preset's value for that element, and its pool, number and name), the
   effects, blind, highlight and the fade time, and a `version` that grows when any of
   them changes.
+- `LiveShow.routes`: the show's output routes as a display shows them, as a new public
+  type, `RouteStatus` ([the library guide](docs/library.md#3-live-inside-your-own-application-liveshow)):
+  each route's state (`ok`, `failed`, `disabled` or `ignored`), why it failed or is
+  ignored, and the packets and errors it has counted. The same news as the `sACN r1: …`
+  log lines, as data.
 - Console lines for playback buttons ([the console](docs/console.md#notes)): `flash N
   on|off` holds a playback's flash until it is released, `button N B on|off` presses and
   releases its button B as a bound control does, and `toggle N` activates or releases it.

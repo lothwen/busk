@@ -377,22 +377,20 @@ def test_build_routes_opens_pro_and_dmxking_routes_and_ignores_the_others(
         assert [(r.label, r.description) for r in routes] == [
             ("DMX-USB r1", f"U1 Stage → Enttec DMX USB Pro on {port} at 40 Hz"),
         ]
+        open_dmx = "Open DMX USB needs host-timed breaks; use an Enttec Pro or DMXking interface"
+        unknown = "unknown interface driver 'ftdiRaw'; use enttecPro or dmxking"
+        gone = f"{missing}: No such file or directory"
         assert notices == [
             RouteNotice(
-                text="DMX-USB r2: ignored (Open DMX USB needs host-timed breaks; "
-                "use an Enttec Pro or DMXking interface)",
-                failed=False,
+                text=f"DMX-USB r2: ignored ({open_dmx})", failed=False, route="r2", detail=open_dmx
             ),
             RouteNotice(
-                text="DMX-USB r3: ignored (unknown interface driver 'ftdiRaw'; "
-                "use enttecPro or dmxking)",
-                failed=False,
+                text=f"DMX-USB r3: ignored ({unknown})", failed=False, route="r3", detail=unknown
             ),
             RouteNotice(
-                text=f"DMX-USB r4: cannot open: {missing}: No such file or directory",
-                failed=True,
+                text=f"DMX-USB r4: cannot open: {gone}", failed=True, route="r4", detail=gone
             ),
-            RouteNotice(text="DMX-USB r5: disabled", failed=False),
+            RouteNotice(text="DMX-USB r5: disabled", failed=False, route="r5"),
         ]
     finally:
         for route in routes:

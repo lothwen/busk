@@ -8,7 +8,7 @@ The public API
 ==============
 
 Every public name is importable from ``busk`` itself; ``__all__`` lists the
-32 of them. The library guide, ``docs/library.md``, has the examples and the
+33 of them. The library guide, ``docs/library.md``, has the examples and the
 reference.
 
 Show documents
@@ -24,7 +24,8 @@ Running a show
     Both take commands (:meth:`~OfflineShow.submit`), console lines
     (:meth:`~OfflineShow.execute`) and scripts, read their output back
     per fixture (:attr:`~OfflineShow.output`) and show their programmer
-    (:attr:`~OfflineShow.programmer`).
+    (:attr:`~OfflineShow.programmer`); a :class:`LiveShow` also shows its
+    output routes (:attr:`~LiveShow.routes`).
 Data types
     :class:`Show`, :class:`FixtureProfile` and :data:`Command`, the
     ``TypedDict``\\ s of the file and command formats; :class:`Issue`,
@@ -33,7 +34,7 @@ Data types
     :class:`SpeedStatus` and :class:`PageStatus`; :class:`DmxFrame`;
     :class:`OutputSnapshot` with :class:`FixtureOutput`;
     :class:`ProgrammerStatus` with :class:`ProgrammerValue`;
-    :class:`IdFactory` and :class:`CounterIds`.
+    :class:`RouteStatus`; :class:`IdFactory` and :class:`CounterIds`.
 Errors
     :class:`BuskError` is the base of every error the API raises on purpose:
     :class:`ShowLoadError`, :class:`UnsupportedFeature`, :class:`ImportFailed`
@@ -105,6 +106,7 @@ __all__ = [
     "ProgrammerStatus",
     "ProgrammerValue",
     "Reply",
+    "RouteStatus",
     "ScriptError",
     "Show",
     "ShowLoadError",
@@ -145,6 +147,7 @@ _EXPORTS: dict[str, str] = {
     "FixtureOutput": "busk.engine.snapshot",
     "ProgrammerStatus": "busk.session.status",
     "ProgrammerValue": "busk.session.status",
+    "RouteStatus": "busk.output.driver",
     "UnsupportedFeature": "busk.compiler.compile",
     "OfflineShow": "busk.runner",
     "LiveShow": "busk.runner",
@@ -174,6 +177,7 @@ if TYPE_CHECKING:  # what type checkers see: the same table, as explicit re-expo
     from busk.model.show import Show as Show
     from busk.model.validate import Issue as Issue
     from busk.model.validate import validate_show as validate_show
+    from busk.output.driver import RouteStatus as RouteStatus
     from busk.persistence.show_file import ShowLoadError as ShowLoadError
     from busk.persistence.show_file import load_show as load_show
     from busk.persistence.show_file import new_show as new_show

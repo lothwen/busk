@@ -77,6 +77,7 @@ The suite also passes on Python 3.12 and 3.13, for example
 | `test_sacn.py` | E1.31 layout against a header golden written by hand; every field parsed back by an independent parser (`sacn_receiver.py`); multicast groups; per-universe sequences shared by routes; open, send, termination and error handling over real localhost sockets; universe discovery packets (goldens for 1 and 600 universes), interval and changes |
 | `test_sacn_policy.py` | Send on change, 3 repeats, keep-alive inside 0.8–1.0 s, a due keep-alive never skipped (table-driven and hypothesis, with jitter and overruns) |
 | `test_output_scheduler.py` | Change detection per universe, route isolation and fault counting, final pass and close on stop, hold last frame, 44 Hz; `build_routes` notices; Art-Net routes opened and sent, a taken Art-Net port reported |
+| `test_route_status.py` | GAP-07's `routes`: every route of the show in show order with its label, universe number, state, detail and counts, the same whether `build_routes` or the first frame opened them; an open route's driver status; each new open error, then the route open; live edits; output off; one consistent table for another thread; a `LiveShow` from start to stop, the same object while nothing changes, none without output; `busk run --threads`, its attached show, the root's `ROUTES` on change and the console process keeping the last |
 | `test_console_output.py` | The Phase 0 line format and print-on-change, now as the `--console` sink |
 | `test_bus.py` | Command validation at submit time (supported types, ids, every master kind, levels clamped, release times, a GOTO's cue, a BPM in range; Phase 6: `PAGE`, `SET_FADER` and `PLAYBACK_BUTTON` by playback or slot, `BLACKOUT` with or without `on`), `TOGGLE_PLAYBACK`, FIFO, envelopes; every command type is applied by the engine or sent to the session |
 | `test_compile_cues.py` | Appendix A's cues as golden arrays; group expansion; preset scope precedence; spreads (linear, center, edges, `n = 1`, colour, members without the attribute); dropped targets and options with warnings; last entry wins; clamping; lane partitions; compiled playbacks, pages sorted by number, masters |
@@ -157,7 +158,7 @@ The suite also passes on Python 3.12 and 3.13, for example
 src/busk/
   __init__.py            # the public API (Phase 8): __all__, lazy re-exports, the NullHandler
   errors.py              # BuskError, ScriptError (the public errors' base and the script one)
-  runner.py              # OfflineShow, LiveShow, DmxFrame, their output and programmer; _LocalRun (engine and output threads)
+  runner.py              # OfflineShow, LiveShow, DmxFrame, their output and programmer, LiveShow's routes; _LocalRun (engine and output threads)
   cli.py  __main__.py
   model/                 # persistent schema (§5.1–§5.17) as TypedDicts
     common.py            #   ids, EntityBase, TargetRef/TargetKey, STRICT, number aliases
@@ -260,12 +261,12 @@ src/busk/
     api.py               #   WebLink, WebApi (the JSON protocol, the broadcaster), WebSurface
     static/              #   index.html (the phone page), commands.json (the commands it sends)
   output/
-    driver.py            #   OutputDriver protocol, DriverStatus, RouteNotice (§14.5)
+    driver.py            #   OutputDriver protocol, DriverStatus, RouteNotice (§14.5); RouteStatus (GAP-07)
     sacn.py              #   E1.31 packet, multicast_group(), Sequences, SendPolicy, SacnSender, UniverseDiscovery
     artnet.py            #   ArtDmx, ArtPoll / ArtPollReply, ArtNetNetwork (shared socket, nodes), ArtNetSender
     dmxusb.py            #   the Enttec DMX USB Pro protocol, EnttecSender (serial device, reopen)
     netif.py             #   interface addresses, broadcast addresses and networks (Linux ioctls)
-    scheduler.py         #   OUTPUT_HZ, ScheduledRoute, build_routes(), OutputScheduler (§14): stall output, output off, reopening, OutputStats
+    scheduler.py         #   OUTPUT_HZ, ScheduledRoute, build_routes(), OutputScheduler (§14): stall output, output off, reopening, OutputStats, route_status()
     console.py           #   ConsoleOutput: the --console debug sink
 LICENSE                      # MIT
 CHANGELOG.md                 # releases (Keep a Changelog); 0.1.0 is the first with a public API

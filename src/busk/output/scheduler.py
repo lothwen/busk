@@ -80,6 +80,14 @@ socket and the sequence numbers) for the whole run, as sACN routes share one
 Universe rows are matched by universe id, never by position: adding universe
 1 after universe 2 reorders the rows. What changed is reported on
 :attr:`OutputScheduler.notices` for the CLI to print.
+
+**Route status** (GAP-07 of ``docs/dev/tui/engine-gaps.md``). Whenever the
+routes change (opened, closed, reconciled, or a route that is not open
+fails again with another error), the output thread publishes them by
+reference assignment: the layout it follows, the open routes, and why each
+other route is not sent (:func:`open_route`'s notice says it). Any thread
+then reads :meth:`OutputScheduler.route_status`, which adds each open
+driver's status (``status`` is safe on any thread).
 """
 
 from __future__ import annotations
@@ -102,7 +110,13 @@ from busk.model.output import OutputRoute, OutputSettings
 from busk.output.artnet import ArtNetNetwork, ArtNetSender
 from busk.output.console import ConsoleOutput, FrameSource
 from busk.output.dmxusb import DEVICES, UNSUPPORTED, EnttecSender
-from busk.output.driver import PROTOCOL_LABELS, OutputDriver, RouteNotice
+from busk.output.driver import (
+    PROTOCOL_LABELS,
+    OutputDriver,
+    RouteNotice,
+    RouteState,
+    RouteStatus,
+)
 from busk.output.sacn import SacnSender, Sequences, UniverseDiscovery
 
 OUTPUT_HZ: Final = 44.0
@@ -198,11 +212,13 @@ def open_route(
     sequences: Sequences,
     artnet: ArtNetNetwork,
 ) -> ScheduledRoute | RouteNotice:
-    """Open one route of :func:`build_routes`, or say why it is not sent."""
+    """Open one route of :func:`build_routes`, or say why it is not sent
+    (the notice's ``route`` and ``detail`` say it too)."""
     name = PROTOCOL_LABELS[route["protocol"]]
-    label = f"{name} {route['id']}"
+    ident = route["id"]
+    label = f"{name} {ident}"
     if not route["enabled"]:
-        return RouteNotice(text=f"{label}: disabled", failed=False)
+        return RouteNotice(text=f"{label}: disabled", failed=False, route=ident)
     sender: SacnSender | ArtNetSender | EnttecSender
     if route["protocol"] == "sacn":
         cid = uuid.UUID(settings["sacnCid"]).bytes
@@ -217,12 +233,14 @@ def open_route(
             reason = UNSUPPORTED.get(
                 driver, f"unknown interface driver {driver!r}; use enttecPro or dmxking"
             )
-            return RouteNotice(text=f"{label}: ignored ({reason})", failed=False)
+            text = f"{label}: ignored ({reason})"
+            return RouteNotice(text=text, failed=False, route=ident, detail=reason)
         sender = EnttecSender(route)
     sender.open()
     status = sender.status()
     if not status.ok:
-        return RouteNotice(text=f"{label}: cannot open: {status.detail}", failed=True)
+        text = f"{label}: cannot open: {status.detail}"
+        return RouteNotice(text=text, failed=True, route=ident, detail=status.detail)
     row = _rows(universes)[route["universeId"]]
     universe = universes[row]
     return ScheduledRoute(
@@ -240,6 +258,24 @@ def _retried(route: OutputRoute) -> bool:
     if not route["enabled"]:
         return False
     return route["protocol"] != "dmxUsb" or route["device"]["driver"] in DEVICES
+
+
+type _Unsent = tuple[RouteState, str]
+"""Why a route of the show is not sent: its state and detail in :class:`RouteStatus`."""
+
+type _Table = tuple[OutputLayout, tuple[ScheduledRoute, ...], Mapping[str, _Unsent]]
+"""What :meth:`OutputScheduler.route_status` reads, published whole: the
+layout the routes follow, the open routes, and why each other route is not sent."""
+
+
+def _unsent(route: OutputRoute, notice: RouteNotice | None) -> _Unsent:
+    """Why ``route``, which is not open, is not sent. ``notice`` is what
+    :func:`open_route` said about it (``None``: the scheduler was not told,
+    so the detail is empty)."""
+    if not route["enabled"]:
+        return ("disabled", "")
+    detail = "" if notice is None else notice.detail
+    return ("failed" if _retried(route) else "ignored", detail)
 
 
 def _network_notices(artnet: ArtNetNetwork) -> list[RouteNotice]:
@@ -270,7 +306,8 @@ def _darkened(frame: Frame, layout: OutputLayout) -> Frame:
 class OutputScheduler:
     """Offers the engine's latest frame to every route at :data:`OUTPUT_HZ`.
 
-    Everything here runs on the output thread except construction.
+    Everything here runs on the output thread except construction and
+    :meth:`route_status`, which any thread may call.
     """
 
     def __init__(
@@ -283,13 +320,15 @@ class OutputScheduler:
         layout: OutputLayout | None = None,
         sequences: Sequences | None = None,
         artnet: ArtNetNetwork | None = None,
+        notices: Sequence[RouteNotice] = (),
     ) -> None:
         """``layout`` is the output layout of the compiled show ``routes``
         were built from (``None``: the routes open with the first frame);
         ``sequences`` and ``artnet`` are their sACN sequence counters and
-        Art-Net network (as passed to :func:`build_routes`). A frame with
-        another layout object triggers a reconcile, which changes nothing
-        when the layouts are equal (an engine restart)."""
+        Art-Net network, and ``notices`` the notices (as passed to and
+        returned by :func:`build_routes`: they say why the other routes are
+        not sent). A frame with another layout object triggers a reconcile,
+        which changes nothing when the layouts are equal (an engine restart)."""
         self._engine = engine
         self._routes = tuple(routes)
         self._clock = clock
@@ -302,12 +341,17 @@ class OutputScheduler:
         self._discovery.update(self._sacn_senders())
         self._skipped: dict[str, Any] = {}  # route id → key of a route reported as not sent
         self._retry: dict[str, float | None] = {}  # failed to open → next try (None: unset)
+        self._unsent: dict[str, _Unsent] = {}  # route id → why a route of the show is not sent
+        self._published: _Table | None = None  # for route_status, once a layout is known
         if layout is not None:
+            reported = {notice.route: notice for notice in notices if notice.route is not None}
             for route in layout.output["routes"]:
                 if route["id"] not in {r.id for r in routes}:
                     self._skipped[route["id"]] = _route_key(route, layout.output)
+                    self._unsent[route["id"]] = _unsent(route, reported.get(route["id"]))
                     if _retried(route):
                         self._retry[route["id"]] = None
+            self._publish()
         self._health_at = -math.inf  # when the routes' status is read next
         self.opened: list[ScheduledRoute] = list(routes)
         """Every route opened during the run, closed ones included (for the final counts)."""
@@ -329,6 +373,43 @@ class OutputScheduler:
     def layout(self) -> OutputLayout | None:
         """The layout the routes follow: ``None`` until a frame brought one."""
         return self._layout
+
+    def route_status(self) -> tuple[RouteStatus, ...] | None:
+        """Every route of the show, in show order, with what it does (see
+        :class:`~busk.output.driver.RouteStatus`); ``None`` until a layout
+        named the routes. Safe on any thread: it reads what the output thread
+        published last, and the open drivers' status."""
+        published = self._published  # one read: published by reference assignment
+        if published is None:
+            return None
+        layout, routes, unsent = published
+        numbers = {universe.id: universe.number for universe in layout.universes}
+        open_routes = {route.id: route for route in routes}
+        statuses = []
+        for definition in layout.output["routes"]:
+            ident = definition["id"]
+            label = f"{PROTOCOL_LABELS[definition['protocol']]} {ident}"
+            universe = numbers[definition["universeId"]]
+            route = open_routes.get(ident)
+            if route is None:
+                state, detail = unsent[ident]
+                packets = errors = 0
+            else:
+                status = route.driver.status()
+                state, detail = ("ok" if status.ok else "failed"), status.detail
+                packets, errors = status.packets, status.errors
+            statuses.append(
+                RouteStatus(
+                    id=ident,
+                    label=label,
+                    universe=universe,
+                    state=state,
+                    detail=detail,
+                    packets=packets,
+                    errors=errors,
+                )
+            )
+        return tuple(statuses)
 
     def service(self, now: float) -> None:
         """Run one output cycle for output time ``now``."""
@@ -445,6 +526,12 @@ class OutputScheduler:
     def _sacn_senders(self) -> list[SacnSender]:
         return [route.driver for route in self._routes if isinstance(route.driver, SacnSender)]
 
+    def _publish(self) -> None:
+        """Publish the routes for :meth:`route_status` (one assignment: other
+        threads see the table whole). Call after every change to them."""
+        assert self._layout is not None
+        self._published = (self._layout, self._routes, dict(self._unsent))
+
     def _changes(self, frame: Frame) -> list[bool]:
         """Per universe: do ``frame``'s bytes differ from the previous cycle's?
 
@@ -491,6 +578,7 @@ class OutputScheduler:
         routes: list[ScheduledRoute] = []
         skipped: dict[str, Any] = {}
         retry: dict[str, float | None] = {}
+        unsent: dict[str, _Unsent] = {}
         for definition in settings["routes"]:
             ident = definition["id"]
             if ident in kept:
@@ -499,6 +587,7 @@ class OutputScheduler:
             key = _route_key(definition, settings)
             if self._skipped.get(ident) == key:  # still not sent, already reported
                 skipped[ident] = key
+                unsent[ident] = self._unsent[ident]
                 if ident in self._retry:
                     retry[ident] = self._retry[ident]
                 continue
@@ -507,6 +596,7 @@ class OutputScheduler:
             )
             if isinstance(opened, RouteNotice):
                 skipped[ident] = key
+                unsent[ident] = _unsent(definition, opened)
                 if _retried(definition):
                     retry[ident] = None
                 self.notices.put(opened)
@@ -518,18 +608,22 @@ class OutputScheduler:
                 )
         self._skipped = skipped
         self._retry = retry
+        self._unsent = unsent
         self._routes = tuple(routes)
         self._layout = layout  # last: other threads see the routes once they see the layout
+        self._publish()
         self._discovery.update(self._sacn_senders())
 
     def _open_again(self, now: float) -> None:
         """Try again to open the routes that failed to open, each every
         :data:`REOPEN_S` (see the module docs). A failure is not reported
-        again; a route that opens joins the others in show order."""
+        again (its new error only shows in :meth:`route_status`); a route
+        that opens joins the others in show order."""
         layout = self._layout
         assert layout is not None  # routes are only retried once a layout named them
         settings = layout.output
         opened: list[ScheduledRoute] = []
+        changed = False  # a failure's detail changed
         for ident, due in list(self._retry.items()):
             if due is None:  # first seen: the failed open was just now
                 self._retry[ident] = now + REOPEN_S
@@ -542,8 +636,12 @@ class OutputScheduler:
             )
             if isinstance(route, RouteNotice):
                 self._retry[ident] = now + REOPEN_S
+                unsent = _unsent(definition, route)
+                if unsent != self._unsent[ident]:
+                    self._unsent[ident] = unsent
+                    changed = True
                 continue
-            del self._retry[ident], self._skipped[ident]
+            del self._retry[ident], self._skipped[ident], self._unsent[ident]
             opened.append(route)
             self.opened.append(route)
             text = f"{route.label}: {route.description} (sending)"
@@ -553,6 +651,8 @@ class OutputScheduler:
             self._routes = tuple(sorted((*self._routes, *opened), key=lambda r: order[r.id]))
             self._discovery.update(self._sacn_senders())
             self._previous = None  # the new routes send at once
+        if opened or changed:
+            self._publish()
 
     def _check_health(self, now: float) -> None:
         """Close and reopen each route whose status has been failing for

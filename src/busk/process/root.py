@@ -9,9 +9,10 @@ It runs no show code: no session, no compiler, no surfaces. It
 * brokers their link: a socket pair whose engine end goes to the engine in
   an ``ATTACH`` and whose console end the console inherits (``--link``);
 * runs the **output scheduler** on its own thread, fed by :class:`FrameLink`
-  (frames and layouts from the engine's control link), and prints the route
+  (frames and layouts from the engine's control link), prints the route
   lines and notices (:class:`~busk.process.report.RouteReporter`) and the
-  ``--console`` frame lines;
+  ``--console`` frame lines, and sends the console the routes' status
+  (``ROUTES``, GAP-07) whenever it changed, at most once a main-loop pass;
 * owns ``--duration`` (counted from the console's ``READY``) and
   ``--stats FILE`` (one JSON line per second);
 * writes the **event log** (phase-7-plan §5.21): the records the engine
@@ -83,6 +84,7 @@ from busk.compiler.compile import OutputLayout
 from busk.engine.clock import MonotonicClock
 from busk.engine.loop import Frame
 from busk.output.console import ConsoleOutput
+from busk.output.driver import RouteStatus
 from busk.output.scheduler import STALL_S, OutputScheduler
 from busk.persistence.eventlog import EventLog
 from busk.persistence.paths import state_directory
@@ -232,6 +234,7 @@ class Root:
         self._restart_times: list[float] = []  # within RESTART_WINDOW
         self._restored_at: float | None = None  # the last restart that restored
         self._news = "running"  # what the console last heard (ENGINE)
+        self._routes: tuple[RouteStatus, ...] | None = None  # … and last read (ROUTES)
         self._console_times: list[float] = []  # console restarts within RESTART_WINDOW
         self.restarts = 0
         """Engine restarts so far."""
@@ -373,6 +376,7 @@ class Root:
             with contextlib.suppress(OSError):
                 control.send(Kind.ENGINE, dumps(self._news))
         self._tell_processes()
+        self._tell_routes()
 
     def _tell_processes(self) -> None:
         """Send the console the run's pids and restarts (``PROCESSES``)."""
@@ -388,6 +392,14 @@ class Root:
         )
         with contextlib.suppress(OSError):
             control.send(Kind.PROCESSES, dumps(processes))
+
+    def _tell_routes(self) -> None:
+        """Send the console the routes' status last read (``ROUTES``), if any."""
+        control, routes = self._console_control, self._routes
+        if control is None or routes is None:
+            return
+        with contextlib.suppress(OSError):
+            control.send(Kind.ROUTES, dumps(routes))
 
     def _log_opened(self, path: Path) -> None:
         """The event log opened a new file (on the frame thread): tell the console."""
@@ -562,9 +574,14 @@ class Root:
         control.sock.close()
 
     def _report_routes(self) -> None:
-        """Print route changes; once the first layout opened the routes, warn
-        when none is open and no frames are printed."""
+        """Print route changes and send the console the routes' status
+        (``ROUTES``) when it changed; once the first layout opened the routes,
+        warn when none is open and no frames are printed."""
         self._reporter.poll()
+        routes = self._scheduler.route_status()
+        if routes is not None and routes != self._routes:
+            self._routes = routes
+            self._tell_routes()
         if not self._routes_checked and self._scheduler.layout is not None:
             self._routes_checked = True
             if not self._scheduler.routes and not self._options.console:

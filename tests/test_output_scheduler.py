@@ -316,22 +316,18 @@ def test_build_routes_opens_enabled_sacn_and_art_net_routes_and_explains_the_res
             ),
         ]
         available = ", ".join(name for _, name in socket.if_nameindex())
+        open_dmx = "Open DMX USB needs host-timed breaks; use an Enttec Pro or DMXking interface"
+        no_if = f"no network interface 'no-such-if0' (available: {available})"
         assert notices == [
-            RouteNotice(text="sACN r2: disabled", failed=False),
+            RouteNotice(text="sACN r2: disabled", failed=False, route="r2"),
             RouteNotice(
-                text="DMX-USB r4: ignored (Open DMX USB needs host-timed breaks; "
-                "use an Enttec Pro or DMXking interface)",
-                failed=False,
+                text=f"DMX-USB r4: ignored ({open_dmx})", failed=False, route="r4", detail=open_dmx
             ),
             RouteNotice(
-                text="sACN r5: cannot open: no network interface 'no-such-if0' "
-                f"(available: {available})",
-                failed=True,
+                text=f"sACN r5: cannot open: {no_if}", failed=True, route="r5", detail=no_if
             ),
             RouteNotice(
-                text="Art-Net r7: cannot open: no network interface 'no-such-if0' "
-                f"(available: {available})",
-                failed=True,
+                text=f"Art-Net r7: cannot open: {no_if}", failed=True, route="r7", detail=no_if
             ),
         ]
     finally:

@@ -21,6 +21,7 @@ terminal ───┤ output thread (44 Hz) ─▶ sACN (+ discovery), Art-Net (
             │ event log · --stats · --duration · signals · restarts of either child         │
             └───┬────────────────── control links (socket pairs) ───────────────────┬───────┘
                 │ ↑ frames, stats, log  ↓ attach, stop  attach, engine state, pids  │
+                │                                       routes                      │
 ┌───────────────▼── ENGINE (own session) ───────────────────────────┐               │
 │ link thread: commands, install chunks, restore → the queue        │               │
 │ engine thread, fixed tick: due events (auto-GOs, chase steps)     │               │
@@ -599,6 +600,21 @@ continue across reopens and engine restarts. sACN and Art-Net drivers report a f
 until a send succeeds, so an outage prints once. Art-Net broadcast routes re-read their
 broadcast address every 2 s and poll at once when it changes. MIDI has no unplug event in
 rtmidi, so the surface manager and the feedback worker compare the port names every 2 s.
+
+**The route status** (`busk.output.scheduler`; GAP-07 of
+[`tui/engine-gaps.md`](tui/engine-gaps.md)). `LiveShow.routes` is
+`OutputScheduler.route_status()`: every route of the show, in show order, as the public
+`RouteStatus` (`ok`, `failed`, `disabled` or `ignored`, a detail, and the driver's packet
+and error counters). Whenever its routes change (at construction, after a reconcile, and
+when a retry opens a route or fails with another error), the output thread publishes them
+by one reference assignment: the layout it follows, the open routes, and why each other
+route is not sent, taken from `open_route`'s notice (`build_routes` hands its notices to
+the scheduler for the routes it did not open). The reader adds each open driver's
+`status()`, which is safe on any thread, so nothing is built while nobody reads. Under
+`busk run` the output runs in the root: on each pass of its main loop (10 Hz) the root
+sends the console a `ROUTES` message when the statuses differ from the last ones it sent,
+and the last ones to a console that starts. The console's backend keeps them for its
+attached show. With `--threads` the backend reads its own scheduler.
 
 **Import** (`busk.importers`). The OFL importer builds each mode from its channels'
 capabilities through a table (phase-7-plan §5.18): each capability becomes a range segment

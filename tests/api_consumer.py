@@ -129,6 +129,10 @@ def live(path: str, host: Callable[[busk.LiveShow], None]) -> busk.Show:
         assert output is None or output.fixtures
         programmer: busk.ProgrammerStatus = live.programmer
         assert programmer.version >= 1
+        routes: tuple[busk.RouteStatus, ...] | None = live.routes
+        for route in routes or ():
+            light: tuple[str, str, int] = (route.label, route.state, route.packets)
+            assert (route.id, route.universe, route.detail, route.errors, light) is not None
         host(live)
     live.stop()  # idempotent
     return live.show

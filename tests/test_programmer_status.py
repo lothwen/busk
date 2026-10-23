@@ -316,6 +316,7 @@ def test_busk_runs_console_process_has_it_too() -> None:
         status=lambda: "",
         about=lambda: (),
         poll=lambda: None,
+        routes=lambda: None,
         say=lambda text: None,
         warn=lambda text: None,
     )
