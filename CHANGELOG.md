@@ -46,6 +46,15 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   `output off`), or `None` for a line that runs at once
   ([the library guide](docs/library.md#3-live-inside-your-own-application-liveshow)). A
   frontend asks the same without parsing the line; `execute` never asks.
+- `busk run --frontend MODULE:FUNCTION` ([Running a show](docs/running.md#frontends)):
+  your own frontend instead of the prompt, called with the run's `LiveShow` in the
+  console process, with `busk run`'s safety net (the engine in its own process, the
+  watchdog, autosave and recovery). The run ends when the function returns; one that
+  raises is restarted with the console while the output runs on. While it runs, busk
+  prints nothing over it: its lines are records of the new `busk.run` logger.
+- `busk run`'s show now has `frame`, `output` and `effects` too, from the engine process,
+  which captures the output and effects only while they are read, at most 25 times a
+  second.
 - Console lines for playback buttons ([the console](docs/console.md#notes)): `flash N
   on|off` holds a playback's flash until it is released, `button N B on|off` presses and
   releases its button B as a bound control does, and `toggle N` activates or releases it.

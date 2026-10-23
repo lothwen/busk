@@ -30,7 +30,14 @@ engine end of a console link, and builds its
   before the first frame made with it;
 * the *console publisher* sends each new snapshot and the statistics every
   second to the current console link, and ``SYNCED`` once the engine has
-  drained a ``SYNC`` (after the snapshot of that tick);
+  drained a ``SYNC`` (after the snapshot of that tick). After each tick it
+  also sends what the console watches (``WATCH``, GAP-11): the newest
+  frame (its layout first when it is new), the output capture of a tick of
+  the newest show, without that show (``OUTPUT``: the console reads it with
+  its own copy), and the effects, read here (``EFFECTS``: a capture holds
+  the compiled effects, larger than the snapshot). The engine captures its
+  output and effects only while the console watches them, and then at most
+  every :data:`WATCH_S`; a new link watches nothing;
 * the *control thread* reads the root: ``ATTACH``, ``STOP``. End of file
   (the root is gone) ends the process at once.
 
@@ -65,8 +72,10 @@ from numpy.typing import NDArray
 from busk.commands.types import CommandEnvelope
 from busk.compiler.compile import CompiledShow, OutputLayout
 from busk.engine.clock import SWITCH_INTERVAL, Clock, MonotonicClock
+from busk.engine.effect_status import EffectCapture, read_effects
 from busk.engine.install import Install, Stamp, keys_remap
 from busk.engine.loop import Engine, EngineStats, Frame
+from busk.engine.readout import Capture
 from busk.engine.snapshot import EngineSnapshot, Sync
 from busk.persistence.eventlog import FLUSH_S, take
 from busk.process.wire import (
@@ -75,7 +84,9 @@ from busk.process.wire import (
     Hello,
     Kind,
     LinkClosed,
+    OutputCapture,
     ShowDecoder,
+    Watch,
     Welcome,
     dumps,
     encode_frame,
@@ -93,6 +104,11 @@ STATS_S: Final = 1.0
 
 EARLY_MAX: Final = 1024
 """Envelopes kept while no show has come yet (more are dropped)."""
+
+WATCH_S: Final = 0.04
+"""The shortest time between two output captures, and between two effect
+reads, that go to a console which watches them: 25 a second, more than a
+display polls (10 to 20 times a second). Frames go after every tick."""
 
 type EngineFactory = Callable[[CompiledShow, Clock, NDArray[np.float64] | None], Engine]
 
@@ -126,6 +142,7 @@ class EngineHost:
         self._lock = threading.Lock()  # guards engine creation, the link, the early queue
         self._link: Endpoint | None = None  # the current console link
         self._welcomed: Endpoint | None = None  # the current link, once its WELCOME went out
+        self._watch = Watch()  # what the current link watches
         self._base: NDArray[np.float64] | None = None  # from the first console's Hello
         self._early: list[CommandEnvelope] = []  # envelopes before the first show
         self._sync_seq = 0  # the host's sync tokens …
@@ -230,6 +247,7 @@ class EngineHost:
         endpoint = Endpoint(sock)
         with self._lock:
             previous, self._link, self._welcomed = self._link, endpoint, None
+            self._watched(Watch())
         if previous is not None:
             previous.shutdown()
         threading.Thread(target=self._read_link, args=(endpoint,), name="link", daemon=True).start()
@@ -264,6 +282,10 @@ class EngineHost:
                         engine.bus.restore(loads(message.payload))
                 elif message.kind == Kind.SYNC:
                     self._sync(link, loads(message.payload))
+                elif message.kind == Kind.WATCH:
+                    with self._lock:
+                        if self._link is link:  # a replaced console watches nothing any more
+                            self._watched(loads(message.payload))
             except Exception:  # a bad message must not end the link
                 print(f"engine: bad {message.kind.name} message from the console", file=sys.stderr)
                 traceback.print_exc(file=sys.stderr)
@@ -292,6 +314,16 @@ class EngineHost:
                 self._welcomed = link  # the console publisher may write to it now
         self._snapshots.set()
         return None if engine is None else shown
+
+    def _watched(self, watch: Watch) -> None:
+        """What the current link watches is now ``watch``: the engine
+        captures its output and effects only while they are watched (the
+        lock is held)."""
+        self._watch = watch
+        engine = self.engine
+        if engine is not None:
+            engine.captureOutput = watch.output
+            engine.captureEffects = watch.effects
 
     def _sync(self, link: Endpoint, token: int) -> None:
         """Queue a sync marker under a token of the host's own (consoles
@@ -334,6 +366,8 @@ class EngineHost:
                     engine = self._make_engine(install.compiled, self._clock, None)
                 if self._log:
                     engine.records = deque()
+                engine.captureOutput = self._watch.output
+                engine.captureEffects = self._watch.effects
                 engine.bus.install(replace(install, compiled=None, remap=None))
                 for envelope in self._early:
                     engine.bus.enqueue(envelope)
@@ -411,17 +445,20 @@ class EngineHost:
         """Send each new snapshot, and the statistics every second, to the
         current console link once it has had its ``WELCOME`` (the first
         message a console reads). A newly drained sync token follows the
-        snapshot of its tick (``SYNCED``)."""
+        snapshot of its tick (``SYNCED``), and what the link watches follows
+        that (:class:`_Watched`)."""
         link: Endpoint | None = None
         sent: EngineSnapshot | None = None
+        watched = _Watched()
         due = time.monotonic() + STATS_S
         while not self._finishing.is_set():
             self._snapshots.wait(STATS_S)
             self._snapshots.clear()
             with self._lock:
-                current = self._welcomed
+                current, watch, shown, stamp = self._welcomed, self._watch, self._shown, self._stamp
             if current is not link:
-                link, sent = current, None  # a new console gets the next snapshot anyway
+                # A new console gets the next snapshot anyway, and a new layout first.
+                link, sent, watched = current, None, _Watched()
             engine = self.engine
             if link is None or engine is None:
                 continue
@@ -437,11 +474,76 @@ class EngineHost:
                 for _, owner, token in done:
                     if owner is link:  # a replaced console waits for nothing any more
                         link.send(Kind.SYNCED, dumps(token))
-                if (now := time.monotonic()) >= due:
+                now = time.monotonic()
+                watched.send(link, engine, watch, shown, stamp, now)
+                if now >= due:
                     link.send(Kind.STATS, dumps(self.report()))
                     due = now + STATS_S
             except OSError:
                 link.shutdown()  # the console is gone; its link thread ends
+
+
+class _Watched:
+    """What the console publisher has sent one link of what it watches
+    (:class:`~busk.process.wire.Watch`), so that each pass sends only what
+    is new: the newest frame (after its layout, when that is new), output
+    capture and effects. It also paces the engine: once a capture or the
+    effects went, the engine captures them again only :data:`WATCH_S`
+    later, so a display's polls cost it a capture each, not one per tick."""
+
+    def __init__(self) -> None:
+        self.frame: Frame | None = None
+        self.layout: OutputLayout | None = None
+        self.layoutId = 0  # per link, as the root's are per engine
+        self.output: Capture | None = None
+        self.effects: EffectCapture | None = None
+        self.outputDue = 0.0  # when the engine may capture the output again
+        self.effectsDue = 0.0  # … and its effects
+
+    def send(
+        self,
+        link: Endpoint,
+        engine: Engine,
+        watch: Watch,
+        shown: CompiledShow | None,
+        stamp: Stamp | None,
+        now: float,
+    ) -> None:
+        """Send ``link`` what ``watch`` asks for and is new, at ``now``
+        (``time.monotonic()``). An output capture goes only from a tick of
+        ``shown``, the show last installed (its stamp ``stamp``): the
+        console has no copy of an older one."""
+        engine.captureOutput = watch.output and now >= self.outputDue
+        engine.captureEffects = watch.effects and now >= self.effectsDue
+        if watch.frames:
+            frame = engine.latest
+            if frame is not None and frame is not self.frame and frame.layout is not None:
+                if frame.layout is not self.layout:
+                    self.layout, self.layoutId = frame.layout, self.layoutId + 1
+                    link.send(Kind.LAYOUT, dumps((self.layoutId, frame.layout)))
+                link.send(Kind.FRAME, encode_frame(frame, self.layoutId))
+                self.frame = frame
+        if watch.output:
+            captured = engine.output
+            if captured is not None and captured is not self.output:
+                self.output, self.outputDue = captured, now + WATCH_S
+                engine.captureOutput = False
+                if captured.compiled is shown:
+                    capture = OutputCapture(
+                        seq=captured.seq,
+                        time=captured.time,
+                        stamp=stamp,
+                        values=captured.values,
+                        owners=captured.owners,
+                        origins=captured.origins,
+                    )
+                    link.send(Kind.OUTPUT, dumps(capture))
+        if watch.effects:
+            effects = engine.effects
+            if effects is not None and effects is not self.effects:
+                self.effects, self.effectsDue = effects, now + WATCH_S
+                engine.captureEffects = False
+                link.send(Kind.EFFECTS, dumps(read_effects(effects)))
 
 
 def main(argv: Sequence[str] | None = None) -> int:

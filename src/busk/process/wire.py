@@ -62,6 +62,7 @@ from busk.compiler.compile import CompiledShow, OutputLayout
 from busk.compiler.readout import EMPTY_READOUT
 from busk.compiler.slots import SlotTable
 from busk.convert.dmx import UNIVERSE_SIZE
+from busk.engine.contributions import Origin
 from busk.engine.install import Install
 from busk.engine.loop import EngineStats, Frame
 from busk.engine.snapshot import EngineSnapshot
@@ -76,8 +77,10 @@ __all__ = [
     "Kind",
     "LinkClosed",
     "Message",
+    "OutputCapture",
     "ShowDecoder",
     "ShowEncoder",
+    "Watch",
     "Welcome",
     "components",
     "decode_frame",
@@ -118,7 +121,7 @@ class Kind(IntEnum):
     is *the link*. Payloads are pickles unless noted.
     """
 
-    # control link, engine → root
+    # control link, engine → root (LAYOUT and FRAME also on the link, to a console that watches)
     LAYOUT = 1  # (layout id, OutputLayout): before the first frame made with it
     FRAME = 2  # raw: FRAME_HEADER, then 512 bytes per universe
     STATS = 3  # EngineStats, every second (to the console too)
@@ -131,17 +134,21 @@ class Kind(IntEnum):
     READY = 13  # from the console: its command loop runs (--duration counts from here)
     PROCESSES = 14  # to the console: the pids and restarts of the run (for `info`)
     ROUTES = 15  # to the console: the output routes' RouteStatus tuple, when it changed
+    NEWS = 16  # to the console, under --frontend: (failed, text), a line the root would print
     # the link, console → engine
     HELLO = 20  # the console's session id; restarted or not
     COMMAND = 21  # a CommandEnvelope
     CHUNK = 22  # an install chunk (ShowEncoder)
     INSTALL = 23  # an install's last chunk, which commits it
     RESTORE = 24  # an EngineSnapshot to restore after an engine restart
+    WATCH = 25  # a Watch: what to send besides snapshots (frames, output, effects)
     SYNC = 26  # a token: answer SYNCED once everything sent before is applied
     # the link, engine → console
     WELCOME = 30  # fresh or not, show stamp, current snapshot
     SNAPSHOT = 31  # an EngineSnapshot, when the published one changes
     SYNCED = 32  # the newest SYNC token applied, after the snapshot that shows it
+    OUTPUT = 33  # an OutputCapture, after each tick, while watched
+    EFFECTS = 34  # an EffectSnapshot, after each tick, while watched
 
 
 class LinkClosed(EOFError):
@@ -211,6 +218,36 @@ class Welcome:
     fresh: bool
     stamp: tuple[str, int] | None = None
     snapshot: EngineSnapshot | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class Watch:
+    """:attr:`Kind.WATCH`, what a console wants from the engine besides its
+    snapshots (GAP-11 of ``docs/dev/tui/engine-gaps.md``): its frames
+    (``LAYOUT`` and ``FRAME``, as the root gets them), its output
+    (``OUTPUT``) and its effects (``EFFECTS``), each the newest after every
+    tick. A ``WATCH`` replaces the link's last one; a new link watches
+    nothing, and the engine captures its output and effects only while the
+    console watches them."""
+
+    frames: bool = False
+    output: bool = False
+    effects: bool = False
+
+
+@dataclass(frozen=True, kw_only=True)
+class OutputCapture:
+    """:attr:`Kind.OUTPUT`: a :class:`~busk.engine.readout.Capture` without
+    its compiled show, which stays in the engine process (and has no
+    readout lookups there). ``stamp`` names that show instead: the console
+    reads the capture with its own copy of the show of that stamp."""
+
+    seq: int
+    time: float
+    stamp: tuple[str, int] | None
+    values: NDArray[np.float64]
+    owners: NDArray[np.intp]
+    origins: tuple[Origin | None, ...]
 
 
 @dataclass(frozen=True, kw_only=True)

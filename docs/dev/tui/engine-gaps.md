@@ -12,7 +12,8 @@ a **Done** note on what was built; the summary's status column says which are cl
 
 ## How the TUI talks to busk
 
-The TUI runs a `busk.LiveShow` in its own process. One module, `busk_tui/bridge.py`, imports
+The TUI runs a `busk.LiveShow` in its own process, or, since GAP-11, is run by `busk run
+--frontend`, which hands it the run's `LiveShow`. One module, `busk_tui/bridge.py`, imports
 `busk`, and only names in `busk.__all__`:
 
 - **Actions** go through `LiveShow.execute(line) -> Reply(text, ok)`, one console line per
@@ -36,8 +37,8 @@ So a gap below is one of two kinds:
 - **an action**: something an operator does that has no console line. The suggested shape is a
   new console line, so `execute()` covers it and the `busk run` prompt gets it too.
 
-Every new read should also reach `busk run`'s console process, so a later TUI attached to
-`busk run` ([GAP-11](#gap-11-running-the-tui-against-busk-run)) gets it too.
+Every new read should also reach `busk run`'s console process, so the TUI gets it under
+`busk run --frontend` ([GAP-11](#gap-11-running-the-tui-against-busk-run)) too.
 
 ## Priorities
 
@@ -59,7 +60,7 @@ Every new read should also reach `busk run`'s console process, so a later TUI at
 | [GAP-08](#gap-08-surface-status) Surface status | read | important | F9 | **done** 2026-10-23 |
 | [GAP-09](#gap-09-effect-runtime-state) Effect runtime state | read | important | F1 B, F5 | **done** 2026-10-23 |
 | [GAP-10](#gap-10-confirmation-before-dangerous-lines) Confirmation before dangerous lines | read | important | prompt | **done** 2026-10-23 |
-| [GAP-11](#gap-11-running-the-tui-against-busk-run) Running the TUI against `busk run` | host | important | everything, on stage | open |
+| [GAP-11](#gap-11-running-the-tui-against-busk-run) Running the TUI against `busk run` | host | important | everything, on stage | **done** 2026-10-23 |
 | [GAP-12](#gap-12-concurrency-contract-of-execute) Concurrency contract of `execute()` | contract | important | responsiveness | open |
 | [GAP-13](#gap-13-control-input-monitor) Control input monitor | read | nice-to-have | F9 | open |
 | [GAP-14](#gap-14-stop-and-restart-a-programmer-effect) Stop and restart a programmer effect | action | nice-to-have | F1 B, F5 | open |
@@ -859,6 +860,8 @@ typed one.
 
 ## GAP-11: Running the TUI against `busk run`
 
+**Status:** done 2026-10-23 (see **Done** at the end of this section).
+
 **Needed by:** every page, whenever the TUI is used on stage.
 
 **Today:** the only public way to run a show live is `LiveShow`, which has no watchdog, no
@@ -887,6 +890,98 @@ captures and the effect captures too.
 engine process. The startup banner and the user guide say that for a show on stage, `busk run`
 is the safer host. The TUI shows an `ENGINE` warning chip when frames stop arriving
 (see GAP-21).
+
+**Done** (2026-10-23). The first option, `busk run SHOW --frontend MODULE:FUNCTION`, chosen
+over a public `busk.attach()` client. No public name was added (`busk.__all__` stays at
+36): the frontend gets a `busk.LiveShow`. Documented in `docs/running.md` (Options and
+"Frontends"), `docs/library.md` (section 3 and Logging), the CLI's and the process
+modules' docs, `docs/dev/internals.md` ("The processes") and `docs/dev/benchmarks.md`.
+Where it differs from the suggestion, or settles what the suggestion left open:
+
+- **The function gets the show and nothing else.** `FUNCTION(show)` runs on the console
+  process's main thread, after `--script`, with the attached `LiveShow` already started;
+  it calls neither `start()` nor `stop()`. The run ends when it returns, as after `quit`,
+  and its return value is ignored. Its own options are not busk's: `busk run`'s
+  environment and working directory reach it, so the TUI passes its own in an environment
+  variable or its config file. The name is imported with `pkgutil.resolve_name`, so
+  `module:object.attribute` works too.
+- **A frontend that raises is a console that crashed.** The traceback is printed, the
+  console exits 70, and the root starts a new one (`--restarted`), which recovers from
+  autosave, adopts the running engine and calls the frontend again. The engine and the
+  output never stop (decision 7). After three restarts in 60 s the root gives the console
+  up and the show runs on without one, as for any console. A frontend that cannot be
+  imported, or is not callable, ends the run with exit code 1 before the show loads, so a
+  typo is not a restart loop.
+- **Signals.** Ctrl+C (when the frontend does not read raw keys) raises
+  `KeyboardInterrupt` in the frontend's thread, and with processes `SIGTERM` and `SIGHUP`
+  (which the root passes on) raise the console's `Terminated`, a `BaseException`. Let
+  through, they end the run as `quit` does. A Textual app reads Ctrl+C as a key.
+- **Refused combinations.** `--console` (frame lines over the frontend's screen),
+  `--no-console` (no commands) and `--duration`. With `--threads` nothing could stop the
+  frontend's thread when the duration is over; with processes the root's `SIGTERM` could,
+  but one rule covers both. `busk: error: --frontend cannot be combined with …`, exit 2.
+- **The terminal is the frontend's.** While it runs, busk prints nothing on it. The
+  console process's lines (surfaces, session failures, `engine back: …`, `engine: running
+  on …`, and the route lines with `--threads`) become records of a new logger,
+  `busk.run`: INFO for news, WARNING for failures. The root's lines (route lines and
+  notices, `engine: restarted …`, the watchdog giving up, `no output: …`) and the engine
+  process's stderr (a pipe to the root under `--frontend`) go to the console as `NEWS`
+  and become the same records. With no console to take them (a console restart, the
+  shutdown), the root prints them. Before the frontend starts (compile warnings, `Ignored
+  in Phase 7:`, recovery, the surfaces' first lines, the script's output) and after it
+  returns (the last route changes, the autosave, the statistics), busk prints as before.
+  No status lines are printed. It is one logger, not `busk.output` and `busk.surfaces`,
+  because the records are what `busk run` would print, with the same text. A route's
+  `sending again` is a WARNING there, since at the prompt it goes to stderr.
+- **Frames, output and effects under `busk run`** (the `None`s GAP-01 and GAP-09 left
+  here). `LiveShow` now reads them through its engine link for every kind of show: its
+  own engine, `--threads`' engine in the same process, and the console process's
+  `RemoteBus`. The first read of each sends the engine process a `WATCH`, which every new
+  engine gets again after a reconnect, so that read returns `None`, as `output` and
+  `effects` already did. The engine process then sends:
+  - every frame (`LAYOUT` and `FRAME`, as to the root);
+  - the output capture, at most every 40 ms (`WATCH_S`), without its compiled show but
+    with that show's stamp. The console reads it with its own copy of the show, because
+    the engine's view has no readout lookups, so building `FixtureOutput`s costs the
+    console process, not the engine. A capture of a show the console has replaced since
+    is skipped;
+  - the effects at the same pace, read in the engine process (0.16 ms for 20 effects),
+    because a capture holds compiled effects, much larger than the snapshot.
+
+  The engine captures the output and effects only while the console watches them, and
+  only when one is due. A new console link watches nothing. After an engine restart,
+  `seq` counts from 1 again.
+- **Cost** (`docs/dev/benchmarks.md`). On the reference rig, a frontend polling all three
+  20 times a second costs the engine process 0.015 core, with overruns at the idle
+  level. Without the pacing it cost 0.13 core and doubled them. The console process
+  spends 0.25 core, almost all of it building `FixtureOutput`s, as `LiveShow` does.
+- **Held flashes** (GAP-04's note). A frontend lives as long as its console. When it
+  returns, the run ends and the engine stops, so nothing it holds outlives it. When it
+  crashes, the engine runs on, and a flash it held stays held, as one held from the
+  prompt does when the console crashes (and a web remote's: its release on disconnect
+  runs in the console that crashed). The restarted frontend sees it
+  (`PlaybackStatus.flash`) and `flash N off` releases it. Releasing a crashed console's
+  flashes would change every `busk run`, so it is left open.
+- **Not built:** the second option. A frontend cannot attach to a running `busk run` and
+  detach from it again; its run ends with it.
+- Tests: `tests/test_frontend.py` (the publisher's watch and pacing, the `RemoteBus`
+  against an engine host, the attached show with `--threads` and from the engine process,
+  real `busk run --frontend` trees with `tests/process_site/frontend_probe.py`: the
+  frontend's reads, lines and records, a crash and the restart, `--threads`, a frontend
+  that cannot be loaded, the refused options; the lines diverted, `NEWS`, the engine's
+  stderr), the attached show in `tests/test_effect_status.py` and
+  `tests/test_run_options.py`.
+
+The TUI can now run on stage under `busk run`. `busk-tui SHOW` can start `busk run SHOW
+--frontend busk_tui.app:frontend` with the TUI's own options in the environment, and the
+bridge takes the `LiveShow` it is given instead of building, starting and stopping one.
+The rest of the bridge is unchanged: `execute`, `snapshot`, `frame`, `output`, `effects`,
+`programmer`, `routes`, `surfaces`, `confirmation` and its `busk` log handler, which now
+also gets `busk.run`. `status` answers with `busk run`'s status line there; GAP-19 is
+about a plain `LiveShow`. This answers the plan's question Q5 and risk R1 (the engine has
+a process of its own), and the startup banner's warning can go. The quit dialog stays
+the TUI's own: after it, the frontend returns. The `ENGINE` chip can stay on `frame.seq`,
+since frames still come every tick.
 
 ## GAP-12: Concurrency contract of `execute()`
 

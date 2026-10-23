@@ -56,6 +56,9 @@ class RunOptions:
     """``--stats``: append the processes' statistics to this file."""
     no_log: bool = False
     """``--no-log``: write no event log."""
+    frontend: str | None = None
+    """``--frontend``: ``MODULE:FUNCTION``, which the console process calls
+    with the show instead of opening its prompt."""
 
     @classmethod
     def from_arguments(cls, args: argparse.Namespace) -> Self:

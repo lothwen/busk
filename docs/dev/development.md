@@ -78,6 +78,7 @@ The suite also passes on Python 3.12 and 3.13, for example
 | `test_sacn_policy.py` | Send on change, 3 repeats, keep-alive inside 0.8–1.0 s, a due keep-alive never skipped (table-driven and hypothesis, with jitter and overruns) |
 | `test_output_scheduler.py` | Change detection per universe, route isolation and fault counting, final pass and close on stop, hold last frame, 44 Hz; `build_routes` notices; Art-Net routes opened and sent, a taken Art-Net port reported |
 | `test_route_status.py` | GAP-07's `routes`: every route of the show in show order with its label, universe number, state, detail and counts, the same whether `build_routes` or the first frame opened them; an open route's driver status; each new open error, then the route open; live edits; output off; one consistent table for another thread; a `LiveShow` from start to stop, the same object while nothing changes, none without output; `busk run --threads`, its attached show, the root's `ROUTES` on change and the console process keeping the last |
+| `test_frontend.py` | GAP-11's `busk run --frontend`: the engine host's publisher sending only what is watched and new, an output capture only of the newest show; a `RemoteBus` watching frames (with their layout), output captures (read with the console's own show, one of a replaced show skipped) and effects, a new engine asked again, a new console link watching nothing; the attached show reading them with `--threads` and from the engine process; real `busk run --frontend` trees (the frontend's reads and lines, busk run's lines as `busk.run` records and none printed, a frontend that raises restarted with its console while the engine runs on, `--threads`, one that cannot be loaded, the options it refuses); `say` and `warn` diverted, the root's `NEWS`, the engine's stderr relayed |
 | `test_console_output.py` | The Phase 0 line format and print-on-change, now as the `--console` sink |
 | `test_bus.py` | Command validation at submit time (supported types, ids, every master kind, levels clamped, release times, a GOTO's cue, a BPM in range; Phase 6: `PAGE`, `SET_FADER` and `PLAYBACK_BUTTON` by playback or slot, `BLACKOUT` with or without `on`), `TOGGLE_PLAYBACK`, FIFO, envelopes; every command type is applied by the engine or sent to the session |
 | `test_compile_cues.py` | Appendix A's cues as golden arrays; group expansion; preset scope precedence; spreads (linear, center, edges, `n = 1`, colour, members without the attribute); dropped targets and options with warnings; last entry wins; clamping; lane partitions; compiled playbacks, pages sorted by number, masters |
@@ -252,12 +253,12 @@ src/busk/
     gdtf.py              #   GDTF (a subset) → busk profiles; XML without DOCTYPE, a size cap (§5.19)
   process/               # the process split (§16, §18; phase-7-plan §5.1–§5.9)
     wire.py              #   framing, message kinds, raw frames; engine_view(), ShowEncoder/ShowDecoder (structural sharing)
-    engine_host.py       #   EngineHost: the engine process (link thread, engine thread, publisher)
-    links.py             #   RemoteBus: the console's side of the engine process
-    console_host.py      #   the console process (and the --threads run): a LiveShow attached to the engine, the prompt, autosave, status
+    engine_host.py       #   EngineHost: the engine process (link thread, engine thread, publishers; what a console watches)
+    links.py             #   RemoteBus: the console's side of the engine process (and its frames, output and effects)
+    console_host.py      #   the console process (and the --threads run): a LiveShow attached to the engine, the prompt or a --frontend, autosave, status
     options.py           #   RunOptions: the run flags, typed (internal)
-    root.py              #   Root: output, watchdog, restarts, event log, --stats, signals; FrameLink
-    report.py            #   RouteReporter, print_statistics(): the route and statistics lines
+    root.py              #   Root: output, watchdog, restarts, event log, --stats, signals; FrameLink; NEWS under a frontend
+    report.py            #   RouteReporter, print_statistics(): the route and statistics lines; say/warn, diverted() under a frontend
   replay.py              # busk replay: Replayer
   web/
     websocket.py         #   RFC 6455, server side: handshake, frames, WebSocket (a writer thread each)

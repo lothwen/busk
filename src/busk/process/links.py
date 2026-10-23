@@ -41,6 +41,13 @@ replay starts afresh from every connection
 :data:`QUEUE_MAX` (the oldest are kept; the rest are dropped and counted),
 so a blackout pressed during a restart still happens (decision 6).
 Installs are not queued: the reconnect sends the session's current state.
+
+**What the console watches** (GAP-11 of ``docs/dev/tui/engine-gaps.md``).
+Besides snapshots, the engine sends what the console asked for with
+:meth:`RemoteBus.watch` (a ``WATCH``, sent again after each reconnect): its
+frames, its output captures, which the bus reads with its own copy of the
+show of the capture's stamp, and its effect snapshots. The bus keeps the
+newest of each, across reconnects too, as it keeps the snapshot.
 """
 
 from __future__ import annotations
@@ -57,11 +64,12 @@ from numpy.typing import NDArray
 
 from busk.commands.bus import CommandBus
 from busk.commands.types import CommandEnvelope
-from busk.compiler.compile import CompiledShow
+from busk.compiler.compile import CompiledShow, OutputLayout
 from busk.engine.clock import Clock
 from busk.engine.install import EMPTY_FRAME, Install, ProgrammerFrame, Stamp
-from busk.engine.loop import Engine, EngineStats, Record
-from busk.engine.snapshot import EngineSnapshot, Restore
+from busk.engine.loop import Engine, EngineStats, Frame, Record
+from busk.engine.readout import Capture
+from busk.engine.snapshot import EffectSnapshot, EngineSnapshot, Restore
 from busk.model.show import Show
 from busk.persistence.eventlog import start_cause
 from busk.process.wire import (
@@ -71,8 +79,11 @@ from busk.process.wire import (
     Hello,
     Kind,
     LinkClosed,
+    OutputCapture,
     ShowEncoder,
+    Watch,
     Welcome,
+    decode_frame,
     dumps,
     loads,
 )
@@ -136,6 +147,7 @@ class RemoteBus(CommandBus):
         self._encoder = ShowEncoder()
         self._shown = compiled  # the show of the session's last install
         self._stamp = stamp  # … its stamp
+        self._readout = (stamp, compiled)  # both in one assignment, for the reader thread
         self._frame: ProgrammerFrame = EMPTY_FRAME  # its last programmer frame
         self._log = log is not None
         self._source: tuple[Show, Programmer] | None = (  # its state, for the event log
@@ -144,6 +156,10 @@ class RemoteBus(CommandBus):
         self._pending: list[CommandEnvelope] = []
         self._snapshot: EngineSnapshot | None = None
         self._stats = EngineStats()
+        self._watch = Watch()  # what the console asked the engine for
+        self._latest: Frame | None = None  # the newest DMX frame
+        self._output: Capture | None = None
+        self._effects: EffectSnapshot | None = None
         self._changed = threading.Condition()  # a reconnect completed, or a SYNCED came
         self._token = 0  # the last sync token sent …
         self._synced = 0  # … and the last one the engine answered
@@ -181,6 +197,39 @@ class RemoteBus(CommandBus):
         """Whether an engine takes commands now."""
         return self._link is not None
 
+    @property
+    def frame(self) -> Frame | None:
+        """The newest frame an engine sent, with its layout and no compiled
+        show (``None`` until one came: see :meth:`watch`)."""
+        return self._latest
+
+    @property
+    def output(self) -> Capture | None:
+        """The newest output capture an engine sent, with this console's
+        compiled show of its stamp (``None`` until one came)."""
+        return self._output
+
+    @property
+    def effects(self) -> EffectSnapshot | None:
+        """The newest effect snapshot an engine sent (``None`` until one came)."""
+        return self._effects
+
+    def watch(self, *, frames: bool = False, output: bool = False, effects: bool = False) -> None:
+        """Ask the engine for its frames, output captures or effects from
+        now on, besides what was asked before (``WATCH``; every new engine
+        is asked again)."""
+        if _joined(self._watch, frames, output, effects) == self._watch:
+            return  # nothing new: no lock, no message
+        with self._writer:
+            self._watch = _joined(self._watch, frames, output, effects)
+            link = self._link
+            if link is None:
+                return  # the reconnect sends it
+            try:
+                link.send(Kind.WATCH, dumps(self._watch))
+            except OSError:
+                self._lost(link)
+
     def enqueue(self, envelope: CommandEnvelope) -> None:
         """Send a validated envelope to the engine, or queue it while none
         is attached (:meth:`CommandBus.submit` ends here)."""
@@ -201,6 +250,7 @@ class RemoteBus(CommandBus):
             self._frame = item.programmer
             if item.compiled is not None:
                 self._shown, self._stamp = item.compiled, item.stamp
+                self._readout = (item.stamp, item.compiled)
             if item.source is not None:
                 self._source = cast(tuple[Show, Programmer], item.source)
             link = self._link
@@ -266,6 +316,7 @@ class RemoteBus(CommandBus):
                 pass  # nothing comes before the WELCOME; skip it if it does
             if message is not None:
                 self._reconnect(link, loads(message.payload), restore)
+                layouts: dict[int, OutputLayout] = {}  # this engine's, by id
                 while (message := link.receive()) is not None:
                     if message.kind == Kind.SNAPSHOT:
                         self._snapshot = loads(message.payload)
@@ -276,11 +327,37 @@ class RemoteBus(CommandBus):
                         with self._changed:
                             self._synced = max(self._synced, loads(message.payload))
                             self._changed.notify_all()
+                    elif message.kind == Kind.LAYOUT:
+                        ident, layout = loads(message.payload)
+                        layouts[ident] = layout
+                    elif message.kind == Kind.FRAME:
+                        self._latest = decode_frame(message.payload, layouts)
+                    elif message.kind == Kind.OUTPUT:
+                        self._captured(loads(message.payload))
+                    elif message.kind == Kind.EFFECTS:
+                        self._effects = loads(message.payload)
         except (OSError, LinkClosed, ValueError):
             pass  # the link ended; the root attaches the next one
         with self._writer:
             self._lost(link)
         link.sock.close()
+
+    def _captured(self, capture: OutputCapture) -> None:
+        """Keep an output capture, with this console's copy of the show of
+        its stamp; drop one of a show the session has replaced since (the
+        engine sends the newest show's once it runs it), or of an
+        unstamped show, which nothing names."""
+        stamp, compiled = self._readout  # one read: the stamp and show of one install
+        if capture.stamp is None or capture.stamp != stamp:
+            return
+        self._output = Capture(
+            seq=capture.seq,
+            time=capture.time,
+            compiled=compiled,
+            values=capture.values,
+            owners=capture.owners,
+            origins=capture.origins,
+        )
 
     def _reconnect(self, link: Endpoint, welcome: Welcome, restore: bool) -> None:
         """Send the whole state (and, to a fresh engine, the restore; to a
@@ -302,6 +379,8 @@ class RemoteBus(CommandBus):
                 causes=self._start(welcome.fresh, kept),
             )
             link.send_install(self._encoder.encode(install))
+            if self._watch != Watch():  # a new link watches nothing
+                link.send(Kind.WATCH, dumps(self._watch))
             restored = self._snapshot if welcome.fresh and restore else None
             if restored is not None:
                 link.send(Kind.RESTORE, dumps(Restore(snapshot=restored)))
@@ -347,3 +426,12 @@ class RemoteBus(CommandBus):
             self._pending.append(envelope)
         else:
             self.dropped += 1
+
+
+def _joined(watch: Watch, frames: bool, output: bool, effects: bool) -> Watch:
+    """``watch`` and what is asked for besides."""
+    return Watch(
+        frames=watch.frames or frames,
+        output=watch.output or output,
+        effects=watch.effects or effects,
+    )

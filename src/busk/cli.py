@@ -57,6 +57,11 @@
       commands: the run busks until Ctrl+C, as in Phase 2.
     * ``--script FILE`` runs a console script first and stops at the first
       error, ending the run with exit code 1.
+    * ``--frontend MODULE:FUNCTION`` (GAP-11 of ``docs/dev/tui/engine-gaps.md``)
+      calls ``FUNCTION(show)`` with the run's :class:`busk.LiveShow` instead of
+      opening the prompt, and the run ends when it returns. While it runs,
+      what the run would print goes to the ``busk.run`` logger instead. It
+      cannot be combined with ``--console``, ``--no-console`` or ``--duration``.
     * **Surfaces** (Phase 6): MIDI controllers, OSC apps and the web remote
       each print one start-up line (a web remote one per address, with its
       key: ``<stateDir>/web-key``, made once). Their feedback (LEDs, motor
@@ -119,6 +124,7 @@ from busk.engine.clock import SWITCH_INTERVAL
 from busk.persistence.paths import installation_cid, state_directory
 from busk.persistence.show_file import utc_now
 from busk.process.console_host import (
+    FRONTEND_CLASHES,
     ThreadsBackend,
     add_run_arguments,
     cannot_read,
@@ -136,7 +142,8 @@ __all__ = ["SWITCH_INTERVAL", "main", "status_line"]
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the command line with ``argv`` (default: ``sys.argv[1:]``); return the exit code."""
     arguments = list(sys.argv[1:] if argv is None else argv)
-    args = _parser().parse_args(arguments)
+    parser = _parser()
+    args = parser.parse_args(arguments)
     if args.command == "validate":
         return _validate(args.show)
     if args.command == "new":
@@ -147,6 +154,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "replay":
         return replay.main(args.log, until=args.until, at=args.at, frames=args.frames)
     options = RunOptions.from_arguments(args)
+    if options.frontend is not None:
+        clashes = [name for name in FRONTEND_CLASHES if getattr(options, name)]
+        if clashes:
+            flags = ", ".join("--" + name.replace("_", "-") for name in clashes)
+            parser.error(f"--frontend cannot be combined with {flags}")
     if options.threads or not hasattr(socket, "send_fds"):
         return run_console(options, ThreadsBackend(options))
     # Only --version may come before the subcommand: the first "run" is it.

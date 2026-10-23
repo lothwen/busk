@@ -337,14 +337,17 @@ def test_a_live_show_captures_its_effects_once_they_are_read() -> None:
         assert engine.output is None  # reading the effects does not capture the output
 
 
-def test_busk_runs_console_process_has_none(tmp_path: Path) -> None:
+def test_busk_runs_show_reads_the_effects_through_its_link(tmp_path: Path) -> None:
+    """With ``--threads`` the link is the engine's own; the console process's
+    (GAP-11) is in ``tests/test_frontend.py``."""
     shown = show_of(status_rig())
     compiled = compile_show(shown)
     clock = FakeClock()
+    engine = Engine(compiled, clock)
     live = LiveShow._attached(
         shown,
         compiled,
-        LocalEngine(Engine(compiled, clock)),
+        LocalEngine(engine),
         clock,
         path=tmp_path / "unused.show",
         library=ProfileLibrary(),
@@ -361,4 +364,8 @@ def test_busk_runs_console_process_has_none(tmp_path: Path) -> None:
         warn=lambda text: None,
     )
     run(live, "sel fixture 101", 'effect add "Circle"')
-    assert live.effects is None  # it stays in the engine process, with the frames (GAP-11)
+    assert live.effects is None  # the first read asks …
+    engine.tick(0.0)
+    effects = live.effects
+    assert effects is not None  # … and the engine's next tick captures them
+    assert keys(effects) == [(None, None, "fx1")]

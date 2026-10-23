@@ -306,6 +306,14 @@ opens no route, so nothing goes to the network; the frames are made all the same
 > interval as `busk run` does (and restores it on `stop()`); it is off by default, because
 > it changes a process-wide setting.
 
+**Your own frontend on `busk run`.** `busk run SHOW --frontend MODULE:FUNCTION` calls
+`FUNCTION(show)` in its console process instead of opening the prompt, with the run's
+`LiveShow`, already started, and ends the run when it returns
+([Running a show](running.md#frontends)). The frontend reads and commands it as above,
+and gets the run's safety net: the engine in its own process, the watchdog, autosave and
+recovery. Its `frame`, `output` and `effects` come from the engine process: the first read
+of each asks for them and returns `None`. It does not call `start()` or `stop()`.
+
 ## Reference
 
 The 36 names of `busk.__all__`. Each has a docstring with the details; path parameters
@@ -384,7 +392,8 @@ The library prints nothing. It reports through the loggers under `busk`: `busk.o
 (route lines such as `sACN r1: …`; `LiveShow.routes` has the same news as data),
 `busk.surfaces` (surface lines, the web remote's
 URL among them; `LiveShow.surfaces` has the same news as data), `busk.session` and `busk.eventlog`. News is INFO and failures are
-WARNING. `busk` has a `logging.NullHandler`, so a program that configures no logging
+WARNING. Under `busk run --frontend`, what `busk run` would print while the frontend runs
+(its route and surface lines, the watchdog's news) is records of `busk.run`. `busk` has a `logging.NullHandler`, so a program that configures no logging
 sees none of it; `logging.basicConfig(level=logging.INFO)` shows it all.
 
 ## What is public

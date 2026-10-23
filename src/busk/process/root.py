@@ -62,6 +62,14 @@ give it the show.
 **Who runs.** Each console hears the pids of the root and the engine and the
 restarts so far (``PROCESSES``) when it starts and after every engine
 restart; its ``info`` command shows them.
+
+**A frontend** (``--frontend``, GAP-11 of ``docs/dev/tui/engine-gaps.md``)
+owns the terminal while the console runs it, so the root prints nothing
+over it: its route lines and the watchdog's news go to the console as
+``NEWS`` (:func:`~busk.process.report.diverted`), and so do the engine's
+stderr lines, which the root reads from a pipe. The console logs them while
+its frontend runs and prints them otherwise. With no console to take them
+(a console restart, the shutdown), the root prints them as usual.
 """
 
 from __future__ import annotations
@@ -78,7 +86,7 @@ import time
 from collections.abc import Sequence
 from pathlib import Path
 from types import FrameType
-from typing import Any, Final, TextIO
+from typing import IO, Any, Final, TextIO
 
 from busk.compiler.compile import OutputLayout
 from busk.engine.clock import MonotonicClock
@@ -89,7 +97,7 @@ from busk.output.scheduler import STALL_S, OutputScheduler
 from busk.persistence.eventlog import EventLog
 from busk.persistence.paths import state_directory
 from busk.process.options import RunOptions
-from busk.process.report import RouteReporter, plural, print_statistics, warn
+from busk.process.report import RouteReporter, diverted, plural, print_statistics, warn
 from busk.process.wire import (
     Attach,
     Endpoint,
@@ -259,13 +267,15 @@ class Root:
         output = threading.Thread(
             target=self._scheduler.run, args=(output_stop,), name="busk-output", daemon=True
         )
+        framed = self._options.frontend is not None
         try:
             if self._options.stats is not None:
                 self._stats_file = self._options.stats.open("a", encoding="utf-8")
-            with self._start_engine() as console_end:
-                self._start_console(console_end, None)
-            output.start()
-            code = self._supervise()
+            with diverted(self._forward) if framed else contextlib.nullcontext():
+                with self._start_engine() as console_end:
+                    self._start_console(console_end, None)
+                output.start()
+                code = self._supervise()
         finally:
             self._shutdown(self._frames_thread, output, output_stop)
             for number, handler in previous.items():
@@ -401,6 +411,18 @@ class Root:
         with contextlib.suppress(OSError):
             control.send(Kind.ROUTES, dumps(routes))
 
+    def _forward(self, failed: bool, text: str) -> bool:
+        """Under ``--frontend``, a line the root would print goes to the
+        console (``NEWS``); ``False`` while there is no console to take it."""
+        control = self._console_control
+        if control is None:
+            return False
+        try:
+            control.send(Kind.NEWS, dumps((failed, text)))
+        except OSError:  # the console is gone: its link was closed
+            return False
+        return True
+
     def _log_opened(self, path: Path) -> None:
         """The event log opened a new file (on the frame thread): tell the console."""
         self._log_path = path
@@ -447,7 +469,12 @@ class Root:
         # statistics must not appear next to the new engine's pid.
         self._frames.report = None
         self._frames.final = False
-        self._engine, control = _spawn_engine(log=self._log is not None)
+        framed = self._options.frontend is not None
+        self._engine, control = _spawn_engine(log=self._log is not None, piped=framed)
+        if self._engine.stderr is not None:
+            threading.Thread(
+                target=relay, args=(self._engine.stderr,), name="busk-engine-stderr", daemon=True
+            ).start()
         self._engine_control = control
         self._engine_started = time.monotonic()
         self._frames_thread = threading.Thread(
@@ -493,11 +520,7 @@ class Root:
                 if self.consoleFailed
                 else f"given up after {plural(RESTARTS, 'restart')} in {RESTART_WINDOW:g} s"
             )
-            print(
-                f"engine: {why}; {reason}; the output holds the last frame",
-                file=sys.stderr,
-                flush=True,
-            )
+            warn(f"engine: {why}; {reason}; the output holds the last frame")
             self._tell_processes()
             return
         self._restart_times.append(now)
@@ -513,7 +536,7 @@ class Root:
                 with contextlib.suppress(OSError):
                     control.send(Kind.ATTACH, dumps(attach), [console_end.fileno()])
         self._tell_processes()
-        print(f"engine: restarted ({why})", file=sys.stderr, flush=True)
+        warn(f"engine: restarted ({why})")
 
     def _stop_engine(self) -> None:
         """Kill the engine if it lives, reap it, and end its frame thread (so
@@ -585,11 +608,7 @@ class Root:
         if not self._routes_checked and self._scheduler.layout is not None:
             self._routes_checked = True
             if not self._scheduler.routes and not self._options.console:
-                print(
-                    "no output: no route is open (add --console to print frames)",
-                    file=sys.stderr,
-                    flush=True,
-                )
+                warn("no output: no route is open (add --console to print frames)")
 
     def _write_stats(self) -> None:
         """One ``--stats`` line (see :func:`stats_record`)."""
@@ -691,9 +710,10 @@ def is_interactive(options: RunOptions) -> bool:
 # ------------------------------------------------------------------ children
 
 
-def _spawn_engine(*, log: bool) -> tuple[subprocess.Popen[bytes], Endpoint]:
+def _spawn_engine(*, log: bool, piped: bool = False) -> tuple[subprocess.Popen[bytes], Endpoint]:
     """Start an engine process in a session of its own (``log``: it sends
-    event-log records); return it and the root's end of its control link."""
+    event-log records; ``piped``: its stderr is a pipe, for :func:`relay`);
+    return it and the root's end of its control link."""
     ours, theirs = socket.socketpair()
     with theirs:
         command = [sys.executable, "-m", "busk.process.engine_host"]
@@ -702,9 +722,18 @@ def _spawn_engine(*, log: bool) -> tuple[subprocess.Popen[bytes], Endpoint]:
             command,
             pass_fds=(theirs.fileno(),),
             stdin=subprocess.DEVNULL,
+            stderr=subprocess.PIPE if piped else None,
             start_new_session=True,
         )
     return process, Endpoint(ours)
+
+
+def relay(stream: IO[bytes]) -> None:
+    """Hand each line of an engine's stderr to :func:`~busk.process.report.warn`
+    until its end (``--frontend``: the console shows it)."""
+    with stream:
+        for line in stream:
+            warn(line.decode(errors="replace").rstrip("\n"))
 
 
 def _spawn_console(

@@ -21,7 +21,7 @@ terminal ───┤ output thread (44 Hz) ─▶ sACN (+ discovery), Art-Net (
             │ event log · --stats · --duration · signals · restarts of either child         │
             └───┬────────────────── control links (socket pairs) ───────────────────┬───────┘
                 │ ↑ frames, stats, log  ↓ attach, stop  attach, engine state, pids  │
-                │                                       routes                      │
+                │   (stderr, --frontend)                routes, news (--frontend)   │
 ┌───────────────▼── ENGINE (own session) ───────────────────────────┐               │
 │ link thread: commands, install chunks, restore → the queue        │               │
 │ engine thread, fixed tick: due events (auto-GOs, chase steps)     │               │
@@ -32,10 +32,11 @@ terminal ───┤ output thread (44 Hz) ─▶ sACN (+ discovery), Art-Net (
 │   (highlight, park, blackout, limits, strobe lanes) → convert     │               │
 │ publisher: frames → root; snapshots, stats → console              │               │
 └───────────────▲─────────────────────────────┬─────────────────────┘               │
-   commands, installs (engine view, shared    │ snapshots, stats                    │
-   objects, chunks), restore after a restart  │                                     │
+   commands, installs (engine view, shared    │ snapshots, stats; watched frames,   │
+   objects, chunks), restore after a restart, │ output captures, effects            │
+   watch                                      │                                     │
 ┌───────────────┴─────────────────────────────▼── CONSOLE (the terminal's) ─────────▼───────┐
-│ console prompt ─┐                                                                         │
+│ console prompt ─┐  (or a --frontend, on the main thread)                                  │
 │ MIDI (hot-plug)─┤                        session (single writer): programmer ·            │
 │ OSC ────────────┼─▶ bindings ─▶ commands ─▶ show store · undo · validate ·                │
 │ phone (web API)─┘   (rate-limited remotes)  compile → install                             │
@@ -46,6 +47,27 @@ terminal ───┤ output thread (44 Hz) ─▶ sACN (+ discovery), Art-Net (
 
 `busk run --threads` runs the same components as threads of one process, without the
 watchdog and the restarts.
+
+**A frontend** (`--frontend MODULE:FUNCTION`; GAP-11 of
+[`tui/engine-gaps.md`](tui/engine-gaps.md)). The console process imports it before it
+loads the show (a failure is exit 1, not a crash the root would restart) and, after the
+script, calls it on its main thread with the attached `LiveShow` instead of `interact`,
+with the monitor thread polling as at the prompt. Everything reaches it through that
+show's `EngineLink`, which has the frames, output captures and effects too: a
+`LocalEngine` hands over the engine's own (`--threads`), and the `RemoteBus` asks the
+engine process for them with a `WATCH` the first time each is read, and again after every
+reconnect. The engine host keeps the current link's watch (a new link watches nothing),
+captures the output and effects only while they are watched, and its console publisher
+sends what is new after each tick (`_Watched`): `LAYOUT` and `FRAME` as to the root, an
+`OUTPUT` capture without its compiled show but with the stamp of the newest show it ran
+(the console reads it with its own copy of that show, which has the readout lookups the
+engine view lacks, and skips a capture of a show it has replaced), and `EFFECTS`, read in
+the engine process (0.16 ms for the reference rig's 20 effects, on the publisher thread),
+since a capture holds the compiled effects. The terminal is the frontend's while it runs:
+`busk.process.report.diverted` hands `say` and `warn` to the `busk.run` logger in the
+console process, and in the root to a `NEWS` message to the console (printed if no
+console takes it), which carries the route lines, the watchdog's news and the engine's
+stderr, read from a pipe.
 
 ## The pipeline, piece by piece
 
@@ -269,8 +291,9 @@ drives each lane: the topmost source present on an LTP lane, on an intensity lan
 strongest contribution of the highest band present, then the last relative that moves it.
 The highlight's lanes are the programmer's and parked lanes nobody's. While
 `Engine.captureOutput` is set, each tick publishes a `Capture` (a copy of the frame and the
-per-lane owners) by reference; `LiveShow` sets it on the first read of `output`, the engine
-host never does, and `OfflineShow` captures on demand after its tick. `read_output` turns a
+per-lane owners) by reference; `LiveShow` sets it on the first read of `output` (`busk
+run`'s engine host while its console watches the output, see [the processes](#the-processes)),
+and `OfflineShow` captures on demand after its tick. `read_output` turns a
 capture into `FixtureOutput`s on the reader's thread, with lookups the compiler builds once
 per rig (`CompiledShow.readout`, left out of the engine process's view): each element's
 lanes, the master dimmer that dims a cell without its own, the colours of its colour

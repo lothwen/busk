@@ -47,6 +47,7 @@ def test_every_option_lands_in_its_field() -> None:
         "--threads",
         "--stats", "stats.jsonl",
         "--no-log",
+        "--frontend", "tui:run",
     )  # fmt: skip
     assert options == RunOptions(
         show=Path("x.show"),
@@ -62,6 +63,7 @@ def test_every_option_lands_in_its_field() -> None:
         threads=True,
         stats=Path("stats.jsonl"),
         no_log=True,
+        frontend="tui:run",
     )
 
 

@@ -124,9 +124,9 @@ class DmxFrame:
 
 
 def _dmx_frame(frame: Frame) -> DmxFrame:
-    """The public form of an engine frame."""
-    assert frame.compiled is not None  # only hand-built test frames lack it
-    numbers = (universe.number for universe in frame.compiled.universes)
+    """The public form of an engine frame (one from another process too)."""
+    assert frame.layout is not None  # only hand-built test frames lack it
+    numbers = (universe.number for universe in frame.layout.universes)
     return DmxFrame(
         seq=frame.seq,
         time=frame.time,
@@ -493,7 +493,9 @@ class LiveShow(_Facade):
     isolation, so a crash or a stall of the host process stops the DMX
     output, and there is no autosave or crash recovery (save with
     :meth:`save`). Under heavy edits one process also overruns more ticks
-    than ``busk run``'s three. For a show on stage, use ``busk run``.
+    than ``busk run``'s three. For a show on stage, use ``busk run``: with
+    ``--frontend MODULE:FUNCTION`` it hands your frontend its own
+    ``LiveShow``.
 
     ``path``, ``library`` and the commands are as in :class:`OfflineShow`;
     commands sent before :meth:`start` apply at the engine's first tick.
@@ -582,14 +584,14 @@ class LiveShow(_Facade):
         ``warn`` print the surface lines, the session's failures and the web
         key's.
 
-        Such a show runs no engine and opens nothing by itself, and
-        :attr:`frame` stays ``None``. The CLI calls :meth:`_open` (the
-        surfaces and feedback), then :meth:`start` (the feedback thread
-        only). It polls with :meth:`_poll` between commands, or starts the
-        monitor thread (:meth:`_start_monitor`) for the interactive prompt;
-        each poll calls ``poll`` first (its status line and route reports).
-        It waits for the engine itself, and stops the engine after
-        :meth:`stop`.
+        Such a show runs no engine and opens nothing by itself; it reads
+        its frames, output and effects through ``link``. The CLI calls
+        :meth:`_open` (the surfaces and feedback), then :meth:`start` (the
+        feedback thread only). It polls with :meth:`_poll` between
+        commands, or starts the monitor thread (:meth:`_start_monitor`) for
+        the interactive prompt or a frontend; each poll calls ``poll``
+        first (its status line and route reports). It waits for the engine
+        itself, and stops the engine after :meth:`stop`.
         """
         session = Session(
             show,
@@ -662,10 +664,12 @@ class LiveShow(_Facade):
 
     @property
     def frame(self) -> DmxFrame | None:
-        """The engine's newest frame; ``None`` until its first tick."""
-        if self._engine is None:
-            return None  # attached: the CLI's engine
-        latest = self._engine.latest  # one read: published by reference assignment
+        """The engine's newest frame; ``None`` until its first tick. ``busk
+        run``'s show, whose engine runs in another process, asks for frames
+        at the first read, which returns ``None``, as do the reads before
+        the first frame comes."""
+        self._link.watch(frames=True)
+        latest = self._link.frame  # one read: published by reference assignment
         if latest is None:
             return None
         cached = self._latest
@@ -683,13 +687,12 @@ class LiveShow(_Facade):
 
         The engine captures its output only once someone reads it: the
         first read turns that on for good and returns ``None``, as do the
-        reads before the engine's next tick. ``None`` too for ``busk
-        run``'s show, whose engine runs in another process."""
-        engine = self._engine
-        if engine is None:
-            return None  # attached: the CLI's engine
-        engine.captureOutput = True
-        captured = engine.output  # one read: published by reference assignment
+        reads before the engine's next tick. ``busk run``'s show has it too,
+        from its engine process, which then sends its captures to the
+        console process: a capture of a show the console has replaced since
+        is skipped."""
+        self._link.watch(output=True)
+        captured = self._link.output  # one read: published by reference assignment
         if captured is None:
             return None
         cached = self._read
@@ -708,15 +711,12 @@ class LiveShow(_Facade):
         As with :attr:`output`, the engine captures its effects only once
         someone reads them: the first read turns that on for good and
         returns ``None``, as do the reads before the engine's next tick.
-        ``None`` too for ``busk run``'s show, whose engine runs in another
-        process."""
-        engine = self._engine
-        if engine is None:
-            return None  # attached: the CLI's engine
-        engine.captureEffects = True
-        captured = engine.effects  # one read: published by reference assignment
-        if captured is None:
-            return None
+        ``busk run``'s show has them too: its engine process reads them and
+        sends them to the console process."""
+        self._link.watch(effects=True)
+        captured = self._link.effects  # one read: published by reference assignment
+        if captured is None or isinstance(captured, EffectSnapshot):
+            return captured  # from another process, read there
         cached = self._effect_read
         if cached is None or cached[0] is not captured:
             cached = (captured, read_effects(captured))

@@ -3,7 +3,10 @@
 Everything that talks to the engine from outside its thread (the session,
 the feedback worker, the web link, the binding resolver, autosave, the
 status line) goes through an :class:`EngineLink`: the bus's compiled show,
-the published snapshot and statistics, ``submit`` and ``install``.
+the published snapshot and statistics, ``submit`` and ``install``. A
+:class:`~busk.runner.LiveShow` also reads its frames, output and effects
+through it, once it has asked for them with :meth:`EngineLink.watch`
+(GAP-11 of ``docs/dev/tui/engine-gaps.md``).
 
 * :class:`LocalEngine`: an :class:`~busk.engine.loop.Engine` in this
   process and its bus (:class:`~busk.runner.LiveShow`, ``busk run
@@ -23,9 +26,11 @@ from typing import Final, Protocol
 from busk.commands.bus import CommandBus
 from busk.commands.types import Command, CommandEnvelope, CommandOrigin
 from busk.compiler.compile import CompiledShow
+from busk.engine.effect_status import EffectCapture
 from busk.engine.install import Install
-from busk.engine.loop import Engine, EngineStats
-from busk.engine.snapshot import EngineSnapshot, Sync
+from busk.engine.loop import Engine, EngineStats, Frame
+from busk.engine.readout import Capture
+from busk.engine.snapshot import EffectSnapshot, EngineSnapshot, Sync
 
 _SYNC_POLL_S: Final = 0.002
 """How often :meth:`LocalEngine.sync` looks at the engine."""
@@ -64,6 +69,30 @@ class EngineLink(Protocol):
         """Wait until the engine has applied everything sent so far and
         :attr:`snapshot` shows it; ``False`` if that took longer than
         ``timeout`` seconds (or no engine is attached in time)."""
+        ...
+
+    @property
+    def frame(self) -> Frame | None:
+        """The engine's newest frame, with its layout; ``None`` before the
+        first (from another process, before the first one watched came)."""
+        ...
+
+    @property
+    def output(self) -> Capture | None:
+        """The engine's newest output capture, with the compiled show of its
+        tick; ``None`` until one was watched and made."""
+        ...
+
+    @property
+    def effects(self) -> EffectCapture | EffectSnapshot | None:
+        """The engine's newest effects: a capture to read
+        (:func:`~busk.engine.effect_status.read_effects`), or from another
+        process the snapshot read there; ``None`` until watched and made."""
+        ...
+
+    def watch(self, *, frames: bool = False, output: bool = False, effects: bool = False) -> None:
+        """Have the engine make (and send) its frames, output captures or
+        effects from now on, besides what was asked before."""
         ...
 
 
@@ -111,3 +140,23 @@ class LocalEngine:
                 return False
             time.sleep(_SYNC_POLL_S)
         return True
+
+    @property
+    def frame(self) -> Frame | None:
+        return self.engine.latest
+
+    @property
+    def output(self) -> Capture | None:
+        return self.engine.output
+
+    @property
+    def effects(self) -> EffectCapture | None:
+        return self.engine.effects
+
+    def watch(self, *, frames: bool = False, output: bool = False, effects: bool = False) -> None:
+        """Frames are always made; the output and effects are captured from
+        the engine's next tick on, for good."""
+        if output:
+            self.engine.captureOutput = True
+        if effects:
+            self.engine.captureEffects = True

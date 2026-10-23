@@ -71,6 +71,18 @@ without it, within run-to-run noise. The engine captures only while something re
 `effects` all the same, as it does for the output. Building the 20 `EffectStatus`es with
 their next cycle, on the reader's thread, takes 0.16 ms mean (0.23 ms p99).
 
+**A frontend on `busk run`** (GAP-11, 2026-10-23; `busk run --frontend` on the reference
+rig with its 20 effects, every playback up, three processes, 15 s per run). A frontend
+that polls `frame`, `output` and `effects` 20 times a second costs the engine process
+0.015 core (0.49–0.50 core without it, 0.505–0.51 with it), and its overruns stay at
+the idle runs' level (3 and 10 per 1 400 ticks, against 2 and 7: noise). That is with the
+pacing the engine host does: it lets the engine capture the output and the effects only
+every 40 ms (`WATCH_S`) and sends each capture once; frames go after every tick. Without
+the pacing, capturing and sending every tick (600 KB of output a tick), the same reads
+cost 0.13 core and doubled the overruns (about 0.5 % of ticks against 0.25 %). The
+console process spends 0.25 core on them, almost all of it turning each capture into
+`FixtureOutput`s (15 ms a read for 8 192 elements, as with `LiveShow`).
+
 ## Misses
 
 **Two Phase 4 targets are missed** (details in phase-4-plan step 18):

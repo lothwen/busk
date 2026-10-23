@@ -40,9 +40,21 @@ takes effect once its command loop begins. End of file on the root's control
 link (the root was killed) ends the process at once, without the clean-exit
 autosave, so the next run recovers.
 
-**Exit codes.** 0 after ``quit`` (or a signal), 1 when the show cannot be
-loaded or compiled or ``--script`` fails, 70 on any unexpected exception
-(decision 7: the root restarts a console that exits 70).
+**A frontend** (``--frontend MODULE:FUNCTION``, GAP-11 of
+``docs/dev/tui/engine-gaps.md``) takes the prompt's place: after the
+script, the console calls ``FUNCTION(show)`` on its main thread with the
+attached :class:`~busk.runner.LiveShow`, already started, and the run ends
+when it returns, as after ``quit``. It owns the terminal meanwhile, so the
+lines this process would print go to the ``busk.run`` logger instead
+(:func:`~busk.process.report.diverted`), the root's and the engine's with
+them (``NEWS``); no status lines are printed. A frontend that raises is a
+console crash: the root restarts the console, which calls it again. One
+that cannot be imported ends the run with 1 before the show loads.
+
+**Exit codes.** 0 after ``quit`` (or a signal, or the frontend's return), 1
+when the show or the frontend cannot be loaded, the show cannot be compiled
+or ``--script`` fails, 70 on any unexpected exception (decision 7: the root
+restarts a console that exits 70).
 
 **Restarted** (``--restarted WHY``, decision 7). The root starts a new console
 when one died of a signal or exited 70, with the same arguments. It
@@ -69,6 +81,7 @@ import contextlib
 import gc
 import math
 import os
+import pkgutil
 import queue
 import secrets
 import signal
@@ -105,7 +118,15 @@ from busk.persistence.show_file import ShowLoadError, load_show, newest_backup, 
 from busk.persistence.values_file import load_values
 from busk.process.links import RemoteBus, start_log
 from busk.process.options import RunOptions
-from busk.process.report import RouteReporter, plural, print_statistics, say, warn
+from busk.process.report import (
+    RouteReporter,
+    diverted,
+    logged,
+    plural,
+    print_statistics,
+    say,
+    warn,
+)
 from busk.process.root import is_interactive
 from busk.process.wire import Attach, Endpoint, Kind, LinkClosed, Processes, loads
 from busk.runner import MONITOR_S, SETTLE_S, LiveShow, _LocalRun
@@ -174,6 +195,25 @@ def add_run_arguments(run: argparse.ArgumentParser) -> None:
     run.add_argument(
         "--no-log", action="store_true", help="write no event log (<stateDir>/logs, busk replay)"
     )
+    run.add_argument(
+        "--frontend",
+        type=_frontend_name,
+        metavar="MODULE:FUNCTION",
+        help="call FUNCTION(show) of MODULE instead of opening the prompt; the run ends "
+        "when it returns",
+    )
+
+
+FRONTEND_CLASHES: Final = ("console", "no_console", "duration")
+"""The options ``--frontend`` cannot be combined with: a frontend owns the
+terminal and the commands, and ends the run when it returns."""
+
+
+def _frontend_name(text: str) -> str:
+    module, colon, function = text.partition(":")
+    if not (module and colon and function):
+        raise argparse.ArgumentTypeError(f"expected MODULE:FUNCTION: {text!r}")
+    return text
 
 
 def _positive_seconds(text: str) -> float:
@@ -366,8 +406,9 @@ class ProcessBackend:
     the bus a new engine link (one that comes before :meth:`connect` waits
     for it), ``ENGINE`` is the watchdog's news, ``PROCESSES`` the run's pids
     and restarts (for ``info``), ``ROUTES`` the output routes' status (for
-    :meth:`routes`), and end of file means the root is gone: the process
-    ends at once (decision 9).
+    :meth:`routes`), ``NEWS`` a line the root would have printed (said
+    here: logged while a frontend runs), and end of file means the root is
+    gone: the process ends at once (decision 9).
     """
 
     ownsDuration = False
@@ -458,14 +499,12 @@ class ProcessBackend:
             return
         first, self._reconnects = self._reconnects == 0, bus.reconnects
         if not first:
-            print(engine_back(bus.restored, skipped=bus.restoreSkipped), flush=True)
+            say(engine_back(bus.restored, skipped=bus.restoreSkipped))
         elif bus.adoption == "kept":
-            print("engine: running on with the same show", flush=True)
+            say("engine: running on with the same show")
         elif bus.adoption == "replaced":
-            print(
-                "engine: running on; its show went back to the last autosave "
-                "(later edits are lost)",
-                flush=True,
+            say(
+                "engine: running on; its show went back to the last autosave (later edits are lost)"
             )
 
     def engine_state(self) -> str | None:
@@ -537,6 +576,9 @@ class ProcessBackend:
                 self._processes = loads(message.payload)
             elif message.kind == Kind.ROUTES:
                 self._routes = loads(message.payload)
+            elif message.kind == Kind.NEWS:
+                failed, text = loads(message.payload)
+                (warn if failed else say)(text)
             else:
                 for fd in message.fds:
                     os.close(fd)
@@ -555,6 +597,11 @@ def run_console(options: RunOptions, backend: Backend, *, restarted: str | None 
     9``) makes this console the replacement of one that crashed (see the
     module docs).
     """
+    frontend = None
+    if options.frontend is not None:
+        frontend = _load_frontend(options.frontend)
+        if frontend is None:
+            return 1
     path: Path = options.show
     state_dir = state_directory(options.state_dir)
     show = _load(path)
@@ -604,7 +651,7 @@ def run_console(options: RunOptions, backend: Backend, *, restarted: str | None 
     clock = MonotonicClock()
     link = backend.connect(show, compiled, base, clock, interactive=interactive, stamp=stamp)
     library = ProfileLibrary(options.library)
-    status = StatusLines(link, shown=not interactive, extra=backend.poll)
+    status = StatusLines(link, shown=not interactive and frontend is None, extra=backend.poll)
     # The show itself runs on the runner: the session, the console, the
     # surfaces, feedback, the monitor and their shutdown order are LiveShow's.
     live = LiveShow._attached(
@@ -670,7 +717,11 @@ def run_console(options: RunOptions, backend: Backend, *, restarted: str | None 
         elif options.script is not None and not console.run_script(options.script, say):
             code = 1
         if code == 0 and not console.quit_requested:
-            if interactive:
+            if frontend is not None:
+                live._start_monitor()
+                with diverted(logged):  # the terminal is the frontend's
+                    frontend(live)
+            elif interactive:
                 live._start_monitor()
                 if not adopt:
                     print(
@@ -708,6 +759,22 @@ def run_console(options: RunOptions, backend: Backend, *, restarted: str | None 
         gc.unfreeze()
     backend.report()
     return code
+
+
+def _load_frontend(name: str) -> Callable[[LiveShow], object] | None:
+    """The function ``name`` (``MODULE:FUNCTION``) names, its module
+    imported; ``None`` after printing why it cannot be had."""
+    try:
+        frontend = pkgutil.resolve_name(name)
+    except Exception as exc:  # whatever its module raises: exit 1, not a restart
+        print(
+            f"busk: cannot load the frontend {name!r}: {type(exc).__name__}: {exc}", file=sys.stderr
+        )
+        return None
+    if not callable(frontend):
+        print(f"busk: cannot load the frontend {name!r}: it is not callable", file=sys.stderr)
+        return None
+    return cast(Callable[[LiveShow], object], frontend)
 
 
 def _load(path: Path) -> Show | None:

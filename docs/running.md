@@ -11,6 +11,7 @@ guide covers what a run does, what it prints, and how it survives crashes.
 - [Autosave and recovery](#autosave-and-recovery)
 - [Stopping](#stopping)
 - [Processes and the watchdog](#processes-and-the-watchdog)
+- [Frontends](#frontends)
 - [The event log and replay](#the-event-log-and-replay)
 - [Values files](#values-files)
 
@@ -29,6 +30,7 @@ busk run club.show --script build.busk               # run a console script firs
 echo "fader 1 1" | busk run club.show --duration 10  # commands from a pipe
 busk run club.show --no-console                      # no commands: busk from the surfaces until Ctrl+C
 busk run club.show --duration 2 --console            # print the DMX frames too
+busk run club.show --frontend mytui:run              # a frontend of your own instead of the prompt
 ```
 
 - **At a terminal** the console is a prompt, with [Tab completion and `?`](console.md#the-prompt).
@@ -63,6 +65,7 @@ busk run club.show --duration 2 --console            # print the DMX frames too
 | `--threads` | Run the engine and the output as threads of one process: no watchdog, no restarts. |
 | `--stats FILE` | Append the processes' statistics to `FILE`, one JSON line per second. |
 | `--no-log` | Write no [event log](#the-event-log-and-replay). |
+| `--frontend MODULE:FUNCTION` | Call `FUNCTION(show)` of `MODULE` instead of opening the prompt ([Frontends](#frontends)). Not with `--console`, `--no-console` or `--duration`. |
 
 ## What it prints
 
@@ -220,6 +223,51 @@ errors.
 **`--threads`** runs everything as threads of one process. The safety stage, the stall
 output, reconnects, rate limits and the event log work there too; the watchdog and the
 restarts exist only with processes. It is the default where `socket.send_fds` is missing.
+
+## Frontends
+
+`--frontend MODULE:FUNCTION` puts a frontend of your own, such as a full-screen terminal UI,
+in the prompt's place, with everything above: the engine in its own process, the watchdog,
+autosave and recovery, the event log. After `--script`, the console process imports
+`MODULE` and calls `FUNCTION(show)` on its main thread. `show` is the run's
+[`busk.LiveShow`](library.md#3-live-inside-your-own-application-liveshow), already started:
+the frontend runs lines with `show.execute(line)` and reads `snapshot`, `frame`, `output`,
+`effects`, `programmer`, `routes`, `surfaces` and the rest, as in a library. It does not call
+`start()` or `stop()`; the run does.
+
+```python
+# mytui.py, next to the show: busk run club.show --frontend mytui:run
+def run(show):
+    while True:
+        line = input("mytui> ")        # a real frontend draws the screen and reads keys
+        if line == "quit":
+            return                     # the run ends
+        print(show.execute(line).text)
+```
+
+- **The run ends when the function returns**, as after `quit`. Unsaved edits are kept in
+  the autosave as usual, so a frontend asks about saving itself. Ctrl+C (unless the
+  frontend reads the keys itself) raises `KeyboardInterrupt` in the frontend's thread, and
+  with processes `SIGTERM` and `SIGHUP` raise a `BaseException` of busk's own there: a
+  frontend lets them through, and the run ends as after `quit`.
+- **A frontend that raises is a console that crashed.** The traceback is printed, and the
+  root starts a new console, which recovers the show and calls the frontend again, while
+  the engine and the output run on ([above](#processes-and-the-watchdog)). A frontend that
+  cannot be imported, or is not a function, ends the run with exit code 1, before the show
+  loads.
+- **The terminal is the frontend's.** While it runs, busk prints nothing: what it would print
+  (route and surface lines, `engine: restarted …`, `engine back: …`, the engine process's
+  own errors) becomes records of the `busk.run` logger instead, news at INFO and failures at
+  WARNING, for the frontend to show. What comes before it starts (compile warnings,
+  `Ignored in Phase 7:`, what was recovered, the surfaces' first lines) and after it
+  returns (the statistics) is printed as usual. No status lines are printed.
+- **Frames, output and effects** come from the engine process once the frontend reads them:
+  the first read of each asks for them and returns `None`. After an engine restart their
+  `seq` counts from 1 again.
+- `--frontend` cannot be combined with `--console`, `--no-console` or `--duration`. The
+  frontend's own settings are its business: `busk run`'s environment and working directory
+  reach it.
+- With `--threads`, the frontend runs in the run's one process, next to the engine.
 
 ## The event log and replay
 
