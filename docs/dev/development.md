@@ -26,6 +26,7 @@ uv run pytest -m soak -s                               # a 60 s soak with an eng
 uv run python bench/edit_latency.py [--processes]      # live-edit latency and engine stalls (Phase 3; Phase 7: across processes)
 uv run python bench/surface_load.py [SECONDS] [--processes]   # ticks under a phone, MIDI, OSC and feedback load (Phase 6)
 uv run python bench/transport.py                       # install sizes and load times on the console → engine link (Phase 7)
+uv run python bench/thread_latency.py [--run] [--tune]  # performance lines while another thread edits (GAP-12)
 uv run python bench/soak.py --hours 1 [--chaos standard|fast|none] [--seed N] [--report FILE]   # the soak (Phase 7)
 BUSK_REGOLDEN=1 uv run pytest tests/test_build_from_scratch.py tests/test_song_stack.py tests/test_effects_show.py tests/test_surfaces_show.py tests/test_safety_show.py   # rewrite the goldens, then review
 uv run ruff check . && uv run ruff format --check .    # lint + format
@@ -115,6 +116,7 @@ The suite also passes on Python 3.12 and 3.13, for example
 | `test_autosave.py` · `test_recovery.py` | Burst and periodic show autosaves, retention, `session.json`, every row of the recovery table; then `kill -9` of a real `busk run` and a restart that brings back the programmer (with its fade time and effects), the master levels (group, size and fade-time included), the tempo, the page and the unsaved edit |
 | `test_console_parser.py` · `test_console.py` | Every grammar row (311 cases, Phase 4's timing, trigger, chase, master and tempo sugar, Phase 5's effect sugar and Phase 6's page, surface, binding, feedback and route sugar included) and its error messages; execution, rendering (`list cues`, `list masters`, `list effects`, the programmer's fade and effects, `library`), scripts and `source`, defaults, Ctrl+C held back during a command, clearing a typed line at the prompt and quitting at the second in a row, quit offering to save |
 | `test_console_buttons.py` | GAP-04's playback-button lines: a flash up from `on` to `off`, `toggle` both ways, each button function on its edges, a `select` button's press selecting (one undo step), `release all` dropping a flash held from the console, a missing playback refused as `go` refuses it; a `LiveShow`, and a real `busk run` prompt |
+| `test_concurrent_lines.py` | GAP-12's lines from several threads: performance lines applied while another thread's edit compiles, save writes or script runs; any other line (programmer, query, edit, `undo`, `save`) waiting for it and then seeing it; `source` and `run_script` whole; a line parsed again when another thread changed the show (two `effect add` of one new template); the ids of one parse; Ctrl+C staying with the main thread; queries surviving another thread's `submit`; eight threads at once; `busk run`'s show sending `go` while an edit compiles |
 | `test_confirmation.py` | GAP-10's `confirmation` of both facades: `output off` asks however it is typed, every other line (a binding of `output off`, `source`, a line that does not parse) runs at once, `execute` never asks; asking uses up no id (the club-night script builds the same show asked about line by line) and commits nothing; a `LiveShow` from another thread, and `busk run`'s prompt asking what its attached show answers |
 | `test_console_prompt.py` | What may follow a line, per grammar area (keywords, names from the show and the libraries, described values, `<Enter>`, mistakes), with no id taken; every word of `examples/club-night.busk` offered where it stands; the `?` help and the grammar forms it picks; the completer's choices for GNU readline and libedit; a real prompt on a pseudo-terminal (Tab, `?`, Ctrl+C twice) |
 | `test_build_from_scratch.py` | **The Phase 3 done criterion:** the build script from `busk new`, golden show and golden DMX (checked by hand), a live preset edit, undo all / redo all, save → load |
@@ -192,7 +194,7 @@ src/busk/
   library/effects.json   # the built-in effect templates and their console defaults
   console/
     parser.py            #   parse(): a console line → an action (pure); expected()
-    console.py           #   Console.execute(), run_script(), interact()
+    console.py           #   Console.execute() (from any thread), run_script(), interact()
     prompt.py            #   Tab completion and ? on readline (GNU readline and libedit)
   persistence/
     show_file.py         #   load_show(), save_show(), atomic_write(), backups, new_show()
@@ -283,6 +285,7 @@ bench/edit_latency.py        # live-edit latency and engine stalls
 bench/surface_load.py        # ticks, phone round trips and command latency under surface load
 bench/engines.py             # the engine under a bench: a thread, or a real engine process (--processes)
 bench/transport.py           # install sizes and load times on the console → engine link
+bench/thread_latency.py      # performance lines from one thread while another edits
 bench/soak.py                # the soak: build, chaos schedule, analysis, report (done criterion B)
 bench/soak_receiver.py       #   its receiver: sACN, Art-Net and a DMX-USB pseudo-terminal, timed by the kernel
 bench/soak_load.py           #   its load: MIDI, OSC, a phone and console lines, seeded

@@ -463,6 +463,26 @@ candidate show, validated and compiled, and only then committed and installed; a
 rejects the whole edit, a `BATCH` included, and nothing changes anywhere. Other threads
 read an immutable `SessionSnapshot` published by one reference assignment.
 
+**Lines from several threads** (`busk.console.console`; GAP-12 of
+[`tui/engine-gaps.md`](tui/engine-gaps.md)). The console has a line lock, reentrant.
+Every line is parsed first with an id factory of its own, as `confirmation` parses. A
+performance command then goes to the session at once, which queues it without its lock,
+so a frontend's `go` passes another thread's edit, save or script. Any other line waits
+for the line lock, is parsed again under it with the session's ids (a scripted build with
+`CounterIds` gets the ids it always got), and runs. So lines from different threads are
+serialised from parse to reply, and no line is parsed against a show another thread's line
+is about to change: two `effect add` of a template the show does not embed yet would both
+have embedded it, and the second would have failed. `run_lines` holds the lock for the
+whole script, as a `source` line does, so a script runs whole. The line lock is taken
+before the session's lock and the bus's, never while either is held. Commands that reach
+the session without the console (`submit`, surfaces, the web remote) do not take it, so a
+query reads the show as it is now, which may not be the one its line was parsed against:
+`list masters` and `list cues` leave out what was deleted in between. Under `busk run` a
+performance command still takes the `RemoteBus` writer lock, which an install holds while
+it is encoded and sent. SIGINT can be held back only on the main thread, so only the main
+thread's line or script, and the facade's `KeyboardInterrupt`, act on it. Measurements:
+[benchmarks](benchmarks.md#several-threads).
+
 **Edits and undo** (`busk.commands.patch`, §15.4). Generic edits address the show by id
 (`["cueLists", {"id": "cl-song"}, "cues", {"id": "c-verse"}, "timing", "fadeIn"]`); recording
 and patching have their own commands. Every edit is a list of JSON-patch ops (`add`,

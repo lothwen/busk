@@ -22,6 +22,20 @@ the session with different shows. So while a command runs, SIGINT is held
 back: :attr:`Console.interrupted` records it, and the caller acts on it once
 the command is done (the prompt drops it, a script stops, piped input ends
 the run).
+
+**Lines from several threads** (GAP-12 of ``docs/dev/tui/engine-gaps.md``).
+A line other than a performance line runs whole under the console's line
+lock, from its parse to its reply, so lines from different threads run as if
+one after the other; a ``source`` script, and :meth:`Console.run_lines`, run
+whole too. A performance line (a command of the performance class: ``go``,
+``fader``, ``gm`` …) takes no lock: it is parsed against the session's
+published state and goes straight to the engine's queue
+(:mod:`busk.session.session`), so it never waits for another thread's edit,
+save or script. To tell them apart, every line is parsed first with an id
+factory of its own, as :meth:`Console.confirmation` parses; any other line is
+parsed again under the lock, with the session's, so it uses up the ids a
+single thread would. SIGINT can only be held back on the main thread, so
+only the main thread's line or script acts on :attr:`Console.interrupted`.
 """
 
 from __future__ import annotations
@@ -36,8 +50,10 @@ from pathlib import Path
 from types import FrameType
 from typing import Any, Final, cast
 
+from busk.commands.classes import command_class
 from busk.console.parser import (
     HELP,
+    Action,
     Context,
     Expected,
     Nothing,
@@ -105,13 +121,17 @@ class Console:
         self._settle = settle
         self.quit_requested = False
         self.interrupted = False
-        """Ctrl+C arrived while a command ran (it was held back until it finished)."""
+        """Ctrl+C arrived while a command ran on the main thread (it was held
+        back until it finished)."""
         self._depth = 0
+        self._lock = threading.RLock()  # every line but a performance line (see the module docs)
 
     # ---------------------------------------------------------- running
 
     def execute(self, line: str) -> Reply:
-        """Run one line; never raises, not even for Ctrl+C (see the module docs)."""
+        """Run one line; never raises, not even for Ctrl+C (see the module
+        docs). Safe from any thread: a performance line never waits for
+        another thread's line, and any other line waits for one that runs."""
         with self._interrupts_held():
             reply = self._execute(line)
             if self._settle is not None:
@@ -154,22 +174,36 @@ class Console:
 
     def _context(self) -> Context:
         session = self.session
+        snapshot = session.snapshot  # one read: the show and the programmer of one moment
         return Context(
-            session.show,
+            snapshot.show,
             self.library,
             session.ids,
             self.iface,
             effects=self.effects,
-            programmer=session.programmer,
+            programmer=snapshot.programmer,
             page=self._page(),
         )
 
     def _execute(self, line: str) -> Reply:
-        session = self.session
         try:
-            action = parse(line, self._context())
+            action = parse(line, replace(self._context(), ids=RandomIds()))
         except ParseError as exc:
             return Reply(f"error: {exc.message}", ok=False)
+        if isinstance(action, Nothing) or (
+            isinstance(action, Submit)
+            and command_class(cast(Mapping[str, object], action.command)) == "performance"
+        ):
+            return self._run(action)  # no lock: see the module docs
+        with self._lock:
+            try:  # again, now that no other line runs, and with the session's ids
+                action = parse(line, self._context())
+            except ParseError as exc:
+                return Reply(f"error: {exc.message}", ok=False)
+            return self._run(action)
+
+    def _run(self, action: Action) -> Reply:
+        session = self.session
         if isinstance(action, Nothing):
             return Reply("")
         if isinstance(action, Submit):
@@ -215,22 +249,26 @@ class Console:
 
         ``failed(number, line)`` is told which line failed (1-based, its
         text stripped) before the location line is written. Returns success.
+        They run whole, as one line does: a line of another thread waits
+        until they are done, unless it is a performance line.
         """
-        for number, line in enumerate(lines, start=1):
-            reply = self.execute(line)
-            if not reply.ok:
-                if failed is not None:
-                    failed(number, line.strip())
-                write(f"{path}:{number}: {line.strip()}")
-            if reply.text:
-                write(reply.text)
-            if not reply.ok:
-                return False
-            if self.interrupted:
-                write(f"{path}:{number}: interrupted")
-                return False
-            if self.quit_requested:
-                break
+        main = threading.current_thread() is threading.main_thread()
+        with self._lock:
+            for number, line in enumerate(lines, start=1):
+                reply = self.execute(line)
+                if not reply.ok:
+                    if failed is not None:
+                        failed(number, line.strip())
+                    write(f"{path}:{number}: {line.strip()}")
+                if reply.text:
+                    write(reply.text)
+                if not reply.ok:
+                    return False
+                if main and self.interrupted:
+                    write(f"{path}:{number}: interrupted")
+                    return False
+                if self.quit_requested:
+                    break
         return True
 
     def _source(self, path: Path) -> Reply:
@@ -376,7 +414,10 @@ class Console:
     def _list_cues(self, number: int) -> str:
         """``list cues L``: each cue's number, name, timing and trigger, in the
         console's own syntax (``time 3/1 delay 0/2 easeIn, color 3  follow 0``)."""
-        cue_list = next(cl for cl in self.session.show["cueLists"] if cl["number"] == number)
+        lists = self.session.show["cueLists"]
+        cue_list = next((cl for cl in lists if cl["number"] == number), None)
+        if cue_list is None:  # deleted since the line was parsed, by a command of another thread
+            return f"no cue list {number}"
         lines = [
             f"{cue['number']:>5}  {cue['name']:<20} {_timing(cue['timing'])}  "
             f"{_trigger(cue['trigger'])}"
@@ -395,11 +436,14 @@ class Console:
         lines = []
         for master in show["masters"]:
             ident = master["id"]
-            level = levels.get(ident, compiled.masters[ident].initialLevel)
+            known = compiled.masters.get(ident)
+            if known is None:  # deleted since `show` was read, by a command of another thread
+                continue
+            level = levels.get(ident, known.initialLevel)
             line = f"{master['name']:<20} {master['kind']:<6} {level:>5.0%}"
             if master["kind"] == "speed":
-                bpm = tempos[ident].bpm if ident in tempos else compiled.masters[ident].defaultBpm
-                multiplier = compiled.masters[ident].multiplier(level)
+                bpm = tempos[ident].bpm if ident in tempos else known.defaultBpm
+                multiplier = known.multiplier(level)
                 line += f"  {round(bpm, 1):g} BPM ×{multiplier:g}"
             lines.append(line)
         return lines

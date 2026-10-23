@@ -18,6 +18,8 @@ The TUI runs a `busk.LiveShow` in its own process, or, since GAP-11, is run by `
 
 - **Actions** go through `LiveShow.execute(line) -> Reply(text, ok)`, one console line per
   action, echoed in the TUI's log. `submit()` is not used, so the UI teaches the command line.
+  Since GAP-12, `execute` may be called from several threads, and performance lines never
+  wait for another thread's line.
 - **Reads** use the typed public state: `LiveShow.snapshot` (`EngineSnapshot`),
   `LiveShow.frame` (`DmxFrame`, for the engine time), `LiveShow.show` (the `Show` document),
   `LiveShow.warnings`, since GAP-01 `LiveShow.output` (`OutputSnapshot`), since GAP-02
@@ -61,7 +63,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-09](#gap-09-effect-runtime-state) Effect runtime state | read | important | F1 B, F5 | **done** 2026-10-23 |
 | [GAP-10](#gap-10-confirmation-before-dangerous-lines) Confirmation before dangerous lines | read | important | prompt | **done** 2026-10-23 |
 | [GAP-11](#gap-11-running-the-tui-against-busk-run) Running the TUI against `busk run` | host | important | everything, on stage | **done** 2026-10-23 |
-| [GAP-12](#gap-12-concurrency-contract-of-execute) Concurrency contract of `execute()` | contract | important | responsiveness | open |
+| [GAP-12](#gap-12-concurrency-contract-of-execute) Concurrency contract of `execute()` | contract | important | responsiveness | **done** 2026-10-23 |
 | [GAP-13](#gap-13-control-input-monitor) Control input monitor | read | nice-to-have | F9 | open |
 | [GAP-14](#gap-14-stop-and-restart-a-programmer-effect) Stop and restart a programmer effect | action | nice-to-have | F1 B, F5 | open |
 | [GAP-15](#gap-15-effect-template-library) Effect template library | read | nice-to-have | F5 | open |
@@ -985,6 +987,8 @@ since frames still come every tick.
 
 ## GAP-12: Concurrency contract of `execute()`
 
+**Status:** done 2026-10-23 (see **Done** at the end of this section).
+
 **Needed by:** responsiveness during a show.
 
 **Today:** `execute()` works off the main thread (the SIGINT hold is skipped there). Whether
@@ -1003,6 +1007,91 @@ without parsing them.
 **TUI until then:** one worker thread runs every line in order. The UI never waits: it shows
 `⧗ <line> 1.4s` while a line takes longer than 0.3 s and keeps accepting input. Repeated control
 moves (fader and master drags) replace their own queued, unsent line instead of piling up.
+
+**Done** (2026-10-23). The contract, as suggested: `LiveShow.execute()` is safe from any
+number of threads, and a performance line never waits for another thread's line. The
+alternative, `LiveShow.is_performance(line)`, was not added (see below). No public name was
+added (`busk.__all__` stays at 36). Documented in `docs/library.md` (section 3, "Several
+threads", and section 2: an `OfflineShow` is for one thread at a time), the docstrings of
+`busk.runner` and `busk.console.console`, `docs/dev/internals.md` ("Lines from several
+threads") and `docs/dev/benchmarks.md` ("Several threads", from the new
+`bench/thread_latency.py`). Where it differs from the suggestion, or settles what the
+suggestion left open:
+
+- **Lines run as if one after the other.** A line that is not a performance line runs
+  whole under the console's line lock, from its parse to its reply: no other thread's line
+  lands in the middle of it, and it sees what the line before it did. Lines from one thread
+  run in the order it sends them. Lines from two threads have no order between them: a
+  `go` sent while another thread records a cue acts on the cue list as it was.
+- **The performance lines** are the lines whose command is of the performance class, the
+  ones the engine carries out: `go N`, `back N`, `goto N C`, `release N`, `release all`,
+  `fader N L`, `flash N on|off`, `toggle N`, `button N B on|off` (except the press of a
+  `select` button, which is a programmer command), `gm L`, `master "name" L`, `blackout
+  on|off`, `tap`, `bpm`, `page N|next|prev` and `output on|off`: the suggestion's list,
+  with GAP-04's buttons and `output`. `playback N goto C`, `page add` and `master add` are
+  edits. A blank line and a line that does not parse do not wait either.
+- **Every other line waits**, queries included (`list …`, `programmer`, `info`, `help`), so
+  a query answers after the edit another thread is making. Typed reads (`snapshot`,
+  `programmer`, `output` …) never wait.
+- **A script runs whole.** `source FILE` and `run_script` hold the line lock for all their
+  lines, so another thread's edit waits for the end of the script. Another thread's
+  performance lines still go at once.
+- **Each line is parsed twice.** First with an id factory of its own, as `confirmation`
+  parses, to tell a performance line from the others; any other line is parsed again under
+  the lock, with the session's ids, so it uses up the ids of one parse (a scripted build
+  with `CounterIds` gets the ids it always got). Without that second parse, a line parsed
+  while another thread's edit was being made could fail: two `effect add "Saw"` both
+  embedded the template, and the second was refused. A parse takes 3–6 µs on the
+  club-night show and on the 400-fixture rig alike.
+- **What a performance line still shares.** It takes no lock: the session has always
+  queued performance commands without its own, so it never waits for an edit's validation
+  and compile, a save or a script. But it shares the interpreter with them. On the
+  400-fixture rig, while another thread edited, a `fader` line was done 0.1 ms after it
+  was due at the median and 2.1–2.5 ms at the 99th percentile with
+  `tune_interpreter=True`; 1.2–1.4 and 13–16 ms at Python's default. Under `busk run
+  --frontend` it was 4.1–4.4 and 32–45 ms: the console process keeps Python's switch
+  interval, and the `RemoteBus` writer lock, which keeps an install ahead of the commands
+  validated against its show, is held while the install is encoded and sent (15–20 ms for
+  a patch on that rig). Before, a single worker kept a control's line behind the whole
+  edit (up to 190 ms there), save or script. On a small rig an edit takes a few
+  milliseconds, so none of this shows.
+- **Fixed on the way**, because several threads reach them:
+  - Ctrl+C belongs to the main thread, the only one SIGINT reaches. Another thread whose
+    line ended while the main thread's ran used to raise the main thread's
+    `KeyboardInterrupt`, and its script stopped as `interrupted`.
+  - `list masters` and `list cues` read the show again after the parse, and raised when a
+    command that does not go through the console (`submit()` from another thread, or a
+    binding's command) deleted what they listed in between. They leave it out now.
+  - The parse reads the show and the programmer from one `SessionSnapshot`.
+- **An `OfflineShow` is for one thread at a time**, as before: each call ticks its engine.
+- **Not built** (calls the user may veto):
+  - `LiveShow.is_performance(line)`. The TUI knows which of its own controls send
+    performance lines, and sends typed lines in order, as the `busk run` prompt runs them,
+    so it parses nothing. A typed `go` then waits behind a typed `save`. If typed
+    performance lines should pass too, the first parse is already there to answer it.
+  - A lower switch interval for `busk run`'s console process (`--threads` already has
+    one), and encoding installs outside the `RemoteBus` writer lock. The first takes the
+    `busk run` numbers above to 0.24–0.29 ms median and 14–15 ms p99; the second would cut
+    that p99 to the send. Both change every `busk run`, so they are left for a decision.
+- Tests: `tests/test_concurrent_lines.py` (17, each fix mutation-checked): performance lines
+  applied by the engine while another thread's edit compiles, its save writes and its
+  script runs; a programmer line, a query, an edit, `undo` and `save` waiting for another
+  thread's edit and then seeing it; `source` and `run_script` whole; two `effect add` of
+  one new template; the ids of one parse; blank lines and parse errors not waiting; Ctrl+C
+  on the main thread only; the two queries against another thread's `submit`; eight
+  threads at once; `busk run`'s attached show on a `RemoteBus` sending `go` to an engine
+  host while an edit compiles.
+
+The TUI can now keep a GO from waiting behind an edit. The bridge gets a second worker: the
+lines of the TUI's own controls that are performance lines (Space and `[GO]`, `[◂]`, fader
+and master drags and wheels, TAP, BPM ±, `[BLACKOUT]`, PgUp/PgDn, `[OUTPUT OFF]` after its
+question, `release all`, FLASH) go to a controls worker, in order among themselves and with
+the coalescing of control moves. Everything else (typed lines, pre-fills, edit and
+programmer buttons, the internal queries) stays on the ordered worker. The busy indicator
+`⧗` follows the ordered worker only. The bridge needs no parse of its own: which builder
+of `commands.py` makes a performance line is part of the builder, and a line sent to the
+wrong worker is still correct, only slower or unordered. The TUI's own `LiveShow` keeps
+`tune_interpreter=True`. The plan's Phase 0 deferral of a second lane can go.
 
 ## GAP-13: Control input monitor
 

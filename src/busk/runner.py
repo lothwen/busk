@@ -45,7 +45,17 @@ result whose ``ok`` is ``False``. ``run_script`` raises
 
 **Ctrl+C.** The console holds SIGINT back while a line runs, so a command is
 never split (see :mod:`busk.console.console`). The facade then raises
-:class:`KeyboardInterrupt` once the line is done, as Python would have.
+:class:`KeyboardInterrupt` once the line is done, as Python would have: on
+the main thread, the only one SIGINT reaches.
+
+**Threads** (GAP-12 of ``docs/dev/tui/engine-gaps.md``). A
+:class:`LiveShow` takes lines, commands and reads from any number of threads
+at once. Lines from different threads run as if one after the other, a
+script whole, except performance lines (``go``, ``fader``, ``gm`` …), which
+never wait for another thread's line: they go straight to the engine's
+queue, even while an edit compiles, a save writes or a script runs. An
+:class:`OfflineShow` ticks its engine inside each call, so it takes them
+from one thread at a time.
 
 **Logging** (decision 18). Nothing here prints. A :class:`LiveShow` logs its
 route lines (``sACN r1: …``) on ``busk.output``, its surface lines (the web
@@ -200,7 +210,16 @@ class _Facade:
     def execute(self, line: str) -> Reply:
         """Run one console line (``help`` lists them). Never raises (apart
         from :class:`KeyboardInterrupt`, see the module docs): a failed line
-        has ``ok=False`` and says why in its text."""
+        has ``ok=False`` and says why in its text.
+
+        A :class:`LiveShow` takes lines from several threads at once. A
+        performance line, one the engine carries out (``go N``, ``back N``,
+        ``goto N C``, ``release N``, ``release all``, ``fader N L``, ``flash
+        N on|off``, ``toggle N``, ``button N B on|off`` but for a select
+        button's press, ``gm L``, ``master "name" L``, ``blackout on|off``,
+        ``tap``, ``bpm``, ``page N|next|prev``, ``output on|off``), never
+        waits for another thread's line. Any other line waits until the line
+        another thread runs, a ``source`` script included, is done."""
         reply = self._console.execute(line)
         self._interrupted()
         return reply
@@ -256,8 +275,9 @@ class _Facade:
         """Called after each command: :class:`OfflineShow` ticks here."""
 
     def _interrupted(self) -> None:
-        """Raise the Ctrl+C the console held back while a line ran."""
-        if self._console.interrupted:
+        """Raise the Ctrl+C the console held back while a line ran (on the
+        main thread: not in another thread whose line ended meanwhile)."""
+        if threading.current_thread() is threading.main_thread() and self._console.interrupted:
             self._console.interrupted = False
             raise KeyboardInterrupt
 
@@ -276,6 +296,8 @@ class OfflineShow(_Facade):
     (the built-in profiles by default). ``ids`` makes the ids of new
     entities: random by default, :class:`~busk.session.ids.CounterIds` for
     reproducible shows.
+
+    Use it from one thread at a time: each call ticks its engine.
 
     Raises :class:`~busk.persistence.show_file.ShowLoadError` if ``show``
     does not validate, and :class:`~busk.compiler.compile.UnsupportedFeature`
@@ -506,6 +528,10 @@ class LiveShow(_Facade):
     interval while the show runs, as ``busk run`` does, so the engine thread
     keeps its rate while edits compile; it is a process-wide setting, so it
     is off by default, and :meth:`stop` restores it.
+
+    Any number of threads may command and read it at once (see
+    :meth:`execute`): a frontend can send its performance lines from a
+    thread of their own, so a ``go`` never waits for a ``save``.
 
     Raises :class:`~busk.persistence.show_file.ShowLoadError` if ``show``
     does not validate, and :class:`~busk.compiler.compile.UnsupportedFeature`

@@ -55,6 +55,11 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 - `busk run`'s show now has `frame`, `output` and `effects` too, from the engine process,
   which captures the output and effects only while they are read, at most 25 times a
   second.
+- A `LiveShow` may be used from several threads at once, as documented
+  ([the library guide](docs/library.md#3-live-inside-your-own-application-liveshow)).
+  Lines from different threads run as if one after the other, a script whole, except
+  performance lines (`go`, `fader`, `gm` …), which never wait for another thread's line:
+  a frontend's controls are not held up by an edit, a `save` or a script.
 - Console lines for playback buttons ([the console](docs/console.md#notes)): `flash N
   on|off` holds a playback's flash until it is released, `button N B on|off` presses and
   releases its button B as a bound control does, and `toggle N` activates or releases it.
@@ -116,6 +121,11 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Fixed
 
+- Lines from two threads: a line parsed while another thread's edit was still being
+  made could fail where it would have worked a moment later (two `effect add` of a
+  template the show did not have yet), `list masters` and `list cues` could raise when
+  another thread deleted what they listed, and a Ctrl+C on the main thread could be raised
+  in another thread whose line ended first, or stop that thread's script.
 - The web remote on a phone held sideways: the strips were squeezed until their names
   vanished and their buttons spilled out. The header now takes one row, each fader sits
   beside its buttons, and the masters open with a **Masters** button.

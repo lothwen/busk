@@ -113,7 +113,8 @@ ignoring case. Files it cannot read are skipped, with one line each in `problems
 `OfflineShow` runs a show on a clock you drive. It starts no thread, opens no socket
 and writes only the files it is asked to. It takes console lines (`execute`), scripts
 of console lines (`run_script`) and command dicts (`submit`), and `tick(t)` moves the
-engine to time `t` and returns the frame it made.
+engine to time `t` and returns the frame it made. Each call ticks its engine, so use it
+from one thread at a time.
 
 ```python
 >>> busk.save_show(busk.new_show("Club Night"), "club.show")   # what `busk new` does
@@ -269,6 +270,39 @@ if question is None or dialog.yes_no(question):     # the frontend's own dialog
     reply = live.execute(line)
 ```
 
+**Several threads.** A `LiveShow` may be used from any number of threads at once:
+`execute`, `submit`, `save`, `run_script`, `confirmation` and every read. Lines from
+different threads run as if one after the other: a line runs whole, and so does a script
+(`source FILE`, `run_script`), so no other thread's line lands in the middle of it. Lines
+from one thread run in the order it sends them. Performance lines are the exception: they
+never wait for another thread's line. They are the lines the engine carries out: `go N`,
+`back N`, `goto N C`, `release N`, `release all`, `fader N L`, `flash N on|off`, `toggle
+N`, `button N B on|off` (except the press of a `select` button, which selects), `gm L`,
+`master "name" L`, `blackout on|off`, `tap`, `bpm`, `page N|next|prev` and `output
+on|off`. Each goes to the engine at once, even while another thread's edit compiles, a
+`save` writes or a script runs. Any other line, a query too, waits until the line another
+thread runs is done. So a frontend sends the performance lines of its own controls from a
+thread of their own, and everything else, typed lines included, in order from another:
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+
+controls = ThreadPoolExecutor(max_workers=1)   # GO, faders, masters: never behind an edit
+lines = ThreadPoolExecutor(max_workers=1)      # typed lines and edits, in order
+lines.submit(live.execute, "save")
+controls.submit(live.execute, "go 1")          # now, not once the save is done
+```
+
+Lines from two threads have no order between them: a `go` sent while another thread
+records a cue acts on the cue list as it was. The threads also share the interpreter: a
+performance line waits for no other line, but while another thread compiles a large edit
+it runs only when the interpreter switches threads. `tune_interpreter=True` makes that
+often enough not to matter: on the 400-fixture rig of the benchmarks, while another thread
+edited, a `fader` line was done 2–2.5 ms after it was due at the 99th percentile, against
+13–16 ms at Python's default ([benchmarks](dev/benchmarks.md#several-threads)). On a
+small rig an edit takes a few milliseconds (2–4 ms on the benchmarks' 7-fixture demo rig),
+so either is too short to notice.
+
 ```python
 show, _ = busk.load_show("club.show")
 with busk.LiveShow(show, path="club.show", surfaces=True) as live:   # routes and surfaces open
@@ -312,7 +346,11 @@ opens no route, so nothing goes to the network; the frames are made all the same
 ([Running a show](running.md#frontends)). The frontend reads and commands it as above,
 and gets the run's safety net: the engine in its own process, the watchdog, autosave and
 recovery. Its `frame`, `output` and `effects` come from the engine process: the first read
-of each asks for them and returns `None`. It does not call `start()` or `stop()`.
+of each asks for them and returns `None`. It does not call `start()` or `stop()`. It may
+use the show from several threads, as above. There the console process keeps Python's
+switch interval, and an edit's install holds the commands sent meanwhile while it goes to
+the engine process: on the 400-fixture rig, a `fader` line sent while another thread
+edited was done 32–45 ms after it was due at the 99th percentile.
 
 ## Reference
 

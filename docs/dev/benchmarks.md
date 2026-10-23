@@ -149,6 +149,33 @@ Appendix A's tick 0.079 ms mean, the reference rig with 60 playbacks 1.98 ms mea
 output cycle for 64 universes 0.073 ms median for sACN (0.065 at step 1) and 0.067 ms for
 Art-Net.
 
+## Several threads
+
+**Performance lines beside edits** (GAP-12, 2026-10-23; `bench/thread_latency.py`, four
+runs of each layout). A frontend sends its controls' lines from a thread of their own, and
+they never wait for another thread's line, but they share the interpreter with it. On the
+§19-sized rig of the live-edit bench with 20 playbacks up, one thread sends `fader 1 …`
+every 3 ms while another runs 200 edit lines (a group selected, a colour set, a cue
+recorded with merge, a fixture unpatched and renamed: 13–18 ms median, the slowest
+110–190 ms). Time from when a fader line was due to when `execute` returned:
+
+| Layout | Switch interval | p50 | p99 | max |
+|---|---|---|---|---|
+| `LiveShow` | 5 ms (Python's) | 1.2–1.4 ms | 13–16 ms | 25–30 ms |
+| `LiveShow` | 0.1 ms (`tune_interpreter=True`) | **0.10–0.11 ms** | **2.1–2.5 ms** | 6–8 ms |
+| `busk run`'s console (`--frontend`) | 5 ms (what it runs with) | 4.1–4.4 ms | 32–45 ms | 44–57 ms |
+| `busk run`'s console | 0.1 ms | 0.24–0.29 ms | 14–15 ms | 23–28 ms |
+
+Before GAP-12 a frontend's single worker kept a fader line behind the edit, the save or the
+whole script in front of it: up to 190 ms here for an edit. What is left is the
+interpreter: with the default 5 ms switch interval a line waits for the compiling thread to
+let go. In `busk run`'s console (processes) two more things hold it: that process keeps
+Python's switch interval (the engine, in its own process, does not need it lower), and the
+`RemoteBus` writer lock, which orders an install and the commands validated against its
+show, is held while the install is encoded and sent (0.8–1 ms median, 10–13 ms of
+encoding and 15–20 ms in all for a patch, which sends the 1.5 MB rig): that is the 14 ms
+p99 that tuning leaves.
+
 ## The soak
 
 **The soak** (`bench/soak.py`, phase-7-plan step 19, 2026-10-16). The harness builds the
