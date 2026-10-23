@@ -7,9 +7,11 @@ it shows changed: a command was applied or a release finished. Other threads
 :attr:`Engine.snapshot <busk.engine.loop.Engine.snapshot>` and never see a
 half-built one.
 
-An :class:`OutputSnapshot` (GAP-01) is the other read: the output per
+An :class:`OutputSnapshot` (GAP-01) is another read: the output per
 fixture element. It changes every tick, so the engine publishes only its raw
-form, and only while asked (:mod:`busk.engine.readout`).
+form, and only while asked (:mod:`busk.engine.readout`). So is an
+:class:`EffectSnapshot` (GAP-09), the effects running at one tick
+(:mod:`busk.engine.effect_status`).
 """
 
 from __future__ import annotations
@@ -177,6 +179,68 @@ class OutputSnapshot:
     seq: int
     time: float
     fixtures: tuple[FixtureOutput, ...]
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class EffectStatus:
+    """One running effect instance (GAP-09 of ``docs/dev/tui/engine-gaps.md``).
+
+    ``playback`` is the number of the playback whose cue runs it (on its
+    main or its flash), ``None`` for the programmer's. ``id`` is the
+    instance's id, unique among that playback's (or the programmer's)
+    running effects. ``cue`` is the number of the cue whose ``effects`` hold
+    the instance: the cue that defines it, also while it tracks into later
+    cues; ``None`` for the programmer's. With them a display finds the
+    instance, its template, targets and settings, in the show's cue list or
+    in :attr:`ProgrammerStatus.effects <busk.session.status.ProgrammerStatus.effects>`.
+
+    * ``presence`` (0..1) is how far in it is: rising while it enters (over
+      its ``sizeFadeIn``, else the cue's in time or the programmer's fade
+      time), 1 while it runs, falling while it leaves. A playback's fader and
+      its release scale the effect's output as they scale the playback's
+      values, not its presence;
+    * ``size`` is the instance's size × its size master × its playback's
+      ``size`` fader: the amplitude of its relative layers now (an absolute
+      layer takes the two levels as a weight instead);
+    * ``hz`` is its rate now, in cycles per second: a BPM effect's at the
+      tempo now, after its master's step, a ``rate`` fader and the strobe cap;
+    * ``phase`` (0..1) is where it is in its cycle, before the members'
+      phase offsets;
+    * ``wave`` is the next cycle of its first layer with a waveform: the wave
+      (0..1) of that layer's first member at 20 equal steps, starting now
+      (:data:`~busk.engine.effect_status.WAVE_SAMPLES`); ``()`` when no layer
+      has a waveform (a colour cycle);
+    * ``colors`` is the same for its first colour layer, as linear RGB 0..1;
+      ``()`` when it has none.
+
+    While a cue changes an instance's settings, the old ones fade out and
+    the new ones in: the status shows the new ones, and ``presence`` the sum.
+    """
+
+    playback: int | None
+    cue: str | None
+    id: str
+    presence: float
+    size: float
+    hz: float
+    phase: float
+    wave: tuple[float, ...]
+    colors: tuple[tuple[float, float, float], ...]
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class EffectSnapshot:
+    """The effects running at one tick (GAP-09).
+
+    ``seq`` and ``time`` are those of the tick, as in the
+    :class:`~busk.runner.DmxFrame` it made. ``effects`` lists every running
+    instance: the playbacks' in show order (one playback's leaving instances
+    first, then its cue's in cue order), then the programmer's.
+    """
+
+    seq: int
+    time: float
+    effects: tuple[EffectStatus, ...]
 
 
 @dataclass(frozen=True, kw_only=True)

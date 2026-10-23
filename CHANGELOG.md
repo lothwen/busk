@@ -17,6 +17,13 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   masters and the safety stage, what drives each family of its attributes (the
   programmer, a playback, an effect or nothing) and the playback that drives its
   intensity. A `LiveShow`'s engine reads its output back only once `output` has been read.
+- `OfflineShow.effects` and `LiveShow.effects`: the effect instances the engine runs, the
+  playbacks' and the programmer's, as two new public types, `EffectSnapshot` and
+  `EffectStatus` ([the library guide](docs/library.md#2-build-a-show-and-render-it-offlineshow)).
+  Each instance has its playback, the cue that defines it and its id, how far it has
+  faded in, its size and rate now, its phase, and the next cycle of its waveform or its
+  colours in 20 samples, for a sparkline. As with `output`, a `LiveShow`'s engine reads
+  its effects back only once `effects` has been read.
 - `OfflineShow.programmer` and `LiveShow.programmer`: the programmer as a display shows it,
   as two new public types, `ProgrammerStatus` and `ProgrammerValue`
   ([the library guide](docs/library.md#2-build-a-show-and-render-it-offlineshow)): the

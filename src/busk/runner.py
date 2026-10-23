@@ -25,12 +25,13 @@ Frames are :class:`DmxFrame`\\ s: the engine's frame by universe *number*,
 without its compiled show and output layout, which are internal. The
 ``output`` of both facades is the same tick per fixture element, as logical
 values with what drives them (:class:`~busk.engine.snapshot.OutputSnapshot`,
-GAP-01 of ``docs/dev/tui/engine-gaps.md``), and their ``programmer`` is the
-programmer with fixtures by number (:class:`~busk.session.status.ProgrammerStatus`,
-GAP-02). A :class:`LiveShow`'s ``routes`` are its output routes and what
-each does (:class:`~busk.output.driver.RouteStatus`, GAP-07), and its
-``surfaces`` its control surfaces (:class:`~busk.io.surfaces.SurfaceStatus`,
-GAP-08).
+GAP-01 of ``docs/dev/tui/engine-gaps.md``), their ``effects`` the effect
+instances that tick ran (:class:`~busk.engine.snapshot.EffectSnapshot`,
+GAP-09), and their ``programmer`` is the programmer with fixtures by number
+(:class:`~busk.session.status.ProgrammerStatus`, GAP-02). A :class:`LiveShow`'s
+``routes`` are its output routes and what each does
+(:class:`~busk.output.driver.RouteStatus`, GAP-07), and its ``surfaces`` its
+control surfaces (:class:`~busk.io.surfaces.SurfaceStatus`, GAP-08).
 
 Errors (§5.8): constructing a facade raises
 :class:`~busk.persistence.show_file.ShowLoadError` for an invalid show and
@@ -68,11 +69,12 @@ from busk.commands.types import Command
 from busk.compiler.compile import CompiledShow, compile_show
 from busk.console.console import Console, Reply
 from busk.engine.clock import SWITCH_INTERVAL, Clock, FakeClock, MonotonicClock
+from busk.engine.effect_status import EffectCapture, read_effects
 from busk.engine.install import Stamp
 from busk.engine.link import EngineLink, LocalEngine
 from busk.engine.loop import Engine, Frame
 from busk.engine.readout import Capture, read_output
-from busk.engine.snapshot import EngineSnapshot, OutputSnapshot
+from busk.engine.snapshot import EffectSnapshot, EngineSnapshot, OutputSnapshot
 from busk.errors import ScriptError
 from busk.io.bindings import BindingResolver
 from busk.io.feedback import FeedbackWorker
@@ -291,6 +293,7 @@ class OfflineShow(_Facade):
         )
         self._time = 0.0
         self._read: OutputSnapshot | None = None  # the last tick's output, once read
+        self._effect_read: EffectSnapshot | None = None  # its effects, once read
         self._tick(0.0)
 
     @property
@@ -311,6 +314,18 @@ class OfflineShow(_Facade):
             output = read_output(self._engine.capture())
             self._read = output
         return output
+
+    @property
+    def effects(self) -> EffectSnapshot:
+        """The effect instances the last tick ran, the playbacks' and the
+        programmer's, each with its presence, size, rate, phase and next
+        cycle (see :class:`~busk.engine.snapshot.EffectStatus`). Made when
+        first read after a tick, then the same object until the next one."""
+        effects = self._effect_read
+        if effects is None or effects.seq != self._engine.stats.ticks:
+            effects = read_effects(self._engine.capture_effects())
+            self._effect_read = effects
+        return effects
 
     @property
     def time(self) -> float:
@@ -619,6 +634,7 @@ class LiveShow(_Facade):
         self._switch_interval: float | None = None  # to restore, when tuned
         self._latest: tuple[Frame, DmxFrame] | None = None
         self._read: tuple[Capture, OutputSnapshot] | None = None  # the last output read
+        self._effect_read: tuple[EffectCapture, EffectSnapshot] | None = None  # and effects
 
     # ----------------------------------------------------------- reading
 
@@ -664,6 +680,31 @@ class LiveShow(_Facade):
         if cached is None or cached[0] is not captured:
             cached = (captured, read_output(captured))
             self._read = cached  # one assignment: other threads see the pair whole
+        return cached[1]
+
+    @property
+    def effects(self) -> EffectSnapshot | None:
+        """The effect instances the engine's newest tick ran, the playbacks'
+        and the programmer's, each with its presence, size, rate, phase and
+        next cycle (see :class:`~busk.engine.snapshot.EffectStatus`). Poll it
+        with :attr:`output`.
+
+        As with :attr:`output`, the engine captures its effects only once
+        someone reads them: the first read turns that on for good and
+        returns ``None``, as do the reads before the engine's next tick.
+        ``None`` too for ``busk run``'s show, whose engine runs in another
+        process."""
+        engine = self._engine
+        if engine is None:
+            return None  # attached: the CLI's engine
+        engine.captureEffects = True
+        captured = engine.effects  # one read: published by reference assignment
+        if captured is None:
+            return None
+        cached = self._effect_read
+        if cached is None or cached[0] is not captured:
+            cached = (captured, read_effects(captured))
+            self._effect_read = cached  # one assignment: other threads see the pair whole
         return cached[1]
 
     @property

@@ -64,6 +64,13 @@ an `OutputSnapshot`, on the reader's thread, takes 0.04 ms on the Phase 3 show a
 10–11 ms on the reference rig (one `FixtureOutput` per element): polled 20 times a second,
 a fifth of a core.
 
+**The effect status** (GAP-09, 2026-10-23; same helpers, GC off). Capturing the running
+effects on the engine thread (a small record per instance) takes **0.03 ms** a tick for
+the reference rig's 20 effects; their tick took 3.85 ms mean with the capture and 3.79 ms
+without it, within run-to-run noise. The engine captures only while something reads
+`effects` all the same, as it does for the output. Building the 20 `EffectStatus`es with
+their next cycle, on the reader's thread, takes 0.16 ms mean (0.23 ms p99).
+
 ## Misses
 
 **Two Phase 4 targets are missed** (details in phase-4-plan step 18):

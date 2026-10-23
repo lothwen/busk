@@ -277,6 +277,22 @@ lanes, the master dimmer that dims a cell without its own, the colours of its co
 wheel's slots, and the runs of lanes of each family, so the per-family source is one
 `reduceat`.
 
+**The effect status** (`busk.engine.effect_status`; GAP-09 of
+[`tui/engine-gaps.md`](tui/engine-gaps.md)). `OfflineShow.effects` and `LiveShow.effects`
+list the instances the tick ran, as the public `EffectSnapshot`. Each `EffectRuntime` keeps
+what its last update evaluated (the clock's position, each version's presence and
+dynamics), and while `Engine.captureEffects` is set, each tick publishes an
+`EffectCapture`: per instance of every bank (the playbacks' in show order, main then
+flash, then the programmer's), its bank's `Origin`, its newest compiled form, which is
+immutable, and those numbers. As with the output, `LiveShow` sets the flag on the first
+read and `OfflineShow` captures on demand. `read_effects` builds the `EffectStatus`es on
+the reader's thread: the next cycle of the first member of the first layer with a
+waveform (and of the first colour layer) is the engine's own `base_phase`, `evaluate` and
+`palette_colours` at the clock positions `P + k/20`. The cue an instance is defined in is
+`CompiledEffect.cue`, set by the compiler and kept by tracking; it is not part of the
+structure `same()` compares, and a retarget to a `same()` form takes the new object, so a
+renumbered cue renames its running effects and changes nothing on stage.
+
 **Pages and buttons** (`busk.engine.surfaces`). The engine keeps the current page
 (`PageState`), one for every surface: it starts on the lowest-numbered page, `PAGE` moves
 it by number or by a delta that stops at the ends, and a live edit keeps it by id (a

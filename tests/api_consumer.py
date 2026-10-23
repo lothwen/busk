@@ -100,6 +100,16 @@ def offline(directory: Path) -> bytes:
         number: int | None = fixture.playback
         assert 0.0 <= level <= 1.0
         assert (pan, driver, number) is not None
+    running: busk.EffectSnapshot = show_.effects
+    assert running.seq == frame.seq
+    for instance in running.effects:
+        effect: busk.EffectStatus = instance
+        key: tuple[int | None, str | None, str] = (effect.playback, effect.cue, effect.id)
+        cells: tuple[float, ...] = effect.wave
+        hues: tuple[tuple[float, float, float], ...] = effect.colors
+        assert 0.0 <= effect.presence <= 1.0
+        assert 0.0 <= effect.phase < 1.0
+        assert (key, effect.size, effect.hz, cells, hues) is not None
     programmer: busk.ProgrammerStatus = show_.programmer
     selected: tuple[tuple[int, int], ...] = programmer.selection
     for entry in programmer.values:
@@ -127,6 +137,8 @@ def live(path: str, host: Callable[[busk.LiveShow], None]) -> busk.Show:
         assert frame is None or 1 in frame.universes
         output: busk.OutputSnapshot | None = live.output
         assert output is None or output.fixtures
+        running: busk.EffectSnapshot | None = live.effects
+        assert running is None or running.time >= 0.0
         programmer: busk.ProgrammerStatus = live.programmer
         assert programmer.version >= 1
         routes: tuple[busk.RouteStatus, ...] | None = live.routes

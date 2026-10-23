@@ -21,8 +21,8 @@ The TUI runs a `busk.LiveShow` in its own process. One module, `busk_tui/bridge.
   `LiveShow.frame` (`DmxFrame`, for the engine time), `LiveShow.show` (the `Show` document),
   `LiveShow.warnings`, since GAP-01 `LiveShow.output` (`OutputSnapshot`), since GAP-02
   `LiveShow.programmer` (`ProgrammerStatus`), since GAP-07 `LiveShow.routes`
-  (`RouteStatus`) and since GAP-08 `LiveShow.surfaces` (`SurfaceStatus`). The `busk.*`
-  loggers feed the TUI's log pane.
+  (`RouteStatus`), since GAP-08 `LiveShow.surfaces` (`SurfaceStatus`) and since GAP-09
+  `LiveShow.effects` (`EffectSnapshot`). The `busk.*` loggers feed the TUI's log pane.
 - **Text is not parsed.** `docs/library.md` says message text (`Reply.text`, CLI output, log
   records) may change in any release, so the TUI never extracts data from the output of
   `programmer`, `info`, `list …` or `library`. It may show such output verbatim.
@@ -56,7 +56,7 @@ Every new read should also reach `busk run`'s console process, so a later TUI at
 | [GAP-06](#gap-06-one-undo-step-for-a-gesture) One undo step for a gesture | action | important | F2 | open |
 | [GAP-07](#gap-07-output-route-status) Output route status | read | important | status bar, F8 | **done** 2026-10-23 |
 | [GAP-08](#gap-08-surface-status) Surface status | read | important | F9 | **done** 2026-10-23 |
-| [GAP-09](#gap-09-effect-runtime-state) Effect runtime state | read | important | F1 B, F5 | open |
+| [GAP-09](#gap-09-effect-runtime-state) Effect runtime state | read | important | F1 B, F5 | **done** 2026-10-23 |
 | [GAP-10](#gap-10-confirmation-before-dangerous-lines) Confirmation before dangerous lines | read | important | prompt | open |
 | [GAP-11](#gap-11-running-the-tui-against-busk-run) Running the TUI against `busk run` | host | important | everything, on stage | open |
 | [GAP-12](#gap-12-concurrency-contract-of-execute) Concurrency contract of `execute()` | contract | important | responsiveness | open |
@@ -672,6 +672,8 @@ bridge polls `surfaces` with the snapshot. The `busk.surfaces` records still fee
 
 ## GAP-09: Effect runtime state
 
+**Status:** done 2026-10-23 (see **Done** at the end of this section).
+
 **Needed by:** F5 `state` column (RUN/off) and `wave` sparkline, and the F1 layout B EFFECTS
 panel. Spec §4.3 (sparkline), §8.5, §9 ("Effects: … running, owning playback").
 
@@ -701,6 +703,95 @@ class EffectStatus:
 
 **TUI until then:** no `wave` or `state` column. For a cue effect, F5 shows the state of the
 playback that holds it, labelled as playback state ("P9 active"), not as the effect's.
+
+**Done** (2026-10-23). `OfflineShow.effects -> EffectSnapshot` and `LiveShow.effects ->
+EffectSnapshot | None`, with `EffectSnapshot` and `EffectStatus` in `busk.__all__` (now 36
+names):
+
+```python
+@dataclass(frozen=True, slots=True, kw_only=True)
+class EffectStatus:
+    playback: int | None           # number of the playback whose cue runs it; None: the programmer's
+    cue: str | None                # number of the cue that defines it; None: the programmer's
+    id: str                        # the instance's id
+    presence: float                # 0..1: rising while it enters, 1 while it runs, falling as it leaves
+    size: float                    # its size × its size master × its playback's size fader
+    hz: float                      # cycles per second now
+    phase: float                   # 0..1: where it is in its cycle, before the members' offsets
+    wave: tuple[float, ...]        # the next cycle of its first layer with a waveform: 20 samples, 0..1
+    colors: tuple[tuple[float, float, float], ...]  # the same for its first colour layer, linear RGB
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class EffectSnapshot:
+    seq: int                       # the tick's, as in its DmxFrame
+    time: float
+    effects: tuple[EffectStatus, ...]  # the playbacks' in show order, then the programmer's
+```
+
+Documented in `docs/library.md` (sections 2 and 3, and the reference), the classes'
+docstrings and `docs/dev/internals.md` ("The effect status"). Where it differs from the
+suggestion, or settles what the suggestion left open:
+
+- **A snapshot of one tick**, with `seq` and `time` as in its `DmxFrame`, like
+  `OutputSnapshot`, instead of a bare tuple: the phases and the samples are those of that
+  tick. `effects` lists every instance that ran: the playbacks' in show order (one
+  playback's leaving instances first, then its cue's in cue order), then the programmer's.
+  A flash's instances are its playback's: a playback's main and its flash never run its
+  effects at the same time, so `(playback, id)` is unique.
+- **Captured on demand**, as GAP-01's output: a `LiveShow`'s engine captures its effects
+  only once `effects` has been read (**the first read returns `None`**), then every tick,
+  published by reference. Reading `effects` does not turn on the output capture, nor the
+  other way round. `OfflineShow.effects` is made on demand after its tick. The capture
+  costs the engine thread 0.03 ms a tick for the reference rig's 20 effects, and building
+  their statuses, on the reader's thread, 0.16 ms (`docs/dev/benchmarks.md`).
+- **`cue` is the cue that defines the instance**, not the one it started at: the cue
+  whose `effects` hold it. In a tracking list an instance carries on, by id, into the
+  later cues with that cue's settings, and a cue that gives it other settings (the same
+  id) becomes its `cue`. So `(playback, cue, id)` finds, in `show["cueLists"]`, the entry
+  an F5 row shows, with its template, targets, rate as typed, size, phase spread, wings
+  and direction; a programmer instance is found by `id` in `programmer.effects`.
+  Renumbering a cue renames its running effects at once and changes nothing on stage
+  (a releasing playback's keep the number they had until they end). Inside, it is
+  `CompiledEffect.cue`, which `same()` leaves out, and a retarget to a `same()` form takes
+  the new object.
+- **No `template`.** As GAP-02 settled for the programmer's effects, the settings are
+  looked up in the show by the keys above, so one formatter serves the document and the
+  status, which carries only what runs.
+- **`presence` added; `size` without it.** `presence` is the instance's own fade (in over
+  its `sizeFadeIn`, else the cue's in time or the programmer's fade time; out with the
+  cue's out time or the programmer's fade time) and, while a cue changes its settings,
+  the sum of the old and the new form's, at most 1. `size` is the amplitude its relative
+  layers apply now, after the size master and the `size` fader. A playback's fader and
+  its release are in neither: they scale the effect as they scale the playback's values,
+  and the snapshot has them (`faderLevel`, `state`).
+- **`hz`**, cycles per second now: a BPM effect's at the tempo now, after its master's
+  step, a `rate` fader and the strobe cap. A beat nudge in progress is left out.
+- **`phase`** is the effect's own position in its cycle, with its direction applied
+  (`reverse` runs it down, `bounce` folds it), before the members' phase offsets.
+- **`wave` is the next cycle, from now**, not one cycle from 0: sample `k` is what the
+  first member of the first layer with a waveform (a Circle's pan, not its tilt) does
+  `k / (20 · hz)` seconds after the tick, while the rate holds. That is the spec's
+  sparkline "scrolling with phase" as it comes, and a random wave shows the cycle it runs
+  into. The values are the waveform's 0..1, before `low`/`high` and `size`.
+- **`colors` added**: the same for the first colour layer, with the first member's
+  palette as the engine resolved it (presets by scope), for the spec's "Rainbow uses
+  per-cell hue". `()` without a colour layer; `wave` is `()` without a waveform.
+- **Not under `busk run` yet.** The attached show's `effects` is `None`, like its `frame`
+  and `output`: the engine runs in another process. Carrying it is now part of
+  [GAP-11](#gap-11-running-the-tui-against-busk-run).
+- Tests: `tests/test_effect_status.py` (both facades and the attached show, every rule
+  above, the samples checked against what the output does over the next cycle), the
+  defining cue in `tests/test_effect_compile.py`, the public API golden and
+  `tests/api_consumer.py`.
+
+The TUI can now fill F5's `state` column: `RUN` for a row whose `(playback, cue, id)`
+(for a cue effect, the playback that runs its list) or programmer `id` is in `effects`,
+dimmed while `presence` is below 1, `off` otherwise; and its `wave` sparkline: heights
+from `wave`, per-cell hue from `colors` (full cells when `wave` is empty), drawn as it
+comes on each poll. The F1 layout B EFFECTS panel shows the same, and the `rate` column
+may add the live `hz`. The bridge polls `effects` with `output` and treats its first
+`None` like the snapshot's. The "P9 active" label is no longer needed. The RUN/off click
+stays `go N` / `release N` for a cue effect; a programmer effect's waits for GAP-14.
 
 ## GAP-10: Confirmation before dangerous lines
 
@@ -736,9 +827,10 @@ its own process, but its console process has a line prompt, and its seam for a f
   process, talking to a running `busk run`.
 
 Either way the TUI keeps the same bridge API (`execute`, `snapshot`, `frame`, `show`, and the
-reads above). Today the attached show's `frame` and `output` ([GAP-01](#gap-01-fixture-output-values))
-are `None`: the engine process sends the console process only snapshots, so either option
-must carry the frames and the output captures too.
+reads above). Today the attached show's `frame`, `output` ([GAP-01](#gap-01-fixture-output-values))
+and `effects` ([GAP-09](#gap-09-effect-runtime-state)) are `None`: the engine process sends
+the console process only snapshots, so either option must carry the frames, the output
+captures and the effect captures too.
 
 **Priority:** important.
 

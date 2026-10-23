@@ -293,6 +293,12 @@ class CompiledEffect:
     or :meth:`remapped` drop rows, so the remaining members keep their
     phases and random values.
 
+    ``cue`` is the number of the cue whose ``effects`` hold the instance
+    (``None`` for the programmer's); a tracked instance keeps that cue's. It
+    says where the instance is defined (GAP-09's effect status) and is not
+    part of its structure: :meth:`same` leaves it out, so renumbering a cue
+    changes no running effect.
+
     Compare effects with :meth:`same`; ``==`` is identity, which is what
     the engine checks first (within one compile, a tracked instance is the
     same object in every cue that holds it).
@@ -310,11 +316,13 @@ class CompiledEffect:
     sizeMasterId: MasterId | None
     layers: tuple[CompiledLayer, ...]
     targets: tuple[TargetRef, ...]
+    cue: str | None = field(default=None, compare=False)
 
     def same(self, other: CompiledEffect) -> bool:
-        """Whether ``other`` is structurally equal: every field equal, every
-        array of the same shape and values. A live edit that leaves an
-        instance alone recompiles it to a new object that is the same."""
+        """Whether ``other`` is structurally equal: every field but ``cue``
+        equal, every array of the same shape and values. A live edit that
+        leaves an instance alone recompiles it to a new object that is the
+        same."""
         return _same(self, other)
 
     @property
@@ -384,7 +392,8 @@ class CompiledEffect:
 
 def _same(a: object, b: object) -> bool:
     """Structural equality: arrays exactly (shape and values), tuples item by
-    item, dataclasses field by field, anything else by ``==``."""
+    item, dataclasses field by field (leaving out fields that do not compare,
+    such as :attr:`CompiledEffect.cue`), anything else by ``==``."""
     if a is b:
         return True
     if isinstance(a, np.ndarray):
@@ -393,7 +402,9 @@ def _same(a: object, b: object) -> bool:
         return isinstance(b, tuple) and len(a) == len(b) and all(map(_same, a, b))
     if dataclasses.is_dataclass(a) and not isinstance(a, type):
         return type(a) is type(b) and all(
-            _same(getattr(a, f.name), getattr(b, f.name)) for f in dataclasses.fields(a)
+            _same(getattr(a, f.name), getattr(b, f.name))
+            for f in dataclasses.fields(a)
+            if f.compare
         )
     return bool(a == b)
 
@@ -402,9 +413,10 @@ def _same(a: object, b: object) -> bool:
 
 
 def compile_effect(
-    compiler: CueCompiler, instance: EffectInstance, path: str
+    compiler: CueCompiler, instance: EffectInstance, path: str, cue: str | None = None
 ) -> CompiledEffect | None:
-    """Compile one validated effect instance, found at ``path`` in the show.
+    """Compile one validated effect instance, found at ``path`` in the show,
+    in cue number ``cue`` (``None``: the programmer's).
 
     1. Look up the template and expand the targets (a group follows its
        members). ``compiler`` notes both, and every palette preset, so the
@@ -465,6 +477,7 @@ def compile_effect(
         sizeMasterId=instance.get("sizeMasterId"),
         layers=tuple(layers),
         targets=targets,
+        cue=cue,
     )
 
 

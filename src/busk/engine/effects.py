@@ -257,6 +257,13 @@ class EffectClock:
                 position += self.error * left
         return position
 
+    @property
+    def hz(self) -> float:
+        """The rate in cycles per second: a BPM clock's at its master's tempo
+        now (a nudge in progress left out)."""
+        master = self.master
+        return self.rate if master is None else self.rate * master.bpm / 60.0
+
     def align(self, now: float, p_ref: float) -> None:
         """Re-align a BPM clock at ``now`` to its master's grid, near the
         position ``p_ref``: after a tap, the position before the master's
@@ -401,6 +408,26 @@ _ORDER_BITS: Final = 16
 """A relative's ``order`` is its runtime's place ≪ this, plus its place in the runtime."""
 
 
+def palette_colours(
+    palette: NDArray[np.float64], phase: NDArray[np.float64], snap: bool, out: NDArray[np.float64]
+) -> None:
+    """A palette cycle, row by row: at phase position ``φ`` (``p = φ −
+    floor(φ)``), position ``x = p·K`` among the row's ``K`` colours, holding
+    colour ``floor(x)`` (snap) or blending it into the next, wrapping to the
+    first (fade). ``palette`` has shape ``(rows, K, 3)``, ``phase`` one
+    position per row, and ``out`` gets one ``r, g, b`` per row."""
+    count = palette.shape[1]
+    position = (phase - np.floor(phase)) * count
+    index = np.minimum(np.floor(position).astype(np.intp), count - 1)  # p can round to 1
+    rows = np.arange(palette.shape[0])
+    if snap:
+        out[:] = palette[rows, index]
+        return
+    blend = (position - index)[:, None]
+    here, after = palette[rows, index], palette[rows, (index + 1) % count]
+    out[:] = here + (after - here) * blend
+
+
 class _Part:
     """One layer of one version, writing into a channel at ``at`` (positions
     in the channel's lanes, row by row; three per row for a colour layer),
@@ -422,7 +449,7 @@ class _Part:
         layer, out = self.layer, self.out
         np.add(layer.phase, base, out=self.phase)
         if layer.palette is not None:
-            self._colour(layer.palette, layer.blend == "snap")
+            palette_colours(layer.palette, self.phase, layer.blend == "snap", out.reshape(-1, 3))
             return
         assert layer.wave is not None
         evaluate(layer.wave, self.phase, layer.member, out)
@@ -435,23 +462,6 @@ class _Part:
         else:  # multiply: 1 − size·d·(1 − w)
             out *= size
             out += 1.0 - size
-
-    def _colour(self, palette: NDArray[np.float64], snap: bool) -> None:
-        """A palette cycle: position ``x = p·K`` among the member's ``K``
-        colours, holding colour ``floor(x)`` (snap) or blending it into the
-        next, wrapping to the first (fade)."""
-        phase = self.phase
-        count = palette.shape[1]
-        position = (phase - np.floor(phase)) * count
-        index = np.minimum(np.floor(position).astype(np.intp), count - 1)  # p can round to 1
-        rows = np.arange(palette.shape[0])
-        out = self.out.reshape(-1, 3)
-        if snap:
-            out[:] = palette[rows, index]
-            return
-        blend = (position - index)[:, None]
-        here, after = palette[rows, index], palette[rows, (index + 1) % count]
-        out[:] = here + (after - here) * blend
 
 
 type _Rows = tuple[int, CompiledLayer, NDArray[np.intp]]
@@ -516,7 +526,10 @@ class EffectRuntime:
     ``source`` (absolute layers) is a contributor of the bank's band, at
     number ``seq``; ``relatives`` hold one :class:`Relative` per relative
     layer. Both are refilled in place by :meth:`update`, and replaced when
-    the versions change.
+    the versions change. ``position``, ``presences`` and ``dynamics`` are
+    what the last :meth:`update` evaluated: the clock's position, and each
+    version's presence and dynamics ``d`` (what the effect status reads,
+    :mod:`busk.engine.effect_status`).
     """
 
     __slots__ = (
@@ -525,8 +538,11 @@ class EffectRuntime:
         "_relative",
         "_snap",
         "clock",
+        "dynamics",
         "key",
         "place",
+        "position",
+        "presences",
         "relatives",
         "seq",
         "source",
@@ -541,6 +557,9 @@ class EffectRuntime:
         self.clock = clock
         self.place = 0  # its place in the bank: orders relatives that share a number
         self.versions: list[Version] = []
+        self.position = 0.0
+        self.presences: list[float] = []
+        self.dynamics: list[float] = []
         none = np.zeros(0, dtype=np.intp)
         self.source = Source(
             sourceId=sourceId,
@@ -655,6 +674,7 @@ class EffectRuntime:
         position = self.clock.position(now)
         presence = [v.presence.value(fade_at) for v in versions]
         dynamics = [scalars.dynamics(v.effect) for v in versions]
+        self.position, self.presences, self.dynamics = position, presence, dynamics
         relative = self._relative
         for channel in (self._htp, self._ltp, *relative):
             for part in channel.parts:
@@ -804,6 +824,7 @@ class EffectBank:
         force = scale != 1.0
         newest = runtime.newest
         if newest.effect is effect or newest.effect.same(effect):
+            newest.effect = effect  # the same structure; its cue may be numbered anew
             entering = newest.presence.toValue != 1.0
             if entering or force:
                 ends.append(runtime.ramp(now, newest, 1.0, timing.enter(effect), scale))

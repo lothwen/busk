@@ -23,7 +23,8 @@ Running a show
     as threads in the caller's process, optionally with the show's surfaces.
     Both take commands (:meth:`~OfflineShow.submit`), console lines
     (:meth:`~OfflineShow.execute`) and scripts, read their output back
-    per fixture (:attr:`~OfflineShow.output`) and show their programmer
+    per fixture (:attr:`~OfflineShow.output`) and show their running
+    effects (:attr:`~OfflineShow.effects`) and their programmer
     (:attr:`~OfflineShow.programmer`); a :class:`LiveShow` also shows its
     output routes (:attr:`~LiveShow.routes`) and control surfaces
     (:attr:`~LiveShow.surfaces`).
@@ -34,6 +35,7 @@ Data types
     :class:`EngineSnapshot` with :class:`PlaybackStatus`,
     :class:`SpeedStatus` and :class:`PageStatus`; :class:`DmxFrame`;
     :class:`OutputSnapshot` with :class:`FixtureOutput`;
+    :class:`EffectSnapshot` with :class:`EffectStatus`;
     :class:`ProgrammerStatus` with :class:`ProgrammerValue`;
     :class:`RouteStatus`; :class:`SurfaceStatus`; :class:`IdFactory` and
     :class:`CounterIds`.
@@ -92,6 +94,8 @@ __all__ = [
     "CommandResult",
     "CounterIds",
     "DmxFrame",
+    "EffectSnapshot",
+    "EffectStatus",
     "EngineSnapshot",
     "FixtureOutput",
     "FixtureProfile",
@@ -148,6 +152,8 @@ _EXPORTS: dict[str, str] = {
     "PageStatus": "busk.engine.snapshot",
     "OutputSnapshot": "busk.engine.snapshot",
     "FixtureOutput": "busk.engine.snapshot",
+    "EffectSnapshot": "busk.engine.snapshot",
+    "EffectStatus": "busk.engine.snapshot",
     "ProgrammerStatus": "busk.session.status",
     "ProgrammerValue": "busk.session.status",
     "RouteStatus": "busk.output.driver",
@@ -165,6 +171,8 @@ if TYPE_CHECKING:  # what type checkers see: the same table, as explicit re-expo
     from busk.commands.types import Command as Command
     from busk.compiler.compile import UnsupportedFeature as UnsupportedFeature
     from busk.console.console import Reply as Reply
+    from busk.engine.snapshot import EffectSnapshot as EffectSnapshot
+    from busk.engine.snapshot import EffectStatus as EffectStatus
     from busk.engine.snapshot import EngineSnapshot as EngineSnapshot
     from busk.engine.snapshot import FixtureOutput as FixtureOutput
     from busk.engine.snapshot import OutputSnapshot as OutputSnapshot

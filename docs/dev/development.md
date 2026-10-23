@@ -87,6 +87,7 @@ The suite also passes on Python 3.12 and 3.13, for example
 | `test_resolver.py` | Every §7.3 and §7.4 behaviour, per-lane weights and per-lane snap thresholds, and Phase 5's relative pass (order, continuous suppression by higher bands, clamps), each checked against the per-slot oracle (`reference_resolver.py`); GAP-01's attribution of each lane to what drives it |
 | `test_resolver_properties.py` | Hypothesis: resolver == literal §7.7 oracle within 1e-12 (per-lane weights and relative contributions included); HTP in a band commutative and ≥ every input; LTP lanes in the hull of default and inputs; zero weight is a no-op; the attribution == the oracle's, relatives included |
 | `test_output_readout.py` | GAP-01's `output` of both facades: every element by fixture number, in the show's units after masters, blackout, park, limits and the highlight; the colour wheel's filter and an explicit white; a bar's cells on its master dimmer; what drives each family (programmer, effect, playback, none) and which playback drives the intensity; a live edit's new rig; the readout compiled with the rig and left out of the engine process; a `LiveShow` captures only once read |
+| `test_effect_status.py` | GAP-09's `effects` of both facades: the playbacks' instances in show order, then the programmer's; playback, defining cue (kept by tracking, renamed with its cue) and id; a flash's; presence through a fade-in, a leave, the programmer's fade time and a release; size after the size master and fader; the rate now (tempo, cap); the next cycle of the first member of the first layer with a wave (each direction, a random wave) or a colour cycle (a preset palette) equal to what the output does; a `LiveShow` captures only once read; none in `busk run`'s console process |
 | `test_seq_runs.py` | Per-slot sequence numbers: a contributor split into runs between the other contributors' numbers composites exactly in `(priority, seq)` order (hypothesis against the oracle) |
 | `test_playback_runtime.py` | The state machine, one case per row and state; weights per fader mode; the threshold latch; autoStart/autoRelease (`size` faders too); flash, `temp`, `priorityBoost`; exclusivity (own release times, never on flash); release timing; the flash bank's lifecycle |
 | `test_masters.py` | The GM scales intensity lanes only; blackout zeroes flashes and override bands; toggling either away and back gives an identical frame and identical runtime state; group masters multiply per member, intensity only, before the GM, and follow live edits |
@@ -118,7 +119,7 @@ The suite also passes on Python 3.12 and 3.13, for example
 | `test_song_stack.py` | **The Phase 4 done criterion:** the song script on the built show, golden show, 34 checkpoints of hand-computed logical values and golden DMX, GOTO equals stepping, the tap and multiplier alignment, 100 Hz vs an irregular schedule, save → load |
 | `test_waveforms.py` | The nine waveforms against a scalar transcription: key phases, the 0..1 range, `pulse` with zero-length ramps, `random` deterministic per (seed, member, cycle) and `smooth` continuous, `curve` continuous across the cycle (hypothesis) |
 | `test_phase_spread.py` | §10.2 wings (mirrored odd wings), blocks, groups and the even distribution of offsets |
-| `test_effect_compile.py` | Compiled instances: Appendix A's pulse as golden arrays, members and their offsets, absolute intensity as HTP, `low`/`high` defaults and clamps, palettes per member through preset scopes, rates and masters, warnings for effects that do nothing and members without a palette colour; structural `same`, trimming by releases, patch remaps |
+| `test_effect_compile.py` | Compiled instances: Appendix A's pulse as golden arrays, members and their offsets, absolute intensity as HTP, `low`/`high` defaults and clamps, palettes per member through preset scopes, rates and masters, warnings for effects that do nothing and members without a palette colour; structural `same` (the defining cue left out), trimming by releases, patch remaps |
 | `test_effect_clock.py` | Hz and BPM positions, the grid start, §5.4's worked example, tap nudges closing over one beat (a second tap mid-nudge too), rate changes (rebase in Hz, re-align in BPM), speed-master steps, switching between Hz and BPM |
 | `test_effect_runtime.py` | Enter, leave and change; versions mixed by presence (an exact size morph); sequence rules; four invariants under hypothesis: a pure function of time, ticked or not, no jump at a retarget, values in range |
 | `test_effects_engine.py` | Effect playbacks through the engine: Appendix A's pulse, absolute and relative layers, a colour cycle winning the tie with its cue's colour, `size` and `rate` faders, size and speed masters, release and re-activation, taps, the flash bank (`includeLtp`, no doubling, `temp`, hand-over to main on the beat grid, a flash held through a release), schedule independence |
@@ -159,7 +160,7 @@ The suite also passes on Python 3.12 and 3.13, for example
 src/busk/
   __init__.py            # the public API (Phase 8): __all__, lazy re-exports, the NullHandler
   errors.py              # BuskError, ScriptError (the public errors' base and the script one)
-  runner.py              # OfflineShow, LiveShow, DmxFrame, their output and programmer, LiveShow's routes and surfaces; _LocalRun (engine and output threads)
+  runner.py              # OfflineShow, LiveShow, DmxFrame, their output, effects and programmer, LiveShow's routes and surfaces; _LocalRun (engine and output threads)
   cli.py  __main__.py
   model/                 # persistent schema (§5.1–§5.17) as TypedDicts
     common.py            #   ids, EntityBase, TargetRef/TargetKey, STRICT, number aliases
@@ -206,7 +207,7 @@ src/busk/
     channels.py          #   CompiledChannel, build_channels()
     cues.py              #   CompiledCue, CueCompiler, cue_from_values(), TimingTable (§6.3)
     tracking.py          #   tracked states and per-slot timing of a cue list (§9.1, §9.3)
-    effects.py           #   CompiledWave, CompiledLayer, CompiledEffect; phase spread (§10.2)
+    effects.py           #   CompiledWave, CompiledLayer, CompiledEffect (with its defining cue); phase spread (§10.2)
     playbacks.py         #   CompiledPlayback, CompiledCueList, CompiledChase, CompiledMaster (+ group members), CompiledPage
     limitations.py       #   collect_limitations(): what this build ignores
     safety.py            #   CompiledSafety: park, limits, strobe lanes; dark_bytes(), unpatched_warnings() (§12, §18)
@@ -230,8 +231,9 @@ src/busk/
     masters.py           #   grand and group masters, blackout (§12; the engine leaves blackout to safety.py); SpeedMasterRuntime, tap tempo (§11.3); fade-time override
     safety.py            #   apply_safety(): highlight, park, blackout, limits, strobe lanes (§12, stage 11)
     surfaces.py          #   PageState, HeldButtons, Pickup: the page, held buttons, soft takeover
-    snapshot.py          #   EngineSnapshot, PlaybackStatus, SpeedStatus (beat anchors), PageStatus; OutputSnapshot, FixtureOutput (GAP-01)
+    snapshot.py          #   EngineSnapshot, PlaybackStatus, SpeedStatus (beat anchors), PageStatus; OutputSnapshot, FixtureOutput (GAP-01); EffectSnapshot, EffectStatus (GAP-09)
     readout.py           #   Capture, capture(), read_output(): the output per fixture element and what drives it (GAP-01)
+    effect_status.py     #   EffectCapture, capture_effects(), read_effects(): the running effects and their next cycle (GAP-09)
     install.py           #   Install, ProgrammerFrame, ProgrammerRuntime (fading, its effect bank), remap_lanes()
     loop.py              #   Frame, EngineStats, EngineRuntime, Engine (stages 1–13, restore, tick errors, bounded drain)
     link.py              #   EngineLink, LocalEngine: how other threads read and write an engine (LiveShow, --threads)

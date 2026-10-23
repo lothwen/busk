@@ -393,6 +393,24 @@ def test_same_compares_structure_and_identity_is_not_needed() -> None:
     assert not first.same(effects_of(compile_doc(squared))[0])
 
 
+def test_an_instance_knows_the_cue_that_defines_it_and_same_leaves_it_out() -> None:
+    circle = instance("e", "t-circle", in_group("g-all"))
+    doc = with_effects(circle)
+    cues = doc["cueLists"][0]["cues"]
+    cues.extend([cue("c2", number="2"), cue("c3", number="2.5")])
+    cues[2]["effects"] = [{**circle, "size": 3.0}]
+    doc["cueLists"][0]["tracking"] = True
+    compiled = compile_doc(doc)
+    first, tracked, redefined = (c.effects[0] for c in compiled.cueLists["cl"].cues)
+    assert (first.cue, tracked.cue, redefined.cue) == ("1", "1", "2.5")
+    assert tracked is first  # a tracked instance is the same object
+    renumbered = copy.deepcopy(doc)
+    renumbered["cueLists"][0]["cues"][0]["number"] = "0.5"
+    (moved,) = effects_of(compile_doc(renumbered))
+    assert moved.cue == "0.5"
+    assert moved.same(first)  # the cue is not structure: nothing changes on stage
+
+
 def test_palettes_are_compared_by_value() -> None:
     cycle = template("t-cycle", palette(rgb(1, 0, 0), rgb(0, 0, 1)))
     doc = with_effects(instance("e", "t-cycle", targets("fx-mh1")), templates=(cycle,))

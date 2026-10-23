@@ -484,7 +484,7 @@ class CueCompiler:
                     overrides.pop(slot.index, None)  # … with its timing, or none
         effects: dict[str, CompiledEffect] = {}
         for i, instance in enumerate(cue["effects"]):
-            compiled = self.effect(instance, f"{path}.effects[{i}]")
+            compiled = self.effect(instance, f"{path}.effects[{i}]", cue["number"])
             if compiled is not None:
                 effects[instance["id"]] = compiled
         return OwnCue(
@@ -495,10 +495,13 @@ class CueCompiler:
             effects=effects,
         )
 
-    def effect(self, instance: EffectInstance, path: str) -> CompiledEffect | None:
+    def effect(
+        self, instance: EffectInstance, path: str, cue: str | None = None
+    ) -> CompiledEffect | None:
         """The compiled form of effect ``instance``, found at ``path`` in the
-        show; ``None`` (with a compile warning) when it would do nothing."""
-        return compile_effect(self, instance, path)
+        show, in cue number ``cue`` (``None``: the programmer's); ``None``
+        (with a compile warning) when it would do nothing."""
+        return compile_effect(self, instance, path, cue)
 
     def template(self, template: EffectId) -> EffectTemplate:
         """Effect template ``template``, noted in :attr:`readTemplates`."""

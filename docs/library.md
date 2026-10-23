@@ -12,7 +12,7 @@ library that does the same things from your own code. With the library you can:
 
 Everything public is importable from `busk` itself. This guide covers [installing](#installing),
 [the three uses](#1-tooling-validate-a-show-import-a-profile) with examples, a
-[reference](#reference) of the 34 public names, [the errors](#errors),
+[reference](#reference) of the 36 public names, [the errors](#errors),
 [logging](#logging), [what is public](#what-is-public) and [the stability promise](#stability).
 The [README](../README.md) covers the command line and links the other guides: the
 [console's commands](console.md), [running a show](running.md) and [how busk works inside](dev/internals.md).
@@ -147,6 +147,23 @@ what drives each family of attributes (`"programmer"`, `"playback"`, `"effect"` 
 
 ```
 
+`effects` lists the effect instances the tick ran, the playbacks' and the programmer's.
+Each has the playback, cue and id that find it in the show (the programmer's have no
+playback and no cue), how far it has faded in (`presence`), its `size` and its rate in
+`hz` now, its `phase`, and the next cycle of its waveform (`wave`) or its colour cycle
+(`colors`), sampled 20 times from now, for a sparkline:
+
+```python
+>>> _ = offline.execute("fader 11 1")                           # slot 11: the heads circle
+>>> _ = offline.tick(3.5)                                       # half-way through its 1 s fade-in
+>>> circle = offline.effects.effects[0]
+>>> circle.playback, circle.cue, circle.id, circle.presence, circle.size, circle.hz
+(11, '1', 'fx1', 0.5, 15.0, 1.0)
+>>> [round(w, 2) for w in circle.wave[:6]], circle.colors
+([1.0, 0.98, 0.9, 0.79, 0.65, 0.5], ())
+
+```
+
 `programmer` is the programmer as a display shows it: the selection as `(number, element)`
 pairs in selection order, each value in the show's units (a preset reference with the
 preset's value for that element, and the preset's pool, number and name), the effects as
@@ -204,10 +221,10 @@ another): it sets `meta.modified` and backs up the file it replaces.
 `LiveShow` runs the show in real time in your process: the engine and the DMX output as
 threads, and, with `surfaces=True`, the show's control surfaces. It takes commands
 like `OfflineShow`, but its engine ticks on its own (`engineHz` times a second), and
-`snapshot`, `frame` and `output` follow it. The engine reads its output back only once
-something has read `output`: the first read turns that on and returns `None`, and from
-the next tick on `output` is the newest tick's. A display polls it 10 to 20 times a
-second. `programmer` is not the engine's: a command has changed it when `execute`
+`snapshot`, `frame`, `output` and `effects` follow it. The engine reads its output back
+only once something has read `output`: the first read turns that on and returns `None`,
+and from the next tick on `output` is the newest tick's. `effects` works the same way, on
+its own. A display polls them 10 to 20 times a second. `programmer` is not the engine's: a command has changed it when `execute`
 returns, and a display polls it with the others.
 
 `routes` is the show's output routes, in show order, each with what it does: `"ok"`
@@ -278,7 +295,7 @@ opens no route, so nothing goes to the network; the frames are made all the same
 
 ## Reference
 
-The 34 names of `busk.__all__`. Each has a docstring with the details; path parameters
+The 36 names of `busk.__all__`. Each has a docstring with the details; path parameters
 take `str` or `os.PathLike`.
 
 | Name | What it is |
@@ -290,7 +307,7 @@ take `str` or `os.PathLike`.
 | `read_ofl` | `read_ofl(path, *, manufacturer=None) -> ImportReport`: convert an Open Fixture Library profile |
 | `read_gdtf` | `read_gdtf(path, *, manufacturer=None) -> ImportReport`: convert a GDTF file |
 | `ProfileLibrary` | The built-in profiles plus directories of profiles, for `fixture add`: `get(id)`, `find(id or name)`, iteration, `problems` |
-| `OfflineShow` | A show on a clock you drive: `submit`, `execute`, `run_script`, `save`, `tick`; `show`, `warnings`, `snapshot`, `output`, `programmer`, `time` |
+| `OfflineShow` | A show on a clock you drive: `submit`, `execute`, `run_script`, `save`, `tick`; `show`, `warnings`, `snapshot`, `output`, `effects`, `programmer`, `time` |
 | `LiveShow` | A show in real time in your process: as `OfflineShow`, with `start`, `stop` and `with`, `frame` instead of `tick`, `routes` and `surfaces` |
 | `DmxFrame` | One engine output: `seq`, `time`, and `universes`, a mapping of universe number to 512 bytes |
 | `Show` | The show file format, a `TypedDict` |
@@ -306,6 +323,8 @@ take `str` or `os.PathLike`.
 | `PageStatus` | The current page in a snapshot |
 | `OutputSnapshot` | The output of one tick per fixture element: `seq`, `time`, `fixtures` |
 | `FixtureOutput` | One element in it: `number`, `element`, `intensity`, `color`, `pan`, `tilt`, `zoom`, `source` (what drives each family), `playback` |
+| `EffectSnapshot` | The effect instances one tick ran: `seq`, `time`, `effects` |
+| `EffectStatus` | One instance in it: `playback`, `cue`, `id` (where it is defined), `presence`, `size`, `hz`, `phase`, `wave` and `colors` (its next cycle, 20 samples) |
 | `ProgrammerStatus` | The programmer: `version`, `selection` (`(number, element)` pairs), `blind`, `highlight`, `fadeTime`, `values`, `effects` (as the show file holds them) |
 | `ProgrammerValue` | One value in it: `number`, `element`, `attribute`, `value` (in the show's units), `preset` (`(pool, number, name)`, or `None`) |
 | `RouteStatus` | One output route of a `LiveShow`: `id`, `label`, `universe` (its number), `state` (`"ok"`, `"failed"`, `"disabled"`, `"ignored"`), `detail` (why), `packets`, `errors` |

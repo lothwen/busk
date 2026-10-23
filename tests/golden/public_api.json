@@ -83,6 +83,36 @@
     },
     "module": "busk.runner"
   },
+  "EffectSnapshot": {
+    "fields": [
+      "seq: int",
+      "time: float",
+      "effects: tuple[EffectStatus, ...]"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, *, seq: int, time: float, effects: tuple[EffectStatus, ...]) -> None"
+    },
+    "module": "busk.engine.snapshot"
+  },
+  "EffectStatus": {
+    "fields": [
+      "playback: int | None",
+      "cue: str | None",
+      "id: str",
+      "presence: float",
+      "size: float",
+      "hz: float",
+      "phase: float",
+      "wave: tuple[float, ...]",
+      "colors: tuple[tuple[float, float, float], ...]"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, *, playback: int | None, cue: str | None, id: str, presence: float, size: float, hz: float, phase: float, wave: tuple[float, ...], colors: tuple[tuple[float, float, float], ...]) -> None"
+    },
+    "module": "busk.engine.snapshot"
+  },
   "EngineSnapshot": {
     "fields": [
       "seq: int",
@@ -184,6 +214,7 @@
       "__enter__": "(self) -> Self",
       "__exit__": "(self, exc_type: type[BaseException] | None, exc: BaseException | None, traceback: TracebackType | None) -> None",
       "__init__": "(self, show: Show, *, path: str | os.PathLike[str] | None = None, library: ProfileLibrary | None = None, output: bool = True, surfaces: bool = False, state_dir: str | os.PathLike[str] | None = None, tune_interpreter: bool = False) -> None",
+      "effects": "property: EffectSnapshot | None",
       "execute": "(self, line: str) -> Reply",
       "frame": "property: DmxFrame | None",
       "output": "property: OutputSnapshot | None",
@@ -205,6 +236,7 @@
     "kind": "class",
     "members": {
       "__init__": "(self, show: Show, *, path: str | os.PathLike[str] | None = None, library: ProfileLibrary | None = None, ids: IdFactory | None = None) -> None",
+      "effects": "property: EffectSnapshot",
       "execute": "(self, line: str) -> Reply",
       "output": "property: OutputSnapshot",
       "programmer": "property: ProgrammerStatus",

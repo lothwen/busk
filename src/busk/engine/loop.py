@@ -57,7 +57,10 @@ these stages:
                             lock is needed); an :class:`EngineSnapshot` when
                             the state changed; while :attr:`Engine.captureOutput`
                             is set, a :class:`~busk.engine.readout.Capture`
-                            of the stage 11 frame (GAP-01)
+                            of the stage 11 frame (GAP-01), and while
+                            :attr:`Engine.captureEffects` is set, an
+                            :class:`~busk.engine.effect_status.EffectCapture`
+                            of the running effects (GAP-09)
 ==========================  ==================================================
 
 **Determinism** (§2.7). Every runtime value is a function of the commands
@@ -76,7 +79,8 @@ it (``EngineStats.logDropped``).
 
 **Real-time rules** (§19). The tick does no I/O or logging. It allocates
 only the published ``bytes`` and :class:`Frame` objects, a snapshot when the
-state changed, a capture while the output is read, and numpy temporaries;
+state changed, captures while the output or the effects are read, and numpy
+temporaries;
 none of the per-tick ones are tracked by the cyclic garbage collector, so
 they add no GC pauses.
 """
@@ -106,6 +110,7 @@ from busk.compiler.playbacks import MasterKind
 from busk.convert.converter import Converter
 from busk.engine.clock import Clock, FixedRateSchedule
 from busk.engine.contributions import Relative, Source, gather, gather_relatives
+from busk.engine.effect_status import EffectCapture, capture_effects
 from busk.engine.install import Install, ProgrammerRuntime, lane_maps, remap_lanes
 from busk.engine.masters import (
     SpeedMasterRuntime,
@@ -296,6 +301,12 @@ class Engine:
         self.output: Capture | None = None
         """The output of the newest tick that captured it, for
         :func:`~busk.engine.readout.read_output`; ``None`` before."""
+        self.captureEffects = False
+        """Whether each tick publishes :attr:`effects` (GAP-09); like
+        :attr:`captureOutput`, any thread may set it."""
+        self.effects: EffectCapture | None = None
+        """The running effects of the newest tick that captured them, for
+        :func:`~busk.engine.effect_status.read_effects`; ``None`` before."""
 
     @property
     def compiled(self) -> CompiledShow:
@@ -422,6 +433,8 @@ class Engine:
         )
         if self.captureOutput:
             self.output = self.capture()
+        if self.captureEffects:
+            self.effects = self.capture_effects()
         if self._dirty:
             self._dirty = False
             self._publish_snapshot(now)
@@ -443,6 +456,22 @@ class Engine:
             sources=self._sources,
             relatives=self._relatives,
             highlight=self._programmer.highlight,
+        )
+
+    def capture_effects(self) -> EffectCapture:
+        """The effects of the last tick (GAP-09, :mod:`busk.engine.effect_status`):
+        the playbacks' banks in show order, main then flash, then the
+        programmer's. Engine thread only, between two ticks, as
+        :meth:`capture`."""
+        playbacks = self.runtime.playbacks.runtimes.values()
+        return capture_effects(
+            seq=self.stats.ticks,
+            time=self.runtime.now,
+            compiled=self._compiled,
+            banks=chain(
+                chain.from_iterable((rt.bank, rt.flashBank) for rt in playbacks),
+                (self._programmer.bank,),
+            ),
         )
 
     def run(self, stop: threading.Event, after_tick: Callable[[], None] | None = None) -> None:
