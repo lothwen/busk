@@ -606,7 +606,11 @@ release time or the given one, and drops held flashes and swops. `OUTPUT` is eng
 and a restore brings it back: while it is off no route sends, and sACN routes send
 Stream_Terminated once and start a new stream when it is on. The scheduler also watches the
 frames: 1 s without a new one, it offers the last frame again every cycle (held), or a
-copy with the layout's dark bytes set when `holdLastFrameOnEngineStall` is false.
+copy with the layout's dark bytes set when `holdLastFrameOnEngineStall` is false. At a
+prompt `output off` asks first: its parse carries the question (`Submit.confirm`), and
+`Console.confirmation`, which the facades' `confirmation` is (GAP-10 of
+[`tui/engine-gaps.md`](tui/engine-gaps.md)), parses the line with a throwaway id factory,
+as completion does, so asking uses up no id. The prompt adds `[y/N]`; `execute` never asks.
 
 **Reconnects** (`busk.output.scheduler`, `busk.io.surfaces`). A route whose driver fails to
 open is retried every 2 s by building a new driver; one whose status has failed for 1 s is

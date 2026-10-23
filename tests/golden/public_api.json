@@ -214,6 +214,7 @@
       "__enter__": "(self) -> Self",
       "__exit__": "(self, exc_type: type[BaseException] | None, exc: BaseException | None, traceback: TracebackType | None) -> None",
       "__init__": "(self, show: Show, *, path: str | os.PathLike[str] | None = None, library: ProfileLibrary | None = None, output: bool = True, surfaces: bool = False, state_dir: str | os.PathLike[str] | None = None, tune_interpreter: bool = False) -> None",
+      "confirmation": "(self, line: str) -> str | None",
       "effects": "property: EffectSnapshot | None",
       "execute": "(self, line: str) -> Reply",
       "frame": "property: DmxFrame | None",
@@ -236,6 +237,7 @@
     "kind": "class",
     "members": {
       "__init__": "(self, show: Show, *, path: str | os.PathLike[str] | None = None, library: ProfileLibrary | None = None, ids: IdFactory | None = None) -> None",
+      "confirmation": "(self, line: str) -> str | None",
       "effects": "property: EffectSnapshot",
       "execute": "(self, line: str) -> Reply",
       "output": "property: OutputSnapshot",

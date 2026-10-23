@@ -41,6 +41,11 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   each surface's state (`ok`, `failed` or `ignored`), why it is not open (a MIDI device
   unplugged, a port in use, the `midi` extra missing), and a web remote's addresses. The
   same news as the `MIDI s-nano: …` log lines, as data.
+- `OfflineShow.confirmation(line)` and `LiveShow.confirmation(line)`: the question the
+  `busk run` prompt asks before a dangerous line (`Turn all DMX output off?` before
+  `output off`), or `None` for a line that runs at once
+  ([the library guide](docs/library.md#3-live-inside-your-own-application-liveshow)). A
+  frontend asks the same without parsing the line; `execute` never asks.
 - Console lines for playback buttons ([the console](docs/console.md#notes)): `flash N
   on|off` holds a playback's flash until it is released, `button N B on|off` presses and
   releases its button B as a bound control does, and `toggle N` activates or releases it.

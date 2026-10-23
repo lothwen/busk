@@ -32,6 +32,8 @@ GAP-09), and their ``programmer`` is the programmer with fixtures by number
 ``routes`` are its output routes and what each does
 (:class:`~busk.output.driver.RouteStatus`, GAP-07), and its ``surfaces`` its
 control surfaces (:class:`~busk.io.surfaces.SurfaceStatus`, GAP-08).
+``confirmation(line)`` is the question ``busk run``'s prompt asks before a
+dangerous line (GAP-10), for a frontend to ask too.
 
 Errors (§5.8): constructing a facade raises
 :class:`~busk.persistence.show_file.ShowLoadError` for an invalid show and
@@ -202,6 +204,20 @@ class _Facade:
         reply = self._console.execute(line)
         self._interrupted()
         return reply
+
+    def confirmation(self, line: str) -> str | None:
+        """The yes/no question to ask before running ``line``, or ``None`` to
+        run it at once. ``busk run``'s prompt asks ``Turn all DMX output
+        off?`` before ``output off``, and a frontend that asks the same
+        calls this first: :meth:`execute` never asks.
+
+        ``None`` too for a line that does not parse (:meth:`execute` says
+        why) and for ``source``, whose lines are never asked about. The
+        question is text to show as it is. Asking changes nothing (no id
+        is used up), and it only reads the show and the programmer, so a
+        frontend may ask from its own thread.
+        """
+        return self._console.confirmation(line)
 
     def run_script(self, path: str | os.PathLike[str]) -> list[str]:
         """Run the console script at ``path``, line by line, and return the

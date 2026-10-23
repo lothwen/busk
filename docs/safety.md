@@ -78,7 +78,9 @@ busk> output on
 - **`output off`** stops all DMX output: sACN streams send Stream_Terminated once, so
   receivers let go at once; Art-Net nodes and DMX-USB widgets keep their last frame, as
   they do by themselves. The status line shows `OUT off` until `output on`. At an
-  interactive prompt `output off` asks first; scripts and bindings do not.
+  interactive prompt `output off` asks first; scripts and bindings do not. A frontend
+  built on busk can ask the same question
+  ([`confirmation`](library.md#3-live-inside-your-own-application-liveshow)).
 
 Both can be bound to a controller:
 

@@ -21,8 +21,9 @@ The TUI runs a `busk.LiveShow` in its own process. One module, `busk_tui/bridge.
   `LiveShow.frame` (`DmxFrame`, for the engine time), `LiveShow.show` (the `Show` document),
   `LiveShow.warnings`, since GAP-01 `LiveShow.output` (`OutputSnapshot`), since GAP-02
   `LiveShow.programmer` (`ProgrammerStatus`), since GAP-07 `LiveShow.routes`
-  (`RouteStatus`), since GAP-08 `LiveShow.surfaces` (`SurfaceStatus`) and since GAP-09
-  `LiveShow.effects` (`EffectSnapshot`). The `busk.*` loggers feed the TUI's log pane.
+  (`RouteStatus`), since GAP-08 `LiveShow.surfaces` (`SurfaceStatus`), since GAP-09
+  `LiveShow.effects` (`EffectSnapshot`) and since GAP-10 `LiveShow.confirmation(line)`
+  (the question to ask before a line). The `busk.*` loggers feed the TUI's log pane.
 - **Text is not parsed.** `docs/library.md` says message text (`Reply.text`, CLI output, log
   records) may change in any release, so the TUI never extracts data from the output of
   `programmer`, `info`, `list …` or `library`. It may show such output verbatim.
@@ -57,7 +58,7 @@ Every new read should also reach `busk run`'s console process, so a later TUI at
 | [GAP-07](#gap-07-output-route-status) Output route status | read | important | status bar, F8 | **done** 2026-10-23 |
 | [GAP-08](#gap-08-surface-status) Surface status | read | important | F9 | **done** 2026-10-23 |
 | [GAP-09](#gap-09-effect-runtime-state) Effect runtime state | read | important | F1 B, F5 | **done** 2026-10-23 |
-| [GAP-10](#gap-10-confirmation-before-dangerous-lines) Confirmation before dangerous lines | read | important | prompt | open |
+| [GAP-10](#gap-10-confirmation-before-dangerous-lines) Confirmation before dangerous lines | read | important | prompt | **done** 2026-10-23 |
 | [GAP-11](#gap-11-running-the-tui-against-busk-run) Running the TUI against `busk run` | host | important | everything, on stage | open |
 | [GAP-12](#gap-12-concurrency-contract-of-execute) Concurrency contract of `execute()` | contract | important | responsiveness | open |
 | [GAP-13](#gap-13-control-input-monitor) Control input monitor | read | nice-to-have | F9 | open |
@@ -795,6 +796,8 @@ stays `go N` / `release N` for a cue effect; a programmer effect's waits for GAP
 
 ## GAP-10: Confirmation before dangerous lines
 
+**Status:** done 2026-10-23 (see **Done** at the end of this section).
+
 **Needed by:** the prompt. `busk run` asks before `output off`; the TUI should too.
 
 **Today:** the question exists (`Console.confirmation(line)`) but is internal. The TUI cannot
@@ -807,6 +810,52 @@ ask before running `line`, or `None`.
 
 **TUI until then:** the TUI's own `[OUTPUT OFF]` button asks first. A typed `output off` runs at
 once, as in a script. The user guide says so.
+
+**Done** (2026-10-23). `OfflineShow.confirmation(line)` and `LiveShow.confirmation(line)
+-> str | None`, as suggested: the question `busk run`'s prompt asks before running `line`,
+or `None` to run it at once. No public name was added (`busk.__all__` stays at 36).
+Documented in `docs/library.md` (section 3 and the reference), `docs/safety.md`, the
+method's docstring and `docs/dev/internals.md` ("Panic, stalls and output off"). Where it
+differs from the suggestion, or settles what the suggestion left open:
+
+- **The question without `[y/N]`.** `output off` gives `"Turn all DMX output off?"`, and
+  the `busk run` prompt adds ` [y/N] `, so what it prints has not changed. A frontend shows
+  the question with its own buttons, and could not drop the suffix without parsing text.
+  The question is text to show as it is, and may change in any release, like
+  `Reply.text`. The contract is whether it is `None`.
+- **Only `output off` asks**, as at the `busk run` prompt. It asks whatever the output is
+  now: the question is about the line, so it asks even when the output is already off.
+  `None` for every other line (`output on`, `release all`, `blackout on`, `clear`, `quit`
+  …), and also for:
+  - a binding of `output off` (`bind … output off`): the line binds, and the control never
+    asks, as bindings never do;
+  - `source FILE`: a script's lines never ask, at the prompt or anywhere;
+  - a line that does not parse: `execute` reports its error.
+- **`execute` never asks.** It runs `output off` at once, as before, so a frontend asks
+  first and then sends the line. Nothing else changed for scripts, bindings and
+  `submit()`.
+- **Asking changes nothing.** The console used to parse the line with the session's id
+  factory, so asking about `universe add …` or `fixture add …` used up an id: with
+  `CounterIds`, the line then got the next one, and a script asked about line by line
+  built a different show. It now parses with a throwaway factory, as completion
+  (`expected`) does. Nothing is committed and no undo step is added.
+- **Any thread, and cheap.** It reads only the published show, programmer and page, so a
+  frontend may ask from its own thread while another runs a line. A call takes 5–15 µs on
+  the club-night show.
+- **On both facades and under `busk run`.** The session and the prompt run in the console
+  process, so the attached show's `confirmation` works there, with processes and with
+  `--threads`, and it is what that prompt asks.
+- Tests: `tests/test_confirmation.py` (both facades, every rule above, `busk run`'s prompt
+  asking what its attached show answers), the question in `tests/test_console.py` and
+  `tests/test_console_parser.py`, the public API golden and `tests/api_consumer.py`.
+
+The TUI can now ask before a typed line. On Enter the bridge calls `confirmation(line)`
+(cheap enough for the UI thread). If it returns a question, the TUI shows it in a yes/no
+dialog and sends the line only on yes. No, Esc and closing the dialog cancel, and the log
+shows `cancelled`, as `busk run` prints it. The `[OUTPUT OFF]` button sends its line the
+same way, so the TUI keeps no question of its own, and the guide's note that a typed
+`output off` runs at once can go. A line from history or a pre-fill is asked about like a
+typed one.
 
 ## GAP-11: Running the TUI against `busk run`
 

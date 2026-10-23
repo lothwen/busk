@@ -256,6 +256,19 @@ for surface in live.surfaces or ():
 # Phone web ok  http://10.0.0.5:8080/?k=…
 ```
 
+`confirmation(line)` is the yes/no question to ask before running `line`, the one `busk
+run`'s prompt asks: `"Turn all DMX output off?"` before `output off`. It is `None` for a
+line that runs at once: every other line, and a line that does not parse (`execute` says
+why). `execute` never asks, as in a script, so a frontend asks first. The question is
+text to show as it is. Asking changes nothing, and a frontend may ask from its own
+thread:
+
+```python
+question = live.confirmation(line)
+if question is None or dialog.yes_no(question):     # the frontend's own dialog
+    reply = live.execute(line)
+```
+
 ```python
 show, _ = busk.load_show("club.show")
 with busk.LiveShow(show, path="club.show", surfaces=True) as live:   # routes and surfaces open
@@ -307,7 +320,7 @@ take `str` or `os.PathLike`.
 | `read_ofl` | `read_ofl(path, *, manufacturer=None) -> ImportReport`: convert an Open Fixture Library profile |
 | `read_gdtf` | `read_gdtf(path, *, manufacturer=None) -> ImportReport`: convert a GDTF file |
 | `ProfileLibrary` | The built-in profiles plus directories of profiles, for `fixture add`: `get(id)`, `find(id or name)`, iteration, `problems` |
-| `OfflineShow` | A show on a clock you drive: `submit`, `execute`, `run_script`, `save`, `tick`; `show`, `warnings`, `snapshot`, `output`, `effects`, `programmer`, `time` |
+| `OfflineShow` | A show on a clock you drive: `submit`, `execute`, `confirmation`, `run_script`, `save`, `tick`; `show`, `warnings`, `snapshot`, `output`, `effects`, `programmer`, `time` |
 | `LiveShow` | A show in real time in your process: as `OfflineShow`, with `start`, `stop` and `with`, `frame` instead of `tick`, `routes` and `surfaces` |
 | `DmxFrame` | One engine output: `seq`, `time`, and `universes`, a mapping of universe number to 512 bytes |
 | `Show` | The show file format, a `TypedDict` |

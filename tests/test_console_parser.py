@@ -1717,7 +1717,7 @@ def test_only_output_off_asks_first() -> None:
         if isinstance(action := parse(line, p7_context()), Submit)
     }
     assert questions == {
-        "output off": "Turn all DMX output off? [y/N] ",
+        "output off": "Turn all DMX output off?",
         "output on": None,
         "release all": None,
         "unpark all": None,

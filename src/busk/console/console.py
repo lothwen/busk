@@ -31,7 +31,7 @@ import json
 import signal
 import threading
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from types import FrameType
 from typing import Any, Final, cast
@@ -57,6 +57,7 @@ from busk.model.common import TargetRef
 from busk.model.effect import ColorLayer, EffectInstance, EffectLayer
 from busk.model.entry import TargetSpec
 from busk.model.show import Show
+from busk.session.ids import RandomIds
 from busk.session.library import EffectDefaults, EffectLibrary, ProfileLibrary, builtin_effects
 from busk.session.programmer import split_slot_key
 from busk.session.session import CommandResult, Session
@@ -136,11 +137,13 @@ class Console:
             signal.signal(signal.SIGINT, previous)
 
     def confirmation(self, line: str) -> str | None:
-        """The question to ask before running ``line`` at a prompt (``output
-        off``), or ``None``: also for a line that does not parse, whose error
-        :meth:`execute` reports."""
+        """The yes/no question to ask before running ``line`` at a prompt
+        (``Turn all DMX output off?``), or ``None``: also for a line that
+        does not parse, whose error :meth:`execute` reports. Like
+        :meth:`expected`, it changes nothing: ids come from a factory of its
+        own, so asking first leaves the ids the line then gets as they were."""
         try:
-            action = parse(line, self._context())
+            action = parse(line, replace(self._context(), ids=RandomIds()))
         except ParseError:
             return None
         return action.confirm if isinstance(action, Submit) else None
@@ -751,10 +754,10 @@ def interact(
 
 
 def _confirmed(question: str, ask: Callable[[str], str], write: Callable[[str], None]) -> bool:
-    """Ask ``question``: only ``y`` or ``yes`` confirms; anything else (Ctrl+C
-    and Ctrl+D too) cancels the line."""
+    """Ask ``question`` with ``[y/N]``: only ``y`` or ``yes`` confirms;
+    anything else (Ctrl+C and Ctrl+D too) cancels the line."""
     try:
-        answer = ask(question).strip().lower()
+        answer = ask(f"{question} [y/N] ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         write("")
         answer = ""

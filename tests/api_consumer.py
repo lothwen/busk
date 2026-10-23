@@ -70,6 +70,7 @@ def offline(directory: Path) -> bytes:
 
     reply: busk.Reply = show_.execute("fader 1 1")
     assert reply.ok, reply.text
+    assert show_.confirmation("fader 1 1") is None
     command: busk.Command = {"type": "BLACKOUT", "on": False}
     nudge: busk.Command = {"type": "ADJUST_ATTRIBUTE", "attribute": "color", "component": "r",
                            "delta": -0.1}  # fmt: skip
@@ -128,6 +129,9 @@ def live(path: str, host: Callable[[busk.LiveShow], None]) -> busk.Show:
     with busk.LiveShow(show, path=path, surfaces=True) as live:
         live.execute("gm 0.8")
         live.execute("go 9")
+        question: str | None = live.confirmation("output off")
+        if question is None or input(f"{question} [y/N] ") == "y":
+            live.execute("output off")
         if live.snapshot is not None:
             states: list[tuple[int, str, str | None]] = [
                 (p.number, p.state, p.cue) for p in live.snapshot.playbacks

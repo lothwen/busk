@@ -632,7 +632,7 @@ def test_output_off_does_not_ask_in_a_script_or_piped(
     live.tick()
     assert live.engine.snapshot is not None
     assert live.engine.snapshot.outputEnabled
-    assert console.confirmation("output off") == "Turn all DMX output off? [y/N] "
+    assert console.confirmation("output off") == "Turn all DMX output off?"
     assert console.confirmation("output of") is None  # its error is execute's to report
 
 

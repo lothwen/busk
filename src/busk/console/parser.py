@@ -2000,7 +2000,7 @@ class _Parser:
         """``output on|off``; turning it off asks first at a prompt."""
         on = self.expect("on", "off") == "on"
         self.done()
-        question = None if on else "Turn all DMX output off? [y/N] "
+        question = None if on else "Turn all DMX output off?"
         return Submit(cast(Command, {"type": "OUTPUT", "on": on}), confirm=question)
 
     def _cmd_park(self) -> Action:
