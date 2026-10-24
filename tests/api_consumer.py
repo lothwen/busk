@@ -71,6 +71,9 @@ def offline(directory: Path) -> bytes:
 
     reply: busk.Reply = show_.execute("fader 1 1")
     assert reply.ok, reply.text
+    quitting: bool = show_.execute("quit").quit
+    assert quitting
+    assert not reply.quit
     assert show_.confirmation("fader 1 1") is None
     command: busk.Command = {"type": "BLACKOUT", "on": False}
     nudge: busk.Command = {"type": "ADJUST_ATTRIBUTE", "attribute": "color", "component": "r",

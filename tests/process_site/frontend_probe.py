@@ -122,4 +122,4 @@ def run(show: Any, plan: dict[str, Any], records: Records, report: dict[str, Any
 
 
 def _reply(reply: Any) -> list[Any]:
-    return [reply.text, reply.ok]
+    return [reply.text, reply.ok, reply.quit]

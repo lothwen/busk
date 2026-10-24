@@ -124,7 +124,7 @@ from one thread at a time.
 >>> lines[-1]
 'saved club.show'
 >>> offline.execute("fader 1 1")
-Reply(text='', ok=True)
+Reply(text='', ok=True, quit=False)
 >>> frame = offline.tick(3.0)                                   # 3 s later
 >>> list(frame.universes[1][:16])                               # universe 1's first 16 bytes
 [128, 0, 128, 0, 140, 76, 0, 115, 204, 204, 128, 4, 11, 0, 0, 0]
@@ -212,7 +212,7 @@ A refused command is not an exception: `execute` returns a `Reply` and `submit` 
 
 ```python
 >>> offline.execute("go 99")
-Reply(text='error: no playback 99', ok=False)
+Reply(text='error: no playback 99', ok=False, quit=False)
 >>> result = offline.submit({"type": "BLACKOUT", "on": True})
 >>> result.ok, offline.snapshot.blackout
 (True, True)
@@ -286,6 +286,17 @@ thread:
 question = live.confirmation(line)
 if question is None or dialog.yes_no(question):     # the frontend's own dialog
     reply = live.execute(line)
+```
+
+`quit` stops nothing in a `LiveShow` or an `OfflineShow`: `execute("quit")` (or `exit`)
+returns a `Reply` with `quit=True`, and ending is up to you. So does a `source` line whose
+script stops at a `quit`, as `busk run`'s prompt ends there too. Only that line's reply
+says so: a frontend that asks before quitting, and is told no, carries on as before.
+
+```python
+reply = live.execute(line)
+if reply.quit and dialog.yes_no("Quit?"):          # the frontend's own dialog
+    return                                         # under busk run --frontend, the run ends
 ```
 
 **Several threads.** A `LiveShow` may be used from any number of threads at once:
@@ -392,7 +403,7 @@ take `str` or `os.PathLike`.
 | `Command` | The union of the command `TypedDict`s that `submit` takes, tagged by `type` |
 | `Issue` | One validation finding: `severity` (`"error"` or `"warning"`), `path`, `message` |
 | `CommandResult` | What `submit` and `save` return: `ok`, `message`, `issues` |
-| `Reply` | What `execute` returns: `text`, `ok` |
+| `Reply` | What `execute` returns: `text`, `ok`, and `quit`, true when the line asked to quit (`quit`, `exit`, a `source` that stops at one) |
 | `ImportReport` | What `read_ofl` and `read_gdtf` return: `profile`, `notes` |
 | `EngineSnapshot` | The engine's published state: grand master, blackout, playbacks, masters, page, tempo |
 | `PlaybackStatus` | One playback in a snapshot: number, name, state, fader level, current cue, and `color`, that cue's colour to draw the playback in (linear RGB 0..1, or `None`: idle, or the cue holds no colour) |

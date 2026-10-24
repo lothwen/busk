@@ -19,7 +19,8 @@ The TUI runs a `busk.LiveShow` in its own process, or, since GAP-11, is run by `
 - **Actions** go through `LiveShow.execute(line) -> Reply(text, ok)`, one console line per
   action, echoed in the TUI's log. `submit()` is not used, so the UI teaches the command line.
   Since GAP-12, `execute` may be called from several threads, and performance lines never
-  wait for another thread's line.
+  wait for another thread's line. Since GAP-18 a reply also says whether its line asked to
+  quit (`Reply.quit`).
 - **Reads** use the typed public state: `LiveShow.snapshot` (`EngineSnapshot`),
   `LiveShow.frame` (`DmxFrame`, for the engine time), `LiveShow.show` (the `Show` document),
   `LiveShow.warnings`, since GAP-01 `LiveShow.output` (`OutputSnapshot`), since GAP-02
@@ -72,7 +73,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-15](#gap-15-effect-template-library) Effect template library | read | nice-to-have | F5 | **done** 2026-10-23 |
 | [GAP-16](#gap-16-fixture-category) Fixture category | read | nice-to-have | F1 A/C, F8 | **done** 2026-10-24 |
 | [GAP-17](#gap-17-playback-colour) Playback colour | read | nice-to-have | F1 | **done** 2026-10-24 |
-| [GAP-18](#gap-18-quit-signal) Quit signal | read | nice-to-have | prompt | open |
+| [GAP-18](#gap-18-quit-signal) Quit signal | read | nice-to-have | prompt | **done** 2026-10-24 |
 | [GAP-19](#gap-19-status-under-liveshow) `status` under `LiveShow` | action | nice-to-have | prompt | open |
 | [GAP-20](#gap-20-completion-and-hints) Completion and hints | read | nice-to-have | prompt | open |
 | [GAP-21](#gap-21-engine-health) Engine health | read | nice-to-have | status bar | open |
@@ -1437,6 +1438,8 @@ implementation plan, the §2.2 row "Colour = current cue colour" becomes **S**, 
 
 ## GAP-18: Quit signal
 
+**Status:** done 2026-10-24 (see **Done** at the end of this section).
+
 **Needed by:** the prompt: typing `quit` should end the TUI as it ends `busk run`.
 
 **Today:** `execute("quit")` returns `Reply("", ok=True)` and sets a private flag.
@@ -1448,6 +1451,49 @@ breaking), or `LiveShow.quit_requested`.
 
 **TUI until then:** a line that is exactly `quit` opens the TUI's quit dialog instead of going to
 the engine. It is the only line the TUI intercepts.
+
+**Done** (2026-10-24). `Reply.quit: bool = False`, the first of the two suggestions: `True`
+in the reply of a line after which `busk run`'s prompt ends the run. No public name was
+added (`busk.__all__` stays at 37); the golden's diff is the new field. Documented in the
+`Reply` docstring, `execute`'s, the console's and the runner's module docs,
+`docs/library.md` (section 3 and the reference), `docs/running.md` (the frontend example
+now ends on `reply.quit` instead of matching the typed line) and `docs/console.md`
+(Scripts). Where it settles what the suggestion left open:
+
+- **On the reply, not on the show** (a call the user may veto). Only a console line can
+  quit (no surface binding and no web remote message does), so whoever ran the line is the
+  one to tell, and a reply tells only that caller. A `LiveShow.quit_requested` would be
+  state: one flag for every thread's lines, that someone has to clear after a "no", and
+  that a frontend would have to poll.
+- **Which lines.** `quit` and its alias `exit`, in any case, with a comment after it; `quit
+  now` is an error and does not quit. And a `source` line whose script stops at a `quit`,
+  in a script it sources too (a call the user may veto): `busk run`'s prompt ends there, so
+  the TUI ends as `busk run` does. Its `ok` is true and its text is what the script printed
+  up to the `quit`; the lines after it do not run. A script that fails before its `quit`
+  does not quit. `confirmation("quit")` stays `None`: the TUI's quit dialog is its own.
+- **It ends nothing by itself.** `execute` returns, and the show runs on: the engine, the
+  output and the next line, whose reply is `False` again. Under `busk run --frontend` the run
+  ends when the frontend returns, as before. `busk run`'s own prompt, `--script` and stdin
+  are unchanged: they end after these lines, as before, on the console's internal flag.
+- **A fix on the way.** After a `quit` line on either facade, the next `source` line or
+  `run_script` ran only the first line of its script, and said nothing: the console's flag
+  stayed set, and a script checked it after each line. A script now stops on its own line's
+  reply. Before, a library user had no reason to send `quit`; a frontend that asks before
+  quitting, and is told no, would have hit it. It has its own `CHANGELOG.md` entry.
+- **Nothing new crosses the processes.** Under `busk run --frontend` the reply is made in the
+  console process, where the frontend runs. No new read and nothing on the tick.
+- Tests: `tests/test_quit_signal.py` (30, the change mutation-checked), the frontend
+  probe's report in `tests/test_frontend.py` (a `quit` on a real `busk run --frontend`, which
+  runs on until the frontend returns), the golden and `tests/api_consumer.py`.
+
+The TUI can now send a typed `quit` to the engine like any other line, and open its quit
+dialog when the reply has `quit` (a field of the bridge's `CommandDone`), so `exit`, `QUIT`
+and a sourced script's `quit` open it too. Cancel carries on. No line is intercepted any
+more. The dialog still cannot tell whether there are unsaved edits until GAP-03. In the
+implementation plan, the §2.1 row `quit` becomes **S**, from the `Reply` of the line;
+adaptation 18's last sentence becomes "a line whose reply has `quit` opens the TUI's quit
+dialog"; Phase 0's step 0.4 and its **Engine lines used** lose the `quit` intercept, and
+its **Deferred** list loses GAP-18.
 
 ## GAP-19: `status` under `LiveShow`
 

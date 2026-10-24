@@ -369,11 +369,12 @@
   "Reply": {
     "fields": [
       "text: str",
-      "ok: bool"
+      "ok: bool",
+      "quit: bool"
     ],
     "kind": "frozen dataclass",
     "members": {
-      "__init__": "(self, text: str, ok: bool = True) -> None"
+      "__init__": "(self, text: str, ok: bool = True, quit: bool = False) -> None"
     },
     "module": "busk.console.console"
   },

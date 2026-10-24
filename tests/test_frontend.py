@@ -14,9 +14,9 @@
 * **``busk run --frontend``**, real process trees running
   ``tests/process_site/frontend_probe.py``: the frontend gets the show
   (frames, output, effects, routes, the programmer, the effect templates,
-  lines that run, a profile's category, the playbacks' colours) and busk run's lines as
-  ``busk.run`` records, none printed
-  over it; one that raises is restarted with its console while the engine
+  lines that run, a profile's category, the playbacks' colours, a ``quit``
+  that says so and ends nothing) and busk run's lines as ``busk.run``
+  records, none printed over it; one that raises is restarted with its console while the engine
   runs on; ``SIGTERM`` ends the run through it; with ``--threads`` too. A
   frontend that cannot be loaded ends the run with 1; the options it cannot
   be combined with are refused.
@@ -404,6 +404,7 @@ def test_busk_run_calls_the_frontend_with_its_show(
             "sel fixture 101",
             "route add 1 sacn 7 unicast 127.0.0.1",
             'profile "RGB Par 3ch" category par',
+            "quit",  # the frontend carries on: the reads below still come
         ],
         effectOf=6,
         colorOf=3,
@@ -418,7 +419,8 @@ def test_busk_run_calls_the_frontend_with_its_show(
     assert report["timeout"] is None, report
     assert report["calls"] == 1
     replies = report["replies"]
-    assert [ok for _, _, ok in replies] == [True, True, True, True, True]
+    assert [ok for _, _, ok, _ in replies] == [True] * 6
+    assert [quit for _, _, _, quit in replies] == [False] * 5 + [True]
     assert report["frame"]["seq"] > 0
     assert report["frame"]["universes"] == {"1": 512}
     assert [number for number, _, _ in report["output"]["fixtures"]] == [101, 102, 201]

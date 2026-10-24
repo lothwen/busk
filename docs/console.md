@@ -238,4 +238,5 @@ busk> set effect off              # back to the static colour
 
 Scripts are console lines in a file (`#` starts a comment); `source FILE` runs one
 from the console and `busk run --script FILE` before it. A script stops at its first
-error and says where (`build.busk:12: sel group 7`).
+error and says where (`build.busk:12: sel group 7`). A `quit` line stops it too, and ends
+the run, as it does at the prompt.

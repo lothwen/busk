@@ -7,6 +7,11 @@ their paths; errors print as ``error: …`` followed by the validator's issues,
 each with its path, so deleting a fixture that is still in use lists every
 place that uses it.
 
+A ``quit`` line stops a script there, and its reply says so (``Reply.quit``,
+GAP-18 of ``docs/dev/tui/engine-gaps.md``), as does that of a ``source``
+that stops at one, for a frontend to end on. It also sets
+:attr:`Console.quit_requested`, which ends ``busk run``'s loops.
+
 :func:`interact` is the interactive loop of ``busk run`` on a terminal, with
 ``readline`` history, Tab completion and ``?`` (:mod:`busk.console.prompt`).
 Ctrl+C clears a typed line. On an empty line it says how to quit, and a
@@ -85,10 +90,19 @@ MAX_DEPTH: Final = 8
 
 @dataclass(frozen=True)
 class Reply:
-    """What a line printed, and whether it succeeded."""
+    """What a line printed, whether it succeeded, and whether it asked to
+    quit (GAP-18 of ``docs/dev/tui/engine-gaps.md``).
+
+    ``quit`` is true for a ``quit`` or ``exit`` line, and for a ``source``
+    line whose script stopped at one (in a script it sources, too): the
+    lines after which ``busk run``'s prompt ends the run. Only the line says
+    so: the next line's reply is false again, so a frontend that asks before
+    quitting, and is told no, carries on as before.
+    """
 
     text: str
     ok: bool = True
+    quit: bool = False
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -284,18 +298,23 @@ class Console:
             return self._source(action.path)
         if isinstance(action, Quit):
             self.quit_requested = True
-            return Reply("")
+            return Reply("", quit=True)
         return Reply(self._query(action))
 
     def run_script(self, path: Path, write: Callable[[str], None]) -> bool:
         """Run every line of ``path``, writing each non-empty reply; stop at the
-        first error (after writing where it happened). Returns success."""
+        first error (after writing where it happened), or after a ``quit``
+        line. Returns success."""
+        return self._script(path, write)[0]
+
+    def _script(self, path: Path, write: Callable[[str], None]) -> tuple[bool, bool]:
+        """:meth:`run_script`'s success, and whether a ``quit`` line ended it."""
         try:
             lines = path.read_text(encoding="utf-8").splitlines()
         except OSError as exc:
             write(f"error: cannot read {str(path)!r}: {exc.strerror or exc}")
-            return False
-        return self.run_lines(path, lines, write)
+            return False, False
+        return self._lines(path, lines, write, None)
 
     def run_lines(
         self,
@@ -310,8 +329,19 @@ class Console:
         ``failed(number, line)`` is told which line failed (1-based, its
         text stripped) before the location line is written. Returns success.
         They run whole, as one line does: a line of another thread waits
-        until they are done, unless it is a performance line.
+        until they are done, unless it is a performance line. A line whose
+        reply asks to quit ends them (a ``quit`` of an earlier line does not).
         """
+        return self._lines(path, lines, write, failed)[0]
+
+    def _lines(
+        self,
+        path: Path,
+        lines: Sequence[str],
+        write: Callable[[str], None],
+        failed: Callable[[int, str], None] | None,
+    ) -> tuple[bool, bool]:
+        """:meth:`run_lines`'s success, and whether a ``quit`` line ended them."""
         main = threading.current_thread() is threading.main_thread()
         with self._lock:
             for number, line in enumerate(lines, start=1):
@@ -323,13 +353,13 @@ class Console:
                 if reply.text:
                     write(reply.text)
                 if not reply.ok:
-                    return False
+                    return False, False
                 if main and self.interrupted:
                     write(f"{path}:{number}: interrupted")
-                    return False
-                if self.quit_requested:
-                    break
-        return True
+                    return False, False
+                if reply.quit:
+                    return True, True
+        return True, False
 
     def _source(self, path: Path) -> Reply:
         if self._depth >= MAX_DEPTH:
@@ -337,10 +367,10 @@ class Console:
         written: list[str] = []
         self._depth += 1
         try:
-            ok = self.run_script(path, written.append)
+            ok, quit = self._script(path, written.append)
         finally:
             self._depth -= 1
-        return Reply("\n".join(written), ok=ok)
+        return Reply("\n".join(written), ok=ok, quit=quit)
 
     # ------------------------------------------------------------ queries
 

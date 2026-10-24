@@ -35,7 +35,9 @@ control surfaces (:class:`~busk.io.surfaces.SurfaceStatus`, GAP-08).
 ``confirmation(line)`` is the question ``busk run``'s prompt asks before a
 dangerous line (GAP-10), for a frontend to ask too, and ``effect_templates``
 the templates ``effect add`` takes, the show's and the effect library's
-(:class:`~busk.console.console.EffectTemplateInfo`, GAP-15).
+(:class:`~busk.console.console.EffectTemplateInfo`, GAP-15). A line's
+:class:`~busk.console.console.Reply` says whether it asked to quit, for a
+frontend to end as ``busk run``'s prompt does (GAP-18).
 
 Errors (§5.8): constructing a facade raises
 :class:`~busk.persistence.show_file.ShowLoadError` for an invalid show and
@@ -239,7 +241,12 @@ class _Facade:
         button's press, ``gm L``, ``master "name" L``, ``blackout on|off``,
         ``tap``, ``bpm``, ``page N|next|prev``, ``output on|off``), never
         waits for another thread's line. Any other line waits until the line
-        another thread runs, a ``source`` script included, is done."""
+        another thread runs, a ``source`` script included, is done.
+
+        ``quit`` (or ``exit``) stops nothing here: its reply has
+        ``quit=True``, as has that of a ``source`` whose script stops at a
+        ``quit``, and ending is the caller's business (GAP-18). ``busk run``
+        ends after these lines, and a frontend ends the run by returning."""
         reply = self._console.execute(line)
         self._interrupted()
         return reply
@@ -260,7 +267,8 @@ class _Facade:
 
     def run_script(self, path: str | os.PathLike[str]) -> list[str]:
         """Run the console script at ``path``, line by line, and return the
-        lines it wrote. A ``quit`` line ends it early.
+        lines it wrote. A ``quit`` line ends it early (the script, not the
+        show).
 
         Raises :class:`~busk.errors.ScriptError` at the first line that
         fails (the lines after it do not run; the edits before it stay),
@@ -276,7 +284,6 @@ class _Facade:
             lambda text: output.extend(text.splitlines()),
             failed=lambda number, line: failure.append((number, line)),
         )
-        self._console.quit_requested = False  # `quit` ends the script, not the show
         self._interrupted()
         if not ok:
             number, line = failure[0]

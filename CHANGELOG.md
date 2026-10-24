@@ -65,6 +65,10 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   cue holds, tracked colours included; `None` while idle or when the cue holds no colour.
   The compiler works it out once per cue, so the fader, the masters and effects do not
   change it. The web remote's `state` messages have it too.
+- `Reply.quit` ([the library guide](docs/library.md#3-live-inside-your-own-application-liveshow)):
+  `True` in the reply of `quit` or `exit`, and of a `source` whose script stops at a `quit`,
+  the lines after which the `busk run` prompt ends. `execute` still stops nothing, so a
+  frontend ends when its user quits, or asks first, without matching the typed line.
 - `busk run --frontend MODULE:FUNCTION` ([Running a show](docs/running.md#frontends)):
   your own frontend instead of the prompt, called with the run's `LiveShow` in the
   console process, with `busk run`'s safety net (the engine in its own process, the
@@ -151,6 +155,8 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   template the show did not have yet), `list masters` and `list cues` could raise when
   another thread deleted what they listed, and a Ctrl+C on the main thread could be raised
   in another thread whose line ended first, or stop that thread's script.
+- After a `quit` line on an `OfflineShow` or a `LiveShow`, the next `source` line or
+  `run_script` ran only the first line of its script, and said nothing about it.
 - The web remote on a phone held sideways: the strips were squeezed until their names
   vanished and their buttons spilled out. The header now takes one row, each fader sits
   beside its buttons, and the masters open with a **Masters** button.

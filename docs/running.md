@@ -239,14 +239,16 @@ the frontend runs lines with `show.execute(line)` and reads `snapshot`, `frame`,
 # mytui.py, next to the show: busk run club.show --frontend mytui:run
 def run(show):
     while True:
-        line = input("mytui> ")        # a real frontend draws the screen and reads keys
-        if line == "quit":
-            return                     # the run ends
-        print(show.execute(line).text)
+        reply = show.execute(input("mytui> "))   # a real frontend draws the screen and reads keys
+        print(reply.text)
+        if reply.quit:                           # `quit`, `exit`, or a script that quits
+            return                               # the run ends
 ```
 
-- **The run ends when the function returns**, as after `quit`. Unsaved edits are kept in
-  the autosave as usual, so a frontend asks about saving itself. Ctrl+C (unless the
+- **The run ends when the function returns**, as after `quit`. A `quit` line ends nothing by
+  itself: its reply has `quit=True` (so has a `source` whose script stops at one), and the
+  frontend returns, or asks first. Unsaved edits are kept in the autosave as usual, so a
+  frontend asks about saving itself. Ctrl+C (unless the
   frontend reads the keys itself) raises `KeyboardInterrupt` in the frontend's thread, and
   with processes `SIGTERM` and `SIGHUP` raise a `BaseException` of busk's own there: a
   frontend lets them through, and the run ends as after `quit`.
