@@ -69,6 +69,13 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   `True` in the reply of `quit` or `exit`, and of a `source` whose script stops at a `quit`,
   the lines after which the `busk run` prompt ends. `execute` still stops nothing, so a
   frontend ends when its user quits, or asks first, without matching the typed line.
+- `OfflineShow.expected(line)` and `LiveShow.expected(line)`: what may come at the end of
+  a line being typed, as the `busk run` prompt completes it on Tab, as a new public type,
+  `Expected` ([the library guide](docs/library.md#3-live-inside-your-own-application-liveshow)):
+  where the word being typed starts, the keywords and names that complete it, the values
+  that may come there (described), whether the line runs as it is and the mistake that
+  stops it. A frontend's own prompt completes every word as the `busk run` prompt does,
+  without parsing the line.
 - `busk run --frontend MODULE:FUNCTION` ([Running a show](docs/running.md#frontends)):
   your own frontend instead of the prompt, called with the run's `LiveShow` in the
   console process, with `busk run`'s safety net (the engine in its own process, the

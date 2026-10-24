@@ -75,6 +75,13 @@ def offline(directory: Path) -> bytes:
     assert quitting
     assert not reply.quit
     assert show_.confirmation("fader 1 1") is None
+    typed = "route add 1 sa"
+    expected: busk.Expected = show_.expected(typed)
+    completed: list[str] = [typed[: expected.start] + word + " " for word in expected.words]
+    hint: tuple[str, ...] = expected.values
+    stops: str | None = expected.error
+    assert completed == ["route add 1 sacn "]
+    assert (hint, stops, expected.runnable) is not None
     command: busk.Command = {"type": "BLACKOUT", "on": False}
     nudge: busk.Command = {"type": "ADJUST_ATTRIBUTE", "attribute": "color", "component": "r",
                            "delta": -0.1}  # fmt: skip
@@ -165,6 +172,8 @@ def live(path: str, host: Callable[[busk.LiveShow], None]) -> busk.Show:
         programmer: busk.ProgrammerStatus = live.programmer
         assert programmer.version >= 1
         templates: tuple[busk.EffectTemplateInfo, ...] = live.effect_templates
+        tab: tuple[str, ...] = live.expected("go").words
+        assert tab == ("go", "goto")
         assert all(template.name for template in templates)
         routes: tuple[busk.RouteStatus, ...] | None = live.routes
         for route in routes or ():

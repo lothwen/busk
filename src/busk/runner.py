@@ -38,7 +38,9 @@ the templates ``effect add`` takes, the show's and the effect library's
 (:class:`~busk.console.console.EffectTemplateInfo`, GAP-15). A line's
 :class:`~busk.console.console.Reply` says whether it asked to quit, for a
 frontend to end as ``busk run``'s prompt does (GAP-18), and ``status``
-answers with ``busk run``'s status line (GAP-19).
+answers with ``busk run``'s status line (GAP-19). ``expected(line)`` is what
+may come where the word being typed starts, as that prompt completes it on
+Tab (:class:`~busk.console.parser.Expected`, GAP-20).
 
 Errors (§5.8): constructing a facade raises
 :class:`~busk.persistence.show_file.ShowLoadError` for an invalid show and
@@ -85,6 +87,7 @@ from typing import Final, Literal, Self
 from busk.commands.types import Command
 from busk.compiler.compile import CompiledShow, compile_show
 from busk.console.console import Console, EffectTemplateInfo, Reply, status_line
+from busk.console.parser import Expected
 from busk.engine.clock import SWITCH_INTERVAL, Clock, FakeClock, MonotonicClock
 from busk.engine.effect_status import EffectCapture, read_effects
 from busk.engine.install import Stamp
@@ -271,6 +274,29 @@ class _Facade:
         frontend may ask from its own thread.
         """
         return self._console.confirmation(line)
+
+    def expected(self, line: str) -> Expected:
+        """What may come at the end of ``line``, the line up to the cursor,
+        as ``busk run``'s prompt completes it on Tab and shows it on ``?``
+        (GAP-20 of ``docs/dev/tui/engine-gaps.md``).
+
+        The answer is about the word being typed: it starts at ``start``,
+        after the last space, tab or comma outside quotes, or at the opening
+        quote of a name, and is ``line[start:]`` (empty when the line ends
+        there). ``words`` are the keywords and names that may come there
+        and that it starts, in any case, as they are written (names in
+        quotes): Tab replaces ``line[start:]`` with one and a space.
+        ``values`` describes anything else that may come there (``a fixture
+        number``). ``runnable`` says that the line before ``start`` is a
+        whole command, so with nothing typed of the word Enter runs it;
+        ``error`` is the mistake that stops the line before ``start``, if
+        any. ``values`` and ``error`` are text to show as it is.
+
+        Asking changes nothing (no id is used up), and it only reads the
+        show, the programmer and the page, so a frontend may ask from its
+        own thread, on every key.
+        """
+        return self._console.expected(line)
 
     def run_script(self, path: str | os.PathLike[str]) -> list[str]:
         """Run the console script at ``path``, line by line, and return the

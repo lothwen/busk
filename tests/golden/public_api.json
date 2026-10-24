@@ -150,6 +150,20 @@
     },
     "module": "busk.engine.snapshot"
   },
+  "Expected": {
+    "fields": [
+      "words: tuple[str, ...]",
+      "values: tuple[str, ...]",
+      "runnable: bool",
+      "error: str | None",
+      "start: int"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, words: tuple[str, ...] = (), values: tuple[str, ...] = (), runnable: bool = False, error: str | None = None, start: int = 0) -> None"
+    },
+    "module": "busk.console.parser"
+  },
   "FixtureOutput": {
     "fields": [
       "number: int",
@@ -237,6 +251,7 @@
       "effect_templates": "property: tuple[EffectTemplateInfo, ...]",
       "effects": "property: EffectSnapshot | None",
       "execute": "(self, line: str) -> Reply",
+      "expected": "(self, line: str) -> Expected",
       "frame": "property: DmxFrame | None",
       "output": "property: OutputSnapshot | None",
       "programmer": "property: ProgrammerStatus",
@@ -261,6 +276,7 @@
       "effect_templates": "property: tuple[EffectTemplateInfo, ...]",
       "effects": "property: EffectSnapshot",
       "execute": "(self, line: str) -> Reply",
+      "expected": "(self, line: str) -> Expected",
       "output": "property: OutputSnapshot",
       "programmer": "property: ProgrammerStatus",
       "run_script": "(self, path: str | os.PathLike[str]) -> list[str]",

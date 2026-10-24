@@ -124,6 +124,7 @@ The suite also passes on Python 3.12 and 3.13, for example
 | `test_playback_color.py` | GAP-17's `PlaybackStatus.color`: the cue's colour while the playback is at it and `None` while idle, unchanged by levels and the programmer; whose colour (the brightest element whose colour the cue holds, the cue's order among equals and when none is lit, a cell lit by its master dimmer, tracked colours, none without a colour, effects not counted); mixed as the output readout mixes it (the wheel's filter, an explicit white); a GOTO, each step of a chase, an edit recolouring a running cue; the event log's JSON; a `LiveShow`; `busk run --frontend` in `test_frontend.py` |
 | `test_quit_signal.py` | GAP-18's `Reply.quit`: `quit` and `exit` however typed, no other line, not a `quit` that does not parse; the show carrying on and the next reply false again; a `source` whose script stops at a `quit`, nested too, and none that errs first; `run_script` stopping there; an earlier `quit` no longer cutting a later script short; a `LiveShow` from another thread, and quits from one thread never cutting another's scripts; `busk run` ending after a sourced `quit` at the prompt, after `--script`'s and after one read from stdin; `busk run --frontend` in `test_frontend.py` |
 | `test_status_command.py` | GAP-19's `status` on both facades: `busk run`'s status line of the snapshot, following each line and each line of a script; asking changes nothing; a `LiveShow` saying `no engine is running` before `start()` and after `stop()`, the line while it runs, `the engine has not ticked yet` before the first tick; `busk run`'s show keeping the CLI's answer; `busk run --frontend` in `test_frontend.py` |
+| `test_completion.py` | GAP-20's `expected` of both facades: what may come where the word being typed starts (keywords and names it starts in any case, names in quotes, commas, a number being typed, a comment, an escaped quote), the mistake before that word only, what follows the show and the programmer; Tab through `examples/club-night.busk` key by key (every word offered at its start, and the same show built as without asking), asking commits nothing; a `LiveShow` before start, from another thread and after stop, and `busk run`'s show answering what its prompt's Tab and `?` give; `busk run --frontend` in `test_frontend.py` |
 | `test_console_prompt.py` | What may follow a line, per grammar area (keywords, names from the show and the libraries, described values, `<Enter>`, mistakes), with no id taken; every word of `examples/club-night.busk` offered where it stands; the `?` help and the grammar forms it picks; the completer's choices for GNU readline and libedit; a real prompt on a pseudo-terminal (Tab, `?`, Ctrl+C twice) |
 | `test_build_from_scratch.py` | **The Phase 3 done criterion:** the build script from `busk new`, golden show and golden DMX (checked by hand), a live preset edit, undo all / redo all, save → load |
 | `test_song_stack.py` | **The Phase 4 done criterion:** the song script on the built show, golden show, 34 checkpoints of hand-computed logical values and golden DMX, GOTO equals stepping, the tap and multiplier alignment, 100 Hz vs an irregular schedule, save → load |
@@ -170,7 +171,7 @@ The suite also passes on Python 3.12 and 3.13, for example
 src/busk/
   __init__.py            # the public API (Phase 8): __all__, lazy re-exports, the NullHandler
   errors.py              # BuskError, ScriptError (the public errors' base and the script one)
-  runner.py              # OfflineShow, LiveShow, DmxFrame, their output, effects, programmer, effect templates and confirmation, LiveShow's routes and surfaces; _LocalRun (engine and output threads)
+  runner.py              # OfflineShow, LiveShow, DmxFrame, their output, effects, programmer, effect templates, confirmation and completion, LiveShow's routes and surfaces; _LocalRun (engine and output threads)
   cli.py  __main__.py
   model/                 # persistent schema (§5.1–§5.17) as TypedDicts
     common.py            #   ids, EntityBase, TargetRef/TargetKey, STRICT, number aliases
@@ -199,7 +200,7 @@ src/busk/
   library/profiles/      # the built-in profiles (Appendix A's two, Phase 1's three)
   library/effects.json   # the built-in effect templates and their console defaults
   console/
-    parser.py            #   parse(): a console line → an action (pure); expected(); find_template()
+    parser.py            #   parse(): a console line → an action (pure); expected() and Expected; find_template()
     console.py           #   Console.execute() (from any thread), run_script(), interact(); EffectTemplateInfo
     prompt.py            #   Tab completion and ? on readline (GNU readline and libedit)
   persistence/

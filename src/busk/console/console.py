@@ -73,7 +73,7 @@ from busk.console.parser import (
     find_template,
     parse,
 )
-from busk.console.prompt import PROMPT, Editing, hints
+from busk.console.prompt import PROMPT, Editing, hints, split
 from busk.engine.snapshot import EngineSnapshot
 from busk.io.osc import feedback_target
 from busk.model.common import TargetRef
@@ -216,8 +216,15 @@ class Console:
         return action.confirm if isinstance(action, Submit) else None
 
     def expected(self, line: str) -> Expected:
-        """What may follow ``line`` at the prompt (Tab completion and ``?``)."""
-        return expected(line, self._context())
+        """What may come where the word being typed at the end of ``line``,
+        the line up to the cursor, starts (Tab completion and ``?``): the
+        words there that it starts, in any case, and :func:`expected`'s
+        values, runnable and error for the line before it. Like
+        :meth:`confirmation`, it changes nothing."""
+        head, word = split(line)
+        found = expected(head, self._context())
+        folded = word.lower()
+        return replace(found, words=tuple(w for w in found.words if w.lower().startswith(folded)))
 
     def effect_templates(self, show: Show) -> tuple[EffectTemplateInfo, ...]:
         """Every template ``effect add`` takes in ``show``, once, as it finds

@@ -14,8 +14,9 @@
 * **``busk run --frontend``**, real process trees running
   ``tests/process_site/frontend_probe.py``: the frontend gets the show
   (frames, output, effects, routes, the programmer, the effect templates,
-  lines that run, a profile's category, ``status``, the playbacks' colours, a
-  ``quit`` that says so and ends nothing) and busk run's lines as ``busk.run``
+  lines that run, a profile's category, ``status``, the playbacks' colours,
+  what may come in a line being typed, a ``quit`` that says so and ends
+  nothing) and busk run's lines as ``busk.run``
   records, none printed over it; one that raises is restarted with its console while the engine
   runs on; ``SIGTERM`` ends the run through it; with ``--threads`` too. A
   frontend that cannot be loaded ends the run with 1; the options it cannot
@@ -433,6 +434,7 @@ def test_busk_run_calls_the_frontend_with_its_show(
     assert report["templates"][:2] == [["Pulse", "show"], ["Circle", "library"]]
     assert report["categories"] == [["Generic Spot 16ch", None], ["RGB Par 3ch", "par"]]
     assert report["colors"] == [[1, None], [3, [0.0, 0.0, 1.0]], [6, None]]  # Blue; an effect
+    assert report["expected"] == [["open"], 10]  # fixture 101's gobo1, in the console process
     said = [message for name, level, message in report["records"] if name == "busk.run"]
     assert any(message.startswith(f"sACN {route}: U1 Stage → universe 7") for message in said)
     assert not any(

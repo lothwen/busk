@@ -137,7 +137,7 @@ EXPECTED: list[tuple[str, tuple[str, ...], tuple[str, ...], bool]] = [
 def test_what_may_follow_a_line(
     line: str, words: tuple[str, ...], values: tuple[str, ...], runnable: bool
 ) -> None:
-    assert after(line) == Expected(words, values, runnable)
+    assert after(line) == Expected(words, values, runnable, start=len(line))
 
 
 @pytest.mark.parametrize(
@@ -165,7 +165,7 @@ def test_a_mistake_that_shows_at_the_end_keeps_what_may_come() -> None:
 
 
 def test_nothing_follows_a_comment() -> None:
-    assert after("sel # the heads ") == Expected()
+    assert after("sel # the heads ") == Expected(start=16)
 
 
 def test_expected_changes_nothing() -> None:
@@ -197,7 +197,7 @@ def test_a_discrete_value_offers_the_options_of_its_targets() -> None:
     )  # fmt: skip
     nothing = Context(show_of(macro_rig()), LIBRARY, CounterIds())
     assert expected("set colorMacro ", nothing) == Expected(
-        ("spread", "preset"), ("a colorMacro option",)
+        ("spread", "preset"), ("a colorMacro option",), start=15
     )
     heads = Programmer(selection=({"fixtureId": "fx-mh1", "element": 0},))  # type: ignore[arg-type]
     gobos = Context(show_of(load_doc(APPENDIX_A)), LIBRARY, CounterIds(), programmer=heads)

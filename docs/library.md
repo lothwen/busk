@@ -12,7 +12,7 @@ library that does the same things from your own code. With the library you can:
 
 Everything public is importable from `busk` itself. This guide covers [installing](#installing),
 [the three uses](#1-tooling-validate-a-show-import-a-profile) with examples, a
-[reference](#reference) of the 37 public names, [the errors](#errors),
+[reference](#reference) of the 38 public names, [the errors](#errors),
 [logging](#logging), [what is public](#what-is-public) and [the stability promise](#stability).
 The [README](../README.md) covers the command line and links the other guides: the
 [console's commands](console.md), [running a show](running.md) and [how busk works inside](dev/internals.md).
@@ -306,16 +306,35 @@ is; a display reads `snapshot`. A `LiveShow` prints it while it runs, and `no en
 running` before `start()` and after `stop()`. A performance line sent just before shows in
 it once the engine has ticked. An `OfflineShow` prints it for the current tick.
 
+`expected(line)` says what may come at the end of `line`, the line up to the cursor, as
+`busk run`'s prompt completes it on Tab and shows it on `?`, so a frontend's own prompt
+completes every word in the same way. The word being typed starts at `start`: after the
+last space, tab or comma outside quotes, or at the opening quote of a name. `words` are
+the keywords and names that may come there and that it starts, in any case, as they are
+written (names in quotes, `easeIn`). `values` describes anything else that may come there
+(`a fixture number`), `runnable` says that the line before `start` runs as it is, and
+`error` is the mistake that stops it, if any. `values` and `error` are text to show as it
+is. It follows the show and the programmer (`set gobo1 ` offers the selection's gobos).
+Asking changes nothing, and is cheap enough for every key:
+
+```python
+found = live.expected(line)                    # 'master "sp' → words ('"Speed 1"',), start 7
+if len(found.words) == 1:                      # Tab, and one word fits: type it
+    line = line[: found.start] + found.words[0] + " "
+else:                                          # the frontend's own hint row
+    hints.show(found.words, found.values, found.error)
+```
+
 **Several threads.** A `LiveShow` may be used from any number of threads at once:
-`execute`, `submit`, `save`, `run_script`, `confirmation` and every read. Lines from
-different threads run as if one after the other: a line runs whole, and so does a script
-(`source FILE`, `run_script`), so no other thread's line lands in the middle of it. Lines
-from one thread run in the order it sends them. Performance lines are the exception: they
-never wait for another thread's line. They are the lines the engine carries out: `go N`,
-`back N`, `goto N C`, `release N`, `release all`, `fader N L`, `flash N on|off`, `toggle
-N`, `button N B on|off` (except the press of a `select` button, which selects), `gm L`,
-`master "name" L`, `blackout on|off`, `tap`, `bpm`, `page N|next|prev` and `output
-on|off`. Each goes to the engine at once, even while another thread's edit compiles, a
+`execute`, `submit`, `save`, `run_script`, `confirmation`, `expected` and every read.
+Lines from different threads run as if one after the other: a line runs whole, and so does
+a script (`source FILE`, `run_script`), so no other thread's line lands in the middle of
+it. Lines from one thread run in the order it sends them. Performance lines are the
+exception: they never wait for another thread's line. They are the lines the engine
+carries out: `go N`, `back N`, `goto N C`, `release N`, `release all`, `fader N L`, `flash
+N on|off`, `toggle N`, `button N B on|off` (except the press of a `select` button, which
+selects), `gm L`, `master "name" L`, `blackout on|off`, `tap`, `bpm`, `page N|next|prev`
+and `output on|off`. Each goes to the engine at once, even while another thread's edit compiles, a
 `save` writes or a script runs. Any other line, a query too, waits until the line another
 thread runs is done. So a frontend sends the performance lines of its own controls from a
 thread of their own, and everything else, typed lines included, in order from another:
@@ -395,7 +414,7 @@ edited was done 32–45 ms after it was due at the 99th percentile.
 
 ## Reference
 
-The 37 names of `busk.__all__`. Each has a docstring with the details; path parameters
+The 38 names of `busk.__all__`. Each has a docstring with the details; path parameters
 take `str` or `os.PathLike`.
 
 | Name | What it is |
@@ -407,7 +426,7 @@ take `str` or `os.PathLike`.
 | `read_ofl` | `read_ofl(path, *, manufacturer=None) -> ImportReport`: convert an Open Fixture Library profile |
 | `read_gdtf` | `read_gdtf(path, *, manufacturer=None) -> ImportReport`: convert a GDTF file |
 | `ProfileLibrary` | The built-in profiles plus directories of profiles, for `fixture add`: `get(id)`, `find(id or name)`, iteration, `problems` |
-| `OfflineShow` | A show on a clock you drive: `submit`, `execute`, `confirmation`, `run_script`, `save`, `tick`; `show`, `warnings`, `snapshot`, `output`, `effects`, `programmer`, `effect_templates`, `time` |
+| `OfflineShow` | A show on a clock you drive: `submit`, `execute`, `confirmation`, `expected`, `run_script`, `save`, `tick`; `show`, `warnings`, `snapshot`, `output`, `effects`, `programmer`, `effect_templates`, `time` |
 | `LiveShow` | A show in real time in your process: as `OfflineShow`, with `start`, `stop` and `with`, `frame` instead of `tick`, `routes` and `surfaces` |
 | `DmxFrame` | One engine output: `seq`, `time`, and `universes`, a mapping of universe number to 512 bytes |
 | `Show` | The show file format, a `TypedDict` |
@@ -426,6 +445,7 @@ take `str` or `os.PathLike`.
 | `EffectSnapshot` | The effect instances one tick ran: `seq`, `time`, `effects` |
 | `EffectStatus` | One instance in it: `playback`, `cue`, `id` (where it is defined), `presence`, `size`, `hz`, `phase`, `wave` and `colors` (its next cycle, 20 samples) |
 | `EffectTemplateInfo` | One effect template `effect add` takes: `name` (as it takes it), `id`, `source` (`"show"` or `"library"`), `summary` (its layers in one line), `size`, `low`, `high`, `phase` (the library's defaults, or `None`) |
+| `Expected` | What `expected(line)` returns, about the word being typed at the end of the line: `words` (the keywords and names that may come there and that it starts), `values` (anything else, described), `runnable` (the line before it runs as it is), `error` (the mistake that stops it, or `None`), `start` (where that word starts) |
 | `ProgrammerStatus` | The programmer: `version`, `selection` (`(number, element)` pairs), `blind`, `highlight`, `fadeTime`, `values`, `effects` (as the show file holds them), `stopped` (the ids of the stopped effects) |
 | `ProgrammerValue` | One value in it: `number`, `element`, `attribute`, `value` (in the show's units), `preset` (`(pool, number, name)`, or `None`) |
 | `RouteStatus` | One output route of a `LiveShow`: `id`, `label`, `universe` (its number), `state` (`"ok"`, `"failed"`, `"disabled"`, `"ignored"`), `detail` (why), `packets`, `errors` |

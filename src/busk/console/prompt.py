@@ -1,13 +1,15 @@
 """Tab completion and ``?`` at the console prompt (``busk run`` on a terminal).
 
-Both come from the parser (:func:`busk.console.parser.expected`), so they
-follow the grammar and know the show and the libraries. Tab completes the
-word being typed: a keyword, or a name in quotes (a master, a surface, a
-profile, a template). Where there is nothing to complete, it prints what may
-come next, as ``?`` does. ``?`` prints the words and values that may come
-next, ``<Enter>`` when the line runs as it is, or the mistake that stops it.
-Then it prints the forms of the command from ``help``, and gives the line
-back as it was.
+Both come from the parser, through :meth:`Console.expected
+<busk.console.console.Console.expected>` (the facades' ``expected``, GAP-20
+of ``docs/dev/tui/engine-gaps.md``), so they follow the grammar and know
+the show and the libraries, and a frontend completes what the prompt
+completes. Tab completes the word being typed: a keyword, or a name in
+quotes (a master, a surface, a profile, a template). Where there is nothing
+to complete, it prints what may come next, as ``?`` does. ``?`` prints the
+words and values that may come next, ``<Enter>`` when the line runs as it
+is, or the mistake that stops it. Then it prints the forms of the command
+from ``help``, and gives the line back as it was.
 
 With GNU readline, ``?`` is a key: it never goes into the line (Ctrl+V ``?``
 types one). libedit (the readline of macOS and of uv's Pythons) cannot bind
@@ -24,7 +26,7 @@ from collections.abc import Mapping, Sequence
 from types import ModuleType, TracebackType
 from typing import TYPE_CHECKING, Final
 
-from busk.console.parser import HELP, Expected, ParseError, tokenize
+from busk.console.parser import HELP, ParseError, tokenize
 
 if TYPE_CHECKING:
     from busk.console.console import Console
@@ -55,21 +57,15 @@ def split(before: str) -> tuple[str, str]:
     return before[:start], before[start:]
 
 
-def matching(expected: Expected, word: str) -> list[str]:
-    """The words of ``expected`` that ``word`` (as typed so far) starts, any case."""
-    folded = word.lower()
-    return [w for w in expected.words if w.lower().startswith(folded)]
-
-
 def hints(console: Console, before: str, width: int | None = None) -> list[str]:
     """What ``?`` prints for ``before``, the line up to the cursor: what may
     come there (or the mistake that stops the line), then :func:`grammar`."""
-    head, word = split(before)
-    expected = console.expected(head)
+    expected = console.expected(before)
+    word = before[expected.start :]
     if expected.error is not None:
         lines = [f"error: {expected.error}"]
     else:
-        items = sorted(matching(expected, word), key=str.lower)
+        items = sorted(expected.words, key=str.lower)
         items += [f"<{value}>" for value in expected.values]
         if expected.runnable and not word:
             items.append("<Enter>")
@@ -77,7 +73,7 @@ def hints(console: Console, before: str, width: int | None = None) -> list[str]:
         lines = _flow("next: ", items, width) if items else []
         if not items and word:
             lines = [f"nothing here starts with {word!r}"]
-    return lines + grammar(head + word)
+    return lines + grammar(before)
 
 
 def grammar(line: str) -> list[str]:
@@ -252,9 +248,9 @@ class Editing:
         readline = self.readline
         assert readline is not None
         before = readline.get_line_buffer()[: readline.get_endidx()]
-        head, word = split(before)
-        expected = self.console.expected(head)
-        found = [w + " " for w in matching(expected, word)]
+        expected = self.console.expected(before)
+        head, word = before[: expected.start], before[expected.start :]
+        found = [w + " " for w in expected.words]
         if self.libedit or readline.get_completion_type() != ord("?"):  # Tab, not ?
             alone = not (expected.values or expected.runnable or expected.error)
             if len(found) == 1 and (word or alone):

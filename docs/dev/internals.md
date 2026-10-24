@@ -568,6 +568,19 @@ one) is left out. The facades list again only for a new show object (an edit rep
 the show) and keep the previous tuple when the new one is equal. Only the console's show
 and library are read, so under `busk run` the engine process has nothing to send.
 
+**Completion** (`busk.console.parser`, `busk.console.prompt`; GAP-20 of
+[`tui/engine-gaps.md`](tui/engine-gaps.md)). The parser's `expected(line)` parses a line
+cut where its next word starts, with a throwaway id factory. Where the tokens run out, the
+parser's `ending`, `take` and `keyword` note what they were looking for (keywords and names
+in quotes in `offers`, described values in `needs`), and the parser raises `_Unfinished`,
+which tells a line that needs more from a mistake before its end. `Console.expected(line)`
+takes the line up to the cursor instead: `split` (the tokenizer's quote rule, with spaces,
+tabs and commas as delimiters) cuts it where the word being typed starts, the parser
+answers for that cut (`start` is its end), and only the words that the typed part starts,
+in any case, are kept. `busk run`'s Tab and `?` and the facades' `expected` are that one
+method, so a frontend completes what the prompt completes. It reads the published show,
+programmer and page.
+
 **Recording** (`busk.commands.record`, §15.3). Recording turns programmer values into
 show data that keeps intent: a cue entry references a group whenever one covers the
 targets (a greedy cover over the groups whose members *with that attribute* fit), keeps

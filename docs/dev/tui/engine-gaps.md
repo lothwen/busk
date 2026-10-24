@@ -27,10 +27,11 @@ The TUI runs a `busk.LiveShow` in its own process, or, since GAP-11, is run by `
   `LiveShow.programmer` (`ProgrammerStatus`), since GAP-07 `LiveShow.routes`
   (`RouteStatus`), since GAP-08 `LiveShow.surfaces` (`SurfaceStatus`), since GAP-09
   `LiveShow.effects` (`EffectSnapshot`), since GAP-10 `LiveShow.confirmation(line)`
-  (the question to ask before a line) and since GAP-15 `LiveShow.effect_templates`
-  (`EffectTemplateInfo`). Since GAP-16 a profile in `LiveShow.show` may have a
-  `category`, and since GAP-17 a playback in the snapshot has the `color` of its current
-  cue. The `busk.*` loggers feed the TUI's log pane.
+  (the question to ask before a line), since GAP-15 `LiveShow.effect_templates`
+  (`EffectTemplateInfo`) and since GAP-20 `LiveShow.expected(line)` (`Expected`, what
+  may come where the word being typed starts). Since GAP-16 a profile in `LiveShow.show`
+  may have a `category`, and since GAP-17 a playback in the snapshot has the `color` of
+  its current cue. The `busk.*` loggers feed the TUI's log pane.
 - **Text is not parsed.** `docs/library.md` says message text (`Reply.text`, CLI output, log
   records) may change in any release, so the TUI never extracts data from the output of
   `programmer`, `info`, `list …` or `library`. It may show such output verbatim.
@@ -75,7 +76,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-17](#gap-17-playback-colour) Playback colour | read | nice-to-have | F1 | **done** 2026-10-24 |
 | [GAP-18](#gap-18-quit-signal) Quit signal | read | nice-to-have | prompt | **done** 2026-10-24 |
 | [GAP-19](#gap-19-status-under-liveshow) `status` under `LiveShow` | action | nice-to-have | prompt | **done** 2026-10-24 |
-| [GAP-20](#gap-20-completion-and-hints) Completion and hints | read | nice-to-have | prompt | open |
+| [GAP-20](#gap-20-completion-and-hints) Completion and hints | read | nice-to-have | prompt | **done** 2026-10-24 |
 | [GAP-21](#gap-21-engine-health) Engine health | read | nice-to-have | status bar | open |
 
 ---
@@ -1547,6 +1548,8 @@ verbatim (§1.1), so nothing in the plan changes.
 
 ## GAP-20: Completion and hints
 
+**Status:** done 2026-10-24 (see **Done** at the end of this section).
+
 **Needed by:** Tab completion beyond the first word, and richer hints. Spec §6.1, §7.2.
 
 **Today:** `busk run`'s prompt completes every word from `Console.expected(line)` (words, value
@@ -1560,6 +1563,71 @@ spec asks: it indexes the text of `help` by first word.
 
 **TUI until then:** first-word completion and one or two matching `help` lines, as specified.
 If the format of `help` changes, hints degrade to nothing; commands still run.
+
+**Done** (2026-10-24). `OfflineShow.expected(line)` and `LiveShow.expected(line) ->
+Expected`: the parser's answer, made public. `Expected` has the four suggested fields and
+a fifth, `start`, and is exported, so `busk.__all__` has 38 names; the golden's diff is
+the new class and the two methods. Documented in `docs/library.md` (section 3 and the
+reference), the docstrings of the method and of `Expected`, the runner's and the prompt's
+module docs, `docs/dev/internals.md` (Completion) and `CHANGELOG.md` (Added). Where it
+differs from the suggestion, or settles what the suggestion left open:
+
+- **The line up to the cursor, and `start`** (a call the user may veto). The parser
+  answers for a line cut where its next word starts, and `busk run`'s prompt made that cut
+  itself first: after the last space, tab or comma outside quotes, or at the opening quote
+  of a name, with the tokenizer's escapes. A frontend that passed the text before its
+  cursor would have got a mistake for every half-typed word (`route add 1 sa`: `expected
+  sacn or artnet or dmxusb, got 'sa'`), or would have needed a tokenizer of its own. So `expected`
+  takes the line as typed up to the cursor and makes the cut, and `start` says where the
+  word being typed starts. Tab replaces `line[start:]` with a word and a space, and
+  `line[start:]` is what has been typed of it. For `master "Grand M`, `start` is 7 and the
+  word is `"Grand Master"`. A name is whole once its closing quote is typed.
+- **`words` are the completions**: only the ones that the typed part starts, in any case,
+  as they are written (`easeIn`, names in quotes), as Tab and `?` filter them. `values`
+  are not filtered: a number being typed is still `a playback number`. When nothing fits,
+  `words` and `values` are empty, and `line[start:]` is what `?` says nothing starts with.
+- **`runnable` and `error` are about the line before `start`**, as `?` shows them. There is
+  no mistake while a word is being typed (`sel fixture 99` has none, `sel fixture 99 ` says
+  `no fixture 99`), and `go 1` is runnable once its `1` is whole (`go 1 `). `release 1 2` is
+  runnable: `release 1` runs as it is, and `2` is a time being typed. A mistake that shows
+  only at the end keeps its words (`record slot 1 m`, on a slot in use, offers `merge`). A
+  frontend shows `<Enter>` only when `start` is the line's end, as `?` does.
+- **One path for `busk run`'s prompt and the library.** `Console.expected` makes the cut
+  and the filter, and the prompt's Tab and `?` now call it with the line up to the cursor
+  instead of cutting it themselves. What they complete and print is unchanged (the prompt
+  tests pass with GNU readline and with libedit, the pseudo-terminal test included). So the
+  TUI's Tab completes what `busk run`'s Tab completes. The parser's own `expected` keeps
+  its cut, and sets `start` to the cut line's end.
+- **Not the help forms of `?`** (a call the user may veto). `?` also prints the forms of
+  `help` that the words typed so far fit (the prompt's `grammar`). They are help text, and
+  the suggestion did not ask for them. The TUI's hint row keeps its index of `help` by
+  first word, as the spec asks. They could be added later, as a field of `Expected`.
+- **Any thread, and cheap.** It reads only the published show, programmer and page, and
+  changes nothing: no id is used up, and the club-night script, asked about at every key,
+  builds the same show byte for byte. A call takes 4–16 µs on the club-night show, and on
+  the busking reference rig (1856 fixtures) too, except for the options of a discrete
+  attribute with a large selection: `set gobo1 o` with 7795 elements selected takes 6.4 ms,
+  the same time `busk run`'s Tab takes there.
+- **On both facades and under `busk run`.** The session and the prompt run in the console
+  process, so the attached show's `expected` works there, with processes and with
+  `--threads`, and it is what that prompt completes.
+- Tests: `tests/test_completion.py` (34; eight mutations of the change, all caught), the
+  frontend probe's report in `tests/test_frontend.py` (`set gobo1 o` on a real `busk run
+  --frontend`, with fixture 101 selected), the `start` of the parser's answers in
+  `tests/test_console_prompt.py`, the golden and the count in `tests/test_public_api.py`,
+  and `tests/api_consumer.py`.
+
+The TUI's Tab can now complete every word. On Tab the bridge calls `expected(line)` with
+the text up to the cursor (cheap enough for the UI thread). If one word fits, it replaces
+`line[start:]`, followed by a space. If several fit, they go to the log as an info line, as
+the spec has it for the first word. The hint row can show what may come next as `?` does
+(`next: artnet dmxusb sacn`, the `<values>`, `<Enter>`, or `error: …`), next to the `help`
+lines it indexes by first word (spec §7.2). The `help` index is then used only for those
+syntax lines, so a change of the `help` format can no longer break completion. In the
+implementation plan, the §2.1 row "Tab completion, first word" becomes "Tab completion",
+**S**, from `expected` on each Tab, and both rows lose `(GAP-20)`. `hints.py` becomes the
+hint row (the `help` index and the `expected` line), Phase 0's **Deferred** list loses "full
+completion (GAP-20)", and risk R2 shrinks to the hint row's syntax lines.
 
 ## GAP-21: Engine health
 

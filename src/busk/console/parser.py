@@ -307,31 +307,42 @@ def parse(line: str, context: Context) -> Action:
 
 @dataclass(frozen=True)
 class Expected:
-    """What may follow a line (:func:`expected`)."""
+    """What may come where a word starts in a line: what ``busk run``'s
+    prompt completes on Tab and shows on ``?``.
+
+    The facades' ``expected(line)`` (GAP-20 of
+    ``docs/dev/tui/engine-gaps.md``) give it for the word being typed at the
+    end of ``line``, which starts at ``start``, and their ``words`` are those
+    that it starts. :func:`expected` gives it for the word after a line cut
+    where that word starts. ``values`` and ``error`` are text to show as it
+    is."""
 
     words: tuple[str, ...] = ()
-    """Keywords and names that may come next, as typed (names in quotes)."""
+    """Keywords and names that may come there, as typed (names in quotes)."""
     values: tuple[str, ...] = ()
-    """Anything else that may come next, described: ``a fixture number``."""
+    """Anything else that may come there, described: ``a fixture number``."""
     runnable: bool = False
-    """The line is a whole command as it is."""
+    """The line up to there is a whole command as it is."""
     error: str | None = None
-    """The mistake that stops the line. ``words`` may still be set, when the
-    mistake shows only at the end (``record slot 1`` on a slot in use)."""
+    """The mistake that stops the line before there. ``words`` may still be
+    set, when the mistake shows only at the end (``record slot 1`` on a slot
+    in use)."""
+    start: int = 0
+    """Where that word starts in the line."""
 
 
 def expected(line: str, context: Context) -> Expected:
     """What may follow ``line``, a line cut where its next word starts (Tab
-    completion and ``?``). Like :func:`parse`, it changes nothing: ids come
-    from a factory of its own."""
+    completion and ``?``), so ``start`` is its end. Like :func:`parse`, it
+    changes nothing: ids come from a factory of its own."""
     try:
         tokens, end = tokenize(line)
     except ParseError as exc:
-        return Expected(error=exc.message)
+        return Expected(error=exc.message, start=len(line))
     if end < len(line):  # in a comment
-        return Expected()
+        return Expected(start=len(line))
     if not tokens:
-        return Expected(COMMANDS)
+        return Expected(COMMANDS, start=len(line))
     parser = _Parser(line, tokens, end, replace(context, ids=RandomIds()))
     runnable, error = False, None
     try:
@@ -342,7 +353,11 @@ def expected(line: str, context: Context) -> Expected:
     except ParseError as exc:
         error = exc.message
     return Expected(
-        tuple(dict.fromkeys(parser.offers)), tuple(dict.fromkeys(parser.needs)), runnable, error
+        tuple(dict.fromkeys(parser.offers)),
+        tuple(dict.fromkeys(parser.needs)),
+        runnable,
+        error,
+        len(line),
     )
 
 

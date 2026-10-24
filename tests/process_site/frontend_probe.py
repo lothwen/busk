@@ -119,6 +119,8 @@ def run(show: Any, plan: dict[str, Any], records: Records, report: dict[str, Any
     report["templates"] = [[t.name, t.source] for t in show.effect_templates]
     report["categories"] = [[p["name"], p.get("category")] for p in show.show["profiles"]]
     report["colors"] = [[p.number, p.color] for p in show.snapshot.playbacks]
+    expected = show.expected("set gobo1 o")  # what the selection's gobos offer
+    report["expected"] = [list(expected.words), expected.start]
 
 
 def _reply(reply: Any) -> list[Any]:
