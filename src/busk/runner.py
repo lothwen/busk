@@ -37,7 +37,8 @@ dangerous line (GAP-10), for a frontend to ask too, and ``effect_templates``
 the templates ``effect add`` takes, the show's and the effect library's
 (:class:`~busk.console.console.EffectTemplateInfo`, GAP-15). A line's
 :class:`~busk.console.console.Reply` says whether it asked to quit, for a
-frontend to end as ``busk run``'s prompt does (GAP-18).
+frontend to end as ``busk run``'s prompt does (GAP-18), and ``status``
+answers with ``busk run``'s status line (GAP-19).
 
 Errors (§5.8): constructing a facade raises
 :class:`~busk.persistence.show_file.ShowLoadError` for an invalid show and
@@ -83,7 +84,7 @@ from typing import Final, Literal, Self
 
 from busk.commands.types import Command
 from busk.compiler.compile import CompiledShow, compile_show
-from busk.console.console import Console, EffectTemplateInfo, Reply
+from busk.console.console import Console, EffectTemplateInfo, Reply, status_line
 from busk.engine.clock import SWITCH_INTERVAL, Clock, FakeClock, MonotonicClock
 from busk.engine.effect_status import EffectCapture, read_effects
 from busk.engine.install import Stamp
@@ -246,7 +247,13 @@ class _Facade:
         ``quit`` (or ``exit``) stops nothing here: its reply has
         ``quit=True``, as has that of a ``source`` whose script stops at a
         ``quit``, and ending is the caller's business (GAP-18). ``busk run``
-        ends after these lines, and a frontend ends the run by returning."""
+        ends after these lines, and a frontend ends the run by returning.
+
+        ``status`` prints ``busk run``'s status line of the engine's newest
+        snapshot, ``GM 80% | BO off | P1 Main | …`` (GAP-19). A
+        :class:`LiveShow` prints it while it runs, and says ``no engine is
+        running`` before :meth:`start` and after :meth:`stop`; a performance
+        line sent just before shows in it once the engine has ticked."""
         reply = self._console.execute(line)
         self._interrupted()
         return reply
@@ -354,6 +361,7 @@ class OfflineShow(_Facade):
         self._console = Console(
             self._session,
             library if library is not None else ProfileLibrary(),
+            status=lambda: status_line(self.snapshot),
             settle=self._settle,
         )
         self._time = 0.0
@@ -588,7 +596,11 @@ class LiveShow(_Facade):
             engine_state=lambda: engine.snapshot,
         )
         self._setup(
-            Console(session, library if library is not None else ProfileLibrary()),
+            Console(
+                session,
+                library if library is not None else ProfileLibrary(),
+                status=self._status_line,
+            ),
             LocalEngine(engine),
             clock,
             state_dir=_optional_path(state_dir),
@@ -947,6 +959,15 @@ class LiveShow(_Facade):
             warn=self._warn,
         )
         self._feedback.open()
+
+    def _status_line(self) -> str:
+        """What ``status`` prints for a show that runs its own engine:
+        ``busk run --threads``'s answer while it runs (``busk run``'s show
+        has the CLI's, with the engine process's state)."""
+        if self._phase != "running":
+            return "no engine is running"
+        snapshot = self._link.snapshot
+        return "the engine has not ticked yet" if snapshot is None else status_line(snapshot)
 
     def _web_key(self) -> str:
         """The web remote's key: the state directory's, else a new one."""

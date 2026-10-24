@@ -299,6 +299,13 @@ if reply.quit and dialog.yes_no("Quit?"):          # the frontend's own dialog
     return                                         # under busk run --frontend, the run ends
 ```
 
+`status` answers with `busk run`'s [status line](running.md#what-it-prints): the grand
+master, blackout, the page, each speed master's tempo and the playbacks that are up, as in
+`GM 100% | BO off | P1 Main | Speed 1 120 BPM ×1 | 1 Warm on`. It is text to show as it
+is; a display reads `snapshot`. A `LiveShow` prints it while it runs, and `no engine is
+running` before `start()` and after `stop()`. A performance line sent just before shows in
+it once the engine has ticked. An `OfflineShow` prints it for the current tick.
+
 **Several threads.** A `LiveShow` may be used from any number of threads at once:
 `execute`, `submit`, `save`, `run_script`, `confirmation` and every read. Lines from
 different threads run as if one after the other: a line runs whole, and so does a script
@@ -355,8 +362,13 @@ opens no route, so nothing goes to the network; the frames are made all the same
 ...     time.sleep(0.5)                       # the engine applies it at its next tick
 ...     playback = live.snapshot.playbacks[0]
 ...     universe = live.frame.universes[1]
+...     status = live.execute("status").text
 >>> reply.ok, playback.number, playback.state, len(universe)
 (True, 1, 'active', 512)
+>>> status
+'GM 100% | BO off | P1 Main | Speed 1 120 BPM ×1 | 1 Warm on'
+>>> live.execute("status").text                 # after stop()
+'no engine is running'
 
 ```
 

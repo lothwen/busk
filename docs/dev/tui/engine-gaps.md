@@ -20,7 +20,7 @@ The TUI runs a `busk.LiveShow` in its own process, or, since GAP-11, is run by `
   action, echoed in the TUI's log. `submit()` is not used, so the UI teaches the command line.
   Since GAP-12, `execute` may be called from several threads, and performance lines never
   wait for another thread's line. Since GAP-18 a reply also says whether its line asked to
-  quit (`Reply.quit`).
+  quit (`Reply.quit`), and since GAP-19 `status` answers with `busk run`'s status line.
 - **Reads** use the typed public state: `LiveShow.snapshot` (`EngineSnapshot`),
   `LiveShow.frame` (`DmxFrame`, for the engine time), `LiveShow.show` (the `Show` document),
   `LiveShow.warnings`, since GAP-01 `LiveShow.output` (`OutputSnapshot`), since GAP-02
@@ -74,7 +74,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-16](#gap-16-fixture-category) Fixture category | read | nice-to-have | F1 A/C, F8 | **done** 2026-10-24 |
 | [GAP-17](#gap-17-playback-colour) Playback colour | read | nice-to-have | F1 | **done** 2026-10-24 |
 | [GAP-18](#gap-18-quit-signal) Quit signal | read | nice-to-have | prompt | **done** 2026-10-24 |
-| [GAP-19](#gap-19-status-under-liveshow) `status` under `LiveShow` | action | nice-to-have | prompt | open |
+| [GAP-19](#gap-19-status-under-liveshow) `status` under `LiveShow` | action | nice-to-have | prompt | **done** 2026-10-24 |
 | [GAP-20](#gap-20-completion-and-hints) Completion and hints | read | nice-to-have | prompt | open |
 | [GAP-21](#gap-21-engine-health) Engine health | read | nice-to-have | status bar | open |
 
@@ -1497,6 +1497,8 @@ its **Deferred** list loses GAP-18.
 
 ## GAP-19: `status` under `LiveShow`
 
+**Status:** done 2026-10-24 (see **Done** at the end of this section).
+
 **Needed by:** typing `status` in the TUI prompt.
 
 **Today:** `LiveShow` builds its console without a status callable, so `status` answers
@@ -1508,6 +1510,40 @@ its **Deferred** list loses GAP-18.
 
 **TUI until then:** `status` is sent to the engine like any other line, and the reply is shown as
 it is. The status bar has the same information.
+
+**Done** (2026-10-24). `LiveShow` now builds its console with a status callable: `status`
+prints `busk run`'s status line of the engine's newest snapshot (`GM 100% | BO off | P1 Main
+| Speed 1 120 BPM ×1 | 1 Warm on`), the same function `busk run` prints. No public name or
+signature changed (`busk.__all__` stays at 37, and the golden is unchanged). `status_line`
+moved from `busk.process.console_host` to `busk.console.console`, because the public names
+must load no CLI module (`test_public_api.py`). `busk.cli.status_line` is still the same
+function. Documented in `execute`'s docstring, the runner's module docs, `docs/library.md`
+(section 3, and its tested `LiveShow` example), `docs/running.md` (the status line, and
+Frontends) and `CHANGELOG.md` (Fixed). Where it settles what the suggestion left open:
+
+- **When the engine does not run** (a call the user may veto). Before `start()` and after
+  `stop()`, `status` still says `no engine is running`, although `snapshot` keeps the last
+  state after a stop: the line describes a running engine. Between `start()` and the first
+  tick, or after a start whose engine never answered, it says `the engine has not ticked
+  yet`, as `busk run --threads` does.
+- **`OfflineShow` too** (a call the user may veto). It also said `no engine is running`,
+  although it has an engine. It now prints the line of the current tick. It ticks after
+  every line, so in a script each `status` shows the lines before it.
+- **No waiting.** As at `busk run`'s prompt, `status` reads the newest snapshot. A
+  performance line sent just before shows in it once the engine has ticked (within one tick).
+- **`busk run`'s show is unchanged.** It keeps the CLI's answer, which also says `engine
+  stalled`, `engine restarting` or `engine failed`, so a frontend under `busk run
+  --frontend` gets those too.
+- **Text only.** The reply is text to show as it is. A display reads `snapshot`. Nothing new
+  crosses the processes, and nothing runs on the tick.
+- Tests: `tests/test_status_command.py` (10; five mutations of the change, all caught), a
+  `status` line from a real `busk run --frontend` in `tests/test_frontend.py`, and the
+  tested example in `docs/library.md`.
+
+The TUI sends a typed `status` like any other line, as planned, and in a plain `LiveShow`
+its reply is now the status line too, as under `busk run --frontend`. The implementation
+plan has no row or deferral for it: `status` is one of the read-only lines it shows
+verbatim (§1.1), so nothing in the plan changes.
 
 ## GAP-20: Completion and hints
 

@@ -105,7 +105,8 @@ button is held) or has its fader up, with the current cue of a sequence (number 
 the level of a `master`, `size` or `temp` fader, and a manual crossfade's target cue and
 progress. Running effects and chase steps print nothing, so a running chase does not print
 a line per step. At an interactive prompt the lines would garble the input, so the
-`status` command prints it instead.
+`status` command prints it instead, as it does in a [frontend](#frontends) and in a
+[`LiveShow`](library.md#3-live-inside-your-own-application-liveshow) of your own.
 
 **On exit** it prints the tick and command statistics and each route's packet and error
 counts (`, N faults` is added if its driver raised):
@@ -262,7 +263,8 @@ def run(show):
   own errors) becomes records of the `busk.run` logger instead, news at INFO and failures at
   WARNING, for the frontend to show. What comes before it starts (compile warnings,
   `Ignored in Phase 7:`, what was recovered, the surfaces' first lines) and after it
-  returns (the statistics) is printed as usual. No status lines are printed.
+  returns (the statistics) is printed as usual. No status lines are printed: `status`
+  answers with one, or with `engine restarting` while the engine restarts.
 - **Frames, output and effects** come from the engine process once the frontend reads them:
   the first read of each asks for them and returns `None`. After an engine restart their
   `seq` counts from 1 again.

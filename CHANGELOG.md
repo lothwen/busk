@@ -157,6 +157,9 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   in another thread whose line ended first, or stop that thread's script.
 - After a `quit` line on an `OfflineShow` or a `LiveShow`, the next `source` line or
   `run_script` ran only the first line of its script, and said nothing about it.
+- `status` on an `OfflineShow` or a `LiveShow` said `no engine is running` while the
+  engine ran. It now prints `busk run`'s status line (`GM 100% | BO off | P1 Main | …`),
+  and a `LiveShow` says `no engine is running` only before `start()` and after `stop()`.
 - The web remote on a phone held sideways: the strips were squeezed until their names
   vanished and their buttons spilled out. The header now takes one row, each fader sits
   beside its buttons, and the masters open with a **Masters** button.

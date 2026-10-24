@@ -120,6 +120,7 @@ from busk import (
     replay,
     save_show,
 )
+from busk.console.console import status_line
 from busk.engine.clock import SWITCH_INTERVAL
 from busk.persistence.paths import installation_cid, state_directory
 from busk.persistence.show_file import utc_now
@@ -130,7 +131,6 @@ from busk.process.console_host import (
     cannot_read,
     print_issues,
     run_console,
-    status_line,
 )
 from busk.process.options import RunOptions
 from busk.process.report import plural

@@ -101,7 +101,7 @@ from busk.commands.types import Command
 from busk.compiler.compile import CompiledShow, UnsupportedFeature, compile_show
 from busk.compiler.limitations import collect_limitations
 from busk.compiler.values import compile_values
-from busk.console.console import Console, interact
+from busk.console.console import Console, interact, status_line
 from busk.engine.clock import SWITCH_INTERVAL, Clock, MonotonicClock
 from busk.engine.install import Stamp
 from busk.engine.link import EngineLink, LocalEngine
@@ -905,70 +905,6 @@ def _logical_frame(path: Path, show: Show, compiled: CompiledShow) -> NDArray[np
 
 
 # -------------------------------------------------------------- status lines
-
-_LEVEL_SHOWN: Final = frozenset({"master", "size", "temp"})
-"""The fader functions whose level the status line shows."""
-
-
-def status_line(snapshot: EngineSnapshot) -> str:
-    """One line for the engine's state, e.g.
-    ``GM 80% | BO off | P1 Main | Speed 1 128 BPM ×2 | Fade 2.5 s | 9 Song on 3 Pre 1.00``.
-
-    ``OUT off`` follows while ``OUTPUT`` has turned DMX output off (Phase
-    7). The current page shows its number and name (Phase 6). Each speed master
-    shows its tempo and multiplier, and the fade-time override its time
-    while a fade-time master is up (Phase 6). Every playback that is
-    not idle, is flashing or has a ``master``, ``size`` or ``temp`` fader up
-    is listed: its number and name, ``on`` (active) or ``rel`` (releasing),
-    the current cue (number and name) of a sequence of several cues, while
-    a ``crossfade`` fader drives a transition ``→`` before that cue and the
-    progress after it (``18 Manual on → 2 Verse 50%``; Phase 6),
-    ``swop`` while a swop button is held (Phase 6), else ``flash``, and
-    that fader's level when above 0. A chase shows no step, a
-    ``rate`` fader no level (0.5 is its resting state) and an effect no phase,
-    so a running chase or effect does not print a line per step or tick
-    (phase-4-plan §5.11, phase-5-plan §5.13).
-    """
-    parts = [f"GM {snapshot.grandMaster:.0%}", f"BO {'on' if snapshot.blackout else 'off'}"]
-    if not snapshot.outputEnabled:
-        parts.append("OUT off")
-    if snapshot.page is not None:
-        parts.append(f"P{snapshot.page.number} {snapshot.page.name}")
-    if snapshot.speed:
-        parts.append(
-            " · ".join(
-                f"{speed.name} {round(speed.bpm, 1):g} BPM ×{speed.multiplier:g}"
-                for speed in snapshot.speed
-            )
-        )
-    if snapshot.fadeTime is not None:
-        parts.append(f"Fade {round(snapshot.fadeTime, 1):g} s")
-    shown = []
-    for playback in snapshot.playbacks:
-        level = playback.faderLevel if playback.fader in _LEVEL_SHOWN else 0.0
-        if playback.state == "idle" and not playback.flash and level == 0.0:
-            continue
-        words = [str(playback.number), playback.name]
-        if playback.state != "idle":
-            words.append("on" if playback.state == "active" else "rel")
-            if not playback.chase and playback.cueCount > 1 and playback.cue is not None:
-                if playback.progress is not None:
-                    words.append("→")
-                words.append(playback.cue)
-                if playback.cueName:
-                    words.append(playback.cueName)
-            if playback.progress is not None:
-                words.append(f"{playback.progress:.0%}")
-        if playback.swop:  # a swop holds the flash up
-            words.append("swop")
-        elif playback.flash:
-            words.append("flash")
-        if level > 0.0:
-            words.append(f"{level:.2f}")
-        shown.append(" ".join(words))
-    if shown:
-        parts.append(" · ".join(shown))
-    return " | ".join(parts)
 
 
 class StatusLines:
