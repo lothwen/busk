@@ -1,0 +1,51 @@
+/* busk-tui: the frame (spec §4.1, §5). Colours are the xterm-256 values of
+   busk_tui/colors.py; widgets carry their own styles in DEFAULT_CSS. */
+
+Screen {
+    background: #1c1c1c;
+    color: #dadada;
+    layers: base overlay;
+}
+
+/* A dialog dims the frame under it: the rule above matches it too. */
+ModalScreen {
+    background: #000000 55%;
+}
+
+#upper {
+    height: 1fr;
+    layers: base overlay;
+    align: center middle;  /* the help panel, alone on its layer */
+}
+
+#upper.help-open > #status,
+#upper.help-open > #tabs,
+#upper.help-open Page,
+#upper.help-open > #log {
+    tint: #000000 50%;
+}
+
+#main {
+    height: 1fr;
+}
+
+#hint {
+    padding: 0 0;
+}
+
+#legend {
+    padding: 0 0;
+}
+
+FailedScreen {
+    align: center middle;
+    background: #1c1c1c;
+}
+
+FailedScreen > #failed {
+    width: auto;
+    max-width: 100;
+    height: auto;
+    border: solid #ff5f5f;
+    padding: 1 2;
+}

@@ -10,6 +10,14 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- `busk-tui`, a terminal UI, behind the new extra `busk[tui]`
+  ([the terminal UI](docs/tui/guide.md)). `busk-tui SHOW` runs the show under `busk run` as
+  its frontend, with a status bar that follows the engine (routes, grand master, tempo,
+  programmer, blackout, output, page, engine health), the console prompt with hints and Tab
+  completion, a log of every line run and what busk answered, a help overlay, and the
+  engine's question before `output off`. `--standalone` runs the show in the TUI's own
+  process, for development and rehearsal. Its pages come next: this version lists the lines
+  to type meanwhile.
 - `OfflineShow.output` and `LiveShow.output`: the engine's output read back per fixture
   element, as two new public types, `OutputSnapshot` and `FixtureOutput`
   ([the library guide](docs/library.md#2-build-a-show-and-render-it-offlineshow)). Each

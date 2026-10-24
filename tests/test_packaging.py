@@ -77,7 +77,7 @@ def test_the_wheel_carries_the_license(wheel: zipfile.ZipFile) -> None:
 
 def test_midi_is_only_an_extra(wheel: zipfile.ZipFile) -> None:
     fields = metadata(wheel)
-    assert fields.get_all("Provides-Extra") == ["midi"]
+    assert fields.get_all("Provides-Extra") == ["midi", "tui"]  # tui: busk-tui (tests/tui)
     requires = fields.get_all("Requires-Dist") or []
     midi = [line for line in requires if line.startswith(("mido", "python-rtmidi"))]
     assert len(midi) == 2

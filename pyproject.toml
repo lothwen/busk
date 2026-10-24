@@ -22,21 +22,29 @@ dependencies = [
 [project.optional-dependencies]
 # MIDI surfaces (phase-8-plan §5.7): python-rtmidi needs ALSA to build where no wheel exists.
 midi = ["mido>=1.3.0", "python-rtmidi>=1.5.8"]
+# The terminal UI (docs/tui/guide.md): the `busk-tui` command and the busk_tui package.
+tui = ["textual>=8.2"]
 
 [project.urls]
 Repository = "https://github.com/lothwen/busk"
 
 [project.scripts]
 busk = "busk.cli:main"
+busk-tui = "busk_tui.app:main"
 
 [build-system]
 requires = ["uv_build>=0.12.13,<0.13.0"]
 build-backend = "uv_build"
 
+[tool.uv.build-backend]
+# Both packages ship in the one distribution: busk, and busk_tui behind the `tui` extra.
+module-name = ["busk", "busk_tui"]
+
 [dependency-groups]
-# The development setup has every extra: `uv sync` installs the MIDI one too.
+# The development setup has every extra: `uv sync` installs the MIDI and TUI ones too.
 dev = [
     "busk[midi]",
+    "busk[tui]",
     "hypothesis>=6.169.0",
     "mypy>=2.4.0",
     "pytest>=9.1.1",

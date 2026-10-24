@@ -10,18 +10,20 @@ Requires [uv](https://docs.astral.sh/uv/) and Python ≥ 3.12 (development uses 
 pinned in `.python-version`).
 
 ```bash
-uv sync                 # the development setup: busk, the dev tools and the `midi` extra
+uv sync                 # the development setup: busk, the dev tools and the `midi` and `tui` extras
 uv sync --all-extras    # the same, spelled out
 ```
 
-The `dev` group depends on `busk[midi]`, so python-rtmidi is installed too; on Python 3.13
-and later it builds from source, which needs a C++ compiler and the ALSA headers.
+The `dev` group depends on `busk[midi]` and `busk[tui]`, so python-rtmidi and Textual are
+installed too; on Python 3.13 and later python-rtmidi builds from source, which needs a C++
+compiler and the ALSA headers.
 
 ## Commands
 
 ```bash
 uv run pytest                                          # 3175 tests + 1 opt-in skip; no packet leaves the machine
-uv run pytest -m perf -s                               # conversion, output, tick, GO-burst, chase, effect, feedback and safety benchmarks (opt-in)
+uv run python -m pytest tests/tui                      # the terminal UI's tests (skipped without Textual)
+uv run pytest -m perf -s                               # conversion, output, tick, GO-burst, chase, effect, feedback, safety and TUI benchmarks (opt-in)
 uv run pytest -m soak -s                               # a 60 s soak with an engine kill, a console kill and an unplug (opt-in, Phase 7)
 uv run python bench/edit_latency.py [--processes]      # live-edit latency and engine stalls (Phase 3; Phase 7: across processes)
 uv run python bench/surface_load.py [SECONDS] [--processes]   # ticks under a phone, MIDI, OSC and feedback load (Phase 6)
@@ -297,6 +299,8 @@ bench/thread_latency.py      # performance lines from one thread while another e
 bench/soak.py                # the soak: build, chaos schedule, analysis, report (done criterion B)
 bench/soak_receiver.py       #   its receiver: sACN, Art-Net and a DMX-USB pseudo-terminal, timed by the kernel
 bench/soak_load.py           #   its load: MIDI, OSC, a phone and console lines, seeded
+src/busk_tui/                # the terminal UI (busk-tui; docs/tui/guide.md, docs/dev/tui/): only bridge.py imports busk
+tests/tui/                   # its tests (Textual's Pilot, a fake bridge, a stub show); conftest skips them without Textual
 tests/fixtures/appendix_a.json   # verbatim copy of the spec's Appendix A
 tests/fixtures/golden_7_8.json   # the §7.8 worked example's rig and playbacks
 tests/fixtures/phase1-values.json  # values for examples/real-fixtures.json: the Phase 1 golden frame

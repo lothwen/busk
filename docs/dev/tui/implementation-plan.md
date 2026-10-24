@@ -81,7 +81,7 @@ for the user are in §9. Answers may change the phases.
   `busk run` keeps the engine and the output in processes of their own, with the watchdog,
   autosave, crash recovery and the event log, and calls the TUI on its console process's main
   thread with the run's `LiveShow`, already started. `busk-tui SHOW` starts that run. For
-  development and rehearsal, `busk-tui --in-process SHOW` builds a `LiveShow` in the TUI's own
+  development and rehearsal, `busk-tui --standalone SHOW` builds a `LiveShow` in the TUI's own
   process instead (question Q5). The bridge gets the same `LiveShow` API either way.
 
 ### 1.2 The boundary
@@ -429,7 +429,7 @@ they answer one of the spec's open questions (§10 of the spec), that is noted.
      └──────────────────────────────────┬─────────────────────────────────┘
                                         ▼
    busk.LiveShow: busk run's, with the engine and the output in processes of
-   their own (GAP-11), or, with --in-process, one the bridge starts here
+   their own (GAP-11), or, with --standalone, one the bridge starts here
 ```
 
 - The UI thread never runs a line and never waits for the bridge. `send()` queues and returns a
@@ -454,7 +454,7 @@ src/busk_tui/
   __init__.py        version (importlib.metadata "busk"); no busk import
   __main__.py        python -m busk_tui
   app.py             main(): arguments, then busk run SHOW --frontend busk_tui.app:frontend
-                     (or --in-process); frontend(show), the function busk run calls; BuskApp
+                     (or --standalone); frontend(show), the function busk run calls; BuskApp
                      (Textual App): frame, pages, keys, drain timer
   bridge.py          the engine boundary: lifecycle, the two workers, reader, conversion, log capture
   model.py           frozen view models, BridgeEvent types, the BridgeLike protocol (no busk, no Textual)
@@ -479,8 +479,8 @@ src/busk_tui/
 
 | Member | What it does |
 |---|---|
-| `start()` | Starts the threads. Under `busk run`, the show it was given runs already, and the ordered worker runs `help` once. In-process, the ordered worker constructs the `LiveShow`, starts it (up to 15 s, `SETTLE_S`) and runs `help`. Never blocks the caller. |
-| `stop(timeout=5.0)` | Idempotent. Stops the reader, lets each worker finish its current line and drops queued lines. In-process, it then calls `LiveShow.stop()` (routes send their last frame and terminate the streams), and gives up after `timeout` with a warning. Under `busk run` it never stops the show: the run does, when `frontend` returns. |
+| `start()` | Starts the threads. Under `busk run`, the show it was given runs already, and the ordered worker runs `help` once. Standalone, the ordered worker constructs the `LiveShow`, starts it (up to 15 s, `SETTLE_S`) and runs `help`. Never blocks the caller. |
+| `stop(timeout=5.0)` | Idempotent. Stops the reader, lets each worker finish its current line and drops queued lines. Standalone, it then calls `LiveShow.stop()` (routes send their last frame and terminate the streams), and gives up after `timeout` with a warning. Under `busk run` it never stops the show: the run does, when `frontend` returns. |
 | `send(line, origin, key=None, performance=False) -> int` | Queues a line. `origin`: `typed`, `ui` or `internal` (internal lines are not echoed). `performance` comes from the `commands.py` builder that made the line, and sends it to the controls worker; typed lines always go to the ordered worker. With a `key` (`fader:3`), a newer line replaces a queued, unsent line with the same key. |
 | `confirmation(line) -> str \| None` | The engine's question before `line` (GAP-10), or `None`. Safe on the UI thread. |
 | `expected(line) -> Completion` | `expected(line)` (GAP-20) as a view model: `words`, `values`, `runnable`, `error`, `start`. Safe on the UI thread. |
@@ -490,7 +490,7 @@ src/busk_tui/
 | `help_lines -> tuple[str, …]` | The text of `help`, once known. |
 
 **Events** (`model.py`): `EngineStarting`, `EngineRunning(title, warnings)`,
-`EngineFailed(message)` (in-process only), `EngineStopped`, `CommandDone(ticket, line, origin,
+`EngineFailed(message)` (standalone only), `EngineStopped`, `CommandDone(ticket, line, origin,
 ok, lines, seconds, quit)`, `LiveChanged(LiveState)`, `Beat(time, beats)` (20 Hz),
 `ShowChanged(ShowModel)`, `ProgrammerChanged(ProgrammerModel)`, `OutputChanged(OutputModel)`,
 `EffectsChanged(EffectsModel)`, `RoutesChanged(routes)`, `SurfacesChanged(surfaces)`,
@@ -519,7 +519,7 @@ asks. `execute` itself never asks.
 **Quitting.** A reply with `quit` and a second Ctrl+C open the quit dialog: *Save and quit / Quit
 without saving / Cancel*. It cannot tell whether there are unsaved edits (GAP-03), and says so.
 Under `busk run` the autosave keeps them either way. After it, `frontend` returns and the run
-ends; in-process, the bridge stops the `LiveShow`.
+ends; standalone, the bridge stops the `LiveShow`.
 
 **Failure handling.** The UI is never frozen and never crashed by the engine side:
 
@@ -527,13 +527,13 @@ ends; in-process, the bridge stops the `LiveShow`.
 |---|---|
 | A line takes long (`save`, `source`, a big edit) | Prompt context shows `⧗ <line> 1.4s` after 0.3 s (the ordered worker). Input, tab switching, the live panes and the TUI's controls keep working: their performance lines go on the controls worker and never wait for the edit (GAP-12). Later typed lines queue, and control moves coalesce. |
 | `execute()` raises (it should not) | `CommandDone(ok=False)` with `internal error: <type>: <message>`. The traceback goes to the TUI's debug log file. The worker carries on. |
-| The show does not load | Under `busk run`, `busk run` prints the issues and exits before it calls the TUI. In-process, `main()` prints them (`path: message`) to stderr and exits 2, before Textual starts. |
-| In-process, `LiveShow()` or `start()` fails | `EngineFailed`: a full-screen message with the reason and `q` to quit. |
+| The show does not load | Under `busk run`, `busk run` prints the issues and exits before it calls the TUI. Standalone, `main()` prints them (`path: message`) to stderr and exits 2, before Textual starts. |
+| Standalone, `LiveShow()` or `start()` fails | `EngineFailed`: a full-screen message with the reason and `q` to quit. |
 | The engine does not run | `health.state` is not `running` (GAP-21): `HealthChanged`, and the `ENGINE` chip names the state. It clears when the engine runs again. Under `busk run` the watchdog restarts a stalled or dead engine (`restarting`), and after it the first reads of `frame`, `output` and `effects` return `None` again. |
 | The engine runs late | The overruns of two `health` reads ≥ 1 s apart grow: a dim `LATE` chip while they do. |
-| In-process, `stop()` hangs | After the timeout, a warning on stderr and exit anyway (the threads are daemons). |
-| The UI raises | In-process, `main()` runs the app inside `try/finally: bridge.stop()`, so the output is always terminated. Under `busk run`, Textual restores the terminal and the exception leaves `frontend`: a console crash. `busk run` starts a new console, which recovers the show from the autosave and calls `frontend` again, while the engine and the output run on (GAP-11). A flash the TUI held stays held, and shows as held (`PlaybackStatus.flash`). |
-| SIGTERM, SIGHUP | Under `busk run` with processes, busk raises its own exception on the TUI's thread; the TUI lets it through, and the run ends as after `quit`. In-process, the TUI quits as on `quit`, without the dialog. |
+| Standalone, `stop()` hangs | After the timeout, a warning on stderr and exit anyway (the threads are daemons). |
+| The UI raises | Standalone, `main()` runs the app inside `try/finally: bridge.stop()`, so the output is always terminated. Under `busk run`, Textual restores the terminal and the exception leaves `frontend`: a console crash. `busk run` starts a new console, which recovers the show from the autosave and calls `frontend` again, while the engine and the output run on (GAP-11). A flash the TUI held stays held, and shows as held (`PlaybackStatus.flash`). |
+| SIGTERM, SIGHUP | Under `busk run` with processes, busk raises its own exception on the TUI's thread; the TUI lets it through, and the run ends as after `quit`. Standalone, the TUI quits as on `quit`, without the dialog. |
 | Ctrl+C | Clears a typed line. On an empty prompt it says how to quit, and a second Ctrl+C opens the quit dialog, as in `busk run`. Textual reads it as a key, so busk's `KeyboardInterrupt` does not reach the TUI. |
 
 ### 4.4 The frame and global keys
@@ -590,7 +590,7 @@ spec (question Q8).
 - **End to end:** the real bridge and the app, headless, on a real `LiveShow(output=False)`:
   type `fader 1 50%` and see the playback row show 50.
 - **Performance** (opt-in, `-m perf`), with the TUI running headless at full refresh on F3
-  (output) and F5 (effects): in-process, the engine's frame rate (`frame.seq` over wall time)
+  (output) and F5 (effects): standalone, the engine's frame rate (`frame.seq` over wall time)
   against a bare `LiveShow`; under `busk run`, the engine's overruns (`health`) and the console
   process's CPU against a bare frontend. The gates are set in Phase 0 from measurements (risk
   R1).
@@ -607,7 +607,7 @@ uv run python -m pytest                                 # the engine suite, unch
 uv run --extra tui python -m mypy                       # --strict on src/, now with busk_tui
 uv run ruff check . && uv run ruff format --check .
 uv run --extra tui python -m busk_tui examples/tupperdmx/tupper-demo.show               # under busk run
-uv run --extra tui python -m busk_tui --in-process examples/tupperdmx/tupper-demo.show  # in-process
+uv run --extra tui python -m busk_tui --standalone examples/tupperdmx/tupper-demo.show  # standalone
 ```
 
 ---
@@ -645,20 +645,65 @@ build-backend `module-name` list (Q3). `__init__.py`, `__main__.py`, `app.py` wi
 `main()` and `frontend(show)`. `main()` checks the TUI's options, then replaces itself with
 `python -m busk run SHOW --frontend busk_tui.app:frontend` and the `busk run` options it was
 given, with the TUI's own options in `BUSK_TUI_OPTIONS` (JSON), because `frontend` gets only the
-show (GAP-11). `--in-process` runs the app in this process instead. *Verify:* `uv build --wheel`
+show (GAP-11). `--standalone` runs the app in this process instead. *Verify:* `uv build --wheel`
 contains `busk_tui/` and the script; `tests/test_packaging.py` still passes; the host unit tests.
 
+
+   **Done** (2026-10-24).
+   - `pyproject.toml`: the `tui` extra, the `busk-tui` script, `[tool.uv.build-backend]
+     module-name = ["busk", "busk_tui"]` (Q3: without it `busk_tui` is not in the wheel), and
+     `busk[tui]` in the `dev` group (Q4). `uv.lock` follows.
+   - **`--standalone`, not `--in-process`** (Q5: you kept the host but not the name). One flag
+     in `config.py`; easy to rename again.
+   - **`BuskApp` is in `shell.py`, not `app.py`.** Textual reads `TEXTUAL_COLOR_SYSTEM` when it
+     is imported, so `app.py` imports neither busk nor Textual at the top: `main()` sets the
+     colour system from `--colors` (and the config file), then imports the shell, or puts it in
+     the environment `busk run` inherits. The boundary test checks both.
+   - `main()` replaces itself with `os.execve` (the exit code is `busk run`'s), after
+     `run_command(options)`, which the tests call.
+
 0.2 **Bridge core.** `model.py`, `bridge.py`: both hosts (under `busk run`, the given
-`LiveShow`, never started or stopped by the bridge; in-process, load errors,
+`LiveShow`, never started or stopped by the bridge; standalone, load errors,
 `ProfileLibrary(--library dirs)` and `LiveShow(show, path=…, library=…, output=…, surfaces=…,
 state_dir=…, tune_interpreter=True)`), the ordered and controls workers, the reader, the log
 handler, `confirmation`, `expected`, the events of §4.3. Phase 0's conversion: title, routes and
 their status, universes, masters, pages, speed masters, health, and the programmer's selection,
 blind, fade time and fixture count. *Verify:* the bridge tests, stub and live, and the host test.
 
+
+   **Done** (2026-10-24).
+   - As §4.3, with: a keyed line that replaces a queued one goes to the end of its queue (after
+     the lines sent before it) and the replaced line has no `CommandDone`; the bridge's own
+     lines (`help` at start, `info`) send no `CommandDone` and do not show as busy; before the
+     show runs, `confirmation` is `None`, `expected` empty and the health `starting`.
+   - **The temporary `info` parser** (Q2): `session_from_info` reads `undo: N steps, redo: M
+     steps` and `file: …, saved|unsaved edits`. The ordered worker runs `info` after each line it
+     ran that succeeded, and the reader queues one (deduplicated) when the document or the
+     programmer changes, which covers surfaces and the web remote. New event
+     `SessionChanged(SessionState(undo, redo, dirty))`. Remove when GAP-03 closes (its section
+     says so).
+   - The reader marks each part seen only once it is converted, so a conversion that raises is
+     tried again at the next look (and logged to the debug log).
+   - `RouteView` is the document's route (protocol as the operator reads it, `sACN`, `ArtNet`,
+     `DMX-USB`; universe number; enabled) with its status matched by id; `state` is `None`
+     while nothing runs the output (`--no-output`).
+   - `Bridge.attached(show: object)` checks it got a `LiveShow`, so `app.py` needs no busk type.
+   - Phase 0's `LiveState` has no playbacks (Phase 1 adds them): the host probe and the live
+     tests send `gm 50%` instead of `fader 1 50%`.
+
 0.3 **App shell.** Frame layout, `busk.tcss` with the palette, `StatusBar`, `TabBar`,
 `KeyLegend`, `Page` base and placeholders, F-keys and Alt+digits, reflow below 100 columns.
 *Verify:* Pilot tests switch every page. Manual check at 100×30 and 150×48.
+
+
+   **Done** (2026-10-24).
+   - The status bar puts the `ENGINE …` and `OUTPUT OFF` chips before the routes, so a narrow
+     terminal cuts the clock-side end, not a warning. The title is cut at 24 cells, with `*`
+     after it while there are unsaved edits (Q2). A route's light changes at most every
+     0.25 s while its `packets` grow.
+   - The tabs are one text with click actions; a key and its name never split when they wrap.
+   - Checked in a real pseudo-terminal (pyte), under `busk run` at 150×48 and standalone at
+     100×30, besides the Pilot tests at 99, 100 and 150 columns.
 
 0.4 **Command line.** `Prompt` (history, Esc, Tab completion from `expected`), `HintRow` (the
 `help` lines of the first word, and the `expected` line: next words, `<values>`, `<Enter>`,
@@ -667,8 +712,37 @@ bounded to 2000 lines, auto-scroll), prompt context (`P<n>`, `sel n`, page, busy
 confirmation dialog, and the quit dialog on a reply with `quit` (§4.3). *Verify:* the prompt
 tests.
 
+
+   **Done** (2026-10-24).
+   - **Keys that depend on the prompt go through it.** Tab, Esc, Ctrl+C, `?` (empty prompt),
+     the pane cursor's Enter and arrows, and PgUp/PgDn over help are offered by `Prompt._on_key`
+     to `BuskApp.prompt_key`, in typing order. As app priority bindings (the first build) they
+     ran before the keys typed just before them: in a real terminal, `blind of` and Tab in one
+     burst completed a stale line. (Textual also skips an app's binding for a printable key a
+     focused input would type.) F1–F10, Alt+digits and Ctrl+Q stay app-wide. A test posts a
+     burst of keys.
+   - Ctrl+Q opens the quit dialog (Textual's own quits at once). On an empty prompt, Ctrl+C's
+     "press Ctrl+C again to quit" is in the hint row; any other key starts again.
+   - Space, ← →, `[` `]` and PgUp/PgDn's `page prev|next` come with F1 in Phase 1 (they need
+     its playbacks); the key legend lists only the keys that work.
+   - The hint row: what may come at the cursor (`next: …`, or `error: …` in red), then up to
+     two `help` forms, those naming more of the typed words first. While the first word is
+     typed and has no form, the commands it starts are the engine's (`expected`), so `group`
+     and `show` are not "unknown". Tab with several candidates also completes what they share,
+     as readline does.
+   - A refused line's `error: ` (the documented mark of `Reply`) is left out after ` ✗ `; the
+     lines after the first are indented.
+   - The quit dialog knows about unsaved edits (Q2): with them, *Save and quit / Quit without
+     saving / Cancel*; without, *Quit / Cancel*; unknown, the three and a note. Save and quit
+     waits for the `save` and stays if it fails.
+
 0.5 **Help overlay.** F10, `?`, typed `help`, Esc and outside click close it. It holds the `help`
 text and the key grid. *Verify:* Pilot tests, prompt usable while it is open.
+
+
+   **Done** (2026-10-24). The overlay is the panel itself, centred on a layer of its own:
+   Textual paints a full-size layer over what is under it, so the pages are dimmed with a
+   `tint` instead. PgUp/PgDn scroll it.
 
 0.6 **Shared widgets.** `CommandButton` (`[LABEL]`, intent colour, runs a line), `Chip`, `HBar`
 (click, drag with coalesced sends and one log line on release, wheel, ⅛ cells), `BigDigits`,
@@ -676,19 +750,39 @@ text and the key grid. *Verify:* Pilot tests, prompt usable while it is open.
 builder says whether its line is a performance line), `nav.py`. *Verify:* widget and colour
 tests.
 
+
+   **Done** (2026-10-24). Also `commands.save()` (the quit dialog's). Widgets post `RunLine`
+   messages and the app sends them, so no widget sees the bridge. The category table of
+   adaptation 8 comes with its first page (Phase 4), not in `colors.py` now.
+
 0.7 **Configuration.** Options: `SHOW`; `--state-dir` and `--library DIR` (repeatable), for
-`busk run` or the in-process `LiveShow`; the other `busk run` options that combine with
+`busk run` or the standalone `LiveShow`; the other `busk run` options that combine with
 `--frontend` (all but `--console`, `--no-console` and `--duration`), passed on as they are;
-`--in-process`, and with it `--no-output` and `--no-surfaces`; the TUI's own `--layout A|B|C`,
+`--standalone`, and with it `--no-output` and `--no-surfaces`; the TUI's own `--layout A|B|C`,
 `--faders N`, `--colors auto|256|16|truecolor`, `--config FILE`. Also
 `$XDG_CONFIG_HOME/busk-tui/config.toml` (quick commands, defaults) and
 `$XDG_STATE_HOME/busk-tui/state.json` (last page and layout; unreadable or unwritable is
 ignored). *Verify:* config tests.
 
+
+   **Done** (2026-10-24). The config file has `[defaults]` `layout`, `faders`, `colors` (the
+   quick commands come with Phase 2). Order: options, then the remembered layout and page, then
+   the config file. `--standalone` refuses the `busk run`-only options, and `--no-output` /
+   `--no-surfaces` need it (exit 2). Standalone opens the surfaces unless `--no-surfaces`, as
+   `busk run` does. `--layout` and `--faders` are taken and remembered; F1 uses them from
+   Phase 1.
+
 0.8 **Hardening and docs.** The failure behaviours of §4.3, signals, the perf check, and
-`docs/tui/guide.md` (install, start, the two hosts, frame, keys; `--in-process` is for
+`docs/tui/guide.md` (install, start, the two hosts, frame, keys; `--standalone` is for
 development and rehearsal, not for a show). *Verify:* the failure tests and the manual check
 below.
+
+
+   **Done** (2026-10-24). `docs/tui/guide.md`, a README line and table row (Q10: assumed yes),
+   a CHANGELOG entry, `docs/dev/development.md` (setup, commands, layout). Signals: under `busk
+   run`, SIGTERM and SIGHUP end the run with the terminal restored (checked in a pty);
+   standalone, they exit the app, and `main()` stops the show. Tracebacks the TUI catches go
+   to `$XDG_STATE_HOME/busk-tui/debug.log`. Perf gates below.
 
 **Files.** `pyproject.toml`; `src/busk_tui/{__init__,__main__,app,bridge,model,commands,hints,
 colors,config,nav}.py`, `busk.tcss`; `widgets/{__init__,frame,prompt,log,help,dialogs,controls,
@@ -702,12 +796,12 @@ fadeTime), `frame` (time, seq), `show` (meta.title, output.routes, universes, ma
 `programmer` (selection, blind, fadeTime, values), `routes`, `health`, `warnings`, `busk.*` logs;
 `confirmation(line)`, `expected(line)`, `Reply.quit`.
 
-**Deferred.** `undo n` in the prompt context and the unsaved marker; the quit dialog cannot tell
-whether there are unsaved edits (GAP-03).
+**Deferred.** Nothing: `undo n`, the unsaved marker and a quit dialog that knows come from
+the temporary `info` parser (Q2) until GAP-03 gives them typed.
 
 **Tests.**
 - Boundary scan (§4.6).
-- Host: the `busk run` command line and `BUSK_TUI_OPTIONS` for each option; `--in-process` and
+- Host: the `busk run` command line and `BUSK_TUI_OPTIONS` for each option; `--standalone` and
   its options; the probe frontend under `busk run`, with `--threads` and with processes (§4.6).
 - Bridge, stub: lines run in order on each worker; a controls line runs while an ordered line
   sleeps 5 s; `send()` returns at once; `busy` follows the ordered worker only; a raising
@@ -715,9 +809,9 @@ whether there are unsaved edits (GAP-03).
   unsent `fader:3`; `LiveChanged` only on a new `seq` (a smaller one counts, as after a restart);
   `ProgrammerChanged` only on a new `version`; `ShowChanged` only on a new document;
   `HealthChanged` on a new state, and `late` while the overruns grow over ≥ 1 s. Under `busk
-  run`, `stop()` never stops the show. In-process, `stop()` twice is harmless, `stop()` honours
+  run`, `stop()` never stops the show. Standalone, `stop()` twice is harmless, `stop()` honours
   its timeout, and a failing `start()` gives `EngineFailed`.
-- Bridge, live: in-process `start()` reaches `EngineRunning`; `fader 1 50%` gives a `LiveChanged`
+- Bridge, live: standalone `start()` reaches `EngineRunning`; `fader 1 50%` gives a `LiveChanged`
   with 0.5 within 1 s, and `sel group 1` a `ProgrammerChanged`; `help_lines` is not empty;
   `health` goes `running`; after `stop()` no `busk-*` thread is alive.
 - Hints, against the real `help` text and real `expected` answers: alternatives split on `|`
@@ -741,24 +835,53 @@ whether there are unsaved edits (GAP-03).
 - End to end and perf, as in §4.6.
 
 **Done when.**
-- [ ] `busk-tui SHOW` (under `busk run`), `busk-tui --in-process SHOW` and `python -m busk_tui
+- [x] `busk-tui SHOW` (under `busk run`), `busk-tui --standalone SHOW` and `python -m busk_tui
       SHOW` open the frame at 100×30 and 150×48, and every page is reachable with F-keys and
       with Alt+digits.
-- [ ] Typed lines run, and results, errors and engine news show with the spec's prefixes. Hints,
+- [x] Typed lines run, and results, errors and engine news show with the spec's prefixes. Hints,
       completion of every word and the help overlay work, and the prompt stays usable over help.
       A typed `output off` asks first and runs only on yes.
-- [ ] The status bar follows the live engine: title, routes with their state, GM, BPM and beat
+- [x] The status bar follows the live engine: title, routes with their state, GM, BPM and beat
       dot, programmer fade, `PROG n`, BLIND, blackout, output off, page, engine state, clock.
-- [ ] A 5 s line (stub) never freezes keys, page switching, the beat dots or a fader drag. No
+- [x] A 5 s line (stub) never freezes keys, page switching, the beat dots or a fader drag. No
       engine-side exception reaches the UI. Every way of quitting ends the run (under `busk run`)
-      or stops the `LiveShow` (in-process).
-- [ ] The boundary, contract, TUI and engine suites are green, with ruff, format and mypy clean.
+      or stops the `LiveShow` (standalone).
+- [x] The boundary, contract, TUI and engine suites are green, with ruff, format and mypy clean.
       The wheel contains `busk_tui` and `busk-tui`.
-- [ ] The perf gates of both hosts are recorded in this plan's Done note.
+- [x] The perf gates of both hosts are recorded in this plan's Done note.
 - [ ] Manual (the user): on the TupperDMX rig with the simulator, under `busk run`: `go 1`,
       `gm 50%`, `blackout on`/`off`, `output off` (asked first) and `output on`; kill the engine
       process and see `ENGINE RESTARTING`, then the chip clear; quit by `quit` and by Ctrl+C
       twice: the terminal is restored and the simulator stops receiving.
+
+**Done** (2026-10-24), steps 0.1–0.8; the manual check is the user's.
+- Suites: the TUI's 171 tests (`tests/tui`, 14 test files) and the whole suite, 4076 passed, 1
+  skipped (the opt-in multicast), 15 deselected (perf and soak); ruff, format and `mypy` on
+  `src/` clean. `textual>=8.2` confirmed with `uv sync --resolution lowest-direct` (Textual
+  8.2.0, numpy 2.3.2, pydantic 2.12.4: the TUI's tests pass). Textual 7.5.0, 8.0.0 and 8.1.1
+  pass them too today; the floor stays at 8.2 for the phases to come.
+- **One engine test changed:** `tests/test_packaging.py::test_midi_is_only_an_extra` pinned
+  the wheel's extras to `["midi"]`; with the `tui` extra they are `["midi", "tui"]`. Its point
+  (MIDI's packages only through its extra) is unchanged. §1.2's rule and step 0.1's "still
+  passes" cannot both hold once the extra exists.
+- **Perf gates** (`uv run python -m pytest tests/tui -m perf -s`, `test_tui_perf.py`; club-night
+  show, no routes or surfaces, the TUI headless at 150×48 typing a line every 0.6 s, 8 s each).
+  Phase 0 reads neither the output nor the effects, so this is the frame, the prompt and the
+  reader at 20 Hz:
+
+  | Host | Measured | Gate |
+  |---|---|---|
+  | Standalone: the engine's frame rate, against a bare `LiveShow` | 100.0 vs 100.0 frames/s | ≥ 97 % of bare |
+  | `busk run`: the engine's overruns | 0 of 803 ticks (bare: 0 of 703) | ≤ 0.2 % of ticks |
+  | `busk run`: the console process's CPU, against a frontend that waits | 0.153 vs 0.015 core (+0.138) | ≤ +0.25 core |
+
+  Phases 1–5 add their pages to the measurement, F3 and F5 with the output and effects read.
+- Checked by hand in a pseudo-terminal (pyte): under `busk run` at 150×48, `gm 50%` in the
+  status bar, `?` help, `output off` asked first, Ctrl+C twice to the quit dialog, `q`, exit 0
+  and busk run's statistics; SIGTERM and SIGHUP end the run with the terminal restored
+  (alternate screen left, mouse reporting off). Standalone at 100×30: the wrapped tabs, the
+  remembered page, Tab completion, the pane cursor, SIGHUP. Not checked: killing the engine
+  (the manual check above; the chip is unit-tested, the watchdog's states are GAP-21's tests).
 
 ### Phase 1: Perform (F1 layout B, F7)
 
@@ -1032,7 +1155,7 @@ layouts keeps the selected playback and is saved in `state.json`.
   console process, one of two engine changes GAP-12 left for a decision, would bring that to
   0.24–0.29 and 14–15 ms. Mitigations: change-driven rendering,
   20 Hz caps, `output` and `effects` read only while a page shows them, and the Phase 0 perf
-  gates. In-process, the old risk stays: `docs/library.md` measured 10 % overrun ticks in one
+  gates. Standalone, the old risk stays: `docs/library.md` measured 10 % overrun ticks in one
   process under edits, against 0.05 % in `busk run`; `tune_interpreter=True` helps.
 - **R2, message text.** The hint row's syntax lines read the text of `help`. A format change
   degrades them to nothing, but no longer completion (`expected`, GAP-20) or commands. The
@@ -1049,7 +1172,7 @@ layouts keeps the selected playback and is saved in `state.json`.
   how the session works (copy-on-write) but not a documented promise. As a guard, the bridge also
   re-reads the document after every successful line. GAP-03's `showVersion` would make it
   explicit. The programmer's `version` and the identity of `effect_templates` are documented.
-- **R6, start and stop.** Under `busk run`, the run starts and stops the show. In-process,
+- **R6, start and stop.** Under `busk run`, the run starts and stops the show. Standalone,
   `start()` can take 15 s and `stop()` can hang on a driver; both run off the UI thread, with
   timeouts.
 - **R7, restarts under `busk run`.** A TUI that raises is a console crash: `busk run` starts a
@@ -1077,32 +1200,34 @@ each has a keyboard path (prompt, pre-fill or pane cursor), except FLASH (R4).
   `routes`, `surfaces`, `health`, `show` and `effect_templates` directly, and asks
   `confirmation` and `expected`, all through the bridge only, and sends every action through
   `execute()`. If you meant that even reads must go through `execute()`, most of §2's **S** rows
-  would depend on parsing `list …` text, and would become gaps.
+  would depend on parsing `list …` text, and would become gaps. ANSWER: Use typed reads, all the gaps were built to use that. DONT use execute() and a parser.
 - **Q2. No parsing of reply text.** GAP-02 closed BLIND, `PROG n` and `sel n`. Only `undo n` and
   the unsaved-edits marker are left, in the text of `info` (GAP-03). Would you accept a temporary
   parser for these two, removed when GAP-03 closes, or should they wait for it (see Q12)? The plan
-  waits.
+  waits. ANSWER: Temporary parser for these two.
 - **Q3. Packaging.** `uv_build` only puts `busk` in the wheel. I checked that `busk_tui` is
   left out unless `pyproject.toml` also gets
   `[tool.uv.build-backend] module-name = ["busk", "busk_tui"]`. That is one table beyond "the
-  extra and the entry point". May I add it?
+  extra and the entry point". May I add it? ANSWER: I don't know, decide by yourself the best choice.
+  *(Phase 0: added; the wheel needs it.)*
 - **Q4. Dev environment.** `mypy` covers all of `src/` (so `busk_tui` too), and the TUI tests need
   Textual. Either developers run `uv run --extra tui …` (no change, as planned), or the `dev` group
   gets `busk[tui]` (and `pytest-textual-snapshot`, if you want screenshot tests). The second is
-  another `pyproject.toml` change. Which do you prefer?
+  another `pyproject.toml` change. Which do you prefer? ANSWER: Go for second choice, Add busk[tui] to the dev group.
 - **Q5. Host.** GAP-11 settled the old question: `busk-tui SHOW` runs under `busk run
   --frontend`, with the watchdog, autosave and recovery. The plan also keeps `busk-tui
   --in-process SHOW`, a `LiveShow` in the TUI's own process, for development and rehearsal: it is
   the only way to run with `--no-output` or `--no-surfaces`, which `busk run` lacks, and it
   starts faster. It costs a branch in `main()` and one in the bridge (start and stop the show, or
-  not). Keep it, or `busk run` only?
+  not). Keep it, or `busk run` only? ANSWER: Keep it. But I don't like the term --in-process.
+  *(Phase 0: named `--standalone`.)*
 - **Q6. FLASH.** *Settled by GAP-04:* FLASH sends `flash N on|off`, a console line, so "console
   lines only" needs no exception.
 - **Q7. Encoder drags.** Until GAP-06, I send one `set` on release (one undo step, no live light
   while dragging). The alternative is live sends at about 10 Hz, at the cost of many undo steps.
-  Which do you prefer?
+  Which do you prefer? ANSWER: Live sends at about 10 Hz.
 - **Q8. The pane cursor** (§4.5) is an addition to the spec, for keyboard-first operation on
-  every page. Keep it?
+  every page. Keep it?  ANSWER: Yes keep it.
 - **Q9. Interim live-output view.** *Dropped:* GAP-01 is closed, and F3 shows the live output
   itself.
 - **Q10. Root files.** Is a one-line install mention in `README.md` and an entry in
@@ -1113,8 +1238,8 @@ each has a keyboard path (prompt, pre-fill or pane cursor), except FLASH (R4).
   at 50 %, an 80 % look shows 40 %, and `[+]` would set 45 %, which is 22.5 % on stage. The plan
   follows the engine's own rule for `set … by` instead: the steps and the wheel act only where
   the programmer holds the attribute, and elsewhere the row shows the output value dim, with its
-  steps disabled until a click or a drag sets a value. Agree?
+  steps disabled until a click or a drag sets a value. Agree? ANSWER: Yes agree.
 - **Q12. The open gaps.** GAP-03 (Phase 0: `undo n`, the unsaved marker, a quit dialog that
   knows), GAP-06 (Phase 2: live encoder drags in one undo step) and GAP-13 (Phase 4: MONITOR,
   learn mode, the raw `val`). Build the TUI with these deferrals, or close GAP-03 before Phase 0
-  and GAP-06 before Phase 2, as the other gaps were closed?
+  and GAP-06 before Phase 2, as the other gaps were closed? ANSWER: No, build TUI with these deferrals. They will be implemented in teh future.

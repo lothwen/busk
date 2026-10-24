@@ -307,6 +307,13 @@ every commit, but that is not a documented promise.
 **TUI until then:** no undo count in the prompt context. The quit dialog always offers *Save and
 quit / Quit without saving / Cancel*, and says it cannot tell whether there are unsaved edits.
 
+**TUI as built (Phase 0, the plan's Q2):** a temporary parser of `info`'s `undo: N steps,
+redo: M steps` and `file: …, saved|unsaved edits` lines (`busk_tui.bridge.session_from_info`),
+run by the bridge after each line it sends and when the show or the programmer changes. It
+gives the prompt context's `undo n`, the `*` after the show's title and a quit dialog that
+knows; if `info`'s text stops matching, they disappear and the dialog says it cannot tell.
+Remove it when this gap closes.
+
 ## GAP-04: Flash and playback buttons from the console
 
 **Status:** done 2026-10-22 (see **Done** at the end of this section).
