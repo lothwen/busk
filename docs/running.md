@@ -268,6 +268,11 @@ def run(show):
 - **Frames, output and effects** come from the engine process once the frontend reads them:
   the first read of each asks for them and returns `None`. After an engine restart their
   `seq` counts from 1 again.
+- **The engine's health** (`show.health`) is the watchdog's word on the engine process, as
+  the status line says it: `running`, `stalled`, `restarting` or `failed`, for the
+  frontend's engine warning. Its tick and overrun counts come once a second, and count from
+  0 again after a restart. With `--threads`, which has no watchdog, the frames say it, as
+  in a library.
 - `--frontend` cannot be combined with `--console`, `--no-console` or `--duration`. The
   frontend's own settings are its business: `busk run`'s environment and working directory
   reach it.

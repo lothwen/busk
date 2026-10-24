@@ -184,6 +184,12 @@ def live(path: str, host: Callable[[busk.LiveShow], None]) -> busk.Show:
             dot: tuple[str, str, str] = (surface.name, surface.kind, surface.state)
             urls: tuple[str, ...] = surface.urls
             assert (surface.id, surface.detail, dot, urls) is not None
+        health: busk.EngineHealth | None = live.health
+        assert health is not None  # started
+        chip: str | None = None if health.state == "running" else health.state.upper()
+        age: float | None = health.lastTickAge
+        busy: tuple[int, int] = (health.ticks, health.overruns)
+        assert (chip, age, busy) is not None
         host(live)
     live.stop()  # idempotent
     return live.show

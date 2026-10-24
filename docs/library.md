@@ -12,7 +12,7 @@ library that does the same things from your own code. With the library you can:
 
 Everything public is importable from `busk` itself. This guide covers [installing](#installing),
 [the three uses](#1-tooling-validate-a-show-import-a-profile) with examples, a
-[reference](#reference) of the 38 public names, [the errors](#errors),
+[reference](#reference) of the 39 public names, [the errors](#errors),
 [logging](#logging), [what is public](#what-is-public) and [the stability promise](#stability).
 The [README](../README.md) covers the command line and links the other guides: the
 [console's commands](console.md), [running a show](running.md) and [how busk works inside](dev/internals.md).
@@ -275,6 +275,21 @@ for surface in live.surfaces or ():
 # Phone web ok  http://10.0.0.5:8080/?k=…
 ```
 
+`health` says how the engine is doing, for a display's engine warning. Its `state` is
+`"running"`, `"starting"` (no tick yet), `"stalled"` (no new frame for 1 s, counting from
+`start()` while there is none; the output holds the last frame meanwhile) or `"stopped"`
+(after `stop()`). `ticks` counts the engine's ticks and `overruns` those that ended after
+the next one was due, so frames came late: overruns that grow between two reads mean a
+busy engine. `lastTickAge` is how long ago the newest tick ran, in seconds, or `None`
+before the first. It is `None` before `start()`, and a new object at every read:
+
+```python
+health = live.health                                  # polled with the others, after start()
+chip = None if health.state == "running" else f"ENGINE {health.state.upper()}"
+busy = health.overruns > last.overruns                # late ticks since the last poll
+last = health
+```
+
 `confirmation(line)` is the yes/no question to ask before running `line`, the one `busk
 run`'s prompt asks: `"Turn all DMX output off?"` before `output off`. It is `None` for a
 line that runs at once: every other line, and a line that does not parse (`execute` says
@@ -382,12 +397,15 @@ opens no route, so nothing goes to the network; the frames are made all the same
 ...     playback = live.snapshot.playbacks[0]
 ...     universe = live.frame.universes[1]
 ...     status = live.execute("status").text
+...     health = live.health
 >>> reply.ok, playback.number, playback.state, len(universe)
 (True, 1, 'active', 512)
 >>> status
 'GM 100% | BO off | P1 Main | Speed 1 120 BPM ×1 | 1 Warm on'
->>> live.execute("status").text                 # after stop()
-'no engine is running'
+>>> health.state, health.ticks > 0, health.lastTickAge < 1.0
+('running', True, True)
+>>> live.execute("status").text, live.health.state       # after stop()
+('no engine is running', 'stopped')
 
 ```
 
@@ -406,15 +424,17 @@ opens no route, so nothing goes to the network; the frames are made all the same
 ([Running a show](running.md#frontends)). The frontend reads and commands it as above,
 and gets the run's safety net: the engine in its own process, the watchdog, autosave and
 recovery. Its `frame`, `output` and `effects` come from the engine process: the first read
-of each asks for them and returns `None`. It does not call `start()` or `stop()`. It may
-use the show from several threads, as above. There the console process keeps Python's
-switch interval, and an edit's install holds the commands sent meanwhile while it goes to
-the engine process: on the 400-fixture rig, a `fader` line sent while another thread
-edited was done 32–45 ms after it was due at the 99th percentile.
+of each asks for them and returns `None`. Its `health` has the watchdog's word on the
+engine process, which adds two states, `"restarting"` and `"failed"` (given up), and its
+counts come once a second (with `--threads`, as above). It does not call `start()` or
+`stop()`. It may use the show from several threads, as above. There the console process
+keeps Python's switch interval, and an edit's install holds the commands sent meanwhile
+while it goes to the engine process: on the 400-fixture rig, a `fader` line sent while
+another thread edited was done 32–45 ms after it was due at the 99th percentile.
 
 ## Reference
 
-The 38 names of `busk.__all__`. Each has a docstring with the details; path parameters
+The 39 names of `busk.__all__`. Each has a docstring with the details; path parameters
 take `str` or `os.PathLike`.
 
 | Name | What it is |
@@ -427,8 +447,9 @@ take `str` or `os.PathLike`.
 | `read_gdtf` | `read_gdtf(path, *, manufacturer=None) -> ImportReport`: convert a GDTF file |
 | `ProfileLibrary` | The built-in profiles plus directories of profiles, for `fixture add`: `get(id)`, `find(id or name)`, iteration, `problems` |
 | `OfflineShow` | A show on a clock you drive: `submit`, `execute`, `confirmation`, `expected`, `run_script`, `save`, `tick`; `show`, `warnings`, `snapshot`, `output`, `effects`, `programmer`, `effect_templates`, `time` |
-| `LiveShow` | A show in real time in your process: as `OfflineShow`, with `start`, `stop` and `with`, `frame` instead of `tick`, `routes` and `surfaces` |
+| `LiveShow` | A show in real time in your process: as `OfflineShow`, with `start`, `stop` and `with`, `frame` instead of `tick`, `routes`, `surfaces` and `health` |
 | `DmxFrame` | One engine output: `seq`, `time`, and `universes`, a mapping of universe number to 512 bytes |
+| `EngineHealth` | How a `LiveShow`'s engine is doing: `state` (`"starting"`, `"running"`, `"stalled"`, `"stopped"`; under `busk run` with processes also `"restarting"`, `"failed"`), `ticks`, `overruns`, `lastTickAge` (seconds since its newest tick, or `None`) |
 | `Show` | The show file format, a `TypedDict` |
 | `FixtureProfile` | The fixture profile format, a `TypedDict`; its optional `category` says what kind of fixture it is ([categories](profiles.md#categories)) |
 | `Command` | The union of the command `TypedDict`s that `submit` takes, tagged by `type` |

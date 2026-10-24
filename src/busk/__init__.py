@@ -8,7 +8,7 @@ The public API
 ==============
 
 Every public name is importable from ``busk`` itself; ``__all__`` lists the
-38 of them. The library guide, ``docs/library.md``, has the examples and the
+39 of them. The library guide, ``docs/library.md``, has the examples and the
 reference.
 
 Show documents
@@ -29,14 +29,16 @@ Running a show
     add`` takes (:attr:`~OfflineShow.effect_templates`), and say what may
     come next in a line being typed (:meth:`~OfflineShow.expected`); a
     :class:`LiveShow` also shows its output routes
-    (:attr:`~LiveShow.routes`) and control surfaces
-    (:attr:`~LiveShow.surfaces`).
+    (:attr:`~LiveShow.routes`), control surfaces
+    (:attr:`~LiveShow.surfaces`) and how its engine is doing
+    (:attr:`~LiveShow.health`).
 Data types
     :class:`Show`, :class:`FixtureProfile` and :data:`Command`, the
     ``TypedDict``\\ s of the file and command formats; :class:`Issue`,
     :class:`CommandResult`, :class:`Reply`, :class:`ImportReport`;
     :class:`EngineSnapshot` with :class:`PlaybackStatus`,
     :class:`SpeedStatus` and :class:`PageStatus`; :class:`DmxFrame`;
+    :class:`EngineHealth`;
     :class:`OutputSnapshot` with :class:`FixtureOutput`;
     :class:`EffectSnapshot` with :class:`EffectStatus`;
     :class:`EffectTemplateInfo`; :class:`Expected`; :class:`ProgrammerStatus`
@@ -100,6 +102,7 @@ __all__ = [
     "EffectSnapshot",
     "EffectStatus",
     "EffectTemplateInfo",
+    "EngineHealth",
     "EngineSnapshot",
     "Expected",
     "FixtureOutput",
@@ -169,6 +172,7 @@ _EXPORTS: dict[str, str] = {
     "OfflineShow": "busk.runner",
     "LiveShow": "busk.runner",
     "DmxFrame": "busk.runner",
+    "EngineHealth": "busk.runner",
     "BuskError": "busk.errors",
     "ScriptError": "busk.errors",
 }
@@ -205,6 +209,7 @@ if TYPE_CHECKING:  # what type checkers see: the same table, as explicit re-expo
     from busk.persistence.show_file import new_show as new_show
     from busk.persistence.show_file import save_show as save_show
     from busk.runner import DmxFrame as DmxFrame
+    from busk.runner import EngineHealth as EngineHealth
     from busk.runner import LiveShow as LiveShow
     from busk.runner import OfflineShow as OfflineShow
     from busk.session.ids import CounterIds as CounterIds

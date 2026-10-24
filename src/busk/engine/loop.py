@@ -171,7 +171,9 @@ class Frame:
 @dataclass(kw_only=True)
 class EngineStats:
     """Counters kept by the engine thread. Read them once :meth:`Engine.run`
-    has returned; while it runs they are updated without synchronisation."""
+    has returned; while it runs they are updated without synchronisation,
+    so another thread reads each counter whole, but not all of them as of
+    one tick."""
 
     ticks: int = 0
     overruns: int = 0  # ticks that finished after the next tick was due

@@ -69,6 +69,17 @@ console process, and in the root to a `NEWS` message to the console (printed if 
 console takes it), which carries the route lines, the watchdog's news and the engine's
 stderr, read from a pipe.
 
+**Engine health** (`LiveShow.health`; GAP-21 of [`tui/engine-gaps.md`](tui/engine-gaps.md)).
+It is made at each read from what the show's `EngineLink` already has: the engine's
+`EngineStats` (`ticks`, `overruns`; in the console process, the engine process's last
+`STATS`, once a second) and the newest frame, whose `time` is on the engine clock.
+`CLOCK_MONOTONIC` is shared by the processes, so the console subtracts it from its own
+clock; the first read asks for the frames, as `frame` does. For a show whose engine runs in
+its process (`LiveShow`, `--threads`), the frames give the state: stalled after `STALL_S`
+without a new one, as the output and the watchdog count. With processes, the console's
+`ProcessBackend.engine_state` gives it (the root's `ENGINE` news, and `restarting` while
+the bus is detached), so a frontend's warning says what `status` says.
+
 ## The pipeline, piece by piece
 
 **Validation** (`busk.model.validate`). Pydantic validates the JSON against the spec's

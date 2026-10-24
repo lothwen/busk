@@ -131,6 +131,19 @@
     },
     "module": "busk.console.console"
   },
+  "EngineHealth": {
+    "fields": [
+      "state: EngineState",
+      "ticks: int",
+      "overruns: int",
+      "lastTickAge: float | None"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, *, state: EngineState, ticks: int, overruns: int, lastTickAge: float | None) -> None"
+    },
+    "module": "busk.runner"
+  },
   "EngineSnapshot": {
     "fields": [
       "seq: int",
@@ -253,6 +266,7 @@
       "execute": "(self, line: str) -> Reply",
       "expected": "(self, line: str) -> Expected",
       "frame": "property: DmxFrame | None",
+      "health": "property: EngineHealth | None",
       "output": "property: OutputSnapshot | None",
       "programmer": "property: ProgrammerStatus",
       "routes": "property: tuple[RouteStatus, ...] | None",

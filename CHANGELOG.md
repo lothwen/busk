@@ -76,6 +76,12 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   that may come there (described), whether the line runs as it is and the mistake that
   stops it. A frontend's own prompt completes every word as the `busk run` prompt does,
   without parsing the line.
+- `LiveShow.health`, as a new public type, `EngineHealth`
+  ([the library guide](docs/library.md#3-live-inside-your-own-application-liveshow)): how
+  the engine is doing, for a display's engine warning. Its state (starting, running,
+  stalled after 1 s without a new frame, stopped; under `busk run` with processes the
+  watchdog's word, restarting and failed too), its tick and overrun counts, and how long
+  ago it last ticked.
 - `busk run --frontend MODULE:FUNCTION` ([Running a show](docs/running.md#frontends)):
   your own frontend instead of the prompt, called with the run's `LiveShow` in the
   console process, with `busk run`'s safety net (the engine in its own process, the

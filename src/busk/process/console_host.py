@@ -92,7 +92,7 @@ import traceback
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 from types import FrameType
-from typing import Final, Protocol, TextIO, cast
+from typing import Final, Literal, Protocol, TextIO, cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -269,7 +269,7 @@ class Backend(Protocol):
         """Print what happened to the output (threads) or the engine (processes)."""
         ...
 
-    def engine_state(self) -> str | None:
+    def engine_state(self) -> Literal["stalled", "restarting", "failed"] | None:
         """``stalled``, ``restarting`` or ``failed`` while the engine is not
         running normally (the status shows ``engine …`` then), else ``None``."""
         ...
@@ -364,7 +364,7 @@ class ThreadsBackend:
         if self._reporter is not None:
             self._reporter.poll()
 
-    def engine_state(self) -> str | None:
+    def engine_state(self) -> Literal["stalled", "restarting", "failed"] | None:
         return None
 
     def about(self) -> list[str]:
@@ -507,13 +507,13 @@ class ProcessBackend:
                 "engine: running on; its show went back to the last autosave (later edits are lost)"
             )
 
-    def engine_state(self) -> str | None:
+    def engine_state(self) -> Literal["stalled", "restarting", "failed"] | None:
         """``failed`` once the watchdog gave up, ``restarting`` while no engine
         is attached, ``stalled`` while the root says so; else ``None``."""
         state = self._state
         bus = self._bus
         if state == "failed":
-            return state
+            return "failed"
         if bus is not None and not bus.attached:
             return "restarting"
         return "stalled" if state == "stalled" else None
@@ -672,6 +672,7 @@ def run_console(options: RunOptions, backend: Backend, *, restarted: str | None 
         routes=backend.routes,
         say=say,
         warn=warn,
+        watchdog=None if options.threads else backend.engine_state,  # --threads has none
     )
     session, console = live._session, live._console
     if recovery is not None:

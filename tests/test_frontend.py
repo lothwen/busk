@@ -15,10 +15,11 @@
   ``tests/process_site/frontend_probe.py``: the frontend gets the show
   (frames, output, effects, routes, the programmer, the effect templates,
   lines that run, a profile's category, ``status``, the playbacks' colours,
-  what may come in a line being typed, a ``quit`` that says so and ends
-  nothing) and busk run's lines as ``busk.run``
+  what may come in a line being typed, the engine's health, a ``quit`` that
+  says so and ends nothing) and busk run's lines as ``busk.run``
   records, none printed over it; one that raises is restarted with its console while the engine
-  runs on; ``SIGTERM`` ends the run through it; with ``--threads`` too. A
+  runs on; it sees a stopped engine stall and restart; ``SIGTERM`` ends the
+  run through it; with ``--threads`` too. A
   frontend that cannot be loaded ends the run with 1; the options it cannot
   be combined with are refused.
 * **The lines**: ``say`` and ``warn`` diverted, the root's ``NEWS`` and
@@ -435,6 +436,7 @@ def test_busk_run_calls_the_frontend_with_its_show(
     assert report["categories"] == [["Generic Spot 16ch", None], ["RGB Par 3ch", "par"]]
     assert report["colors"] == [[1, None], [3, [0.0, 0.0, 1.0]], [6, None]]  # Blue; an effect
     assert report["expected"] == [["open"], 10]  # fixture 101's gobo1, in the console process
+    assert report["health"] == ["running", True]
     said = [message for name, level, message in report["records"] if name == "busk.run"]
     assert any(message.startswith(f"sACN {route}: U1 Stage → universe 7") for message in said)
     assert not any(
@@ -457,6 +459,25 @@ def test_a_frontend_that_raises_comes_back_with_its_console(
     assert "console: restarted (exited with code 70)" in busk.err
     assert not any("engine: restarted" in line for line in busk.err)  # the engine ran on
     assert not any("engine: running on" in line for line in busk.out)  # said to the frontend
+
+
+def test_the_frontend_sees_a_stopped_engine_stall_and_restart(
+    tmp_path: Path, receiver: Receiver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GAP-21: the watchdog's word reaches the frontend's ``health``."""
+    states = ["running", "stalled", "restarting", "running"]
+    report_path = plan(tmp_path, monkeypatch, states=states)
+    watching = tmp_path / "plan.watching"
+    with BuskRun(
+        run_show(tmp_path), *frontend(tmp_path, "--no-log"), sacn_port=receiver.port
+    ) as busk:
+        until(watching.exists, timeout=20.0)
+        os.kill(busk.children()["engine"], signal.SIGSTOP)  # killed and restarted at 3 s
+        assert busk.wait(timeout=20.0) == 0, busk.err
+    report = json.loads(report_path.read_text())
+    assert report["states"] == states
+    said = [message for name, level, message in report["records"] if name == "busk.run"]
+    assert "engine: restarted (no new frame for 3 s)" in said
 
 
 def test_sigterm_ends_the_run_through_the_frontend(
@@ -488,6 +509,7 @@ def test_busk_run_with_threads_gives_the_frontend_the_same(
     assert [number for number, _, _ in report["output"]["fixtures"]] == [101, 102, 201]
     assert report["effects"] == [[6, "1", "ei-1"]]
     assert report["routes"] == [["r1", "ok"]]
+    assert report["health"] == ["running", True]
 
 
 def test_a_frontend_that_cannot_be_loaded_ends_the_run_with_1(tmp_path: Path) -> None:

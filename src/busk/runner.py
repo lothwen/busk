@@ -40,7 +40,9 @@ the templates ``effect add`` takes, the show's and the effect library's
 frontend to end as ``busk run``'s prompt does (GAP-18), and ``status``
 answers with ``busk run``'s status line (GAP-19). ``expected(line)`` is what
 may come where the word being typed starts, as that prompt completes it on
-Tab (:class:`~busk.console.parser.Expected`, GAP-20).
+Tab (:class:`~busk.console.parser.Expected`, GAP-20). A :class:`LiveShow`'s
+``health`` says how its engine is doing: running, stalled, restarting under
+``busk run``, its tick and overrun counts (:class:`EngineHealth`, GAP-21).
 
 Errors (§5.8): constructing a facade raises
 :class:`~busk.persistence.show_file.ShowLoadError` for an invalid show and
@@ -105,7 +107,7 @@ from busk.output.artnet import ArtNetNetwork
 from busk.output.console import ConsoleOutput
 from busk.output.driver import RouteStatus
 from busk.output.sacn import Sequences
-from busk.output.scheduler import OutputScheduler, build_routes
+from busk.output.scheduler import STALL_S, OutputScheduler, build_routes
 from busk.persistence.paths import web_key
 from busk.persistence.show_file import ShowLoadError, show_json
 from busk.session.ids import IdFactory
@@ -139,6 +141,58 @@ class DmxFrame:
     seq: int
     time: float
     universes: Mapping[int, bytes]
+
+
+type EngineState = Literal["starting", "running", "stalled", "restarting", "failed", "stopped"]
+"""What a :class:`LiveShow`'s engine does (:class:`EngineHealth`)."""
+
+type Watchdog = Callable[[], Literal["stalled", "restarting", "failed"] | None]
+"""What ``busk run``'s watchdog last said of its engine process; ``None``
+while the engine runs normally."""
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class EngineHealth:
+    """How a :class:`LiveShow`'s engine is doing, as a display shows it
+    (GAP-21 of ``docs/dev/tui/engine-gaps.md``).
+
+    ``state`` is what the engine does:
+
+    * ``"starting"``: the show has started, and the engine has not ticked
+      yet;
+    * ``"running"``: it ticks;
+    * ``"stalled"``: it has made no new frame for 1 s
+      (:data:`~busk.output.scheduler.STALL_S`), counting from
+      :meth:`LiveShow.start` while it has made none. The output holds the
+      last frame meanwhile, or darkens it (the show's
+      ``holdLastFrameOnEngineStall``). Under ``busk run`` with processes
+      it is the watchdog's word, and the watchdog restarts an engine that
+      has made no frame for 3 s;
+    * ``"restarting"``: (``busk run`` with processes only) the watchdog is
+      starting a new engine; the commands sent meanwhile are kept for it;
+    * ``"failed"``: (``busk run`` with processes only) the watchdog gave the
+      engine up after too many restarts. The output holds the last frame, and the run
+      ends with exit code 70 once the frontend returns;
+    * ``"stopped"``: :meth:`LiveShow.stop` has stopped the show.
+
+    ``ticks`` counts the engine's ticks, and ``overruns`` the ticks that
+    ended after the next one was due: the engine then skips ahead, so its
+    frames come late. A display compares two reads: overruns that grow
+    mean a busy engine. Under ``busk run`` with processes the engine
+    process sends them once a second, and a restarted engine counts from 0
+    again.
+
+    ``lastTickAge`` is how long ago the engine's newest tick ran, in
+    seconds: now on the engine clock, less the ``time`` of the newest
+    frame. ``None`` before the first frame; under ``busk run`` the first
+    read asks the engine process for its frames, as :attr:`LiveShow.frame`
+    does, so it is ``None`` until the next tick.
+    """
+
+    state: EngineState
+    ticks: int
+    overruns: int
+    lastTickAge: float | None
 
 
 def _dmx_frame(frame: Frame) -> DmxFrame:
@@ -659,6 +713,7 @@ class LiveShow(_Facade):
         routes: Callable[[], tuple[RouteStatus, ...] | None],
         say: Report,
         warn: Report,
+        watchdog: Watchdog | None = None,
     ) -> Self:
         """The show of ``busk run`` (phase-8-plan §5.5's private seam, for
         :func:`~busk.process.console_host.run_console` only).
@@ -673,7 +728,10 @@ class LiveShow(_Facade):
         log); the console ``iface``, ``status`` and ``about``. ``routes``
         gives :attr:`routes`, as the CLI's output knows them. ``say`` and
         ``warn`` print the surface lines, the session's failures and the web
-        key's.
+        key's. ``watchdog`` gives the state of :attr:`health` while the
+        show runs (the root's word on the engine process); without it
+        (``--threads``, which has no watchdog), the frames do, as for a
+        show that runs its own engine.
 
         Such a show runs no engine and opens nothing by itself; it reads
         its frames, output and effects through ``link``. The CLI calls
@@ -706,6 +764,7 @@ class LiveShow(_Facade):
         )
         live._on_poll = poll
         live._route_source = routes
+        live._watchdog = watchdog
         return live
 
     def _setup(
@@ -734,7 +793,9 @@ class LiveShow(_Facade):
         self._on_poll: Callable[[], None] | None = None  # the first part of each poll
         self._route_source: Callable[[], tuple[RouteStatus, ...] | None] = self._local_routes
         self._routes: tuple[RouteStatus, ...] | None = None  # the last routes read
+        self._watchdog: Watchdog | None = None  # busk run's, for health
         self._phase: Literal["new", "running", "stopped"] = "new"
+        self._started: float | None = None  # when start() started the engine, on its clock
         self._run: _LocalRun | None = None
         self._surfaces: SurfaceManager | None = None
         self._feedback: FeedbackWorker | None = None
@@ -854,6 +915,37 @@ class LiveShow(_Facade):
         manager = self._surfaces
         return None if manager is None else manager.status()
 
+    @property
+    def health(self) -> EngineHealth | None:
+        """How the engine is doing: running, stalled or stopped, its ticks
+        and overruns, and how long ago it last ticked (see
+        :class:`EngineHealth`). Poll it with the others, for a display's
+        engine warning. A new object every read: ``lastTickAge`` grows.
+
+        ``None`` before :meth:`start`. ``busk run``'s show, with processes,
+        has the watchdog's word on its engine process (``"restarting"`` and
+        ``"failed"`` too), as its ``status`` does."""
+        if self._phase == "new":
+            return None
+        self._link.watch(frames=True)
+        frame = self._link.frame  # one read each: published by reference assignment
+        stats = self._link.stats
+        now = self._clock.now()
+        age = None if frame is None else now - frame.time
+        state: EngineState
+        if self._phase == "stopped":
+            state = "stopped"
+        elif self._watchdog is not None:
+            state = self._watchdog() or "running"
+        elif age is None:
+            started = self._started
+            state = "starting" if started is None or now - started < STALL_S else "stalled"
+        else:
+            state = "running" if age < STALL_S else "stalled"
+        return EngineHealth(
+            state=state, ticks=stats.ticks, overruns=stats.overruns, lastTickAge=age
+        )
+
     # ---------------------------------------------------- start and stop
 
     def start(self) -> None:
@@ -883,6 +975,7 @@ class LiveShow(_Facade):
             if self._tune:
                 self._switch_interval = sys.getswitchinterval()
                 sys.setswitchinterval(SWITCH_INTERVAL)
+            self._started = self._clock.now()
             if self._run is not None:
                 self._run.start()
             if self._feedback is not None:

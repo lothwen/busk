@@ -28,8 +28,9 @@ The TUI runs a `busk.LiveShow` in its own process, or, since GAP-11, is run by `
   (`RouteStatus`), since GAP-08 `LiveShow.surfaces` (`SurfaceStatus`), since GAP-09
   `LiveShow.effects` (`EffectSnapshot`), since GAP-10 `LiveShow.confirmation(line)`
   (the question to ask before a line), since GAP-15 `LiveShow.effect_templates`
-  (`EffectTemplateInfo`) and since GAP-20 `LiveShow.expected(line)` (`Expected`, what
-  may come where the word being typed starts). Since GAP-16 a profile in `LiveShow.show`
+  (`EffectTemplateInfo`), since GAP-20 `LiveShow.expected(line)` (`Expected`, what
+  may come where the word being typed starts) and since GAP-21 `LiveShow.health`
+  (`EngineHealth`). Since GAP-16 a profile in `LiveShow.show`
   may have a `category`, and since GAP-17 a playback in the snapshot has the `color` of
   its current cue. The `busk.*` loggers feed the TUI's log pane.
 - **Text is not parsed.** `docs/library.md` says message text (`Reply.text`, CLI output, log
@@ -77,7 +78,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-18](#gap-18-quit-signal) Quit signal | read | nice-to-have | prompt | **done** 2026-10-24 |
 | [GAP-19](#gap-19-status-under-liveshow) `status` under `LiveShow` | action | nice-to-have | prompt | **done** 2026-10-24 |
 | [GAP-20](#gap-20-completion-and-hints) Completion and hints | read | nice-to-have | prompt | **done** 2026-10-24 |
-| [GAP-21](#gap-21-engine-health) Engine health | read | nice-to-have | status bar | open |
+| [GAP-21](#gap-21-engine-health) Engine health | read | nice-to-have | status bar | **done** 2026-10-24 |
 
 ---
 
@@ -1631,6 +1632,8 @@ completion (GAP-20)", and risk R2 shrinks to the hint row's syntax lines.
 
 ## GAP-21: Engine health
 
+**Status:** done 2026-10-24 (see **Done** at the end of this section).
+
 **Needed by:** a status-bar warning when the engine stalls or overruns.
 
 **Today:** the TUI can only watch `LiveShow.frame.seq`. If no new frame arrives for 0.5 s, it shows
@@ -1642,3 +1645,66 @@ overruns: int, lastTickAge: float)`.
 **Priority:** nice-to-have.
 
 **TUI until then:** the `frame.seq` watch described above.
+
+**Done** (2026-10-24). `LiveShow.health -> EngineHealth | None`, with `EngineHealth` in
+`busk.__all__` (now 39 names); the golden's diff is the new class and the property.
+Documented in `docs/library.md` (section 3, its tested `LiveShow` example, the paragraph on
+frontends and the reference), `docs/running.md` (Frontends), the docstrings of the
+property and the class, the runner's module docs, `docs/dev/internals.md` (Engine health)
+and `CHANGELOG.md` (Added). Where it differs from the suggestion, or settles what the
+suggestion left open:
+
+- **`state` instead of `running: bool`** (a call the user may veto). It is `"starting"`
+  (no tick yet), `"running"`, `"stalled"` or `"stopped"`, and under `busk run` with
+  processes also `"restarting"` and `"failed"` (the watchdog gave the engine up). A bool
+  cannot tell a stall from a restart or from a run whose engine is gone for good, and on
+  stage the chip should say which. `running` is `state == "running"`.
+- **Stalled is busk's stall** (a call the user may veto): no new frame for 1 s
+  (`STALL_S`), the time after which the output holds the last frame and the watchdog says
+  `stalled`, not the TUI's 0.5 s. While no frame has come, it counts from `start()`, so an
+  engine whose first tick hangs or raises is `"stalled"`, not `"starting"` for ever. A tick
+  that raises makes no frame, so tick errors show as a stall, as they do to the watchdog.
+- **Who decides.** For a show whose engine runs in its own process (`LiveShow`, and `busk
+  run --threads`, which has no watchdog), the frames. Under `busk run` with processes,
+  the watchdog's word as the console last heard it: the `ProcessBackend.engine_state`
+  behind `status`'s `engine stalled`, now typed as those three states. The console's own
+  frames do not decide there. So there is one source, and the frontend's chip says what
+  the status line says and what the output and the watchdog act on. The attached show
+  gets it through a new, optional `watchdog` argument of the private `_attached`.
+- **The counts** are the engine's `EngineStats`: live for an engine in the same process,
+  and under `busk run` with processes from the engine process's `STATS`, once a second; a
+  restarted engine counts from 0 again. A display compares two reads at least a second
+  apart: overruns that grow mean a busy engine (an overrun is a tick that ended after the
+  next one was due, after which the schedule skips ahead). `tickErrors`, `maxTickSeconds`
+  and the rest stay internal (`--stats` has them).
+- **`lastTickAge`** is now on the engine clock less the `time` of the newest frame. Under
+  `busk run` the console's clock and the engine process's are both `CLOCK_MONOTONIC`,
+  shared by the processes, as the console's beat feedback already assumes. The first read
+  there asks for the frames, as `frame` does, so it is `None` until the next tick. It is
+  `None` before the first frame, and a new object comes at every read.
+- **`None` before `start()`**, as `routes` and `surfaces` are. After `stop()` it is
+  `"stopped"`, with the last counts.
+- **`LiveShow` only** (a call the user may veto). An `OfflineShow`'s engine ticks when it is
+  told to, so it can neither stall nor overrun.
+- **Cheap, and from any thread.** A read takes about 0.5 µs: a few reads of published
+  references and one small object. Nothing new runs on the tick, and nothing new crosses
+  the processes but the frames, which a frontend that reads `frame` has asked for already.
+- Tests: `tests/test_engine_health.py` (13; nine mutations of the change, all caught),
+  `tests/test_frontend.py` (the probe's `health` on a real `busk run --frontend`, with
+  processes and with `--threads`, and a frontend that sees a stopped engine go `running`,
+  `stalled`, `restarting`, `running`), the golden and the count in
+  `tests/test_public_api.py`, `tests/api_consumer.py`, and the tested example in
+  `docs/library.md`.
+
+The TUI's `ENGINE` chip can now read `health` instead of watching `frame.seq`. The bridge's
+reader polls it at 20 Hz with the others and sends an event when the state changes. The
+chip names the state (`ENGINE STALLED`, `ENGINE RESTARTING`, `ENGINE FAILED`, and a dim
+`ENGINE STARTING`), and it clears when the engine runs again. For overruns, the bridge
+compares the counts of two reads at least a second apart, which is arithmetic on public
+data (§1.2), and shows a dim `LATE` chip while they grow. In the implementation plan, the
+§4.3 row "No new frame for 0.5 s" becomes "`health.state` is not `running`", and the event
+`EngineStalled(stalled)` carries the state instead. Adaptation 15's `ENGINE` chip loses
+"(GAP-21)", and Phase 0's **Deferred** list loses "engine health (GAP-21, frame watch
+instead)". The same chip works under `busk run --frontend`, where it also shows
+`restarting` and `failed`. GAP-11's note that the chip can stay on `frame.seq` no longer
+applies.

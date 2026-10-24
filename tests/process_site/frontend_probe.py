@@ -11,6 +11,9 @@ attached show, and follows the plan in the JSON file ``$BUSK_TEST_FRONTEND``:
 * ``colorOf``: then wait until that playback has a colour in the snapshot;
 * ``records``: then wait until a ``busk.run`` record contains each text;
 * ``routes``: then wait until the show has that many routes;
+* ``states``: then follow the engine's health, after writing a ``.watching``
+  file next to the plan, until the states it went through (each change
+  once) are these;
 * ``sleep``: then sleep that long, after writing a ``.sleeping`` file next to
   the plan (a signal may end the sleep: the report is written all the same);
 * ``report``: where to write what it saw, as JSON, before it returns.
@@ -58,6 +61,9 @@ def main(show: Any) -> None:
     report: dict[str, Any] = {"calls": count, "timeout": None}
     try:
         run(show, plan, records, report)
+        if states := plan.get("states"):
+            plan_path.with_suffix(".watching").touch()
+            report["states"] = follow(show, states)
         if sleep := plan.get("sleep"):
             plan_path.with_suffix(".sleeping").touch()
             time.sleep(sleep)
@@ -121,6 +127,22 @@ def run(show: Any, plan: dict[str, Any], records: Records, report: dict[str, Any
     report["colors"] = [[p.number, p.color] for p in show.snapshot.playbacks]
     expected = show.expected("set gobo1 o")  # what the selection's gobos offer
     report["expected"] = [list(expected.words), expected.start]
+    if not wait("the engine's counts", lambda: show.health.ticks > 0):  # once a second
+        return
+    health = show.health
+    report["health"] = [health.state, 0.0 <= health.lastTickAge < 1.0]
+
+
+def follow(show: Any, states: list[str]) -> list[str]:
+    """The states of the engine's health, each change once, until they are
+    ``states`` (or :data:`WAIT_S` has passed)."""
+    seen = [show.health.state]
+    deadline = time.monotonic() + WAIT_S
+    while seen != states and time.monotonic() < deadline:
+        time.sleep(0.01)
+        if (state := show.health.state) != seen[-1]:
+            seen.append(state)
+    return seen
 
 
 def _reply(reply: Any) -> list[Any]:
