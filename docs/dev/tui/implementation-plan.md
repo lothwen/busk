@@ -930,15 +930,79 @@ engine's question. Contract additions. End to end: Space on P1 makes the live sn
 active.
 
 **Done when.**
-- [ ] On the club-night show, F1 shows page 1's thirteen slots with live levels, cue colours,
+- [x] On the club-night show, F1 shows page 1's thirteen slots with live levels, cue colours,
       cues and next cues, and F7 shows every master kind with live levels and beat dots.
-- [ ] Keyboard only: change page, select a playback, GO, back, fader ±, TAP, BPM ±, blackout,
+- [x] Keyboard only: change page, select a playback, GO, back, fader ±, TAP, BPM ±, blackout,
       release all, every line echoed `ui>`. With the mouse, FLASH holds while the button is down.
-- [ ] The EFFECTS panel shows the running effects with their waves, and stops and runs a
+- [x] The EFFECTS panel shows the running effects with their waves, and stops and runs a
       programmer effect.
-- [ ] A fader moved on a MIDI surface or the web remote shows in the TUI within 100 ms.
-- [ ] Suites green; guide covers F1 B and F7.
+- [x] A fader moved on a MIDI surface or the web remote shows in the TUI within 100 ms.
+- [x] Suites green; guide covers F1 B and F7.
 - [ ] Manual (the user): busk a song on the TupperDMX rig with the TUI only.
+
+**Done** (2026-10-25); the manual check is the user's.
+- Suites: the TUI's 245 tests (`tests/tui`), the whole suite 4149 passed, 1 skipped, 15
+  deselected; ruff, format and `mypy` clean. **Perf gates** (`-m perf -s`; the TUI on F1, which
+  reads the effects, on the club-night show with the song, chase and effects idle): standalone
+  100.1 against 100.0 frames/s bare; under `busk run` 0 overruns of 907 ticks, the console
+  process +0.198 core (0.212 against 0.014 bare; Phase 0: +0.138). Within the 0.25 gate, with
+  less room: Phases 2–5, which read the output, should watch it.
+- **Files** as planned, and: `formats.py` (the compressed selection, `101 thru 104, 301.2`;
+  plain, in the boundary test's list), `widgets/panel.py` (`Panel`), `pages/base.py`'s `View`
+  (what the pages draw from: the newest of each event, the selected playback, `faders`, the
+  colour mode) with `Page.update_view(view, changed)`, so a page redraws only the parts that
+  changed. Tests: `test_tui_busk.py`, `test_tui_masters.py`, `test_tui_conversion.py` (the
+  bridge's conversion of real busk objects), and additions to the bridge, live bridge,
+  commands, e2e and frame tests.
+- **Model.** `LiveState.playbacks` (`PlaybackView`); `ShowModel` gains pages with their slots
+  as playback numbers, playbacks (`uiColor` read only as `#rrggbb`), cue lists (cues, their
+  effects, a chase's rate and direction in busk's words, `bpm x 1 bounce`, with the speed
+  master's name only when the show has more than one), groups, presets (with the one colour a
+  colour preset gives, white added, else `None`), fixtures with their element counts, and
+  masters with their group and steps; `ProgrammerModel.effects` and `.stopped`;
+  `EffectsChanged(EffectsModel)`. Cue and programmer effects are made by one function
+  (`effect_info`: id and template name).
+- **Bridge.** The effects are read only while the page watches them (F1), sent only when they
+  change, and sent again once watched anew. A programmer model is made again on a new document
+  too (a renamed template), and sent only if it changed.
+- **Calls you may veto:**
+  - **`faders` defaults to 20, not 10** (the spec's default), so page 1's thirteen slots show,
+    as this phase's first box asks. It caps a page's slots; it does not page through them.
+  - **Space, ← →, `[ ]` and PgUp/PgDn act on any page** with an empty prompt (spec §6.1), not
+    only on F1. While help is open PgUp/PgDn scroll it.
+  - **The selected playback follows its slot**: after a page change it is the playback in the
+    same slot (else the first). ← → wrap over the page's slots and skip empty ones.
+  - **`[ ]` step from the level they last sent** if that was within 0.5 s (the engine has not
+    shown it yet), else from the engine's. Each press is a keyed `fader N p%` line, echoed.
+  - **FLASH's two lines are echoed** (`ui> flash 3 on`, `ui> flash 3 off`). The spec logs
+    nothing, but it predates GAP-04's `flash N on|off`; every other control echoes its line.
+  - **Enter on a pane-cursor button runs its line and the cursor stays** (TAP, BPM ±, GO again),
+    reading the line afresh (a toggle's follows its state); a pre-fill item (a master bar:
+    `master "FX" `, `gm `) goes to the prompt and leaves, as in Phase 0.
+  - **Rows:** an idle playback shows `—/5 → Intro`; a fader that is not a level is named after
+    the name (`size`, `rate`, `xfade`, `temp`, `no fader`), and a `none` fader has no bar
+    control and `—` for its level; the level is amber while the playback releases.
+  - **EFFECTS rows** are `P11 fx1` (the playback) or `prog fx5`, the template, the wave and
+    `[RUN]`/`[off]`. Every programmer effect is listed; one that runs but is not in `effects`
+    (it has no member to drive) shows `[RUN]` dimmed with a flat wave.
+  - **MASTERS on F1** has the grand, size and group masters (speed masters have TEMPO,
+    fade-time masters are on F7). SELECTION has no `[none]` button (spec B).
+  - **F7's panels** go three across from 132 columns, two from 100, one below (at 100 columns
+    three across cut the tempo row), set from the page's width rather than the frame's `narrow`
+    class. FADE TIME shows `override now 1.6 s` from `EngineSnapshot.fadeTime`; PANIC shows the
+    output state.
+  - A click on layout A or C logs that it comes in Phase 5.
+- **A teardown race fixed.** The app's drain and prompt-context timers did nothing to stop
+  them while Textual takes the screens down, so a drain could look for a widget already gone
+  (`NoMatches: StatusBar`); Phase 1's busier pages made it show in a test now and then. Both
+  return once the app is no longer running (a test covers it).
+- **Checked in a real pseudo-terminal** (pyte) on the club-night show, standalone: F1 at
+  150×48, 132×44, 100 and 99 columns (B stacks below 100), colours (P1's bar in its cue's warm
+  white, the chase's red, the chips), Space, ← →, `]`, PgDn with the selection following to
+  page 2's P15, the pane cursor on GO; F7 at 150, 100 and 99 columns.
+- **A change made elsewhere** (a line run on the `LiveShow` directly, as a surface does) shows
+  in a `LiveChanged` 26 ms after it at the median and 76 ms at most, with the app's 25 ms
+  drain (40 moves; `test_a_fader_moved_elsewhere_shows`).
 
 ### Phase 2: Program (F2, F6)
 

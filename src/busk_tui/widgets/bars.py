@@ -53,8 +53,9 @@ class HBar(Widget):
         key: str | None = None,
         step: float = 0.05,
         id: str | None = None,
+        classes: str | None = None,
     ) -> None:
-        super().__init__(id=id)
+        super().__init__(id=id, classes=classes)
         self.level = level
         self.color = color
         self.command = command
@@ -65,8 +66,12 @@ class HBar(Widget):
     def render(self) -> Text:
         return bar_text(self.level, self.size.width, self.color)
 
-    def show_level(self, level: float) -> None:
-        """The level to show, unless a drag is in progress."""
+    def show_level(self, level: float, color: str | None = None) -> None:
+        """The level to show, unless a drag is in progress, and the colour
+        to fill it with (``None``: as it is)."""
+        if color is not None and color != self.color:
+            self.color = color
+            self.refresh()
         if not self.dragging and level != self.level:
             self.level = level
             self.refresh()

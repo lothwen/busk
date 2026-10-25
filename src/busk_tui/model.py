@@ -21,6 +21,9 @@ type EngineState = Literal["starting", "running", "stalled", "restarting", "fail
 
 type RouteState = Literal["ok", "failed", "disabled", "ignored"]
 
+type Rgb = tuple[float, float, float]
+"""A colour, each component 0..1 (busk's linear RGB)."""
+
 
 class ShowLoadFailed(Exception):
     """The show file of ``--standalone`` does not load; ``messages`` say why,
@@ -84,6 +87,25 @@ class MasterLevel:
 
 
 @dataclass(frozen=True, slots=True)
+class PlaybackView:
+    """One playback as it runs (busk's ``PlaybackStatus``)."""
+
+    number: int
+    name: str
+    state: str  # idle, active, releasing
+    level: float  # the fader's level; ``fader`` says what it means
+    flash: bool  # a flash is held on it
+    fader: str  # master, crossfade, rate, size, temp, none
+    chase: bool
+    cue: str | None  # the current cue's number (a chase's step); None while idle
+    cueName: str | None
+    next: str | None  # the cue GO goes to
+    cueCount: int
+    progress: float | None  # a crossfade fader's transition, 0..1
+    color: Rgb | None  # the current cue's colour
+
+
+@dataclass(frozen=True, slots=True)
 class LiveState:
     """The engine's published state (busk's ``EngineSnapshot``)."""
 
@@ -95,6 +117,19 @@ class LiveState:
     fadeTime: float | None  # the fade-time master's override, seconds
     masters: tuple[MasterLevel, ...]
     speed: tuple[SpeedView, ...]
+    playbacks: tuple[PlaybackView, ...]
+
+    def playback(self, number: int) -> PlaybackView | None:
+        return next((view for view in self.playbacks if view.number == number), None)
+
+
+@dataclass(frozen=True, slots=True)
+class EffectInfo:
+    """An effect instance as the show or the programmer holds it: a cue's
+    and the programmer's are made alike."""
+
+    id: str
+    template: str  # the template's name
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,6 +142,33 @@ class ProgrammerModel:
     highlight: bool
     fadeTime: float
     fixtures: int  # the fixtures that hold a value
+    effects: tuple[EffectInfo, ...]  # in the order they were added
+    stopped: frozenset[str]  # the ids of the stopped effects
+
+
+@dataclass(frozen=True, slots=True)
+class EffectView:
+    """One running effect instance (busk's ``EffectStatus``): a playback's
+    (``playback``, and ``cue``, the cue that holds it) or the programmer's
+    (both ``None``)."""
+
+    playback: int | None
+    cue: str | None
+    id: str
+    presence: float  # 0..1: how far in it is
+    size: float
+    hz: float
+    phase: float
+    wave: tuple[float, ...]  # the next cycle, 0..1 at equal steps; () without a waveform
+    colors: tuple[Rgb, ...]  # the same for its colour layer; () without one
+
+
+@dataclass(frozen=True, slots=True)
+class EffectsModel:
+    """The effects running at one tick (busk's ``EffectSnapshot``)."""
+
+    seq: int
+    effects: tuple[EffectView, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,9 +192,64 @@ class UniverseView:
 
 
 @dataclass(frozen=True, slots=True)
+class GroupInfo:
+    number: int
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
 class MasterView:
     name: str
-    kind: str
+    kind: str  # grand, group, size, speed, fadeTime
+    group: GroupInfo | None  # a group master's group
+    steps: tuple[float, ...]  # a speed master's multiplier steps
+
+
+@dataclass(frozen=True, slots=True)
+class PageInfo:
+    """A playback page: the playback number in each slot (``None``: empty)."""
+
+    number: int
+    name: str
+    slots: tuple[int | None, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class PlaybackInfo:
+    number: int
+    name: str
+    cueList: int  # the number of the cue list it runs
+    uiColor: Rgb | None  # its ``uiColor``, when it is one
+
+
+@dataclass(frozen=True, slots=True)
+class CueInfo:
+    number: str
+    name: str
+    effects: tuple[EffectInfo, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class CueListInfo:
+    number: int
+    name: str
+    mode: str  # sequence, chase
+    chase: str | None  # a chase's rate and direction, in busk's words: "bpm x 1 bounce"
+    cues: tuple[CueInfo, ...]  # in cue order
+
+
+@dataclass(frozen=True, slots=True)
+class PresetInfo:
+    pool: str
+    number: int
+    name: str
+    color: Rgb | None  # the colour it gives, when it gives one colour everywhere
+
+
+@dataclass(frozen=True, slots=True)
+class FixtureInfo:
+    number: int
+    elements: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,7 +259,18 @@ class ShowModel:
     title: str
     universes: tuple[UniverseView, ...]
     masters: tuple[MasterView, ...]
-    pages: tuple[PageView, ...]
+    pages: tuple[PageInfo, ...]
+    playbacks: tuple[PlaybackInfo, ...]  # by number
+    cueLists: tuple[CueListInfo, ...]
+    groups: tuple[GroupInfo, ...]
+    presets: tuple[PresetInfo, ...]
+    fixtures: tuple[FixtureInfo, ...]
+
+    def playback(self, number: int) -> PlaybackInfo | None:
+        return next((info for info in self.playbacks if info.number == number), None)
+
+    def cue_list(self, number: int) -> CueListInfo | None:
+        return next((info for info in self.cueLists if info.number == number), None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -217,6 +345,11 @@ class ProgrammerChanged:
 
 
 @dataclass(frozen=True, slots=True)
+class EffectsChanged:
+    effects: EffectsModel
+
+
+@dataclass(frozen=True, slots=True)
 class RoutesChanged:
     routes: tuple[RouteView, ...]
 
@@ -250,6 +383,7 @@ type BridgeEvent = (
     | Beat
     | ShowChanged
     | ProgrammerChanged
+    | EffectsChanged
     | RoutesChanged
     | HealthChanged
     | SessionChanged
@@ -261,6 +395,7 @@ STATE_EVENTS: tuple[type, ...] = (
     Beat,
     ShowChanged,
     ProgrammerChanged,
+    EffectsChanged,
     RoutesChanged,
     HealthChanged,
     SessionChanged,

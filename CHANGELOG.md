@@ -16,8 +16,11 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   programmer, blackout, output, page, engine health), the console prompt with hints and Tab
   completion, a log of every line run and what busk answered, a help overlay, and the
   engine's question before `output off`. `--standalone` runs the show in the TUI's own
-  process, for development and rehearsal. Its pages come next: this version lists the lines
-  to type meanwhile.
+  process, for development and rehearsal. F1 plays the current page's playbacks (levels in
+  their cue's colour, cue and next cue, GO, BACK, a momentary FLASH; Space, ← →, `[ ]` and
+  PgUp/PgDn on an empty prompt) with the tempo, the masters, the running effects and the
+  selection; F7 has every master and the panic controls. The other pages list the lines to
+  type meanwhile.
 - `OfflineShow.output` and `LiveShow.output`: the engine's output read back per fixture
   element, as two new public types, `OutputSnapshot` and `FixtureOutput`
   ([the library guide](docs/library.md#2-build-a-show-and-render-it-offlineshow)). Each

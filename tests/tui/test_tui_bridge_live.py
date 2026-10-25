@@ -14,6 +14,7 @@ from busk_tui.bridge import Bridge
 from busk_tui.model import (
     BridgeEvent,
     CommandDone,
+    EffectsChanged,
     EngineRunning,
     HealthChanged,
     LiveChanged,
@@ -80,6 +81,46 @@ def test_a_performance_line_shows_within_a_second(live: tuple[Bridge, Drained]) 
     assert time.monotonic() - sent < 1.0
     names = [master.name for master in event.state.masters]
     assert names == ["Grand Master", "Speed 1", "FX", "Wash level", "Fade"]
+
+
+def test_a_fader_moved_elsewhere_shows(live: tuple[Bridge, Drained]) -> None:
+    """As from a surface or the web remote: not through the bridge. (Measured
+    on the club-night show: 26 ms at the median, 76 ms at most, with the
+    app's 25 ms drain; the bound here is loose for a loaded machine.)"""
+    bridge, drained = live
+    show = bridge._show
+    assert show is not None
+    sent = time.monotonic()
+    threading.Thread(target=show.execute, args=("fader 2 35%",)).start()
+    drained.until(
+        lambda e: isinstance(e, LiveChanged) and e.state.playback(2).level == 0.35,  # type: ignore[union-attr]
+        timeout=1.0,
+    )
+    assert time.monotonic() - sent < 0.5
+
+
+def test_the_playbacks_and_while_watched_the_effects(live: tuple[Bridge, Drained]) -> None:
+    bridge, drained = live
+    bridge.send("go 11", "ui", performance=True)
+    bridge.send("fader 11 100%", "ui", performance=True)
+    event = drained.until(
+        lambda e: isinstance(e, LiveChanged) and e.state.playback(11).level == 1.0  # type: ignore[union-attr]
+    )
+    assert isinstance(event, LiveChanged)
+    circle = event.state.playback(11)
+    assert circle is not None
+    assert (circle.name, circle.state, circle.fader, circle.cueName) == (
+        "Circle",
+        "active",
+        "size",
+        "Circle",
+    )
+    assert not [e for e in drained.seen if isinstance(e, EffectsChanged)]
+    bridge.watch(output=False, effects=True)
+    running = drained.until(lambda e: isinstance(e, EffectsChanged) and bool(e.effects.effects))
+    assert isinstance(running, EffectsChanged)
+    (effect,) = running.effects.effects
+    assert (effect.playback, effect.cue, effect.id, len(effect.wave)) == (11, "1", "fx1", 20)
 
 
 def test_a_selection_and_its_undo_step(live: tuple[Bridge, Drained]) -> None:

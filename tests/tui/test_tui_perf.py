@@ -7,7 +7,7 @@
   console process, with the TUI as the frontend against a frontend that only
   waits.
 
-Phase 0's pages read neither the output nor the effects, so this is the
+The TUI starts on F1, which reads the running effects (Phase 1), besides the
 frame, the prompt and the reader at 20 Hz; later phases measure their pages
 here too. The gates are those of the plan's Phase 0 Done note.
 """

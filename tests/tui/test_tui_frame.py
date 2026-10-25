@@ -9,7 +9,7 @@ import pytest
 from rich.text import Text
 from textual.pilot import Pilot
 from textual.widgets import ContentSwitcher
-from tui_fakes import FakeBridge, drive, live_state, make_app, programmer, settle
+from tui_fakes import FakeBridge, drive, live_state, make_app, programmer, settle, show_model
 
 from busk_tui import colors
 from busk_tui.model import (
@@ -23,7 +23,6 @@ from busk_tui.model import (
     SessionChanged,
     SessionState,
     ShowChanged,
-    ShowModel,
 )
 from busk_tui.shell import BuskApp
 from busk_tui.widgets.frame import PAGES, StatusBar, TabBar
@@ -141,7 +140,7 @@ def test_the_status_bar_follows_the_engine() -> None:
     async def body(pilot: Pilot[int]) -> None:
         status = app.query_one(StatusBar)
         bridge.events += [
-            ShowChanged(ShowModel("Club Night", (), (), ())),
+            ShowChanged(show_model()),
             LiveChanged(live_state(gm=0.8, blackout=True, page=PageView(2, "Washes"))),
             ProgrammerChanged(programmer(fixtures=3, blind=True, fadeTime=2.5)),
             SessionChanged(SessionState(4, 0, dirty=True)),
@@ -278,3 +277,19 @@ def test_the_bridge_starts_with_the_app_and_watches_nothing(tmp_path: object) ->
         assert isinstance(app.query_one(HintRow), HintRow)
 
     drive(app, body)
+
+
+def test_a_closing_app_takes_nothing_in() -> None:
+    """The app's timers still run while its screens are taken down: a drain
+    then must not look for widgets that are gone."""
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        pass
+
+    drive(app, body)
+    bridge.events.append(LiveChanged(live_state()))
+    app.drain()
+    app._show_context()
+    assert bridge.events  # left for a drain that never comes

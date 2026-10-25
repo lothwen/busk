@@ -218,6 +218,10 @@ class KeyLegend(Widget):
     KEYS: tuple[tuple[str, str], ...] = (
         ("F1–F9", "pages"),
         ("F10 ?", "help"),
+        ("space", "GO"),
+        ("← →", "playback"),
+        ("[ ]", "fader"),
+        ("PgUp PgDn", "page"),
         ("↑ ↓", "history"),
         ("tab", "complete"),
         ("esc", "clear"),

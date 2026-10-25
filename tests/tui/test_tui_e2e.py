@@ -1,7 +1,8 @@
 """End to end: the real bridge and the app, headless.
 
 * On a real show (``--standalone``, no output, no surfaces): a typed ``gm
-  50%`` shows in the status bar.
+  50%`` shows in the status bar; Space on F1 makes P1 active, and its row
+  shows it.
 * On a stub show whose ``save`` is held (plan §4.3): keys, page switching,
   the beat dot and a bar's drag keep working, the drag's lines run, and the
   prompt context shows the held line.
@@ -26,6 +27,7 @@ from busk_tui.shell import BuskApp
 from busk_tui.widgets.bars import HBar
 from busk_tui.widgets.frame import StatusBar
 from busk_tui.widgets.log import LogView
+from busk_tui.widgets.playbacks import PlaybackRow
 
 WAIT_S = 15.0
 
@@ -53,6 +55,31 @@ def test_a_typed_line_moves_the_real_engine(club_path: Path, tmp_path: Path) -> 
         entries = list(app.query_one(LogView).entries)
         assert ("typed", "gm 50%") in entries
         assert ("typed", "blackout on") in entries
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_space_on_f1_runs_go_on_the_real_engine(club_path: Path, tmp_path: Path) -> None:
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(), standalone=True)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.live is not None and app.view.show is not None)
+        rows = {row.number: row for row in app.query(PlaybackRow)}
+        assert sorted(n for n in rows if n is not None) == list(range(1, 14))
+        await pilot.press("space")
+        await until(pilot, lambda: app.live.playback(1).state == "active", timeout=1.0)  # type: ignore[union-attr]
+        await pilot.press("right_square_bracket")
+        await until(pilot, lambda: app.live.playback(1).level == 0.05, timeout=1.0)  # type: ignore[union-attr]
+        await pilot.pause(0.1)
+        assert str(rows[1].cue.render()) == "1/1 Warm"
+        assert str(rows[1].level.render()) == "5"
+        assert ("ui", "go 1") in app.query_one(LogView).entries
 
     try:
         drive(app, body)

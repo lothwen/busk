@@ -34,13 +34,14 @@ import sys
 import threading
 import time
 from collections import deque
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from queue import Empty, SimpleQueue
-from typing import Final, Literal
+from typing import Any, Final, Literal
 
 from busk import (
+    EffectSnapshot,
     EngineHealth,
     EngineSnapshot,
     LiveShow,
@@ -58,21 +59,34 @@ from busk_tui.model import (
     Busy,
     CommandDone,
     Completion,
+    CueInfo,
+    CueListInfo,
+    EffectInfo,
+    EffectsChanged,
+    EffectsModel,
+    EffectView,
     EngineFailed,
     EngineNews,
     EngineRunning,
     EngineStarting,
     EngineState,
     EngineStopped,
+    FixtureInfo,
+    GroupInfo,
     HealthChanged,
     LiveChanged,
     LiveState,
     MasterLevel,
     MasterView,
     Origin,
+    PageInfo,
     PageView,
+    PlaybackInfo,
+    PlaybackView,
+    PresetInfo,
     ProgrammerChanged,
     ProgrammerModel,
+    Rgb,
     RoutesChanged,
     RouteView,
     SessionChanged,
@@ -167,6 +181,8 @@ class _Seen:
     seq: int | None = None
     live: LiveState | None = None
     programmer: int | None = None
+    programmer_model: ProgrammerModel | None = None
+    effects: tuple[EffectView, ...] | None = None  # None: send the next read, whatever it is
     routes: tuple[RouteStatus, ...] | Literal["unread"] | None = "unread"
     frame: int | None = None
     health: tuple[EngineState, bool] | None = None
@@ -365,7 +381,10 @@ class Bridge:
 
     def watch(self, output: bool, effects: bool) -> None:
         """Which of the show's output and effects the reader polls (each
-        costs the reading process, so only while a page shows it)."""
+        costs the reading process, so only while a page shows it). Once
+        watched again, the next read is sent even if it has not changed."""
+        if effects and not self._watching[1]:
+            self._seen.effects = None
         self._watching = (output, effects)
 
     def drain(self) -> list[BridgeEvent]:
@@ -522,11 +541,11 @@ class Bridge:
         # raises is tried again at the next look.
         new_doc = doc is not seen.doc
         if new_doc:
-            masters: dict[str, MasterView] = {
-                master["id"]: MasterView(master["name"], master["kind"])
-                for master in doc["masters"]
-            }
             model = show_model(doc)
+            masters: dict[str, MasterView] = {
+                master["id"]: view
+                for master, view in zip(doc["masters"], model.masters, strict=True)
+            }
             seen.doc, seen.masters = doc, masters
             if model != seen.show:
                 seen.show = model
@@ -540,10 +559,12 @@ class Bridge:
                 put(LiveChanged(live))
         programmer = show.programmer
         new_programmer = programmer.version != seen.programmer
-        if new_programmer:
-            changed = programmer_model(programmer)
+        if new_programmer or new_doc:  # a new document may rename an effect's template
+            changed = programmer_model(programmer, doc)
             seen.programmer = programmer.version
-            put(ProgrammerChanged(changed))
+            if changed != seen.programmer_model:
+                seen.programmer_model = changed
+                put(ProgrammerChanged(changed))
         if new_doc or new_programmer:  # perhaps from a surface: undo and unsaved edits again
             self._ordered.put(_Job(0, "info", "internal", "session", then=self._take_info))
         routes = show.routes
@@ -551,6 +572,13 @@ class Bridge:
             views = route_views(doc, routes)
             seen.routes = routes
             put(RoutesChanged(views))
+        if self._watching[1]:
+            effects = show.effects
+            if effects is not None:
+                running = effects_model(effects)
+                if running.effects != seen.effects:
+                    seen.effects = running.effects
+                    put(EffectsChanged(running))
         frame = show.frame
         if frame is not None and frame.seq != seen.frame:
             seen.frame = frame.seq
@@ -579,12 +607,94 @@ class Bridge:
 
 
 def show_model(doc: Show) -> ShowModel:
+    groups: dict[str, GroupInfo] = {
+        group["id"]: GroupInfo(group["number"], group["name"]) for group in doc["groups"]
+    }
+    playbacks = {playback["id"]: playback["number"] for playback in doc["playbacks"]}
+    lists = {cue_list["id"]: cue_list["number"] for cue_list in doc["cueLists"]}
+    templates = _templates(doc)
+    speeds = [master for master in doc["masters"] if master["kind"] == "speed"]
+    speed_names: dict[str, str] = {master["id"]: master["name"] for master in speeds}
+    modes = {
+        (profile["id"], mode["id"]): len(mode["elements"])
+        for profile in doc["profiles"]
+        for mode in profile["modes"]
+    }
     return ShowModel(
         title=doc["meta"]["title"],
         universes=tuple(UniverseView(u["number"], u["name"]) for u in doc["universes"]),
-        masters=tuple(MasterView(m["name"], m["kind"]) for m in doc["masters"]),
-        pages=tuple(PageView(p["number"], p["name"]) for p in doc["pages"]),
+        masters=tuple(master_view(master, groups) for master in doc["masters"]),
+        pages=tuple(
+            PageInfo(
+                page["number"],
+                page["name"],
+                tuple(None if slot is None else playbacks.get(slot) for slot in page["slots"]),
+            )
+            for page in doc["pages"]
+        ),
+        playbacks=tuple(
+            sorted(
+                (
+                    PlaybackInfo(
+                        number=playback["number"],
+                        name=playback["name"],
+                        cueList=lists.get(playback["cueListId"], 0),
+                        uiColor=_hex_color(playback.get("uiColor")),
+                    )
+                    for playback in doc["playbacks"]
+                ),
+                key=lambda info: info.number,
+            )
+        ),
+        cueLists=tuple(
+            CueListInfo(
+                number=cue_list["number"],
+                name=cue_list["name"],
+                mode=cue_list["mode"],
+                chase=(
+                    None
+                    if "chase" not in cue_list
+                    else _chase_text(cue_list["chase"], speed_names if len(speeds) > 1 else {})
+                ),
+                cues=tuple(
+                    CueInfo(
+                        cue["number"],
+                        cue["name"],
+                        tuple(effect_info(effect, templates) for effect in cue["effects"]),
+                    )
+                    for cue in cue_list["cues"]
+                ),
+            )
+            for cue_list in doc["cueLists"]
+        ),
+        groups=tuple(groups.values()),
+        presets=tuple(
+            PresetInfo(
+                preset["pool"],
+                preset["number"],
+                preset["name"],
+                _preset_color(preset["values"]),
+            )
+            for preset in doc["presets"]
+        ),
+        fixtures=tuple(
+            FixtureInfo(fixture["number"], modes.get((fixture["profileId"], fixture["modeId"]), 1))
+            for fixture in doc["fixtures"]
+        ),
     )
+
+
+def master_view(master: Mapping[str, Any], groups: dict[str, GroupInfo]) -> MasterView:
+    """A master of the document; ``groups``: the document's, by id."""
+    group = groups.get(master["groupId"]) if master["kind"] == "group" else None
+    steps = tuple(master["multiplierSteps"]) if master["kind"] == "speed" else ()
+    return MasterView(master["name"], master["kind"], group, steps)
+
+
+def effect_info(effect: Mapping[str, Any], templates: dict[str, str]) -> EffectInfo:
+    """A cue's or the programmer's effect instance; ``templates``: the
+    document's template names, by id."""
+    return EffectInfo(effect["id"], templates.get(effect["templateId"], effect["templateId"]))
 
 
 def live_state(snapshot: EngineSnapshot, masters: dict[str, MasterView]) -> LiveState:
@@ -608,10 +718,29 @@ def live_state(snapshot: EngineSnapshot, masters: dict[str, MasterView]) -> Live
             SpeedView(speed.name, speed.bpm, speed.multiplier, speed.level)
             for speed in snapshot.speed
         ),
+        playbacks=tuple(
+            PlaybackView(
+                number=playback.number,
+                name=playback.name,
+                state=playback.state,
+                level=playback.faderLevel,
+                flash=playback.flash,
+                fader=playback.fader,
+                chase=playback.chase,
+                cue=playback.cue,
+                cueName=playback.cueName,
+                next=playback.next,
+                cueCount=playback.cueCount,
+                progress=playback.progress,
+                color=playback.color,
+            )
+            for playback in snapshot.playbacks
+        ),
     )
 
 
-def programmer_model(programmer: ProgrammerStatus) -> ProgrammerModel:
+def programmer_model(programmer: ProgrammerStatus, doc: Show) -> ProgrammerModel:
+    templates = _templates(doc)
     return ProgrammerModel(
         version=programmer.version,
         selection=programmer.selection,
@@ -619,6 +748,28 @@ def programmer_model(programmer: ProgrammerStatus) -> ProgrammerModel:
         highlight=programmer.highlight,
         fadeTime=programmer.fadeTime,
         fixtures=len({value.number for value in programmer.values}),
+        effects=tuple(effect_info(effect, templates) for effect in programmer.effects),
+        stopped=programmer.stopped,
+    )
+
+
+def effects_model(snapshot: EffectSnapshot) -> EffectsModel:
+    return EffectsModel(
+        seq=snapshot.seq,
+        effects=tuple(
+            EffectView(
+                playback=effect.playback,
+                cue=effect.cue,
+                id=effect.id,
+                presence=effect.presence,
+                size=effect.size,
+                hz=effect.hz,
+                phase=effect.phase,
+                wave=effect.wave,
+                colors=effect.colors,
+            )
+            for effect in snapshot.effects
+        ),
     )
 
 
@@ -665,6 +816,45 @@ def session_from_info(text: str) -> SessionState | None:
     if undo is None or dirty is None:
         return None
     return SessionState(undo=undo[0], redo=undo[1], dirty=dirty)
+
+
+def _templates(doc: Show) -> dict[str, str]:
+    """The document's effect template names, by id."""
+    return {template["id"]: template["name"] for template in doc["effects"]}
+
+
+def _chase_text(chase: Mapping[str, Any], speed_names: dict[str, str]) -> str:
+    """A chase's rate and direction as ``cuelist N chase`` takes them; the
+    speed master by name only when the show has more than one
+    (``speed_names`` is empty otherwise)."""
+    rate = chase["rate"]
+    if rate["kind"] == "hz":
+        text = f"hz {rate['value']:g}"
+    else:
+        master = speed_names.get(rate["masterId"])
+        text = "bpm" + ("" if master is None else f' "{master}"') + f" x {rate['multiplier']:g}"
+    return f"{text} {chase['direction']}"
+
+
+def _hex_color(text: str | None) -> Rgb | None:
+    """A ``uiColor`` of the form ``#rrggbb``; ``None`` for anything else."""
+    if text is None or re.fullmatch(r"#[0-9a-fA-F]{6}", text) is None:
+        return None
+    return (int(text[1:3], 16) / 255, int(text[3:5], 16) / 255, int(text[5:7], 16) / 255)
+
+
+def _preset_color(values: Sequence[Mapping[str, Any]]) -> Rgb | None:
+    """The colour a preset gives when every one of its colour values is the
+    same, with its white added; ``None`` otherwise."""
+    found: set[Rgb] = set()
+    for value in values:
+        color = value["value"]
+        if value["attribute"] != "color" or not isinstance(color, dict) or "r" not in color:
+            continue
+        white = float(color.get("w", 0.0))
+        red, green, blue = (min(1.0, float(color[key]) + white) for key in ("r", "g", "b"))
+        found.add((red, green, blue))
+    return found.pop() if len(found) == 1 else None
 
 
 def _failure(exc: Exception) -> str:

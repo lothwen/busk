@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Protocol
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,6 +23,21 @@ class Item:
     label: str
     line: str | None = None
     prefill: str | None = None
+
+
+class Markable(Protocol):
+    def mark(self, index: int | None) -> None:
+        """Draw the pane cursor on the part ``index`` (``None``: nowhere)."""
+
+
+@dataclass(frozen=True, slots=True)
+class Stop:
+    """One place the cursor stops on a page: its item, and the widget (and
+    the part of it) that draws the cursor."""
+
+    item: Item
+    widget: Markable
+    index: int = 0
 
 
 class PaneCursor:

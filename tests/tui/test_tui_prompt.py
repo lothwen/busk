@@ -57,7 +57,8 @@ def test_an_empty_line_sends_nothing() -> None:
     app = make_app(bridge)
 
     async def body(pilot: Pilot[int]) -> None:
-        await pilot.press("space", "enter")
+        app.prompt.value = "   "  # (Space on an empty prompt is GO)
+        await pilot.press("enter")
         assert bridge.sent == []
 
     drive(app, body)
@@ -379,16 +380,17 @@ def test_the_pane_cursor_moves_into_the_page_and_back() -> None:
     app = make_app(bridge)
 
     async def body(pilot: Pilot[int]) -> None:
-        page = app.query_one("#page-1", Placeholder)
+        await pilot.press("f3")
+        page = app.query_one("#page-3", Placeholder)
         await pilot.press("tab")
         assert app.cursor.index == 0
-        assert "▸ list playbacks" in str(page.query_one("#placeholder-1").render())
+        assert "▸ list fixtures" in str(page.query_one("#placeholder-3").render())
         await pilot.press("down", "down")
         assert app.cursor.index == 2
         await pilot.press("up")
         assert app.cursor.index == 1
         await pilot.press("enter")
-        assert app.query_one(Prompt).value == "list pages"
+        assert app.query_one(Prompt).value == "list profiles"
         assert not app.cursor.active
         assert bridge.sent == []
         await pilot.press("escape", "tab", "escape")
@@ -398,7 +400,7 @@ def test_the_pane_cursor_moves_into_the_page_and_back() -> None:
         assert not app.cursor.active
         assert app.query_one(Prompt).value == "g"
         await pilot.press("escape", "tab", "down", "down", "enter")
-        assert app.query_one(Prompt).value == "go "  # a line to finish
+        assert app.query_one(Prompt).value == "sel fixture "  # a line to finish
         await pilot.press("f2")  # another page: the cursor leaves
         assert not app.cursor.active
 

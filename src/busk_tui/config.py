@@ -62,7 +62,7 @@ class Settings:
     are put together; ``problems`` say what in the files was not used."""
 
     layout: Layout = "B"
-    faders: int = 10
+    faders: int = 20
     colors: Colors = "auto"
     page: int = 1
     problems: tuple[str, ...] = field(default=())

@@ -4,7 +4,6 @@ the club-night show (plan §4.6)."""
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -14,12 +13,34 @@ from busk_tui import commands
 from busk_tui.commands import Line
 from busk_tui.pages.placeholder import PLANNED
 
-BUILDERS: dict[str, tuple[Callable[[], Line], bool]] = {
-    # name: (builder, whether busk runs its line as a performance line, GAP-12)
-    "help": (commands.help_, False),
-    "undo": (commands.undo, False),
-    "redo": (commands.redo, False),
-    "save": (commands.save, False),
+BUILDERS: dict[str, tuple[Line, str, bool]] = {
+    # name: (a line it builds, that line's text, whether busk runs it as a performance line)
+    "help": (commands.help_(), "help", False),
+    "undo": (commands.undo(), "undo", False),
+    "redo": (commands.redo(), "redo", False),
+    "save": (commands.save(), "save", False),
+    "go": (commands.go(3), "go 3", True),
+    "back": (commands.back(3), "back 3", True),
+    "release": (commands.release(9), "release 9", True),
+    "release_all": (commands.release_all(), "release all", True),
+    "fader": (commands.fader(3, 0.72), "fader 3 72%", True),
+    "flash on": (commands.flash(3, True), "flash 3 on", True),
+    "flash off": (commands.flash(3, False), "flash 3 off", True),
+    "gm": (commands.gm(0.8), "gm 80%", True),
+    "master": (commands.master("Wash level", 0.4), 'master "Wash level" 40%', True),
+    "blackout on": (commands.blackout(True), "blackout on", True),
+    "blackout off": (commands.blackout(False), "blackout off", True),
+    "output on": (commands.output(True), "output on", True),
+    "output off": (commands.output(False), "output off", True),
+    "tap": (commands.tap("Speed 1"), 'tap "Speed 1"', True),
+    "bpm": (commands.bpm("Speed 1", 120.5), 'bpm "Speed 1" 120.5', True),
+    "page next": (commands.page(1), "page next", True),
+    "page prev": (commands.page(-1), "page prev", True),
+    "sel group": (commands.sel_group(2), "sel group 2", False),
+    "sel + group": (commands.sel_group(1, add=True), "sel + group 1", False),
+    "preset": (commands.preset("color", 1), "preset color 1", False),
+    "effect stop": (commands.effect_stop("fx5"), "effect stop fx5", False),
+    "effect run": (commands.effect_run("fx5"), "effect run fx5", False),
 }
 
 PERFORMANCE_WORDS = {
@@ -51,20 +72,26 @@ def test_names_are_quoted_and_a_quote_in_one_is_refused() -> None:
         commands.quoted('Say "hi"')
 
 
+def test_numbers_have_two_decimals_at_most() -> None:
+    assert commands.number(120.0) == "120"
+    assert commands.number(120.456) == "120.46"
+    assert commands.number(99.5) == "99.5"
+
+
 @pytest.mark.parametrize("name", sorted(BUILDERS))
 def test_each_builder_is_marked_as_busk_runs_it(name: str) -> None:
-    builder, performance = BUILDERS[name]
-    line = builder()
+    line, text, performance = BUILDERS[name]
+    assert line.text == text
     assert line.performance is performance
     first = line.text.split()[0]
     assert (first in PERFORMANCE_WORDS) is performance
 
 
 def test_busk_accepts_every_builders_line(show: busk.OfflineShow) -> None:
-    assert show.execute("sel group 1").ok  # something to undo and redo
-    for name in ("help", "undo", "redo", "save"):
-        builder, _ = BUILDERS[name]
-        reply = show.execute(builder().text)
+    assert show.execute("sel group 1").ok  # something to undo and redo, an effect to stop
+    assert show.execute('effect add "Circle" id fx5').ok
+    for name, (line, _, _) in BUILDERS.items():
+        reply = show.execute(line.text)
         assert reply.ok, (name, reply.text)
 
 

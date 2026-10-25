@@ -49,3 +49,83 @@ def redo() -> Line:
 
 def save() -> Line:
     return Line("save")
+
+
+def number(value: float) -> str:
+    """A number as busk reads it, to two decimals at most: ``120``, ``120.5``."""
+    return f"{round(value, 2):g}"
+
+
+# ------------------------------------------------------------- performance
+
+
+def go(playback: int) -> Line:
+    return Line(f"go {playback}", performance=True)
+
+
+def back(playback: int) -> Line:
+    return Line(f"back {playback}", performance=True)
+
+
+def release(playback: int) -> Line:
+    return Line(f"release {playback}", performance=True)
+
+
+def release_all() -> Line:
+    return Line("release all", performance=True)
+
+
+def fader(playback: int, level: float) -> Line:
+    return Line(f"fader {playback} {percent(level)}", performance=True)
+
+
+def flash(playback: int, on: bool) -> Line:
+    return Line(f"flash {playback} {'on' if on else 'off'}", performance=True)
+
+
+def gm(level: float) -> Line:
+    return Line(f"gm {percent(level)}", performance=True)
+
+
+def master(name: str, level: float) -> Line:
+    return Line(f"master {quoted(name)} {percent(level)}", performance=True)
+
+
+def blackout(on: bool) -> Line:
+    return Line(f"blackout {'on' if on else 'off'}", performance=True)
+
+
+def output(on: bool) -> Line:
+    return Line(f"output {'on' if on else 'off'}", performance=True)
+
+
+def tap(name: str) -> Line:
+    return Line(f"tap {quoted(name)}", performance=True)
+
+
+def bpm(name: str, value: float) -> Line:
+    return Line(f"bpm {quoted(name)} {number(value)}", performance=True)
+
+
+def page(step: int) -> Line:
+    """``page next`` (1) or ``page prev`` (-1)."""
+    return Line("page next" if step > 0 else "page prev", performance=True)
+
+
+# -------------------------------------------------------------- programmer
+
+
+def sel_group(group: int, *, add: bool = False) -> Line:
+    return Line(f"sel + group {group}" if add else f"sel group {group}")
+
+
+def preset(pool: str, preset_number: int) -> Line:
+    return Line(f"preset {pool} {preset_number}")
+
+
+def effect_stop(effect: str) -> Line:
+    return Line(f"effect stop {effect}")
+
+
+def effect_run(effect: str) -> Line:
+    return Line(f"effect run {effect}")

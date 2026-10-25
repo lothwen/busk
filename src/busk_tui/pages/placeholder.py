@@ -14,16 +14,11 @@ from busk_tui.pages.base import Page
 
 PLANNED: dict[int, tuple[int, tuple[str, ...]]] = {
     # F-key: (the phase that builds it, lines to type meanwhile)
-    1: (1, ("list playbacks", "list pages", "go ", "back ", "fader ", "release ", "page next")),
     2: (2, ("sel group ", "set intensity ", "set color ", "programmer", "clear")),
     3: (4, ("list fixtures", "list profiles", "sel fixture ")),
     4: (3, ("list cuelists", "list cues ", "goto ", "record cue ")),
     5: (3, ("list effects", "effect add ", "effect stop ", "effect remove ")),
     6: (2, ("list presets", "preset color ", "record preset color ")),
-    7: (
-        1,
-        ("list masters", "gm ", "blackout on", "blackout off", "tap", "release all", "output off"),
-    ),
     8: (4, ("list universes", "list routes", "fixture ")),
     9: (4, ("list surfaces", "list bindings")),
 }
@@ -51,6 +46,10 @@ class Placeholder(Page):
 
     def items(self) -> list[Item]:
         return [Item(line.strip(), prefill=line) for line in self.lines]
+
+    def current_item(self, index: int) -> Item | None:
+        items = self.items()
+        return items[index] if index < len(items) else None
 
     def show_cursor(self, index: int | None) -> None:
         self._cursor = index

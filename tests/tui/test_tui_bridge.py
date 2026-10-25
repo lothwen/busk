@@ -24,6 +24,7 @@ from busk_tui.model import (
     BridgeEvent,
     Busy,
     CommandDone,
+    EffectsChanged,
     EngineFailed,
     EngineRunning,
     EngineStarting,
@@ -235,6 +236,40 @@ def test_the_show_only_on_a_new_document(running: tuple[Bridge, Events], stub: S
     event = events.until(lambda e: isinstance(e, ShowChanged) and e.show.title == "Renamed")
     assert isinstance(event, ShowChanged)
     assert [master.kind for master in event.show.masters] == ["grand"]
+
+
+def fx_snapshot(seq: int, presence: float = 1.0) -> busk.EffectSnapshot:
+    status = busk.EffectStatus(
+        playback=11, cue="1", id="fx1", presence=presence, size=1.0, hz=1.0, phase=0.0,
+        wave=(0.0, 1.0), colors=(),
+    )  # fmt: skip
+    return busk.EffectSnapshot(seq=seq, time=seq / 100, effects=(status,))
+
+
+def test_effects_only_while_watched_and_only_when_they_change(
+    running: tuple[Bridge, Events], stub: Stub
+) -> None:
+    bridge, events = running
+    stub.effects = fx_snapshot(1)
+    time.sleep(0.2)
+    assert events.of(EffectsChanged) == []  # not watched
+    bridge.watch(output=False, effects=True)
+    first = events.until(lambda e: isinstance(e, EffectsChanged), "the effects")
+    assert isinstance(first, EffectsChanged)
+    assert [(e.playback, e.id) for e in first.effects.effects] == [(11, "fx1")]
+    stub.effects = fx_snapshot(2)  # a new tick, the same effects
+    time.sleep(0.2)
+    assert len(events.of(EffectsChanged)) == 1
+    stub.effects = fx_snapshot(3, presence=0.5)
+    events.until(lambda e: isinstance(e, EffectsChanged) and e.effects.seq == 3, "a change")
+    bridge.watch(output=False, effects=False)
+    time.sleep(0.2)
+    sent = len(events.of(EffectsChanged))
+    bridge.watch(output=False, effects=True)  # watched again: sent again, unchanged
+    deadline = time.monotonic() + WAIT_S
+    while len(events.of(EffectsChanged)) == sent:
+        assert time.monotonic() < deadline, "not sent again"
+        time.sleep(0.01)
 
 
 def test_health_on_a_new_state_and_late_while_overruns_grow(

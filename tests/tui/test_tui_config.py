@@ -117,7 +117,7 @@ def test_wrong_values_in_the_config_file_are_said_and_not_used(tmp_path: Path) -
     path = tmp_path / "config.toml"
     path.write_text('[defaults]\nlayout = "Z"\nfaders = 30\ncolors = "many"\n')
     chosen = config.settings(Options(), config=path, state=tmp_path / "none")
-    assert (chosen.layout, chosen.faders, chosen.colors) == ("B", 10, "auto")
+    assert (chosen.layout, chosen.faders, chosen.colors) == ("B", 20, "auto")
     assert len(chosen.problems) == 3
 
 

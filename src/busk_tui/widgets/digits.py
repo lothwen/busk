@@ -42,10 +42,17 @@ class BigDigits(Static):
 
     DEFAULT_CSS = "BigDigits { width: auto; height: 3; }"
 
-    def __init__(self, text: str = "", color: str = colors.FG, *, id: str | None = None) -> None:
+    def __init__(
+        self,
+        text: str = "",
+        color: str = colors.FG,
+        *,
+        id: str | None = None,
+        classes: str | None = None,
+    ) -> None:
         self.text = text
         self.color = color
-        super().__init__(self._drawn(), id=id)
+        super().__init__(self._drawn(), id=id, classes=classes)
 
     def show(self, text: str, color: str | None = None) -> None:
         if color is not None:

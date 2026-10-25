@@ -29,6 +29,17 @@ ModalScreen {
     height: 1fr;
 }
 
+/* Below 100 columns side-by-side panels stack (the app sets .narrow on the
+   screen; a widget's own CSS cannot see the screen's classes). */
+.narrow StackLayout {
+    layout: vertical;
+}
+
+.narrow StackLayout > #playbacks,
+.narrow StackLayout > #busk-side {
+    width: 100%;
+}
+
 #hint {
     padding: 0 0;
 }

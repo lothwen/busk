@@ -28,9 +28,12 @@ from busk_tui.model import (
     Completion,
     LiveState,
     MasterLevel,
+    MasterView,
     Origin,
     PageView,
+    PlaybackView,
     ProgrammerModel,
+    ShowModel,
     SpeedView,
     newest_only,
 )
@@ -143,9 +146,48 @@ def live_state(**changes: Any) -> LiveState:
         "fadeTime": None,
         "masters": (MasterLevel("Grand Master", "grand", 1.0),),
         "speed": (SpeedView("Speed 1", 120.0, 1.0, 0.5),),
+        "playbacks": (),
     }
     state.update(changes)
     return LiveState(**state)
+
+
+def playback(number: int, name: str, **changes: Any) -> PlaybackView:
+    """An idle playback with a one-cue list, its fader a master."""
+    view: dict[str, Any] = {
+        "number": number,
+        "name": name,
+        "state": "idle",
+        "level": 0.0,
+        "flash": False,
+        "fader": "master",
+        "chase": False,
+        "cue": None,
+        "cueName": None,
+        "next": "1",
+        "cueCount": 1,
+        "progress": None,
+        "color": None,
+    }
+    view.update(changes)
+    return PlaybackView(**view)
+
+
+def show_model(**changes: Any) -> ShowModel:
+    """A show with a grand master and nothing else."""
+    show: dict[str, Any] = {
+        "title": "Club Night",
+        "universes": (),
+        "masters": (MasterView("Grand Master", "grand", None, ()),),
+        "pages": (),
+        "playbacks": (),
+        "cueLists": (),
+        "groups": (),
+        "presets": (),
+        "fixtures": (),
+    }
+    show.update(changes)
+    return ShowModel(**show)
 
 
 def programmer(**changes: Any) -> ProgrammerModel:
@@ -156,6 +198,8 @@ def programmer(**changes: Any) -> ProgrammerModel:
         "highlight": False,
         "fadeTime": 0.0,
         "fixtures": 0,
+        "effects": (),
+        "stopped": frozenset(),
     }
     state.update(changes)
     return ProgrammerModel(**state)
@@ -232,6 +276,7 @@ class Stub:
     routes: Any = None
     health: busk.EngineHealth | None = field(default_factory=stub_health)
     frame: Any = None
+    effects: Any = None
     warnings: tuple[Any, ...] = ()
     gates: dict[str, threading.Event] = field(default_factory=dict)  # line → held until set
     raises: set[str] = field(default_factory=set)

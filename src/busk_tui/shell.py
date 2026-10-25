@@ -7,8 +7,13 @@ engine (plan §4.1).
 
 Keys (plan §4.4). The prompt always has the keyboard. F1–F9 and Alt+1–9
 switch pages, F10 and Alt+0 toggle help, Esc closes help, leaves the pane
-cursor or clears the prompt. On an empty prompt only: ``?`` toggles help and
-Tab moves the pane cursor into the page. Everything else types.
+cursor or clears the prompt. On an empty prompt only: ``?`` toggles help,
+Tab moves the pane cursor into the page, Space runs GO on the selected
+playback, ← → select another, ``[ ]`` move its fader 5 %, and PgUp PgDn
+change the playback page. Everything else types.
+
+What the bridge sends goes into one :class:`~busk_tui.pages.base.View`;
+after each drain the visible page redraws the parts that changed.
 
 Imported only once ``TEXTUAL_COLOR_SYSTEM`` is set (:mod:`busk_tui.app`),
 since Textual reads it when it is imported.
@@ -38,6 +43,7 @@ from busk_tui.model import (
     BridgeEvent,
     BridgeLike,
     CommandDone,
+    EffectsChanged,
     EngineFailed,
     EngineNews,
     EngineRunning,
@@ -55,19 +61,32 @@ from busk_tui.model import (
     ShowChanged,
 )
 from busk_tui.nav import PaneCursor
-from busk_tui.pages.base import Page
+from busk_tui.pages.base import ALL_PARTS, Page, Part, View
+from busk_tui.pages.busk import BuskPage, Slots, follow, step, visible_slots
+from busk_tui.pages.masters import MastersPage
 from busk_tui.pages.placeholder import Placeholder
 from busk_tui.widgets.controls import RunLine
 from busk_tui.widgets.dialogs import ConfirmDialog, QuitChoice, QuitDialog
 from busk_tui.widgets.frame import PAGES, KeyLegend, StatusBar, TabBar
 from busk_tui.widgets.help import HelpOverlay
 from busk_tui.widgets.log import LogView
+from busk_tui.widgets.playbacks import PlaybackRow
 from busk_tui.widgets.prompt import HintRow, Prompt, PromptRow
 
 DRAIN_S: Final = 0.025
 BUSY_AFTER_S: Final = 0.3
 NARROW: Final = 100
 """Below this many columns, side-by-side panels stack (the ``narrow`` class)."""
+
+NUDGE_S: Final = 0.5
+"""``[ ]`` step from the level they last sent for this long; after it, from
+the level the engine shows."""
+
+BUILT: Final[dict[int, type[Page]]] = {1: BuskPage, 7: MastersPage}
+"""The pages built so far; the others are placeholders."""
+
+COLOR_MODES: Final[dict[str | None, colors.ColorMode]] = {"truecolor": "truecolor", "256": "256"}
+"""Rich's colour system → how swatches are quantised (else: 16 colours)."""
 
 
 class FailedScreen(Screen[None]):
@@ -114,11 +133,12 @@ class BuskApp(App[int]):
         self.settings = settings
         self.standalone = standalone
         self.page = settings.page
-        self.playback = 1  # the selected playback (F1's, Phase 1)
+        self.view = View(faders=settings.faders)
         self.cursor = PaneCursor()
-        self.live: LiveState | None = None
-        self.programmer: ProgrammerModel | None = None
         self.session: SessionState | None = None
+        self._changed: set[Part] = set()  # the parts of the view since the page last drew
+        self._slots: Slots = ()  # F1's slots, which the selected playback follows
+        self._nudged: tuple[int, float, float] | None = None  # [ ]: playback, level, when
         self._help_index: HelpIndex | None = None
         self._interrupted = False  # a Ctrl+C on an empty prompt: the next one quits
         self._quitting: int | None = None  # the ticket of "save and quit"'s save
@@ -132,7 +152,7 @@ class BuskApp(App[int]):
             yield TabBar(id="tabs")
             with ContentSwitcher(id="main", initial=f"page-{self.page}"):
                 for number, title in PAGES:
-                    yield Placeholder(number, title)
+                    yield BUILT.get(number, Placeholder)(number, title)
             yield LogView(id="log")
             yield HelpOverlay()
         yield PromptRow(id="prompt-row")
@@ -140,6 +160,8 @@ class BuskApp(App[int]):
         yield KeyLegend(id="legend")
 
     def on_mount(self) -> None:
+        self.view.mode = COLOR_MODES.get(self.console.color_system, "16")
+        self._show_page()
         self.tabs.show(self.page, False)
         self.prompt.offer = self.prompt_key
         self.prompt.focus()
@@ -183,12 +205,45 @@ class BuskApp(App[int]):
     def current_page(self) -> Page:
         return self.query_one(f"#page-{self.page}", Page)
 
+    @property
+    def live(self) -> LiveState | None:
+        return self.view.live
+
+    @property
+    def programmer(self) -> ProgrammerModel | None:
+        return self.view.programmer
+
+    @property
+    def playback(self) -> int:
+        """The selected playback (Space, ``[ ]``)."""
+        return self.view.playback
+
     # ------------------------------------------------------------ events
 
     def drain(self) -> None:
-        """Take in what the bridge has sent since the last drain."""
+        """Take in what the bridge has sent since the last drain, and redraw
+        what changed on the page. Not once the app is closing (its timers
+        still run while its screens are taken down)."""
+        if not self.is_running:
+            return
         for event in self.bridge.drain():
             self.take(event)
+        self._redraw()
+
+    def _redraw(self) -> None:
+        changed = self._changed
+        if not changed:
+            return
+        self._changed = set()
+        if changed & {"show", "live"}:
+            slots = visible_slots(self.view.show, self.view.live, self.view.faders)
+            if slots != self._slots:
+                chosen = follow(self.view.playback, self._slots, slots)
+                self._slots = slots
+                if chosen != self.view.playback:
+                    self.view.playback = chosen
+                    changed.add("playback")
+        self.current_page.update_view(self.view, frozenset(changed))
 
     def take(self, event: BridgeEvent) -> None:
         match event:
@@ -208,16 +263,25 @@ class BuskApp(App[int]):
             case CommandDone():
                 self._done(event)
             case LiveChanged(state=state):
-                self.live = self.status.live = state
+                self.view.live = self.status.live = state
                 self.status.refresh()
+                self._changed.add("live")
             case Beat(beats=beats):
                 self.status.set_beats(beats[0] if beats else None)
+                self.view.beats = beats
+                self._changed.add("beats")
             case ShowChanged(show=show):
                 self.status.title = show.title
                 self.status.refresh()
+                self.view.show = show
+                self._changed.add("show")
             case ProgrammerChanged(programmer=programmer):
-                self.programmer = self.status.programmer = programmer
+                self.view.programmer = self.status.programmer = programmer
                 self.status.refresh()
+                self._changed.add("programmer")
+            case EffectsChanged(effects=effects):
+                self.view.effects = effects
+                self._changed.add("effects")
             case RoutesChanged(routes=routes):
                 self.status.set_routes(routes)
             case HealthChanged(state=state, late=late):
@@ -288,6 +352,10 @@ class BuskApp(App[int]):
             self.log_view.add("typed" if origin == "typed" else "ui", line)
         return self.bridge.send(line, origin, key=key, performance=performance)
 
+    def on_playback_row_chosen(self, message: PlaybackRow.Chosen) -> None:
+        message.stop()
+        self._select_playback(message.number)
+
     def on_run_line(self, message: RunLine) -> None:
         message.stop()
         self._disarm()
@@ -321,6 +389,8 @@ class BuskApp(App[int]):
 
     def _show_context(self) -> None:
         """The prompt's right side: busy line, selection, page, playback, undo."""
+        if not self.is_running:
+            return
         parts: list[str] = []
         busy = self.bridge.busy
         if busy is not None:
@@ -332,7 +402,7 @@ class BuskApp(App[int]):
             parts.append(f"sel {len(self.programmer.selection)}")
         if self.live is not None and self.live.page is not None:
             parts.append(f"page {self.live.page.number}")
-        parts.append(f"P{self.playback}")
+        parts.append(f"P{self.view.playback}")
         if self.session is not None:
             parts.append(f"undo {self.session.undo}")
         text = " · ".join(parts)
@@ -360,7 +430,19 @@ class BuskApp(App[int]):
         self.page = number
         self.query_one(ContentSwitcher).current = f"page-{number}"
         self.tabs.show(number, False)
-        self.bridge.watch(output=False, effects=False)  # no Phase 0 page shows them
+        self._show_page()
+
+    def _show_page(self) -> None:
+        """The page just shown: what the bridge reads for it, and all of it drawn."""
+        self.bridge.watch(output=False, effects=self.current_page.WATCH_EFFECTS)
+        self._changed |= ALL_PARTS
+        self._redraw()
+
+    def action_layout(self, layout: str) -> None:
+        """A click on F1's layout switch."""
+        if layout != "B":
+            name = {"A": "console", "C": "stage"}.get(layout, layout)
+            self.log_view.add("info", f"layout {layout} ({name}) comes in Phase 5; F1 shows B")
 
     def action_toggle_help(self) -> None:
         if self._modal():
@@ -412,9 +494,46 @@ class BuskApp(App[int]):
                 self._move_cursor(1)
             case "pageup" | "pagedown" if self.help_overlay.is_open:
                 self.help_overlay.scroll_page(1 if key == "pagedown" else -1)
+            case _ if prompt.value:
+                return False
+            case "space":
+                self._run(commands.go(self.view.playback))
+            case "left" | "right":
+                by = 1 if key == "right" else -1
+                self._select_playback(step(self.view.playback, self._slots, by))
+            case "left_square_bracket" | "right_square_bracket":
+                self._nudge(0.05 if key == "right_square_bracket" else -0.05)
+            case "pageup" | "pagedown":
+                self._run(commands.page(1 if key == "pagedown" else -1))
             case _:
                 return False
         return True
+
+    def _run(self, line: commands.Line) -> None:
+        self.run_line(line.text, "ui", performance=line.performance)
+
+    def _select_playback(self, number: int) -> None:
+        if number != self.view.playback:
+            self.view.playback = number
+            self._changed.add("playback")
+            self._redraw()
+            self._show_context()
+
+    def _nudge(self, by: float) -> None:
+        """``[ ]``: the selected playback's fader 5 % down or up, from the
+        level last sent if that was just now (the engine has not shown it
+        yet), else from the engine's."""
+        number = self.view.playback
+        shown = None if self.view.live is None else self.view.live.playback(number)
+        level = 0.0 if shown is None else shown.level
+        now = time.monotonic()
+        nudged = self._nudged
+        if nudged is not None and nudged[0] == number and now - nudged[2] < NUDGE_S:
+            level = nudged[1]
+        level = round(max(0.0, min(1.0, level + by)), 4)
+        self._nudged = (number, level, now)
+        line = commands.fader(number, level)
+        self.run_line(line.text, "ui", key=f"fader:{number}", performance=line.performance)
 
     def _escape(self) -> None:
         """Close help, else leave the pane cursor, else clear the prompt."""
@@ -445,9 +564,12 @@ class BuskApp(App[int]):
             self.log_view.add("info", "  ".join(done.candidates))
 
     def _take(self) -> None:
-        """Enter on the pane cursor: run its item's line, or put it in the prompt."""
-        item = self.cursor.current
-        self._leave_cursor()
+        """Enter on the pane cursor: run its item's line, and stay (TAP, GO
+        again), or put its line in the prompt to finish."""
+        index = self.cursor.index
+        item = None if index is None else self.current_page.current_item(index)
+        if item is None or item.line is None:
+            self._leave_cursor()
         if item is None:
             return
         if item.line is not None:
