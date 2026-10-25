@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 import busk
-from busk_tui import commands
+from busk_tui import commands, config
 from busk_tui.commands import Line
 from busk_tui.pages.placeholder import PLANNED
 
@@ -41,7 +41,31 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
     "preset": (commands.preset("color", 1), "preset color 1", False),
     "effect stop": (commands.effect_stop("fx5"), "effect stop fx5", False),
     "effect run": (commands.effect_run("fx5"), "effect run fx5", False),
+    "sel none": (commands.sel_none(), "sel none", False),
+    "set level": (commands.set_level("intensity", 0.72), "set intensity 72%", False),
+    "set component": (commands.set_level("color.r", 0.5), "set color.r 50%", False),
+    "set degrees": (commands.set_number("pan", -45.0), "set pan -45", False),
+    "set hz": (commands.set_number("strobeRate", 12.5), "set strobeRate 12.5", False),
+    "set zoom": (commands.set_number("zoom", 20.0), "set zoom 20", False),
+    "step up": (commands.step_level("intensity", 0.05), "set intensity by 5%", False),
+    "step down": (commands.step_level("intensity", -0.02), "set intensity by -2%", False),
+    "step component": (commands.step_level("color.w", 0.05), "set color.w by 5%", False),
+    "step degrees": (commands.step_number("pan", -15.0), "set pan by -15", False),
+    "step hz": (commands.step_number("strobeRate", 0.5), "set strobeRate by 0.5", False),
+    "blind on": (commands.blind(True), "blind on", False),
+    "blind off": (commands.blind(False), "blind off", False),
+    "highlight on": (commands.highlight(True), "highlight on", False),
+    "highlight off": (commands.highlight(False), "highlight off", False),
 }
+
+PREFILLS = (
+    commands.set_prefill("intensity"),
+    commands.set_prefill("color"),
+    commands.set_prefill("shutter"),
+    commands.FADE_PREFILL,
+    commands.record_preset_prefill("color", 5),
+)
+"""Lines the UI puts in the prompt to finish."""
 
 PERFORMANCE_WORDS = {
     "go", "back", "goto", "release", "fader", "flash", "toggle", "button", "gm", "master",
@@ -88,11 +112,44 @@ def test_each_builder_is_marked_as_busk_runs_it(name: str) -> None:
 
 
 def test_busk_accepts_every_builders_line(show: busk.OfflineShow) -> None:
+    """With the heads selected, holding a colour (for its components and
+    ``by``), and an effect to stop; ``sel none`` last."""
     assert show.execute("sel group 1").ok  # something to undo and redo, an effect to stop
     assert show.execute('effect add "Circle" id fx5').ok
-    for name, (line, _, _) in BUILDERS.items():
+    assert show.execute("preset color 2").ok
+    for name, (line, _, _) in sorted(BUILDERS.items(), key=lambda item: item[0] == "sel none"):
         reply = show.execute(line.text)
         assert reply.ok, (name, reply.text)
+
+
+def test_the_prefills_are_lines_busk_takes_so_far(show: busk.OfflineShow) -> None:
+    assert show.execute("sel group 1").ok
+    for line in PREFILLS:
+        answer = show.expected(line)
+        assert answer.error is None, (line, answer.error)
+        assert answer.words or answer.values, line
+
+
+def test_the_default_quick_lines_run(show: busk.OfflineShow) -> None:
+    assert show.execute("sel group 4").ok
+    for line in config.QUICK:
+        reply = show.execute(line)
+        assert reply.ok, (line, reply.text)
+
+
+@pytest.mark.parametrize(
+    ("attribute", "taken"),
+    [("intensity", True), ("pan", True), ("tilt", True), ("zoom", True), ("shutter", True),
+     ("strobeRate", True), ("iris", False), ("cto", False), ("focus", False)],
+)  # fmt: skip
+def test_the_heads_take_what_their_profile_says(
+    show: busk.OfflineShow, attribute: str, taken: bool
+) -> None:
+    """The encoders' rows show by profile: the heads take these and refuse
+    the others, as ``profile_info`` reads them."""
+    assert show.execute("sel group 1").ok
+    value = "strobe" if attribute == "shutter" else "0.5"
+    assert show.execute(f"set {attribute} {value}").ok is taken
 
 
 def test_the_placeholder_lines_are_busks(show: busk.OfflineShow) -> None:

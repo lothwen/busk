@@ -2,8 +2,10 @@
 
 ``$BUSK_TUI_PERF`` is a JSON object: ``mode`` ``"bare"`` (the frontend only
 waits) or ``"tui"`` (the TUI, headless, on the run's show, typing a line now
-and then), ``seconds`` to run, and ``report``, where it writes the engine's
-ticks and overruns over the run and the CPU time this process used.
+and then, on the F-key ``page``), ``lines`` to run on the show first (in
+both modes), ``seconds`` to run, and ``report``, where it writes the
+engine's ticks and overruns over the run and the CPU time this process
+used.
 """
 
 from __future__ import annotations
@@ -22,10 +24,12 @@ def main(show: Any) -> None:
     deadline = time.monotonic() + 15.0
     while (show.health is None or show.health.ticks == 0) and time.monotonic() < deadline:
         time.sleep(0.05)  # the engine process sends its counts once a second
+    for line in plan.get("lines", ()):
+        assert show.execute(line).ok, line
     first = show.health
     cpu = time.process_time()
     if plan["mode"] == "tui":
-        _run_tui(show, seconds)
+        _run_tui(show, seconds, plan.get("page", 1))
     else:
         time.sleep(seconds)
     cpu = time.process_time() - cpu
@@ -42,13 +46,13 @@ def main(show: Any) -> None:
     )
 
 
-def _run_tui(show: Any, seconds: float) -> None:
+def _run_tui(show: Any, seconds: float, page: int) -> None:
     from busk_tui import config
     from busk_tui.bridge import Bridge
     from busk_tui.shell import BuskApp
 
     bridge = Bridge.attached(show)
-    app = BuskApp(bridge, config.Settings())
+    app = BuskApp(bridge, config.Settings(page=page))
 
     async def drive() -> None:
         async with app.run_test(size=(150, 48)) as pilot:

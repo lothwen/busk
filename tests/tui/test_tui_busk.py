@@ -623,7 +623,7 @@ def test_the_selection_panel() -> None:
         assert plain(app.query_one("#selection-text")) == "101 thru 102 (2)"
         assert app.query_one(BuskHeader).left.plain.endswith("sel 101 thru 102")
         groups = app.query_one("#group-buttons", ButtonStrip)
-        assert groups.render().plain == "[Heads] [Wash\u00a0level]"  # type: ignore[union-attr]
+        assert groups.render().plain == "[Heads] [Wash level]"
         chips = app.query_one("#color-chips", ButtonStrip)
         assert chips.render().plain == "██ ░░"  # type: ignore[union-attr]
         await pilot.click(groups, offset=(1, 0))

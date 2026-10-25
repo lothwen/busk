@@ -8,7 +8,8 @@ show, so the TUI's own options travel in the environment, as JSON in
 ``--no-output`` and ``--no-surfaces``, which ``busk run`` lacks.
 
 ``$XDG_CONFIG_HOME/busk-tui/config.toml`` (or ``--config FILE``) holds
-defaults; it is only read. ``$XDG_STATE_HOME/busk-tui/state.json`` remembers
+defaults (``[defaults]``) and F2's quick lines (``[program] quick``); it is
+only read. ``$XDG_STATE_HOME/busk-tui/state.json`` remembers
 the last page and layout; a state file that cannot be read or written is
 ignored.
 """
@@ -36,6 +37,18 @@ FADERS: Final = (4, 20)
 
 _RUN_ONLY: Final = ("values", "script", "iface", "no_recover", "threads", "stats", "no_log")
 """The ``busk run`` options ``--standalone`` has no use for."""
+
+QUICK: Final = (
+    "set intensity spread 0 to 1",
+    "set intensity spread 0 to 1 center",
+    "set pan spread -90 to 90",
+    "set tilt 45",
+    "record cue 1",
+    "clear",
+)
+"""F2's quick lines (spec §8.2 in busk's words, plan §3 17); ``[program]
+quick`` in the config file replaces them. BLIND and HIGHLIGHT are toggles of
+their own beside them."""
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -65,6 +78,7 @@ class Settings:
     faders: int = 20
     colors: Colors = "auto"
     page: int = 1
+    quick: tuple[str, ...] = QUICK
     problems: tuple[str, ...] = field(default=())
 
 
@@ -210,6 +224,7 @@ def settings(options: Options, *, config: Path, state: Path) -> Settings:
     page), then the config file's ``[defaults]``, then the built-in ones."""
     problems: list[str] = []
     defaults: dict[str, Any] = {}
+    program: dict[str, Any] = {}
     try:
         with config.open("rb") as file:
             document = tomllib.load(file)
@@ -218,12 +233,22 @@ def settings(options: Options, *, config: Path, state: Path) -> Settings:
             defaults = table
         else:
             problems.append(f"{config}: [defaults] is not a table; not used")
+        table = document.get("program", {})
+        if isinstance(table, dict):
+            program = table
+        else:
+            problems.append(f"{config}: [program] is not a table; not used")
     except FileNotFoundError:
         pass
     except (OSError, tomllib.TOMLDecodeError) as exc:
         problems.append(f"{config}: {exc}; using the defaults")
     remembered = read_state(state)
     chosen = Settings()
+    quick = program.get("quick")
+    if isinstance(quick, list) and all(isinstance(line, str) and line.strip() for line in quick):
+        chosen = replace(chosen, quick=tuple(line.strip() for line in quick))
+    elif quick is not None:
+        problems.append(f"{config}: quick must be a list of console lines; not {quick!r}")
     layout = defaults.get("layout")
     if layout in LAYOUTS:
         chosen = replace(chosen, layout=cast(Layout, layout))

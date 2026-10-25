@@ -25,12 +25,14 @@ from busk_tui.model import (
     Busy,
     CommandDone,
     EffectsChanged,
+    ElementOutput,
     EngineFailed,
     EngineRunning,
     EngineStarting,
     EngineStopped,
     HealthChanged,
     LiveChanged,
+    OutputChanged,
     ProgrammerChanged,
     SessionChanged,
     SessionState,
@@ -270,6 +272,72 @@ def test_effects_only_while_watched_and_only_when_they_change(
     while len(events.of(EffectsChanged)) == sent:
         assert time.monotonic() < deadline, "not sent again"
         time.sleep(0.01)
+
+
+def out_snapshot(seq: int, intensity: float = 1.0) -> busk.OutputSnapshot:
+    element = busk.FixtureOutput(
+        number=101, element=1, intensity=intensity, color=(1.0, 0.0, 0.0), pan=-45.0, tilt=10.0,
+        zoom=None, source={"intensity": "programmer"}, playback=None,
+    )  # fmt: skip
+    return busk.OutputSnapshot(seq=seq, time=seq / 100, fixtures=(element,))
+
+
+def test_the_output_only_while_watched_and_only_when_it_changes(
+    running: tuple[Bridge, Events], stub: Stub
+) -> None:
+    bridge, events = running
+    stub.output = out_snapshot(1)
+    time.sleep(0.2)
+    assert events.of(OutputChanged) == []  # not watched
+    bridge.watch(output=True, effects=False)
+    first = events.until(lambda e: isinstance(e, OutputChanged), "the output")
+    assert isinstance(first, OutputChanged)
+    assert first.output.element(101, 1) == ElementOutput(101, 1, 1.0, (1.0, 0.0, 0.0), -45.0,
+                                                         10.0, None)  # fmt: skip
+    stub.output = out_snapshot(2)  # a new tick, the same output
+    time.sleep(0.2)
+    assert len(events.of(OutputChanged)) == 1
+    stub.output = out_snapshot(3, intensity=0.5)
+    events.until(lambda e: isinstance(e, OutputChanged) and e.output.seq == 3, "a change")
+    bridge.watch(output=False, effects=False)
+    time.sleep(0.2)
+    sent = len(events.of(OutputChanged))
+    bridge.watch(output=True, effects=False)  # watched again: sent again, unchanged
+    deadline = time.monotonic() + WAIT_S
+    while len(events.of(OutputChanged)) == sent:
+        assert time.monotonic() < deadline, "not sent again"
+        time.sleep(0.01)
+
+
+class CountingStub(Stub):
+    """A stub that counts how often its output is read."""
+
+    reads = 0
+
+    @property
+    def output(self) -> Any:
+        self.reads += 1
+        return self._output
+
+    @output.setter
+    def output(self, value: Any) -> None:
+        self._output = value
+
+
+def test_the_output_is_read_ten_times_a_second_while_watched() -> None:
+    stub = CountingStub()
+    stub.output = out_snapshot(1)
+    bridge = Bridge(stub, None)  # type: ignore[arg-type]
+    bridge.start()
+    try:
+        Events(bridge).until(lambda e: isinstance(e, EngineRunning))
+        time.sleep(0.5)
+        assert stub.reads == 0
+        bridge.watch(output=True, effects=False)
+        time.sleep(1.0)
+        assert 7 <= stub.reads <= 13, stub.reads  # the reader looks 20 times a second
+    finally:
+        bridge.stop()
 
 
 def test_health_on_a_new_state_and_late_while_overruns_grow(

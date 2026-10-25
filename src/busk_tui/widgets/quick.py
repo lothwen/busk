@@ -19,10 +19,11 @@ from busk_tui.nav import Item, Stop
 from busk_tui.widgets.controls import ButtonStrip, StripButton, button_label
 
 
-def group_buttons(groups: Sequence[GroupInfo]) -> list[StripButton]:
+def group_buttons(groups: Sequence[GroupInfo], *, numbered: bool = False) -> list[StripButton]:
+    """A button per group; ``numbered``: ``[2 Washes]``."""
     return [
         StripButton(
-            button_label(group.name, colors.MID),
+            button_label(f"{group.number} {group.name}" if numbered else group.name, colors.MID),
             commands.sel_group(group.number),
             commands.sel_group(group.number, add=True),
         )
@@ -46,6 +47,12 @@ def color_chips(presets: Sequence[PresetInfo], mode: ColorMode) -> list[StripBut
 def strip_stops(strip: ButtonStrip) -> list[Stop]:
     """The pane cursor's stops on each button of ``strip``."""
     return [
-        Stop(Item(button.line.text, line=button.line.text), strip, index)
+        Stop(
+            Item(button.line.text, line=button.line.text)
+            if button.prefill is None
+            else Item(button.prefill.strip(), prefill=button.prefill),
+            strip,
+            index,
+        )
         for index, button in enumerate(strip.buttons)
     ]

@@ -6,9 +6,10 @@ the console prompt on one screen. Every click and key in it is a console line, e
 log, so what the UI does is what you could type.
 
 > **Work in progress.** This version has the frame (the status bar, the log, the prompt with
-> hints and completion, the help overlay and the dialogs) and two pages: [F1 Busk](#f1-busk),
-> to play the show, and [F7 Masters](#f7-masters). The other pages are not built yet: each one
-> lists console lines to type meanwhile.
+> hints and completion, the help overlay and the dialogs) and four pages: [F1 Busk](#f1-busk),
+> to play the show, [F2 Program](#f2-program) and [F6 Presets](#f6-presets), to build a look,
+> and [F7 Masters](#f7-masters). The other pages are not built yet: each one lists console
+> lines to type meanwhile.
 
 ## Install
 
@@ -190,6 +191,78 @@ programmer effect it runs `effect stop fx5`, and `[off]` runs `effect run fx5`.
 The layout switch (A console, B stack, C stage) is drawn, but only B, the stack, is built.
 Below 100 columns the right column goes under the playbacks.
 
+## F2 Program
+
+Select fixtures, set their attributes, apply presets, and see what the programmer holds.
+
+```
+ ┌─ SELECTION ────────────────────────────────────────────────────────────────────────────────────┐
+ │ 101 thru 102 (2 · encoders show 101)                                                           │
+ │ [1 Heads] [2 Washes] [3 Bar] [4 All] [none]                                                    │
+ └────────────────────────────────────────────────────────────────────────────────────────────────┘
+ ┌─ INTENSITY ─────────────────────────────┐ ┌─ POSITION ──────────────────────────────┐ ┌─ COLOR …
+ │ intensity  [−] █████████░░░░░░░░ [+] 50% │ │ pan   [−] ███████▉░░░░░░░░░░░ [+]  -45° │ │ color.r …
+ └─────────────────────────────────────────┘ │ tilt  [−] █████████▌░░░░░░░░░ [+]    0° │ │ …
+ quick [set intensity spread 0 to 1] [set pan spread -90 to 90] … [highlight on] [blind on] [fade 0s…]
+ ┌─ PROGRAMMER CONTENTS · 2 fixtures ─────────────────────────────────────────────────────────────┐
+ │ #    name          intensity colour            pan     tilt    zoom    other                   │
+ │ 101  Spot 101      50%       ██ Red            -45°    ·       ·                               │
+```
+
+**SELECTION** shows the selection as you would type it (`101 thru 104, 301.2`), how many
+elements it has, and which one the encoders show: the first. A button per group runs `sel
+group N` (Shift-click adds it, `sel + group N`), and `[none]` runs `sel none`.
+
+**The encoders** are grouped by busk's families: INTENSITY, POSITION (`pan`, `tilt`), COLOR
+(`color.r`, `.g`, `.b`, `.w`, `cto`), BEAM (`zoom`, `iris`, `frost`), FOCUS and SHUTTER
+(`strobeRate`). A row shows only when a profile of your rig takes its attribute, and is named
+as `set` names it. Each shows the first selected element's value: **magenta** when the
+programmer holds it (from a preset too), **dim** when it is the output (intensity, pan, tilt
+and zoom, after the masters), `—` with neither.
+
+- Click the bar to set the value: `set pan -45`, `set intensity 72%`. Pan, tilt, zoom and the
+  strobe rate span the first selected fixture's range (its profile's). What you set shows at
+  once, before busk has run it.
+- Drag the bar for a live change: it sends a `set` about ten times a second and logs the last
+  one when you let go. **Each of those lines is an undo step of its own** until busk can
+  group a gesture into one (GAP-06 of the engine's gap list), so `undo` after a drag goes
+  back one step of it at a time. A click is one step.
+- `[−]` `[+]` step the value by 5 % (15° for pan and tilt) with `set intensity by 5%`, and the
+  mouse wheel by 2 % (5°), not logged. busk changes only what the programmer holds, so the
+  steps act only while the programmer holds the attribute for a selected element; elsewhere
+  they are grey: click the bar or apply a preset first.
+- A colour component (`color.r` …) changes the colour the programmer holds, so its bar, too,
+  works once there is one: click a colour chip under the rows (`preset color 2`) or type
+  `set color 1 0.5 0`. The COLOR panel shows the output's colour and the programmer's as
+  swatches. `[set color…]` and SHUTTER's `[set shutter…]` put the line in the prompt.
+- A click on a row's name puts `set <attribute> ` in the prompt.
+
+**quick** runs ready-made lines (set them in the config file, below), then `[highlight
+on|off]` and `[blind on|off]`, which follow the programmer and are lit while on, and
+`[fade 0s…]`, which puts `fade ` in the prompt.
+
+**PROGRAMMER CONTENTS** has a row per fixture the programmer holds a value for: intensity, the
+colour as a swatch and its components, pan, tilt, zoom, and the other attributes it holds. A
+value from a preset shows the preset's name; a fixture whose elements differ shows `mixed`;
+`·` is an attribute it does not hold.
+
+With the pane cursor (Tab on an empty prompt), a row's name puts its `set` in the prompt and
+`[−]` `[+]` run their step, so Enter Enter Enter steps the value. Below 100 columns the
+panels go one under the other.
+
+## F6 Presets
+
+Every preset, as tiles, one panel per pool that has presets: COLOR, POSITION, BEAM,
+INTENSITY, FOCUS and ALL. A tile shows the preset's number and name and what it gives where
+all its values agree: the colour as a swatch, `pan/tilt` (`-30°/40°`), the intensity as a
+block and a percentage, or its first attribute (`zoom 20°`); `mixed` where they differ (one
+value per fixture). A click runs `preset color 2` on the selection, which the header names
+(`applies to 101 thru 102 (2)`).
+
+The last tile of each pool, `+ record`, puts `record preset color 5 "` in the prompt, with the
+next free number: type the name, close the quotes, Enter. A preset recorded at the prompt
+shows at once. A pool with no preset yet does not show: record its first one at the prompt.
+
 ## F7 Masters
 
 Every master, one panel per kind, three across on a wide terminal:
@@ -221,7 +294,7 @@ the dialog.
 
 | File | |
 |---|---|
-| `$XDG_CONFIG_HOME/busk-tui/config.toml` | Defaults, read only (`--config` names another). |
+| `$XDG_CONFIG_HOME/busk-tui/config.toml` | Defaults and F2's quick lines, read only (`--config` names another). |
 | `$XDG_STATE_HOME/busk-tui/state.json` | The last page and layout. |
 | `$XDG_STATE_HOME/busk-tui/debug.log` | Tracebacks the TUI caught, for a bug report. |
 
@@ -232,8 +305,18 @@ the dialog.
 layout = "B"      # A console, B stack, C stage
 faders = 20       # 4-20: at most this many of a page's slots on F1
 colors = "auto"   # auto, 256, 16, truecolor
+
+[program]
+quick = [         # F2's quick lines: any console lines
+  "set intensity spread 0 to 1",
+  "set intensity spread 0 to 1 center",
+  "set pan spread -90 to 90",
+  "set tilt 45",
+  "record cue 1",
+  "clear",
+]
 ```
 
 A value that is not one of these is reported in the log at start and not used; a file that
 does not parse is reported, and the defaults are used. The command line comes first, then
-the remembered layout, then the config file.
+the remembered layout, then the config file. Without `quick`, F2 has the lines above.

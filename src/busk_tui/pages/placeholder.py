@@ -14,11 +14,9 @@ from busk_tui.pages.base import Page
 
 PLANNED: dict[int, tuple[int, tuple[str, ...]]] = {
     # F-key: (the phase that builds it, lines to type meanwhile)
-    2: (2, ("sel group ", "set intensity ", "set color ", "programmer", "clear")),
     3: (4, ("list fixtures", "list profiles", "sel fixture ")),
     4: (3, ("list cuelists", "list cues ", "goto ", "record cue ")),
     5: (3, ("list effects", "effect add ", "effect stop ", "effect remove ")),
-    6: (2, ("list presets", "preset color ", "record preset color ")),
     8: (4, ("list universes", "list routes", "fixture ")),
     9: (4, ("list surfaces", "list bindings")),
 }

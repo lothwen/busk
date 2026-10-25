@@ -15,13 +15,13 @@ from textual.containers import VerticalScroll
 from textual.widget import Widget
 
 from busk_tui.colors import ColorMode
-from busk_tui.model import EffectsModel, LiveState, ProgrammerModel, ShowModel
+from busk_tui.model import EffectsModel, LiveState, OutputModel, ProgrammerModel, ShowModel
 from busk_tui.nav import Item, Stop
 
-type Part = Literal["show", "live", "programmer", "effects", "beats", "playback"]
+type Part = Literal["show", "live", "programmer", "effects", "output", "beats", "playback"]
 
 ALL_PARTS: Final[frozenset[Part]] = frozenset(
-    ("show", "live", "programmer", "effects", "beats", "playback")
+    ("show", "live", "programmer", "effects", "output", "beats", "playback")
 )
 
 
@@ -34,10 +34,12 @@ class View:
     live: LiveState | None = None
     programmer: ProgrammerModel | None = None
     effects: EffectsModel | None = None
+    output: OutputModel | None = None
     beats: tuple[float, ...] = ()  # each speed master's beat count, as LiveState.speed
     playback: int = 1  # the selected playback (Space, [ ], the prompt's P1)
     faders: int = 20  # at most this many slots on F1
     mode: ColorMode = "256"  # how the terminal shows colours
+    quick: tuple[str, ...] = ()  # F2's quick lines
 
 
 class Page(VerticalScroll):
@@ -48,6 +50,10 @@ class Page(VerticalScroll):
     WATCH_EFFECTS: ClassVar[bool] = False
     """Whether the page shows the running effects (the bridge reads them
     only while such a page is visible)."""
+
+    WATCH_OUTPUT: ClassVar[bool] = False
+    """Whether the page shows the fixtures' output (read, too, only while
+    such a page is visible)."""
 
     def __init__(self, number: int, title: str) -> None:
         super().__init__(id=f"page-{number}")

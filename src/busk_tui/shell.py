@@ -24,7 +24,7 @@ from __future__ import annotations
 import asyncio
 import signal
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import ClassVar, Final
 
 from rich.text import Text
@@ -53,6 +53,7 @@ from busk_tui.model import (
     LiveChanged,
     LiveState,
     Origin,
+    OutputChanged,
     ProgrammerChanged,
     ProgrammerModel,
     RoutesChanged,
@@ -65,7 +66,9 @@ from busk_tui.pages.base import ALL_PARTS, Page, Part, View
 from busk_tui.pages.busk import BuskPage, Slots, follow, step, visible_slots
 from busk_tui.pages.masters import MastersPage
 from busk_tui.pages.placeholder import Placeholder
-from busk_tui.widgets.controls import RunLine
+from busk_tui.pages.presets import PresetsPage
+from busk_tui.pages.program import ProgramPage
+from busk_tui.widgets.controls import FillPrompt, RunLine
 from busk_tui.widgets.dialogs import ConfirmDialog, QuitChoice, QuitDialog
 from busk_tui.widgets.frame import PAGES, KeyLegend, StatusBar, TabBar
 from busk_tui.widgets.help import HelpOverlay
@@ -82,7 +85,12 @@ NUDGE_S: Final = 0.5
 """``[ ]`` step from the level they last sent for this long; after it, from
 the level the engine shows."""
 
-BUILT: Final[dict[int, type[Page]]] = {1: BuskPage, 7: MastersPage}
+BUILT: Final[dict[int, type[Page]]] = {
+    1: BuskPage,
+    2: ProgramPage,
+    6: PresetsPage,
+    7: MastersPage,
+}
 """The pages built so far; the others are placeholders."""
 
 COLOR_MODES: Final[dict[str | None, colors.ColorMode]] = {"truecolor": "truecolor", "256": "256"}
@@ -133,7 +141,7 @@ class BuskApp(App[int]):
         self.settings = settings
         self.standalone = standalone
         self.page = settings.page
-        self.view = View(faders=settings.faders)
+        self.view = View(faders=settings.faders, quick=settings.quick)
         self.cursor = PaneCursor()
         self.session: SessionState | None = None
         self._changed: set[Part] = set()  # the parts of the view since the page last drew
@@ -143,6 +151,8 @@ class BuskApp(App[int]):
         self._interrupted = False  # a Ctrl+C on an empty prompt: the next one quits
         self._quitting: int | None = None  # the ticket of "save and quit"'s save
         self._context_text = ""
+        self._waiting: dict[int, Callable[[bool], None]] = {}  # ticket → what to call when done
+        self._keyed: dict[str, int] = {}  # key → the newest ticket with such a callback
 
     # ------------------------------------------------------------ layout
 
@@ -282,6 +292,9 @@ class BuskApp(App[int]):
             case EffectsChanged(effects=effects):
                 self.view.effects = effects
                 self._changed.add("effects")
+            case OutputChanged(output=output):
+                self.view.output = output
+                self._changed.add("output")
             case RoutesChanged(routes=routes):
                 self.status.set_routes(routes)
             case HealthChanged(state=state, late=late):
@@ -308,6 +321,12 @@ class BuskApp(App[int]):
             )
 
     def _done(self, done: CommandDone) -> None:
+        callback = self._waiting.pop(done.ticket, None)
+        if callback is not None:
+            for key, ticket in list(self._keyed.items()):
+                if ticket == done.ticket:
+                    del self._keyed[key]
+            callback(done.ok)
         if done.origin == "internal":
             return
         if done.ticket == self._quitting:
@@ -330,27 +349,48 @@ class BuskApp(App[int]):
     # ---------------------------------------------------------- the lines
 
     def run_line(
-        self, line: str, origin: Origin, key: str | None = None, performance: bool = False
+        self,
+        line: str,
+        origin: Origin,
+        key: str | None = None,
+        performance: bool = False,
+        done: Callable[[bool], None] | None = None,
     ) -> None:
         """Send ``line``: after the engine's question, if it asks one (not
-        for a control's keyed moves), echoed unless ``internal``."""
+        for a control's keyed moves), echoed unless ``internal``. ``done``
+        is called with the line's success once it has run."""
         question = None if key is not None else self.bridge.confirmation(line)
         if question is None:
-            self._send(line, origin, key, performance)
+            self._send(line, origin, key, performance, done)
             return
 
         def answered(yes: bool | None) -> None:
             if yes:
-                self._send(line, origin, key, performance)
+                self._send(line, origin, key, performance, done)
             else:
                 self.log_view.add("info", f"cancelled: {line}")
 
         self.push_screen(ConfirmDialog(question, line), answered)
 
-    def _send(self, line: str, origin: Origin, key: str | None, performance: bool) -> int:
+    def _send(
+        self,
+        line: str,
+        origin: Origin,
+        key: str | None,
+        performance: bool,
+        done: Callable[[bool], None] | None = None,
+    ) -> int:
         if origin != "internal":
             self.log_view.add("typed" if origin == "typed" else "ui", line)
-        return self.bridge.send(line, origin, key=key, performance=performance)
+        ticket = self.bridge.send(line, origin, key=key, performance=performance)
+        if done is not None:
+            if key is not None:  # a newer keyed line replaces the older if unsent: forget it
+                older = self._keyed.pop(key, None)
+                if older is not None:
+                    self._waiting.pop(older, None)
+                self._keyed[key] = ticket
+            self._waiting[ticket] = done
+        return ticket
 
     def on_playback_row_chosen(self, message: PlaybackRow.Chosen) -> None:
         message.stop()
@@ -359,7 +399,17 @@ class BuskApp(App[int]):
     def on_run_line(self, message: RunLine) -> None:
         message.stop()
         self._disarm()
-        self.run_line(message.line.text, message.origin, message.key, message.line.performance)
+        line = message.line
+        self.run_line(line.text, message.origin, message.key, line.performance, message.done)
+
+    def on_fill_prompt(self, message: FillPrompt) -> None:
+        """A pre-fill from a page: the text goes in the prompt, to finish."""
+        message.stop()
+        self._disarm()
+        self._leave_cursor()
+        self.prompt.value = message.text
+        self.prompt.cursor_position = len(message.text)
+        self.prompt.focus()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         event.stop()
@@ -434,7 +484,8 @@ class BuskApp(App[int]):
 
     def _show_page(self) -> None:
         """The page just shown: what the bridge reads for it, and all of it drawn."""
-        self.bridge.watch(output=False, effects=self.current_page.WATCH_EFFECTS)
+        page = self.current_page
+        self.bridge.watch(output=page.WATCH_OUTPUT, effects=page.WATCH_EFFECTS)
         self._changed |= ALL_PARTS
         self._redraw()
 

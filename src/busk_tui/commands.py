@@ -119,8 +119,57 @@ def sel_group(group: int, *, add: bool = False) -> Line:
     return Line(f"sel + group {group}" if add else f"sel group {group}")
 
 
+def sel_none() -> Line:
+    return Line("sel none")
+
+
 def preset(pool: str, preset_number: int) -> Line:
     return Line(f"preset {pool} {preset_number}")
+
+
+def set_level(attribute: str, level: float) -> Line:
+    """A level attribute (0..1) or a colour component: ``set intensity 72%``."""
+    return Line(f"set {attribute} {percent(level)}")
+
+
+def set_number(attribute: str, value: float) -> Line:
+    """An attribute in its own unit (degrees, Hz): ``set pan -45``."""
+    return Line(f"set {attribute} {number(value)}")
+
+
+def step_level(attribute: str, change: float) -> Line:
+    """A level changed by ``change`` (0..1) where the programmer holds it:
+    ``set intensity by -5%``."""
+    return Line(f"set {attribute} by {round(change * 100)}%")
+
+
+def step_number(attribute: str, change: float) -> Line:
+    """An attribute in its own unit changed by ``change``: ``set pan by 15``."""
+    return Line(f"set {attribute} by {number(change)}")
+
+
+def blind(on: bool) -> Line:
+    return Line(f"blind {'on' if on else 'off'}")
+
+
+def highlight(on: bool) -> Line:
+    return Line(f"highlight {'on' if on else 'off'}")
+
+
+# ---------------------------------------------------------------- pre-fills
+# Lines put in the prompt for the operator to finish.
+
+
+def set_prefill(attribute: str) -> str:
+    return f"set {attribute} "
+
+
+FADE_PREFILL = "fade "
+
+
+def record_preset_prefill(pool: str, preset_number: int) -> str:
+    """``record preset color 5 "``: the name comes next."""
+    return f'record preset {pool} {preset_number} "'
 
 
 def effect_stop(effect: str) -> Line:

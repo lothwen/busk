@@ -12,7 +12,7 @@ import busk
 
 PACKAGE = Path(__file__).resolve().parents[2] / "src" / "busk_tui"
 
-PLAIN = ("model", "commands", "hints", "colors", "config", "nav", "formats")
+PLAIN = ("model", "commands", "hints", "colors", "config", "nav", "formats", "attributes")
 """Modules with neither busk nor Textual."""
 
 

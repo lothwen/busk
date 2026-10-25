@@ -19,8 +19,10 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   process, for development and rehearsal. F1 plays the current page's playbacks (levels in
   their cue's colour, cue and next cue, GO, BACK, a momentary FLASH; Space, ← →, `[ ]` and
   PgUp/PgDn on an empty prompt) with the tempo, the masters, the running effects and the
-  selection; F7 has every master and the panic controls. The other pages list the lines to
-  type meanwhile.
+  selection; F2 selects groups, sets and steps attributes with encoders that show the
+  programmer's or the output's value, runs configurable quick lines and lists the
+  programmer's contents; F6 applies presets from tiles; F7 has every master and the panic
+  controls. The other pages list the lines to type meanwhile.
 - `OfflineShow.output` and `LiveShow.output`: the engine's output read back per fixture
   element, as two new public types, `OutputSnapshot` and `FixtureOutput`
   ([the library guide](docs/library.md#2-build-a-show-and-render-it-offlineshow)). Each

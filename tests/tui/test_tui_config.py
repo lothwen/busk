@@ -121,6 +121,26 @@ def test_wrong_values_in_the_config_file_are_said_and_not_used(tmp_path: Path) -
     assert len(chosen.problems) == 3
 
 
+def test_the_quick_lines_come_from_the_config_file(tmp_path: Path) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text('[program]\nquick = ["sel group 1", " clear "]\n')
+    chosen = config.settings(Options(), config=path, state=tmp_path / "none")
+    assert (chosen.quick, chosen.problems) == (("sel group 1", "clear"), ())
+    assert Settings().quick == config.QUICK
+
+
+@pytest.mark.parametrize(
+    "table", ['[program]\nquick = "clear"\n', '[program]\nquick = ["clear", ""]\n', "program = 1\n"]
+)
+def test_wrong_quick_lines_are_said_and_not_used(tmp_path: Path, table: str) -> None:
+    path = tmp_path / "config.toml"
+    path.write_text(table)
+    chosen = config.settings(Options(), config=path, state=tmp_path / "none")
+    assert chosen.quick == config.QUICK
+    (problem,) = chosen.problems
+    assert problem.startswith(f"{path}: ")
+
+
 def test_a_bad_config_file_gives_the_defaults_and_says_why(tmp_path: Path) -> None:
     path = tmp_path / "config.toml"
     path.write_text("[defaults\nlayout = ")

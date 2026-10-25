@@ -120,7 +120,7 @@ Gap column lists only open gaps.
 |---|---|---|---|
 | `snap` | `LiveShow.snapshot` (typed) | 20 Hz | `seq` |
 | `frame` | `LiveShow.frame` (typed): engine `time`, `seq` | 20 Hz | `seq` |
-| `out` | `LiveShow.output` (typed), only while a page that shows it is visible | 20 Hz | `seq` |
+| `out` | `LiveShow.output` (typed), only while a page that shows it is visible | 10 Hz (Phase 2) | `seq` |
 | `fx` | `LiveShow.effects` (typed), only while a page that shows it is visible | 20 Hz | `seq` |
 | `prog` | `LiveShow.programmer` (typed) | 20 Hz | `version` |
 | `route` | `LiveShow.routes` (typed); `None` without output | 20 Hz | identity; `packets` for the blink |
@@ -1052,13 +1052,104 @@ selection that has the attribute (the club-night heads take `intensity`, `pan`, 
 once a value is set.
 
 **Done when.**
-- [ ] On the TupperDMX show: select a group, set intensity, pan, tilt and a colour component with
+- [x] On the TupperDMX show: select a group, set intensity, pan, tilt and a colour component with
       the mouse, step them with `[−]`/`[+]`, apply colour and position presets with the pane
       cursor, and record a cue. Each action is one echoed line and one undo step.
-- [ ] The selection, the encoder values and PROGRAMMER CONTENTS follow every change, including
+- [x] The selection, the encoder values and PROGRAMMER CONTENTS follow every change, including
       changes made from the prompt and from surfaces.
-- [ ] Suites green; guide covers F2 and F6, and the drag limit until GAP-06.
+- [x] Suites green; guide covers F2 and F6, and the drag limit until GAP-06.
 - [ ] Manual (the user): build a look on the rig from F2 and F6.
+
+**Done** (2026-10-25); the manual check is the user's.
+- Suites: the TUI's 314 tests (`tests/tui`), the whole suite 4219 passed, 1 skipped, 16
+  deselected (3 perf, the soak); ruff, format and
+  `mypy` clean. The TUI's tests pass on Textual 8.2.0, the floor, too.
+- **Perf gates** (`-m perf -s`; club-night show). Standalone, the engine's rate with the TUI
+  on F1 and on F2: 100.0 and 99.9 against 100.0 frames/s bare. Under `busk run`, 0 overruns
+  in every run, and the console process:
+
+  | Page | Console CPU over a bare frontend |
+  |---|---|
+  | F1, idle | +0.227 core |
+  | F2, idle | +0.180 core |
+  | F2, the selected heads moving (P11's Circle) | +0.213 core (first build: +0.307) |
+
+  F1 is unchanged by this phase: Phase 1's commit measures +0.227 today as well (it measured
+  +0.198 on the day). The moving case is new in `test_tui_perf.py`: on an idle show F2's
+  encoders never redraw. Two changes brought it under the 0.25 gate: the encoder's value cell
+  updates without a layout pass (`Static.update(layout=False)`: each update had reflowed the
+  screen, 20 times a second), and **the output is read at 10 Hz, not 20** (`OUTPUT_S`; spec
+  §9's least for live output), the `out` row of §2's table now says so. On a synthetic
+  8 192-element rig the TUI's conversion of one read costs 4.5 ms and its comparison 0.7 ms
+  (0.05 core at 10 Hz), on top of busk's own build of the read (10–11 ms, GAP-01): Phase 4's
+  F3, which shows every element, should measure it.
+- **Files** as planned, and: `attributes.py` (plain, in the boundary test's list: the encoder
+  table of busk's attribute words, units, colours and steps; which rows show; ranges; what a
+  row reads; the lines; value formats), `pages/program.py`, `pages/presets.py`,
+  `widgets/encoders.py`, `widgets/programmer.py`, `widgets/tiles.py`; `controls.py` gains
+  `FillPrompt` (a pre-fill from a page), `RunLine.done` (called with the line's success once
+  it ran; the app keeps the callbacks by ticket, and only the newest per key),
+  `CommandButton(inert=…)` and `StripButton.prefill`. Tests: `test_tui_program.py`,
+  `test_tui_presets.py`, and additions to the conversion, commands (contract), config,
+  bridge, live bridge, widgets, e2e and perf tests.
+- **Model.** `ShowModel.profiles` (`ProfileInfo`: the attributes `set` names, ranges),
+  `FixtureInfo.name` and `.profile`, `PresetInfo.values` (each attribute but colour, its value
+  where all agree, else `None`); `ProgrammerModel.values` (`HeldValue`: a colour as its
+  components, a discrete value as its slot, a preset reference with the preset's name);
+  `OutputChanged(OutputModel)` with `ElementOutput` (intensity, colour, pan, tilt, zoom; the
+  sources come with F3). `Page.WATCH_OUTPUT`; `View.output` and `View.quick`.
+- **Calls you may veto:**
+  - **Rows use busk's words**: `intensity`, `color.r` … `color.w`, `cto`, `zoom`, `iris`,
+    `frost`, `focus`, `strobeRate`, not the spec's `dim`, `red`, `strobe`.
+  - **Which rows show**: the attributes of the channels of the profiles the show's fixtures
+    use, the parameter of a function range (`strobeRate` of a strobe), `intensity` where a
+    mode dims its colour virtually, `color.w` where a colour channel drives a white emitter.
+    A reading of the document (`profile_info`), close to but not the engine's slot rule.
+  - **Ranges**: `physical` (pan and tilt centred on 0, `zoomRange`, 0..`maxStrobeHz`), else
+    the span of the channels' capabilities (the club spot has no `maxStrobeHz`: its strobe
+    range's 1–20 Hz), else ±270°, ±135°, 5–60°, 0–25 Hz. The first selected fixture's
+    profile's, else the widest. Bars round to whole percent, whole degrees (a tenth under a
+    60° span) and tenths of a hertz.
+  - **Steps**: 5 % (wheel 2 %) for levels and components, 15° (5°) for pan and tilt, 2° (1°)
+    for zoom, 1 Hz (0.5 Hz) for the strobe rate.
+  - **A colour component's bar sets only while the programmer holds a colour** for a selected
+    element, as its steps: busk refuses `set color.r 50%` otherwise ("no selected target has
+    color to change"). A dim line says so (`set a colour first: a chip, or set color`), and
+    the COLOR panel shows the output's colour and the programmer's as swatches, with the
+    colour chips and `[set color…]` under them. A component the programmer's colour lacks
+    (`w`) reads 0, as `set color.w by` starts from 0.
+  - **A click sends one line, on release**, not one on press and one on release as the
+    faders do; a drag sends at most every 0.1 s (`DRAG_S`), keyed `set:<attribute>`, and
+    logs the last. A `set` that changes nothing adds no undo step (checked), so the release
+    line after a drag's last move costs none.
+  - **The pending value** shows (magenta) from the send until the line is done and the
+    programmer has changed since (or 1 s after it is done); a refused line clears it at once.
+  - **BLIND and HIGHLIGHT are toggles after the quick lines**, lit while on, not two lines
+    each in the list; then `[fade 0s…]`, a pre-fill. The default quick list is the rest of
+    adaptation 17; `[program] quick` in `config.toml` replaces it (a wrong value is reported
+    and not used).
+  - **Pane cursor on F2**: the group buttons and `[none]`; per row its name (pre-fills `set
+    <attribute> `), `[−]` and `[+]` (run; an inert one pre-fills too); the chips and the
+    pre-fill buttons; the quick buttons. A click on a row's name pre-fills as Enter does.
+  - **PROGRAMMER CONTENTS** has an `other` column (`strobeRate 10Hz · shutter strobe`), shows
+    a preset's name for a value from it (with the colour's swatch), `mixed` where a fixture's
+    elements differ, and the colour as `r g b` with `w0.25` when it has white. The SELECTION
+    count is elements, as F1's.
+  - **F6**: pools in the order colour, position, beam, intensity, focus, all; previews with
+    units (`-30°/40°`, `mixed/40°` for the club's per-fixture Audience, `zoom 20°`, `▅ 50%`);
+    a `+ record` tile per pool pre-fills `record preset <pool> <next> "`. A pool with no
+    preset does not show; its first preset is recorded at the prompt (the guide says so).
+  - Below 100 columns F2's panels go one under the other (spec §3), as F7's.
+- **`ButtonStrip` lays its buttons out itself.** Textual wraps at no-break spaces too, so a
+  strip that wrapped split `[highlight on]`; it now breaks only between buttons (its height
+  from its own layout), and `button_label` no longer inserts no-break spaces. **Not changed,
+  found:** the tab bar has the same problem: at 100 columns `F8 Patch` splits over two
+  lines (Phase 0's `NBSP`; its test checks the text, not the wrap).
+- **Checked in a real pseudo-terminal** (pyte), standalone: on the TupperDMX show the first
+  box above, line by line, the prompt's `undo n` growing by one per action (the group, three
+  bar clicks, a chip, the green bar, `[+]`, `[−]`; a position preset recorded at the prompt
+  and applied with the colour one from F6's pane cursor; `[record cue 1]`); on the club show
+  F2 at 150, 100 and 99 columns, a drag, and F6 with four pools.
 
 ### Phase 3: Cues and effects (F4, F5)
 

@@ -12,8 +12,9 @@ own (plan §4.1):
   first);
 * the **controls** worker runs the performance lines of the TUI's own
   controls, in order; they never wait for an ordered line (busk's GAP-12);
-* the **reader** looks at the show's published state 20 times a second and
-  sends an event only when something changed;
+* the **reader** looks at the show's published state 20 times a second (the
+  output, while a page shows it, 10 times) and sends an event only when
+  something changed;
 * a **log handler** on the ``busk`` logger turns its records into
   :class:`~busk_tui.model.EngineNews`.
 
@@ -44,7 +45,9 @@ from busk import (
     EffectSnapshot,
     EngineHealth,
     EngineSnapshot,
+    FixtureProfile,
     LiveShow,
+    OutputSnapshot,
     ProfileLibrary,
     ProgrammerStatus,
     RouteStatus,
@@ -59,12 +62,14 @@ from busk_tui.model import (
     Busy,
     CommandDone,
     Completion,
+    Components,
     CueInfo,
     CueListInfo,
     EffectInfo,
     EffectsChanged,
     EffectsModel,
     EffectView,
+    ElementOutput,
     EngineFailed,
     EngineNews,
     EngineRunning,
@@ -74,16 +79,20 @@ from busk_tui.model import (
     FixtureInfo,
     GroupInfo,
     HealthChanged,
+    HeldValue,
     LiveChanged,
     LiveState,
     MasterLevel,
     MasterView,
     Origin,
+    OutputChanged,
+    OutputModel,
     PageInfo,
     PageView,
     PlaybackInfo,
     PlaybackView,
     PresetInfo,
+    ProfileInfo,
     ProgrammerChanged,
     ProgrammerModel,
     Rgb,
@@ -95,7 +104,9 @@ from busk_tui.model import (
     ShowLoadFailed,
     ShowModel,
     SpeedView,
+    Summary,
     UniverseView,
+    Value,
     newest_only,
 )
 
@@ -104,6 +115,11 @@ POLL_S: Final = 0.05
 
 LATE_S: Final = 1.0
 """The engine is late while its overruns grow over this long, or longer."""
+
+OUTPUT_S: Final = 0.1
+"""How often the reader looks at the output while it is watched (10 Hz, the
+spec's least for live output): it is the costliest read, for busk, which
+builds it on request, and for the TUI, which converts and draws it."""
 
 _debug = logging.getLogger("busk_tui")
 
@@ -183,6 +199,9 @@ class _Seen:
     programmer: int | None = None
     programmer_model: ProgrammerModel | None = None
     effects: tuple[EffectView, ...] | None = None  # None: send the next read, whatever it is
+    output_seq: int | None = None
+    output: tuple[ElementOutput, ...] | None = None  # None: send the next read, whatever it is
+    output_at: float = 0.0  # when the output was last read (monotonic)
     routes: tuple[RouteStatus, ...] | Literal["unread"] | None = "unread"
     frame: int | None = None
     health: tuple[EngineState, bool] | None = None
@@ -385,6 +404,9 @@ class Bridge:
         watched again, the next read is sent even if it has not changed."""
         if effects and not self._watching[1]:
             self._seen.effects = None
+        if output and not self._watching[0]:
+            self._seen.output_seq = self._seen.output = None
+            self._seen.output_at = 0.0
         self._watching = (output, effects)
 
     def drain(self) -> list[BridgeEvent]:
@@ -579,6 +601,15 @@ class Bridge:
                 if running.effects != seen.effects:
                     seen.effects = running.effects
                     put(EffectsChanged(running))
+        if self._watching[0] and time.monotonic() - seen.output_at >= OUTPUT_S:
+            seen.output_at = time.monotonic()
+            output = show.output
+            if output is not None and output.seq != seen.output_seq:
+                out = output_model(output)
+                seen.output_seq = output.seq
+                if out.fixtures != seen.output:
+                    seen.output = out.fixtures
+                    put(OutputChanged(out))
         frame = show.frame
         if frame is not None and frame.seq != seen.frame:
             seen.frame = frame.seq
@@ -620,6 +651,7 @@ def show_model(doc: Show) -> ShowModel:
         for profile in doc["profiles"]
         for mode in profile["modes"]
     }
+    profiles = {profile["id"]: profile["name"] for profile in doc["profiles"]}
     return ShowModel(
         title=doc["meta"]["title"],
         universes=tuple(UniverseView(u["number"], u["name"]) for u in doc["universes"]),
@@ -674,14 +706,81 @@ def show_model(doc: Show) -> ShowModel:
                 preset["number"],
                 preset["name"],
                 _preset_color(preset["values"]),
+                _preset_summary(preset["values"]),
             )
             for preset in doc["presets"]
         ),
         fixtures=tuple(
-            FixtureInfo(fixture["number"], modes.get((fixture["profileId"], fixture["modeId"]), 1))
+            FixtureInfo(
+                fixture["number"],
+                modes.get((fixture["profileId"], fixture["modeId"]), 1),
+                fixture["name"],
+                profiles.get(fixture["profileId"], ""),
+            )
             for fixture in doc["fixtures"]
         ),
+        profiles=tuple(profile_info(profile) for profile in doc["profiles"]),
     )
+
+
+RANGED: Final = ("pan", "tilt", "zoom", "strobeRate")
+"""The attributes whose range is the profile's (the others are 0..1)."""
+
+DEFAULT_RANGES: Final = {"pan": (-270.0, 270.0), "tilt": (-135.0, 135.0), "zoom": (5.0, 60.0),
+                         "strobeRate": (0.0, 25.0)}  # fmt: skip
+"""A range the profile does not give (the spec's pan and tilt)."""
+
+
+def profile_info(profile: FixtureProfile) -> ProfileInfo:
+    """What a profile's modes take, as ``set`` names it, read from its
+    channels: their attributes (``control`` is never set), the attribute a
+    function range takes as its parameter (``strobeRate`` of a shutter's
+    strobe), ``intensity`` where a mode dims its colour virtually, and
+    ``color.w`` where a colour channel drives a white emitter. The ranges
+    are the profile's ``physical`` ones (pan and tilt centred on 0), else
+    those its channels' capabilities span, else :data:`DEFAULT_RANGES`."""
+    attributes: set[str] = set()
+    spans: dict[str, list[float]] = {}
+    for mode in profile["modes"]:
+        colored = False
+        for channel in mode["channels"]:
+            attribute = channel["attribute"]
+            if attribute == "control":
+                continue
+            attributes.add(attribute)
+            if attribute == "color":
+                colored = True
+                if channel.get("component") == "white":
+                    attributes.add("color.w")
+            for capability in channel["capabilities"]:
+                if capability["kind"] == "range" and attribute in RANGED:
+                    spans.setdefault(attribute, []).extend(capability["value"])
+                elif capability["kind"] == "function" and "param" in capability:
+                    param = capability["param"]
+                    attributes.add(param["attribute"])
+                    spans.setdefault(param["attribute"], []).extend(param["value"])
+        if colored and mode["intensityStrategy"] == "virtual":
+            attributes.add("intensity")
+    physical = profile["physical"]
+    given: dict[str, tuple[float, float]] = {}
+    if "panRange" in physical:
+        given["pan"] = (-physical["panRange"] / 2, physical["panRange"] / 2)
+    if "tiltRange" in physical:
+        given["tilt"] = (-physical["tiltRange"] / 2, physical["tiltRange"] / 2)
+    if "zoomRange" in physical:
+        given["zoom"] = (float(physical["zoomRange"][0]), float(physical["zoomRange"][1]))
+    if "maxStrobeHz" in physical:
+        given["strobeRate"] = (0.0, physical["maxStrobeHz"])
+    ranges: list[tuple[str, float, float]] = []
+    for attribute in RANGED:
+        if attribute not in attributes:
+            continue
+        span = spans.get(attribute)
+        low, high = given.get(
+            attribute, (min(span), max(span)) if span else DEFAULT_RANGES[attribute]
+        )
+        ranges.append((attribute, low, high))
+    return ProfileInfo(profile["name"], frozenset(attributes), tuple(ranges))
 
 
 def master_view(master: Mapping[str, Any], groups: dict[str, GroupInfo]) -> MasterView:
@@ -750,6 +849,34 @@ def programmer_model(programmer: ProgrammerStatus, doc: Show) -> ProgrammerModel
         fixtures=len({value.number for value in programmer.values}),
         effects=tuple(effect_info(effect, templates) for effect in programmer.effects),
         stopped=programmer.stopped,
+        values=tuple(
+            HeldValue(
+                number=value.number,
+                element=value.element,
+                attribute=value.attribute,
+                value=_value(value.value),
+                preset=None if value.preset is None else value.preset[2],
+            )
+            for value in programmer.values
+        ),
+    )
+
+
+def output_model(snapshot: OutputSnapshot) -> OutputModel:
+    return OutputModel(
+        seq=snapshot.seq,
+        fixtures=tuple(
+            ElementOutput(
+                number=out.number,
+                element=out.element,
+                intensity=out.intensity,
+                color=out.color,
+                pan=out.pan,
+                tilt=out.tilt,
+                zoom=out.zoom,
+            )
+            for out in snapshot.fixtures
+        ),
     )
 
 
@@ -841,6 +968,38 @@ def _hex_color(text: str | None) -> Rgb | None:
     if text is None or re.fullmatch(r"#[0-9a-fA-F]{6}", text) is None:
         return None
     return (int(text[1:3], 16) / 255, int(text[3:5], 16) / 255, int(text[5:7], 16) / 255)
+
+
+_COMPONENTS: Final = ("r", "g", "b", "w", "a", "uv")
+
+
+def _value(value: Any) -> Value:
+    """A stored value as the UI has it: a colour's components in busk's
+    order, a discrete value's slot, a number."""
+    if isinstance(value, Mapping):
+        if "slot" in value:
+            return str(value["slot"])
+        components: Components = tuple(
+            (key, float(value[key])) for key in _COMPONENTS if key in value
+        )
+        return components
+    return float(value)
+
+
+def _preset_summary(values: Sequence[Mapping[str, Any]]) -> tuple[tuple[str, Summary], ...]:
+    """Each attribute but colour that a preset stores, in the order stored,
+    with its value where every value of it is the same, else ``None``."""
+    found: dict[str, set[float | str]] = {}
+    for stored in values:
+        if stored["attribute"] == "color":
+            continue
+        value = _value(stored["value"])
+        if isinstance(value, float | str):
+            found.setdefault(stored["attribute"], set()).add(value)
+    return tuple(
+        (attribute, next(iter(seen)) if len(seen) == 1 else None)
+        for attribute, seen in found.items()
+    )
 
 
 def _preset_color(values: Sequence[Mapping[str, Any]]) -> Rgb | None:

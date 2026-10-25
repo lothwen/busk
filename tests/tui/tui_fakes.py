@@ -277,6 +277,7 @@ class Stub:
     health: busk.EngineHealth | None = field(default_factory=stub_health)
     frame: Any = None
     effects: Any = None
+    output: Any = None
     warnings: tuple[Any, ...] = ()
     gates: dict[str, threading.Event] = field(default_factory=dict)  # line → held until set
     raises: set[str] = field(default_factory=set)

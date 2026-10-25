@@ -7,9 +7,12 @@
   console process, with the TUI as the frontend against a frontend that only
   waits.
 
-The TUI starts on F1, which reads the running effects (Phase 1), besides the
-frame, the prompt and the reader at 20 Hz; later phases measure their pages
-here too. The gates are those of the plan's Phase 0 Done note.
+The TUI runs on F1, which reads the running effects (Phase 1), and on F2,
+which reads the output (Phase 2), besides the frame, the prompt and the
+reader at 20 Hz; under ``busk run`` F2 also with the selected heads moving,
+so its encoders redraw with the output. Later phases measure their pages
+here too. The gates are
+those of the plan's Phase 0 Done note.
 """
 
 from __future__ import annotations
@@ -57,14 +60,15 @@ def rate(show: Any, seconds: float) -> float:
     return (show.frame.seq - first) / (time.monotonic() - started)
 
 
-def test_standalone_keeps_the_engines_rate(club_path: Path, tmp_path: Path) -> None:
+@pytest.mark.parametrize("page", [1, 2])
+def test_standalone_keeps_the_engines_rate(club_path: Path, tmp_path: Path, page: int) -> None:
     document, _ = busk.load_show(club_path)
     with busk.LiveShow(document, output=False, tune_interpreter=True) as bare:
         without = rate(bare, SECONDS)
     path = tmp_path / "club.show"
     path.write_bytes(club_path.read_bytes())
     bridge = Bridge.standalone(path, output=False, surfaces=False)
-    app = BuskApp(bridge, config.Settings(), standalone=True)
+    app = BuskApp(bridge, config.Settings(page=page), standalone=True)
     measured: list[float] = []
 
     async def main() -> None:
@@ -85,7 +89,7 @@ def test_standalone_keeps_the_engines_rate(club_path: Path, tmp_path: Path) -> N
     finally:
         bridge.stop()
     (with_tui,) = measured
-    print(f"\nstandalone: {without:.1f} frames/s bare, {with_tui:.1f} with the TUI")
+    print(f"\nstandalone: {without:.1f} frames/s bare, {with_tui:.1f} with the TUI on F{page}")
     assert with_tui >= MIN_RATE * without
 
 
@@ -95,12 +99,30 @@ async def type_a_line(pilot: Pilot[int]) -> None:
     await pilot.pause(0.5)
 
 
-def run_frontend(mode: str, show: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
-    report = tmp_path / f"{mode}.json"
-    plan = {"mode": mode, "seconds": SECONDS, "report": str(report)}
+MOVING = ("sel group 1", "go 11", "fader 11 100%")
+"""The heads selected and moving (P11's Circle): F2's encoders redraw as
+the output changes."""
+
+
+def run_frontend(
+    mode: str,
+    show: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    page: int = 1,
+    lines: tuple[str, ...] = (),
+) -> Any:
+    name = f"{mode}-{page}-{len(lines)}"
+    report = tmp_path / f"{name}.json"
+    plan = {"mode": mode, "seconds": SECONDS, "report": str(report), "page": page, "lines": lines}
     monkeypatch.setenv("BUSK_TUI_PERF", json.dumps(plan))
     monkeypatch.setenv("PYTHONPATH", os.pathsep.join([str(HERE), os.environ.get("PYTHONPATH", "")]))
-    options = ("--frontend", "tui_perf_frontend:main", "--state-dir", str(tmp_path / mode))
+    options = (
+        "--frontend",
+        "tui_perf_frontend:main",
+        "--state-dir",
+        str(tmp_path / name),
+    )
     with BuskRun(show, *options, "--no-log") as run:
         assert run.wait(timeout=SECONDS + 60) == 0, run.err
     return json.loads(report.read_text())
@@ -115,15 +137,18 @@ def test_under_busk_run_the_engine_runs_on_time(
     document["bindings"] = []
     show = tmp_path / "club.show"
     busk.save_show(document, show, backups=False)
-    bare = run_frontend("bare", show, tmp_path, monkeypatch)
-    tui = run_frontend("tui", show, tmp_path, monkeypatch)
-    cores = (tui["cpu"] - bare["cpu"]) / SECONDS
-    print(
-        f"\nbusk run: overruns {bare['overruns']}/{bare['ticks']} bare, "
-        f"{tui['overruns']}/{tui['ticks']} with the TUI; "
-        f"console CPU {bare['cpu'] / SECONDS:.3f} core bare, {tui['cpu'] / SECONDS:.3f} with "
-        f"the TUI (+{cores:.3f})"
-    )
-    assert tui["ticks"] > 0
-    assert tui["overruns"] <= MAX_OVERRUNS * tui["ticks"]
-    assert cores <= MAX_CPU
+    idle = run_frontend("bare", show, tmp_path, monkeypatch)
+    moving = run_frontend("bare", show, tmp_path, monkeypatch, lines=MOVING)
+    for page, lines, bare in ((1, (), idle), (2, (), idle), (2, MOVING, moving)):
+        tui = run_frontend("tui", show, tmp_path, monkeypatch, page, lines)
+        cores = (tui["cpu"] - bare["cpu"]) / SECONDS
+        what = f"F{page}" + (", heads moving" if lines else "")
+        print(
+            f"\nbusk run, {what}: overruns {bare['overruns']}/{bare['ticks']} bare, "
+            f"{tui['overruns']}/{tui['ticks']} with the TUI; "
+            f"console CPU {bare['cpu'] / SECONDS:.3f} core bare, {tui['cpu'] / SECONDS:.3f} with "
+            f"the TUI (+{cores:.3f})"
+        )
+        assert tui["ticks"] > 0
+        assert tui["overruns"] <= MAX_OVERRUNS * tui["ticks"]
+        assert cores <= MAX_CPU

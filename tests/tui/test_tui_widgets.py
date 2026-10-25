@@ -12,7 +12,15 @@ from textual.pilot import Pilot
 from busk_tui import colors
 from busk_tui.commands import Line, percent
 from busk_tui.widgets.bars import HBar, bar_text
-from busk_tui.widgets.controls import Chip, CommandButton, RunLine, chip
+from busk_tui.widgets.controls import (
+    ButtonStrip,
+    Chip,
+    CommandButton,
+    RunLine,
+    StripButton,
+    button_label,
+    chip,
+)
 from busk_tui.widgets.digits import BeatDots, BigDigits, beat_dots, big
 from busk_tui.widgets.swatch import Swatch, swatch_text
 
@@ -143,6 +151,42 @@ def test_a_button_runs_its_line() -> None:
         assert str(button.render()) == "[TAP]"
         await pilot.click(CommandButton)
         assert app.lines == [("tap", "ui", None)]
+
+    bench(app, body)
+
+
+def test_an_inert_button_runs_nothing() -> None:
+    button = CommandButton("+", Line("set intensity by 5%"), inert=True)
+    app = Bench(button)
+
+    async def body(pilot: Pilot[None]) -> None:
+        await pilot.click(CommandButton)
+        assert app.lines == []
+        assert str(button.content.style) == colors.BORDER  # type: ignore[union-attr]
+        button.change(inert=False)
+        await pilot.click(CommandButton)
+        assert app.lines == [("set intensity by 5%", "ui", None)]
+
+    bench(app, body)
+
+
+def test_a_strip_wraps_between_buttons_never_inside_one() -> None:
+    labels = ["set intensity spread 0 to 1", "highlight on", "blind on", "fade 0s…"]
+    strip = ButtonStrip(
+        [StripButton(button_label(label, colors.MID), Line(label)) for label in labels]
+    )
+    app = Bench(strip)
+
+    async def body(pilot: Pilot[None]) -> None:  # 40 columns wide
+        assert strip.size.height == 2
+        assert str(strip.render()).splitlines() == [
+            "[set intensity spread 0 to 1]",
+            "[highlight on] [blind on] [fade 0s…]",
+        ]
+        assert strip.lines(20)[0].plain == "[set intensity spread 0 to 1]"  # too long: alone
+        assert len(strip.lines(20)) == 4
+        await pilot.click(ButtonStrip, offset=(16, 1))
+        assert app.lines == [("blind on", "ui", None)]
 
     bench(app, body)
 

@@ -17,7 +17,9 @@ from busk_tui.model import (
     EffectsChanged,
     EngineRunning,
     HealthChanged,
+    HeldValue,
     LiveChanged,
+    OutputChanged,
     ProgrammerChanged,
     RoutesChanged,
     SessionChanged,
@@ -143,3 +145,31 @@ def test_after_stop_no_busk_thread_is_left(club_path: Path, tmp_path: Path) -> N
     Drained(bridge).until(lambda e: isinstance(e, EngineRunning))
     bridge.stop()
     assert not [thread.name for thread in threading.enumerate() if thread.name.startswith("busk")]
+
+
+def test_values_set_elsewhere_and_while_watched_the_output(live: tuple[Bridge, Drained]) -> None:
+    """Lines run on the show directly, as a surface's: F2's values and the
+    output it reads follow."""
+    bridge, drained = live
+    show = bridge._show
+    assert show is not None
+    for line in ("sel group 1", "set intensity 50%", "set pan -45"):
+        assert show.execute(line).ok
+    event = drained.until(
+        lambda e: isinstance(e, ProgrammerChanged) and len(e.programmer.values) == 4, timeout=1.0
+    )
+    assert isinstance(event, ProgrammerChanged)
+    assert HeldValue(101, 1, "pan", -45.0, None) in event.programmer.values
+    assert not [e for e in drained.seen if isinstance(e, OutputChanged)]
+    bridge.watch(output=True, effects=False)
+    out = drained.until(
+        lambda e: (
+            isinstance(e, OutputChanged)
+            and (head := e.output.element(101, 1)) is not None
+            and head.pan == -45.0
+        )
+    )
+    assert isinstance(out, OutputChanged)
+    head = out.output.element(101, 1)
+    assert head is not None
+    assert head.intensity == 0.5

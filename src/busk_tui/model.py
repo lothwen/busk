@@ -132,6 +132,28 @@ class EffectInfo:
     template: str  # the template's name
 
 
+type Components = tuple[tuple[str, float], ...]
+"""A colour value's components, in busk's order: ``r``, ``g``, ``b``, then
+``w``, ``a`` and ``uv`` when it has them."""
+
+type Value = float | str | Components
+"""A value as busk stores it: a number (intensity 0..1, degrees, Hz …), a
+discrete value's slot (``breakup``), or a colour's components."""
+
+
+@dataclass(frozen=True, slots=True)
+class HeldValue:
+    """One value of the programmer (busk's ``ProgrammerValue``): what it gives
+    one attribute of one fixture element. A preset reference has the value
+    the preset gives this element, and ``preset`` names it."""
+
+    number: int
+    element: int  # counted from 1
+    attribute: str
+    value: Value
+    preset: str | None  # the preset's name, for a preset reference
+
+
 @dataclass(frozen=True, slots=True)
 class ProgrammerModel:
     """The programmer (busk's ``ProgrammerStatus``)."""
@@ -144,6 +166,48 @@ class ProgrammerModel:
     fixtures: int  # the fixtures that hold a value
     effects: tuple[EffectInfo, ...]  # in the order they were added
     stopped: frozenset[str]  # the ids of the stopped effects
+    values: tuple[HeldValue, ...] = ()  # in the order the programmer holds them
+
+    def held(self, number: int, element: int, attribute: str) -> HeldValue | None:
+        """The value the programmer holds for one attribute of one element."""
+        return next(
+            (
+                value
+                for value in self.values
+                if value.number == number
+                and value.element == element
+                and value.attribute == attribute
+            ),
+            None,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ElementOutput:
+    """One fixture element as the engine outputs it (busk's ``FixtureOutput``),
+    after the masters: what the fixture is asked to do."""
+
+    number: int
+    element: int  # counted from 1
+    intensity: float
+    color: Rgb | None  # at full intensity; None: no colour
+    pan: float | None
+    tilt: float | None
+    zoom: float | None
+
+
+@dataclass(frozen=True, slots=True)
+class OutputModel:
+    """The engine's output at one tick (busk's ``OutputSnapshot``)."""
+
+    seq: int
+    fixtures: tuple[ElementOutput, ...]  # by fixture number, then element
+
+    def element(self, number: int, element: int) -> ElementOutput | None:
+        return next(
+            (out for out in self.fixtures if out.number == number and out.element == element),
+            None,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -238,18 +302,40 @@ class CueListInfo:
     cues: tuple[CueInfo, ...]  # in cue order
 
 
+type Summary = float | str | None
+"""What a preset gives one attribute where all its values of it agree: a
+number, or a discrete value's slot; ``None`` where they differ (mixed)."""
+
+
 @dataclass(frozen=True, slots=True)
 class PresetInfo:
     pool: str
     number: int
     name: str
     color: Rgb | None  # the colour it gives, when it gives one colour everywhere
+    values: tuple[tuple[str, Summary], ...] = ()  # its other attributes, in the order stored
 
 
 @dataclass(frozen=True, slots=True)
 class FixtureInfo:
     number: int
     elements: int
+    name: str = ""
+    profile: str = ""  # its profile's name
+
+
+@dataclass(frozen=True, slots=True)
+class ProfileInfo:
+    """A fixture profile: the attributes its modes take, as ``set`` names
+    them (``intensity``, ``pan``, ``color``, ``color.w`` with a white
+    emitter, ``strobeRate`` …), and the range of each that is not 0..1."""
+
+    name: str
+    attributes: frozenset[str]
+    ranges: tuple[tuple[str, float, float], ...]  # (attribute, low, high)
+
+    def range(self, attribute: str) -> tuple[float, float] | None:
+        return next(((low, high) for name, low, high in self.ranges if name == attribute), None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -265,12 +351,19 @@ class ShowModel:
     groups: tuple[GroupInfo, ...]
     presets: tuple[PresetInfo, ...]
     fixtures: tuple[FixtureInfo, ...]
+    profiles: tuple[ProfileInfo, ...] = ()
 
     def playback(self, number: int) -> PlaybackInfo | None:
         return next((info for info in self.playbacks if info.number == number), None)
 
     def cue_list(self, number: int) -> CueListInfo | None:
         return next((info for info in self.cueLists if info.number == number), None)
+
+    def fixture(self, number: int) -> FixtureInfo | None:
+        return next((info for info in self.fixtures if info.number == number), None)
+
+    def profile(self, name: str) -> ProfileInfo | None:
+        return next((info for info in self.profiles if info.name == name), None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -350,6 +443,11 @@ class EffectsChanged:
 
 
 @dataclass(frozen=True, slots=True)
+class OutputChanged:
+    output: OutputModel
+
+
+@dataclass(frozen=True, slots=True)
 class RoutesChanged:
     routes: tuple[RouteView, ...]
 
@@ -384,6 +482,7 @@ type BridgeEvent = (
     | ShowChanged
     | ProgrammerChanged
     | EffectsChanged
+    | OutputChanged
     | RoutesChanged
     | HealthChanged
     | SessionChanged
@@ -396,6 +495,7 @@ STATE_EVENTS: tuple[type, ...] = (
     ShowChanged,
     ProgrammerChanged,
     EffectsChanged,
+    OutputChanged,
     RoutesChanged,
     HealthChanged,
     SessionChanged,

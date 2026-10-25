@@ -170,7 +170,7 @@ busk> fader 1 1                               # or the console does
 | [Output](docs/output.md) | sACN, Art-Net and DMX-USB routes, choosing the network interface, reconnects. |
 | [Safety and panic](docs/safety.md) | Park, limits, the strobe cap, highlight, `release all`, `output off`. |
 | [Fixture profiles](docs/profiles.md) | The built-in library, OFL and GDTF import, how values become DMX. |
-| [The terminal UI](docs/tui/guide.md) | `busk-tui`: the screen, its keys, the F1 and F7 pages, `--standalone`. |
+| [The terminal UI](docs/tui/guide.md) | `busk-tui`: the screen, its keys, the F1, F2, F6 and F7 pages, `--standalone`. |
 | [busk as a library](docs/library.md) | Installing, examples, the reference of the public API, stability. |
 | [The spec](docs/busking-console-architecture-python.md) | The architecture busk implements, and the show file schema. |
 
