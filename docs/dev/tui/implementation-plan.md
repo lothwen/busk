@@ -121,7 +121,7 @@ Gap column lists only open gaps.
 | `snap` | `LiveShow.snapshot` (typed) | 20 Hz | `seq` |
 | `frame` | `LiveShow.frame` (typed): engine `time`, `seq` | 20 Hz | `seq` |
 | `out` | `LiveShow.output` (typed), only while a page that shows it is visible | 10 Hz (Phase 2) | `seq` |
-| `fx` | `LiveShow.effects` (typed), only while a page that shows it is visible | 20 Hz | `seq` |
+| `fx` | `LiveShow.effects` (typed), only while a page that shows it is visible | 10 Hz (Phase 3) | `seq` |
 | `prog` | `LiveShow.programmer` (typed) | 20 Hz | `version` |
 | `route` | `LiveShow.routes` (typed); `None` without output | 20 Hz | identity; `packets` for the blink |
 | `surf` | `LiveShow.surfaces` (typed); `None` without surfaces | 20 Hz | identity |
@@ -1184,13 +1184,124 @@ library's marked, defaults shown only where the template has them. Template clic
 Contract additions.
 
 **Done when.**
-- [ ] On the club-night show, list 9 ("Song") shows its five cues with timing and triggers. Going
+- [x] On the club-night show, list 9 ("Song") shows its five cues with timing and triggers. Going
       to a cue, GO and BACK follow live. A cue can be recorded and its time edited from the
       pre-fill.
-- [ ] F5 lists the show's cue effects and the programmer's, with live state and waves. A template
+- [x] F5 lists the show's cue effects and the programmer's, with live state and waves. A template
       adds a programmer effect, which its row stops, runs again and removes.
-- [ ] Suites green; guide updated.
+- [x] Suites green; guide updated.
 - [ ] Manual (the user): run a cue stack on the rig from F4.
+
+**Done** (2026-10-25); the manual check is the user's.
+- Suites: the TUI's 349 tests (`tests/tui`), the whole suite 4254 passed, 1 skipped, 17
+  deselected (the opt-in perf and soak tests); ruff, format and `mypy` clean. The TUI's tests pass on
+  Textual 8.2.0, the floor, too.
+- **Perf gates** (`-m perf -s`; club-night show). Standalone, the engine's rate with the TUI on
+  F5: 100.0 against 100.0 frames/s bare. Under `busk run`, 0 overruns in every run, and the
+  console process:
+
+  | Page | Console CPU over a bare frontend, over three or four runs |
+  |---|---|
+  | F4, P11's Circle running | +0.151 to +0.163 core |
+  | F5, P11's Circle running | +0.192 to +0.196 core (first build: +0.258) |
+  | F1, idle | +0.220 to +0.248 core |
+  | F2, the heads moving | +0.195 to +0.258 core |
+
+  **The gate flaps for F1 and F2 moving, before this phase too.** The committed Phase 2
+  (`4c9f7fc`, in a worktree, alternating with this tree) measures the same on this machine
+  today: F1 +0.185 to +0.243, F2 moving +0.222 to +0.255, once over the 0.25 gate. One look
+  of the reader costs 2–6 µs in both. So these are not this phase's, but the perf test can
+  now fail on them by chance.
+
+  F5's first build redrew its whole table, as one text, at every read of the running
+  effects (20 a second while one runs), and went over the 0.25 gate. Two changes brought it
+  under: the table is drawn line by line (Textual's line API), so only the rows whose cells
+  changed are drawn again, and clicks find the cell from the column layout instead of
+  styles with meta, which cost every draw; and **the running effects are read at 10 Hz, not
+  20** (`EFFECTS_S`, as the output in Phase 2; spec §2.4's least for effect waveforms), which
+  F1's EFFECTS panel gets too. §2's `fx` row now says so. **Found, not changed:** F1 on an
+  idle show is the costliest page, at the gate. That is Phase 1's page, which this phase
+  does not change (I have not looked for why); worth a look before Phase 5's layouts add to
+  F1.
+- **Files** as planned, and: `widgets/rows.py` (`RowTable`, the spec's table: a header in
+  cyan on 235, rows, the chosen row on 235, hover on 236; `Column` with a `drop` order and
+  `flex`, `fit()`, `cell()`; `RowTable.Clicked(row, cell)`; the pane cursor marks a row or one
+  cell through `spots`), `pages/effects.py`, and in `formats.py` the times, delays, targets,
+  phases and stored values as busk's lines write them. `commands.py`: `goto`, `record_cue`,
+  `cuelist_sequence`, `cuelist_chase`, `effect_add`, `effect_remove`, and the cue pre-fills.
+  Tests: `test_tui_cues.py`, `test_tui_effects.py`, and additions to the conversion, commands
+  (contract), bridge, e2e, frame and perf tests; `tui_fakes` gained `column()` and
+  `click_cell()`.
+- **Model.** `Targets` (a group, or fixed elements by number), `StoredValue` (a cue's value
+  entry as stored: literal, preset by name with its colour, spread, per target), `CueInfo`
+  with its timing (`families`: a family's own fade and delay), trigger and values,
+  `CueListInfo.crossfade` and `.tracking`, `EffectInfo` with the settings `effect add`
+  takes (targets, rate in busk's words, direction, size, low and high, phase, groups,
+  blocks, wings), `TemplateInfo` and `ShowModel.templates` (from `effect_templates`, read
+  with the document, by identity), `ShowModel.runs(list)`.
+- **Bridge.** The document's ids to names (templates, groups, fixtures, presets, speed
+  masters) are worked out once per document and kept for the programmer's conversion,
+  which runs at each programmer change.
+- **Pane cursor.** An `Item` can carry an `action` of its page, done before its line (F4:
+  choose a list, choose a cue); the cursor reads the page's items again at each move (F4's
+  cue rows follow the chosen list), and after an action stays on the same item, found by its
+  label.
+- **Calls you may veto:**
+  - **F4 shows the selected playback's list**, so ← → (and PgUp/PgDn) on an empty prompt
+    browse the lists of the page's playbacks; a click on a list shows it and selects the
+    playback that runs it (the selected one if it runs it, else the first by number), for
+    Space, `[ ]`, GO, BACK and going to a cue. A list no playback runs only shows. The spec
+    has the list click as UI state only.
+  - **A cue row click goes to the cue and chooses the row**; a click on a time, delay,
+    curve, follow or wait cell puts that edit in the prompt and chooses the row without
+    going to it (`cue 9/3 time `, `cue 9/3 time 1/3 delay `, `cue 9/3 time 1/3 ` for a
+    curve: busk keeps the delay and the curve a `time` line leaves out, checked). An `edit`
+    row under the buttons has the same pre-fills for the chosen cue (the row clicked last,
+    else the current one, else the first), plus `cue 9/3 go` (a whole line: Enter sets the
+    trigger) and `rename cue 9/3 "`. `▶` is the current cue; the chosen row has bg 235.
+  - **The mode toggle keeps a list's chase settings**: a sequence that was a chase goes back
+    to `cuelist 11 chase hz 2 forward crossfade 0.5`; one that never was gets `bpm x 1`.
+    Labels are the lines (`[cuelist 9 chase bpm x 1]`), as the mockup's.
+  - **Every list shows**, an empty one too (`no cues · record cue 5 …`); the spec lists the
+    non-empty ones. CUELISTS has a `pb` column (the first playback that runs it, `—`).
+  - **The meta line**: `mode sequence · tracking` (or `chase bpm x 1 bounce crossfade
+    0.25`), `playback P11 @ 0%, P12 @ 50%` (every playback that runs it, the level amber while
+    it releases), `groups Washes, Heads` and `fixtures 201 thru 204` (what its entries and
+    effects target); without a playback, `no playback: assign the list to a playback first`.
+  - **Cue columns**: `cue` as `L/C`; `time` as `cue L/C time` takes it, with a family's own
+    after a comma (`2, position 4`); `delay` `—` without one; `follow` and `wait` hold the
+    trigger's delay; `intensity` and `colour` hold the cue's entries of those attributes,
+    several joined by `, `, a colour with its swatch (`░░` without a single colour); `fx` the
+    effect ids. A spread recorded at the prompt shows as `per target`: `record cue` stores a
+    value per target. Columns drop when narrow: curve, delay, colour, intensity, fx, time,
+    in that order.
+  - **The pane cursor on F4**: the cues first (Enter goes to one and chooses it), then the
+    buttons, the edits, then the lists (Enter shows one, the cursor stays on it, and its cues
+    come first again). Below 100 columns the chosen list goes over the list of lists, not
+    under it (a 30-row screen showed only the lists).
+  - **F5 lists every effect the show's cues hold**, running or not, then the programmer's;
+    the owner column is the cue (`9/4`) or `prog`.
+  - **A cue effect's state**: `[off]` goes to its cue on the first playback that runs its
+    list (`goto 11 1`), not `go N`, which would go to the next cue rather than the effect's
+    (list 9's Rainbow is on cue 4); `[RUN]` releases the playback that runs it (`release 9`);
+    `—`, and no line, while no playback runs the list. A tracked effect stays on its defining
+    cue's row.
+  - **Columns**: the direction is written after the rate unless forward (`hz 2 bounce`, as
+    `effect add` and F1's chases take it), not a column of its own, which did not fit at
+    150 columns; `now` is the live rate in Hz while it runs; `size` is `low–high` for an
+    effect with levels; `wings` adds `g3 b2` when the groups or blocks are not 1. Columns
+    drop when narrow: wings, phase, now, size, wave, in that order.
+  - **TEMPLATES**: the show's, then the library's, with a `from` column (`show`,
+    `library`) and the defaults the library gives (`size 20`, `low 0 high 1`, `phase 0 360`).
+    A click needs a selection (busk answers `nothing selected` otherwise; the header says
+    `adds to nothing: select fixtures first`). Beside the effects from 132 columns (5 : 2),
+    under them below.
+- **Checked in a real pseudo-terminal** (pyte), standalone, on the club show: F4 at 150, 100
+  and 99 columns; list 9 from ← →; a row click (`goto 9 3`, `▶` moved), `[GO]` (`▶` on 9/4),
+  `[BACK]`; `[record cue 9]` (cue 9/6 appeared) and its time cell's pre-fill finished with
+  `2/4 delay 1`; F5 at 150, 100 and 99 columns, a template click on a selection, the row's
+  `[RUN]` (stopped, `[off]`, flat wave), `[off]` (running again), `✕` (gone). The `LATE`
+  chip shows for a moment while a standalone show starts, on F1 too: not this phase's.
 
 ### Phase 4: Rig (F3, F8, F9)
 

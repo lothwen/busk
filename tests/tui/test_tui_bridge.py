@@ -310,9 +310,10 @@ def test_the_output_only_while_watched_and_only_when_it_changes(
 
 
 class CountingStub(Stub):
-    """A stub that counts how often its output is read."""
+    """A stub that counts how often its output and its effects are read."""
 
     reads = 0
+    effect_reads = 0
 
     @property
     def output(self) -> Any:
@@ -323,19 +324,33 @@ class CountingStub(Stub):
     def output(self, value: Any) -> None:
         self._output = value
 
+    @property
+    def effects(self) -> Any:
+        self.effect_reads += 1
+        return self._effects
 
-def test_the_output_is_read_ten_times_a_second_while_watched() -> None:
+    @effects.setter
+    def effects(self, value: Any) -> None:
+        self._effects = value
+
+
+@pytest.mark.parametrize("what", ["output", "effects"])
+def test_the_output_and_the_effects_are_read_ten_times_a_second_while_watched(
+    what: str,
+) -> None:
     stub = CountingStub()
     stub.output = out_snapshot(1)
+    stub.effects = fx_snapshot(1)
     bridge = Bridge(stub, None)  # type: ignore[arg-type]
     bridge.start()
     try:
         Events(bridge).until(lambda e: isinstance(e, EngineRunning))
         time.sleep(0.5)
-        assert stub.reads == 0
-        bridge.watch(output=True, effects=False)
+        assert (stub.reads, stub.effect_reads) == (0, 0)
+        bridge.watch(output=what == "output", effects=what == "effects")
         time.sleep(1.0)
-        assert 7 <= stub.reads <= 13, stub.reads  # the reader looks 20 times a second
+        reads = stub.reads if what == "output" else stub.effect_reads
+        assert 7 <= reads <= 13, reads  # the reader looks 20 times a second
     finally:
         bridge.stop()
 

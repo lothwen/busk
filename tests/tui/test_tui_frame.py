@@ -272,7 +272,7 @@ def test_the_bridge_starts_with_the_app_and_watches_nothing(tmp_path: object) ->
 
     async def body(pilot: Pilot[int]) -> None:
         assert bridge.started
-        await pilot.press("f5")
+        await pilot.press("f3")
         assert bridge.watching == (False, False)
         assert isinstance(app.query_one(HintRow), HintRow)
 

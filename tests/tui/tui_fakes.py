@@ -38,6 +38,7 @@ from busk_tui.model import (
     newest_only,
 )
 from busk_tui.shell import BuskApp
+from busk_tui.widgets.rows import RowTable, fit
 
 HELP = (
     "    sel <targets> | sel + <targets> | sel - <targets> | sel none",
@@ -231,6 +232,26 @@ async def settle(pilot: Pilot[int], app: BuskApp) -> None:
     await pilot.pause()
 
 
+# ------------------------------------------------------------- tables
+
+
+def column(table: RowTable, name: str) -> list[str]:
+    """The text of one column of a table, row by row."""
+    return [cells[name].plain for cells in table.rows]
+
+
+async def click_cell(pilot: Pilot[int], table: RowTable, row: int, name: str) -> None:
+    """Click row ``row`` of ``table``, in its column ``name``."""
+    x = 0
+    for shown, width in fit(type(table).COLUMNS, table.size.width):
+        if shown.name == name:
+            break
+        x += width + 1
+    else:
+        raise AssertionError(f"no column {name!r} shown")
+    await pilot.click(table, offset=(x, row + 1))
+
+
 # ------------------------------------------------------------ a stub show
 
 STUB_WAIT_S = 5.0
@@ -278,6 +299,7 @@ class Stub:
     frame: Any = None
     effects: Any = None
     output: Any = None
+    effect_templates: tuple[busk.EffectTemplateInfo, ...] = ()
     warnings: tuple[Any, ...] = ()
     gates: dict[str, threading.Event] = field(default_factory=dict)  # line → held until set
     raises: set[str] = field(default_factory=set)

@@ -21,8 +21,12 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   PgUp/PgDn on an empty prompt) with the tempo, the masters, the running effects and the
   selection; F2 selects groups, sets and steps attributes with encoders that show the
   programmer's or the output's value, runs configurable quick lines and lists the
-  programmer's contents; F6 applies presets from tiles; F7 has every master and the panic
-  controls. The other pages list the lines to type meanwhile.
+  programmer's contents; F4 browses the cue lists, goes to a cue, records one, switches a
+  list between sequence and chase, and puts a cue's timing edits in the prompt; F5 lists the
+  cues' and the programmer's effects with their live state and wave, and adds, stops, runs
+  and removes programmer effects from the show's and the library's templates; F6 applies
+  presets from tiles; F7 has every master and the panic controls. The other pages list the
+  lines to type meanwhile.
 - `OfflineShow.output` and `LiveShow.output`: the engine's output read back per fixture
   element, as two new public types, `OutputSnapshot` and `FixtureOutput`
   ([the library guide](docs/library.md#2-build-a-show-and-render-it-offlineshow)). Each

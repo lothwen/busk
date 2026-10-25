@@ -63,6 +63,15 @@ class Busy:
 # ------------------------------------------------------------- view models
 
 
+type Components = tuple[tuple[str, float], ...]
+"""A colour value's components, in busk's order: ``r``, ``g``, ``b``, then
+``w``, ``a`` and ``uv`` when it has them."""
+
+type Value = float | str | Components
+"""A value as busk stores it: a number (intensity 0..1, degrees, Hz …), a
+discrete value's slot (``breakup``), or a colour's components."""
+
+
 @dataclass(frozen=True, slots=True)
 class PageView:
     number: int
@@ -124,21 +133,38 @@ class LiveState:
 
 
 @dataclass(frozen=True, slots=True)
+class GroupInfo:
+    number: int
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class Targets:
+    """What a stored value or an effect applies to: a group (a live
+    reference, which follows the group's edits), or fixed elements."""
+
+    group: GroupInfo | None = None
+    elements: tuple[tuple[int, int], ...] = ()  # (fixture number, element) pairs, in order
+
+
+@dataclass(frozen=True, slots=True)
 class EffectInfo:
     """An effect instance as the show or the programmer holds it: a cue's
-    and the programmer's are made alike."""
+    and the programmer's are made alike, with the settings ``effect add``
+    takes, in its words."""
 
     id: str
     template: str  # the template's name
-
-
-type Components = tuple[tuple[str, float], ...]
-"""A colour value's components, in busk's order: ``r``, ``g``, ``b``, then
-``w``, ``a`` and ``uv`` when it has them."""
-
-type Value = float | str | Components
-"""A value as busk stores it: a number (intensity 0..1, degrees, Hz …), a
-discrete value's slot (``breakup``), or a colour's components."""
+    targets: Targets = Targets()
+    rate: str = ""  # "bpm x 1", "hz 0.25", 'bpm "Speed 2" x 2' (a master by name with several)
+    direction: str = "forward"  # forward, reverse, bounce
+    size: float = 1.0
+    low: Value | None = None  # an absolute layer's levels, when the instance has them
+    high: Value | None = None
+    phase: tuple[float, float] = (0.0, 0.0)  # start, end, in degrees
+    groups: int = 1
+    blocks: int = 1
+    wings: int = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,12 +282,6 @@ class UniverseView:
 
 
 @dataclass(frozen=True, slots=True)
-class GroupInfo:
-    number: int
-    name: str
-
-
-@dataclass(frozen=True, slots=True)
 class MasterView:
     name: str
     kind: str  # grand, group, size, speed, fadeTime
@@ -287,10 +307,34 @@ class PlaybackInfo:
 
 
 @dataclass(frozen=True, slots=True)
+class StoredValue:
+    """One value entry of a cue, as the show stores it: a ``literal`` value,
+    a ``preset`` reference, a ``spread`` from one value to another, or a
+    value ``perTarget``."""
+
+    attribute: str
+    targets: Targets
+    kind: str  # literal, preset, spread, perTarget
+    value: Value | None = None  # a literal's value; a spread's first
+    to: Value | None = None  # a spread's last
+    preset: str | None = None  # a preset reference's name
+    color: Rgb | None = None  # the colour it gives: a literal's, or a preset's single one
+
+
+@dataclass(frozen=True, slots=True)
 class CueInfo:
     number: str
     name: str
     effects: tuple[EffectInfo, ...]
+    fadeIn: float = 0.0
+    fadeOut: float = 0.0
+    delayIn: float = 0.0
+    delayOut: float = 0.0
+    curve: str = "linear"  # in busk's words: easeInOut, bezier 0.25 0.1 0.25 1
+    families: tuple[tuple[str, float, float], ...] = ()  # (family, fade, delay) of its own
+    trigger: str = "go"  # go, follow, wait
+    delay: float = 0.0  # a follow's or a wait's delay
+    values: tuple[StoredValue, ...] = ()  # its value entries, in the order stored
 
 
 @dataclass(frozen=True, slots=True)
@@ -300,6 +344,23 @@ class CueListInfo:
     mode: str  # sequence, chase
     chase: str | None  # a chase's rate and direction, in busk's words: "bpm x 1 bounce"
     cues: tuple[CueInfo, ...]  # in cue order
+    crossfade: float = 0.0  # a chase's crossfade, when it has chase settings
+    tracking: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class TemplateInfo:
+    """An effect template ``effect add "<name>"`` takes (busk's
+    ``EffectTemplateInfo``): the show's, or the library's that the show has
+    no copy of, with the defaults the library gives an instance."""
+
+    name: str
+    source: str  # show, library
+    summary: str  # its layers in one line, as busk words them
+    size: float | None = None
+    low: float | None = None
+    high: float | None = None
+    phase: tuple[float, float] | None = None
 
 
 type Summary = float | str | None
@@ -352,12 +413,17 @@ class ShowModel:
     presets: tuple[PresetInfo, ...]
     fixtures: tuple[FixtureInfo, ...]
     profiles: tuple[ProfileInfo, ...] = ()
+    templates: tuple[TemplateInfo, ...] = ()  # what effect add takes
 
     def playback(self, number: int) -> PlaybackInfo | None:
         return next((info for info in self.playbacks if info.number == number), None)
 
     def cue_list(self, number: int) -> CueListInfo | None:
         return next((info for info in self.cueLists if info.number == number), None)
+
+    def runs(self, cue_list: int) -> tuple[int, ...]:
+        """The numbers of the playbacks that run the cue list ``cue_list``."""
+        return tuple(info.number for info in self.playbacks if info.cueList == cue_list)
 
     def fixture(self, number: int) -> FixtureInfo | None:
         return next((info for info in self.fixtures if info.number == number), None)

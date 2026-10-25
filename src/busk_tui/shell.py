@@ -64,6 +64,8 @@ from busk_tui.model import (
 from busk_tui.nav import PaneCursor
 from busk_tui.pages.base import ALL_PARTS, Page, Part, View
 from busk_tui.pages.busk import BuskPage, Slots, follow, step, visible_slots
+from busk_tui.pages.cues import CuesPage
+from busk_tui.pages.effects import EffectsPage
 from busk_tui.pages.masters import MastersPage
 from busk_tui.pages.placeholder import Placeholder
 from busk_tui.pages.presets import PresetsPage
@@ -88,6 +90,8 @@ the level the engine shows."""
 BUILT: Final[dict[int, type[Page]]] = {
     1: BuskPage,
     2: ProgramPage,
+    4: CuesPage,
+    5: EffectsPage,
     6: PresetsPage,
     7: MastersPage,
 }
@@ -615,14 +619,19 @@ class BuskApp(App[int]):
             self.log_view.add("info", "  ".join(done.candidates))
 
     def _take(self) -> None:
-        """Enter on the pane cursor: run its item's line, and stay (TAP, GO
-        again), or put its line in the prompt to finish."""
+        """Enter on the pane cursor: do its item's action, run its line, and
+        stay (TAP, GO again), or put its line in the prompt to finish."""
         index = self.cursor.index
         item = None if index is None else self.current_page.current_item(index)
-        if item is None or item.line is None:
+        if item is None or (item.line is None and item.action is None):
             self._leave_cursor()
         if item is None:
             return
+        if item.action is not None:
+            item.action()
+            self._redraw()
+            self.cursor.follow(self.current_page.items(), item.label)  # they may have changed
+            self.current_page.show_cursor(self.cursor.index)
         if item.line is not None:
             self.run_line(item.line, "ui")
         elif item.prefill is not None:
@@ -657,7 +666,7 @@ class BuskApp(App[int]):
         self.push_screen(QuitDialog(None if self.session is None else self.session.dirty), chosen)
 
     def _move_cursor(self, step: int) -> None:
-        self.cursor.move(step)
+        self.cursor.move(step, self.current_page.items())  # they may have changed (F4's cues)
         self.current_page.show_cursor(self.cursor.index)
 
     def _leave_cursor(self) -> None:

@@ -6,8 +6,9 @@ the console prompt on one screen. Every click and key in it is a console line, e
 log, so what the UI does is what you could type.
 
 > **Work in progress.** This version has the frame (the status bar, the log, the prompt with
-> hints and completion, the help overlay and the dialogs) and four pages: [F1 Busk](#f1-busk),
+> hints and completion, the help overlay and the dialogs) and six pages: [F1 Busk](#f1-busk),
 > to play the show, [F2 Program](#f2-program) and [F6 Presets](#f6-presets), to build a look,
+> [F4 Cues](#f4-cues) and [F5 Effects](#f5-effects), to run and edit cue lists and effects,
 > and [F7 Masters](#f7-masters). The other pages are not built yet: each one lists console
 > lines to type meanwhile.
 
@@ -122,7 +123,7 @@ on the prompt or, where noted, only when it is empty.
 | Tab | Complete the word at the cursor. With several candidates it completes what they share and lists them in the log. |
 | Tab on an empty prompt | Move into the page: ↑ ↓ (or ← →) choose an item, Enter takes it, Esc or any typed key comes back. A button runs its line and the cursor stays on it, so Enter again taps again; a bar puts its line in the prompt (`master "FX" `) to finish with a level. |
 | Space on an empty prompt | `go N` on the selected playback. |
-| ← → on an empty prompt | Select the previous or next playback of the page shown on F1. |
+| ← → on an empty prompt | Select the previous or next playback of the page shown on F1 (F4 shows its cue list). |
 | `[` `]` on an empty prompt | The selected playback's fader 5 % down or up (`fader N 55%`). |
 | PgUp PgDn on an empty prompt | `page prev`, `page next`. While help is open, they scroll it. |
 | Esc | Close help, else leave the page, else clear the line. |
@@ -249,6 +250,98 @@ value from a preset shows the preset's name; a fixture whose elements differ sho
 With the pane cursor (Tab on an empty prompt), a row's name puts its `set` in the prompt and
 `[−]` `[+]` run their step, so Enter Enter Enter steps the value. Below 100 columns the
 panels go one under the other.
+
+## F4 Cues
+
+Every cue list, and the cues of one: go to a cue, record one, switch a list between sequence
+and chase, and edit a cue's timing at the prompt.
+
+```
+ ┌─ CUELISTS ─────────────────────────┐┌─ CUELIST 9 · Song ────────────────────────────────────────────────────────────────────┐
+ │   # name           kind  cues pb   ││ mode sequence · tracking   playback P9 @ 70%   groups Washes, Heads, Bar, All         │
+ │   1 Warm           seq      1 P1   ││                                                                                       │
+ │   …                                ││   cue    name           time          delay  curve     follow wait   intensity  …     │
+ │   9 Song           seq      5 P9   ││   9/1    Intro          3             —      easeInOut —      —      60%        …     │
+ │  10 Chase          chase    4 P10  ││   9/2    Verse          2, position 4 —      linear    —      —      70%        …     │
+ │   …                                ││ ▶ 9/3    Pre            1/3           —      linear    —      8      100%, 30%  …     │
+ │  20 Fast pulse     seq      1 P20  ││   9/4    Chorus         0.5/2         —      linear    —      —      100%, 100% …     │
+ └────────────────────────────────────┘│   9/5    Outro          6             —      linear    4      —      20%        …     │
+                                       │                                                                                       │
+                                       │ [GO] [BACK] [record cue 9] [cuelist 9 chase bpm x 1]                                  │
+                                       │ edit cue 9/3 Pre [time…] [delay…] [curve…] [go…] [follow…] [wait…] [rename…]          │
+                                       └───────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Which list.** F4 shows the cue list of the selected playback, so ← → (on an empty prompt)
+step through the lists of the page's playbacks. A click on a list in CUELISTS shows it and
+selects the playback that runs it (`pb`), for Space, `[ ]` and the buttons; a list no
+playback runs only shows. The meta line says the list's mode (`sequence`, `· tracking`, or
+`chase bpm x 1 bounce crossfade 0.25`), the playbacks that run it with their levels, and the
+groups and fixtures its cues set.
+
+**A cue row** is the cue as the show stores it: `▶` on the cue the playback is on, `L/C`,
+the name, the fade times (`1/3`: in 1 s, out 3 s; a family's own after a comma, `2,
+position 4`), the delays, the curve, the delay of an automatic GO under `follow` (after the
+cue before has finished) or `wait` (after it has started), and the cue's intensity and colour
+entries: a value, a preset's name, `spread`, or `per target` (a value per fixture, as `record
+cue` stores a spread), with the colour's swatch; then the ids of its effects.
+
+- A click on a row goes to that cue: `goto 9 3` on the list's playback (busk's `cue 9/3 go`
+  sets the cue's trigger instead). A list no playback runs has no go-to: its rows only
+  choose.
+- A click on a cue's time, delay, curve, follow or wait puts that edit in the prompt, to
+  finish and Enter: `cue 9/3 time `, `cue 9/3 time 1/3 delay ` (the fade times kept), `cue
+  9/3 time 1/3 ` (a curve next), `cue 9/3 follow `, `cue 9/3 wait `.
+- The `edit` row under the buttons does the same for the chosen cue (the row clicked last,
+  else the one the playback is on), and adds `cue 9/3 go` (back to a manual GO) and `rename
+  cue 9/3 "`.
+- `[GO]` and `[BACK]` run `go 9` and `back 9`. `[record cue 9]` records the programmer as a
+  new cue at the end of the list. The last button switches the list to a chase (`cuelist 9
+  chase bpm x 1`, or the chase settings the list had before) or back to a sequence
+  (`cuelist 10 sequence`).
+
+With the pane cursor (Tab on an empty prompt) the cues come first: Enter goes to one and
+chooses it. Then the buttons and the edits, then the lists: Enter on a list shows it, and
+its cues come first again. Below 100 columns the chosen list goes over the list of lists.
+
+## F5 Effects
+
+Every effect the show's cues hold and every programmer effect, live, and the templates to
+add one from.
+
+```
+ ┌─ EFFECTS · 5 in cues · 1 in the programmer ───────────────────────────────────────────────┐┌─ TEMPLATES ───────────────────────┐
+ │ cue   id      template fixtures   rate          now   size phase   wings wave        state  ││ adds to 101 thru 102 (2)          │
+ │ 9/4   rainbow Rainbow  Bar        hz 0.25      0.25      1 0→360       1 ███████████ [RUN]  ││                                   │
+ │ 11/1  fx1     Circle   Heads      bpm x 0.5       ·     15 0→180       1 ▁▁▁▁▁▁▁▁▁▁▁ [off]  ││ name      layers            from  │
+ │ 13/1  fx3     Wave     Bar        bpm x 1         ·    0–1 0→360       2 ▁▁▁▁▁▁▁▁▁▁▁ [off]  ││ Circle    pan add sine, …   show  │
+ │ prog  fx5     Circle   101 thru … bpm x 1      2.00     20 0→0         1 ▇▇███▇▆▅▄▃▂ [RUN] ✕││ Chase     intensity abso… library │
+```
+
+**A row** is an effect: the cue that holds it (`9/4`) or `prog`, its id, template and
+fixtures (a group by its name), its rate and direction as `effect add` takes them (`bpm x
+0.5`, `hz 2 bounce`; forward is left out), its rate now in hertz while it runs, its size (or
+the two levels of an absolute effect, `0–1`), its phase spread, its wings (with `g3 b2`, its
+groups and blocks, when they are not 1), its next cycle as a wave (in its colours for a
+colour cycle), and its state:
+
+- `[RUN]` while it runs (dimmed while it fades in or out), `[off]` while not, `—` for a cue
+  effect whose list no playback runs.
+- On a cue's effect, `[off]` goes to its cue (`goto 11 1`) and `[RUN]` releases the playback
+  (`release 11`). An effect that tracks on into later cues stays on the cue that holds it.
+- On a programmer effect, `[RUN]` stops it (`effect stop fx5`: it stays in the programmer
+  but does not run, and `record cue` leaves it out) and `[off]` runs it again (`effect run
+  fx5`). `✕` removes it (`effect remove fx5`).
+
+**TEMPLATES** lists every template `effect add` takes: the show's, then the effect library's
+the show has no copy of yet (`library`: adding one copies it into the show), with the
+defaults the library gives it (`size 20`, `low 0 high 1`, `phase 0 360`). A click adds one to
+the selection the header names: `effect add "Circle"`, with those defaults; to choose
+others, type the line (`effect add "Circle" bpm x 2 size 30`). A template you add with
+`effect template add` shows here at once.
+
+The pane cursor stops on each state and `✕`, then each template. Below 132 columns the
+templates go under the effects.
 
 ## F6 Presets
 

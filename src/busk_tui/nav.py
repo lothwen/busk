@@ -5,12 +5,13 @@ into the visible page instead: the arrows move it over the page's items
 (rows, tiles, buttons), Enter takes the item, and Esc or any printable key
 gives the keyboard back to the prompt. An item either runs its line (echoed
 ``ui>``) or puts a line in the prompt to finish, so the cursor adds no logic
-of its own: each page lists its items.
+of its own: each page lists its items. An item may also change what the
+page shows (its ``action``: F4's cue list chosen), before its line runs.
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -18,11 +19,13 @@ from typing import Protocol
 @dataclass(frozen=True, slots=True)
 class Item:
     """One thing the cursor can stop on: ``line`` runs, ``prefill`` goes to
-    the prompt (one of the two)."""
+    the prompt (one of the two, or neither); ``action`` is the page's own,
+    called first."""
 
     label: str
     line: str | None = None
     prefill: str | None = None
+    action: Callable[[], None] | None = None
 
 
 class Markable(Protocol):
@@ -65,7 +68,20 @@ class PaneCursor:
     def leave(self) -> None:
         self.index = None
 
-    def move(self, step: int) -> None:
-        """``step`` items on (back when negative), stopping at the ends."""
-        if self.index is not None:
+    def follow(self, items: Sequence[Item], label: str) -> None:
+        """The page's items changed under the cursor: stay on the item with
+        ``label``, else where the cursor was, within the new items."""
+        self.items = tuple(items)
+        found = next((i for i, item in enumerate(self.items) if item.label == label), None)
+        if found is not None:
+            self.index = found
+        elif self.index is not None:
+            self.index = min(self.index, len(self.items) - 1) if self.items else None
+
+    def move(self, step: int, items: Sequence[Item] | None = None) -> None:
+        """``step`` items on (back when negative), stopping at the ends;
+        among ``items``, when the page's have changed since."""
+        if items is not None:
+            self.items = tuple(items)
+        if self.index is not None and self.items:
             self.index = max(0, min(len(self.items) - 1, self.index + step))

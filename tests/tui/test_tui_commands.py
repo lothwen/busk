@@ -41,6 +41,17 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
     "preset": (commands.preset("color", 1), "preset color 1", False),
     "effect stop": (commands.effect_stop("fx5"), "effect stop fx5", False),
     "effect run": (commands.effect_run("fx5"), "effect run fx5", False),
+    "effect remove": (commands.effect_remove("fx5"), "effect remove fx5", False),
+    "effect add": (commands.effect_add("Chase"), 'effect add "Chase"', False),
+    "goto": (commands.goto(9, "3"), "goto 9 3", True),
+    "record cue": (commands.record_cue(9), "record cue 9", False),
+    "cuelist chase": (commands.cuelist_chase(9), "cuelist 9 chase bpm x 1", False),
+    "cuelist chase kept": (
+        commands.cuelist_chase(10, "bpm x 1 bounce", 0.25),
+        "cuelist 10 chase bpm x 1 bounce crossfade 0.25",
+        False,
+    ),
+    "cuelist sequence": (commands.cuelist_sequence(10), "cuelist 10 sequence", False),
     "sel none": (commands.sel_none(), "sel none", False),
     "set level": (commands.set_level("intensity", 0.72), "set intensity 72%", False),
     "set component": (commands.set_level("color.r", 0.5), "set color.r 50%", False),
@@ -64,6 +75,13 @@ PREFILLS = (
     commands.set_prefill("shutter"),
     commands.FADE_PREFILL,
     commands.record_preset_prefill("color", 5),
+    commands.cue_prefill(9, "3", "time"),
+    commands.cue_prefill(9, "3", "follow"),
+    commands.cue_prefill(9, "3", "wait"),
+    commands.cue_prefill(9, "3", "go"),
+    commands.cue_time_prefill(9, "3", "1/3", "delay"),
+    commands.cue_time_prefill(9, "3", "1/3"),
+    commands.rename_cue_prefill(9, "3"),
 )
 """Lines the UI puts in the prompt to finish."""
 

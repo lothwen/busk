@@ -112,6 +112,11 @@ def page(step: int) -> Line:
     return Line("page next" if step > 0 else "page prev", performance=True)
 
 
+def goto(playback: int, cue: str) -> Line:
+    """Go to one cue of the list the playback runs: ``goto 9 3``."""
+    return Line(f"goto {playback} {cue}", performance=True)
+
+
 # -------------------------------------------------------------- programmer
 
 
@@ -156,6 +161,45 @@ def highlight(on: bool) -> Line:
     return Line(f"highlight {'on' if on else 'off'}")
 
 
+def effect_stop(effect: str) -> Line:
+    return Line(f"effect stop {effect}")
+
+
+def effect_run(effect: str) -> Line:
+    return Line(f"effect run {effect}")
+
+
+def effect_remove(effect: str) -> Line:
+    return Line(f"effect remove {effect}")
+
+
+def effect_add(template: str) -> Line:
+    """A programmer effect on the selection, with the template's defaults:
+    ``effect add "Circle"``."""
+    return Line(f"effect add {quoted(template)}")
+
+
+# ------------------------------------------------------------------- cues
+
+
+def record_cue(cue_list: int) -> Line:
+    """The programmer as a new cue at the end of the list: ``record cue 9``."""
+    return Line(f"record cue {cue_list}")
+
+
+def cuelist_sequence(cue_list: int) -> Line:
+    return Line(f"cuelist {cue_list} sequence")
+
+
+def cuelist_chase(cue_list: int, settings: str | None = None, crossfade: float = 0.0) -> Line:
+    """``cuelist 9 chase`` with ``settings`` (a rate and direction, ``bpm x 1
+    bounce``) and a crossfade, as the list had them, else ``bpm x 1``."""
+    if settings is None:
+        return Line(f"cuelist {cue_list} chase bpm x 1")
+    fade = f" crossfade {number(crossfade)}" if crossfade else ""
+    return Line(f"cuelist {cue_list} chase {settings}{fade}")
+
+
 # ---------------------------------------------------------------- pre-fills
 # Lines put in the prompt for the operator to finish.
 
@@ -172,9 +216,18 @@ def record_preset_prefill(pool: str, preset_number: int) -> str:
     return f'record preset {pool} {preset_number} "'
 
 
-def effect_stop(effect: str) -> Line:
-    return Line(f"effect stop {effect}")
+def cue_prefill(cue_list: int, cue: str, verb: str) -> str:
+    """``cue 9/3 time ``, ``cue 9/3 follow ``, ``cue 9/3 wait ``, and ``cue 9/3
+    go`` (whole: Enter runs it)."""
+    return f"cue {cue_list}/{cue} go" if verb == "go" else f"cue {cue_list}/{cue} {verb} "
 
 
-def effect_run(effect: str) -> Line:
-    return Line(f"effect run {effect}")
+def cue_time_prefill(cue_list: int, cue: str, times: str, then: str = "") -> str:
+    """The cue's fade times kept, for what comes after them: ``cue 9/3 time
+    1/3 delay `` (``then`` ``delay``), or ``cue 9/3 time 1/3 `` (a curve)."""
+    return f"cue {cue_list}/{cue} time {times} " + (f"{then} " if then else "")
+
+
+def rename_cue_prefill(cue_list: int, cue: str) -> str:
+    """``rename cue 9/3 "``: the name comes next."""
+    return f'rename cue {cue_list}/{cue} "'

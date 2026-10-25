@@ -7,12 +7,13 @@
   console process, with the TUI as the frontend against a frontend that only
   waits.
 
-The TUI runs on F1, which reads the running effects (Phase 1), and on F2,
-which reads the output (Phase 2), besides the frame, the prompt and the
-reader at 20 Hz; under ``busk run`` F2 also with the selected heads moving,
-so its encoders redraw with the output. Later phases measure their pages
-here too. The gates are
-those of the plan's Phase 0 Done note.
+The TUI runs on F1, which reads the running effects (Phase 1), on F2,
+which reads the output (Phase 2), and on F4 and F5 (Phase 3: F4 redraws
+with the snapshot, F5 reads the effects), besides the frame, the prompt and
+the reader at 20 Hz; under ``busk run`` F2 also with the selected heads
+moving, so its encoders redraw with the output, and F4 and F5 with P11's
+Circle running, so F5's waves move. Later phases measure their pages here
+too. The gates are those of the plan's Phase 0 Done note.
 """
 
 from __future__ import annotations
@@ -60,7 +61,7 @@ def rate(show: Any, seconds: float) -> float:
     return (show.frame.seq - first) / (time.monotonic() - started)
 
 
-@pytest.mark.parametrize("page", [1, 2])
+@pytest.mark.parametrize("page", [1, 2, 5])
 def test_standalone_keeps_the_engines_rate(club_path: Path, tmp_path: Path, page: int) -> None:
     document, _ = busk.load_show(club_path)
     with busk.LiveShow(document, output=False, tune_interpreter=True) as bare:
@@ -139,10 +140,12 @@ def test_under_busk_run_the_engine_runs_on_time(
     busk.save_show(document, show, backups=False)
     idle = run_frontend("bare", show, tmp_path, monkeypatch)
     moving = run_frontend("bare", show, tmp_path, monkeypatch, lines=MOVING)
-    for page, lines, bare in ((1, (), idle), (2, (), idle), (2, MOVING, moving)):
+    runs = ((1, (), idle), (2, (), idle), (2, MOVING, moving), (4, MOVING, moving),
+            (5, MOVING, moving))  # fmt: skip
+    for page, lines, bare in runs:
         tui = run_frontend("tui", show, tmp_path, monkeypatch, page, lines)
         cores = (tui["cpu"] - bare["cpu"]) / SECONDS
-        what = f"F{page}" + (", heads moving" if lines else "")
+        what = f"F{page}" + (", P11's Circle running" if lines else "")
         print(
             f"\nbusk run, {what}: overruns {bare['overruns']}/{bare['ticks']} bare, "
             f"{tui['overruns']}/{tui['ticks']} with the TUI; "

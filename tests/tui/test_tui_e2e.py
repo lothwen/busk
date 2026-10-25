@@ -3,7 +3,7 @@
 * On a real show (``--standalone``, no output, no surfaces): a typed ``gm
   50%`` shows in the status bar; Space on F1 makes P1 active, and its row
   shows it; F2's group button, intensity bar and ``[+]``, and an F6 tile,
-  program it.
+  program it; F4 goes to a cue, and F5 adds, stops and removes an effect.
 * On a stub show whose ``save`` is held (plan §4.3): keys, page switching,
   the beat dot and a bar's drag keep working, the drag's lines run, and the
   prompt context shows the held line.
@@ -18,7 +18,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from textual.pilot import Pilot
-from tui_fakes import Stub, drive
+from tui_fakes import Stub, click_cell, column, drive
 
 import busk
 from busk_tui import config
@@ -26,6 +26,8 @@ from busk_tui.bridge import Bridge
 from busk_tui.commands import Line, percent
 from busk_tui.shell import BuskApp
 from busk_tui.widgets.bars import HBar
+from busk_tui.widgets.cuetable import CueTable
+from busk_tui.widgets.effects import EffectTable, TemplateTable
 from busk_tui.widgets.encoders import EncoderRow
 from busk_tui.widgets.frame import StatusBar
 from busk_tui.widgets.log import LogView
@@ -126,6 +128,47 @@ def test_f2_and_f6_program_the_real_engine(club_path: Path, tmp_path: Path) -> N
         table = app.query_one(ProgrammerTable).content
         assert "Red" in str(table)
         assert ("ui", "preset color 2") in app.query_one(LogView).entries
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_f4_and_f5_run_cues_and_effects_on_the_real_engine(club_path: Path, tmp_path: Path) -> None:
+    """F4: a cue row goes to that cue, and ``▶`` follows. F5: a template
+    adds a programmer effect to the selection, its state stops it, and ✕
+    removes it."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=4), standalone=True)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.live is not None and app.view.show is not None)
+        app._select_playback(9)
+        cues = app.query_one(CueTable)
+        await until(pilot, lambda: column(cues, "cue")[:1] == ["9/1"])
+        await click_cell(pilot, cues, 2, "name")
+        await until(pilot, lambda: app.live.playback(9).cue == "3", timeout=1.0)  # type: ignore[union-attr]
+        await until(pilot, lambda: column(cues, "marker")[2] == "▶", timeout=1.0)
+        assert ("ui", "goto 9 3") in app.query_one(LogView).entries
+        await pilot.press("f5", *"sel group 1", "enter")
+        await until(pilot, lambda: bool(app.programmer and app.programmer.selection))
+        templates = app.query_one(TemplateTable)
+        await click_cell(pilot, templates, 0, "name")  # Circle
+        await until(pilot, lambda: bool(app.programmer and app.programmer.effects), timeout=1.0)
+        table = app.query_one(EffectTable)
+        await until(pilot, lambda: column(table, "owner")[-1:] == ["prog"], timeout=1.0)
+        row = len(table.rows) - 1
+        await click_cell(pilot, table, row, "state")
+        await until(pilot, lambda: bool(app.programmer and app.programmer.stopped), timeout=1.0)
+        await until(pilot, lambda: column(table, "state")[row] == "[off]", timeout=1.0)
+        await click_cell(pilot, table, row, "remove")
+        await until(pilot, lambda: not app.programmer or not app.programmer.effects, timeout=1.0)
+        log = app.query_one(LogView).entries
+        assert ("ui", 'effect add "Circle"') in log
+        assert any(kind == "ui" and line.startswith("effect stop ") for kind, line in log)
 
     try:
         drive(app, body)

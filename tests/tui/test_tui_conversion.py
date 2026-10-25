@@ -1,11 +1,12 @@
 """The bridge's conversion (``busk_tui.bridge``) of real busk objects, from an
 :class:`busk.OfflineShow` of the club-night show: the playbacks of the
-snapshot, the show model F1, F2, F6 and F7 use (profiles, fixtures, preset
-summaries), the programmer's values and effects, the running effects and
-the output."""
+snapshot, the show model F1, F2, F4, F5, F6 and F7 use (profiles, fixtures, preset
+summaries, cues as stored, effect settings, templates), the programmer's
+values and effects, the running effects and the output."""
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 
 import pytest
@@ -20,7 +21,6 @@ from busk_tui.bridge import (
     show_model,
 )
 from busk_tui.model import (
-    CueInfo,
     EffectInfo,
     ElementOutput,
     FixtureInfo,
@@ -30,6 +30,9 @@ from busk_tui.model import (
     PageInfo,
     PlaybackView,
     ProfileInfo,
+    StoredValue,
+    Targets,
+    TemplateInfo,
 )
 
 
@@ -57,7 +60,9 @@ def test_the_show_model_has_what_f1_and_f7_show(club: busk.OfflineShow) -> None:
     assert song is not None
     assert (song.mode, song.chase) == ("sequence", None)
     assert [cue.name for cue in song.cues] == ["Intro", "Verse", "Pre", "Chorus", "Outro"]
-    assert song.cues[3] == CueInfo("4", "Chorus", (EffectInfo("rainbow", "Rainbow"),))
+    chorus = song.cues[3]
+    assert (chorus.number, chorus.name) == ("4", "Chorus")
+    assert [(effect.id, effect.template) for effect in chorus.effects] == [("rainbow", "Rainbow")]
     chase = model.cue_list(10)
     assert chase is not None
     assert (chase.mode, chase.chase) == ("chase", "bpm x 1 bounce")
@@ -154,7 +159,15 @@ def test_the_programmer_lists_its_effects_and_the_stopped(show: busk.OfflineShow
     effect_id = show.programmer.effects[0]["id"]
     assert show.execute(f"effect stop {effect_id}").ok
     model = programmer_model(show.programmer, show.show)
-    assert model.effects == (EffectInfo(effect_id, "Circle"),)
+    assert model.effects == (
+        EffectInfo(
+            effect_id,
+            "Circle",
+            Targets(elements=((101, 1), (102, 1))),
+            rate="bpm x 1",
+            size=20.0,
+        ),
+    )
     assert model.stopped == frozenset({effect_id})
     assert model.selection == ((101, 1), (102, 1))
 
@@ -245,3 +258,92 @@ def test_the_output(show: busk.OfflineShow) -> None:
     assert model.element(201, 1) == ElementOutput(201, 1, 1.0, (1.0, 0.0, 0.0), None, None, None)
     assert [out.element for out in model.fixtures if out.number == 301] == list(range(1, 13))
     assert model.element(999, 1) is None
+
+
+# ---------------------------------------------------------- F4 and F5
+
+
+def test_cues_with_their_timing_triggers_and_entries_as_stored(club: busk.OfflineShow) -> None:
+    model = show_model(club.show)
+    song = model.cue_list(9)
+    assert song is not None
+    assert song.tracking
+    intro, verse, pre, chorus, outro = song.cues
+    washes, heads = Targets(group=GroupInfo(2, "Washes")), Targets(group=GroupInfo(1, "Heads"))
+    assert (intro.fadeIn, intro.fadeOut, intro.curve, intro.trigger) == (
+        3.0,
+        3.0,
+        "easeInOut",
+        "go",
+    )
+    assert intro.values == (
+        StoredValue("intensity", washes, "literal", value=0.6),
+        StoredValue("color", washes, "preset", preset="Blue", color=(0.0, 0.0, 1.0)),
+    )
+    assert verse.families == (("position", 4.0, 0.0),)
+    assert verse.values[1] == StoredValue("pan", heads, "preset", preset="Audience")
+    assert verse.values[3].color == (1.0, 0.75, 0.45)
+    assert verse.values[3].value == (("r", 1.0), ("g", 0.75), ("b", 0.45))
+    assert (pre.fadeIn, pre.fadeOut, pre.trigger, pre.delay) == (1.0, 3.0, "wait", 8.0)
+    assert (outro.trigger, outro.delay) == ("follow", 4.0)
+    assert chorus.effects == (
+        EffectInfo(
+            "rainbow",
+            "Rainbow",
+            Targets(group=GroupInfo(3, "Bar")),
+            rate="hz 0.25",
+            phase=(0.0, 360.0),
+        ),
+    )
+    chase = model.cue_list(10)
+    assert chase is not None
+    assert (chase.crossfade, chase.tracking) == (0.25, False)
+    assert chase.cues[0].values[0].targets == Targets(elements=((201, 1),))
+    circle = model.cue_list(11).cues[0].effects[0]  # type: ignore[union-attr]
+    assert (circle.rate, circle.size, circle.phase) == ("bpm x 0.5", 15.0, (0.0, 180.0))
+    assert model.runs(9) == (9,)
+
+
+def test_a_recorded_spread_a_bezier_and_a_spread_entry(show: busk.OfflineShow) -> None:
+    for line in ("sel group 2", "set intensity spread 0 to 1", "preset color 2", "record cue 30",
+                 "cue 30/1 time 2 bezier 0.25 0.1 0.25 1"):  # fmt: skip
+        assert show.execute(line).ok, line
+    cue = show_model(show.show).cue_list(30).cues[0]  # type: ignore[union-attr]
+    assert cue.curve == "bezier 0.25 0.1 0.25 1"
+    assert [(value.attribute, value.kind) for value in cue.values] == [
+        ("intensity", "perTarget"),  # busk records a spread value per target
+        ("color", "preset"),
+    ]
+    doc = copy.deepcopy(show.show)
+    entry = {"targets": {"kind": "group", "groupId": doc["groups"][0]["id"]},
+             "attribute": "intensity",
+             "value": {"kind": "spread", "from": 0.2, "to": 0.8, "curve": "center"}}  # fmt: skip
+    doc["cueLists"][0]["cues"][0]["entries"].append(entry)
+    spread = show_model(doc).cue_list(1).cues[0].values[-1]  # type: ignore[union-attr]
+    assert spread == StoredValue(
+        "intensity", Targets(group=GroupInfo(1, "Heads")), "spread", value=0.2, to=0.8
+    )
+
+
+def test_a_programmer_effect_with_levels_and_a_named_speed_master(show: busk.OfflineShow) -> None:
+    assert show.execute('master add speed "Speed 2" bpm 90').ok
+    assert show.execute("sel group 2").ok
+    assert show.execute('effect add "Wave" bpm "Speed 2" x 2 bounce wings 2 groups 3').ok
+    (wave,) = programmer_model(show.programmer, show.show).effects
+    assert (wave.template, wave.rate, wave.direction) == ("Wave", 'bpm "Speed 2" x 2', "bounce")
+    assert (wave.low, wave.high, wave.wings, wave.groups, wave.blocks) == (0.0, 1.0, 2, 3, 1)
+    assert wave.targets == Targets(elements=((201, 1), (202, 1), (203, 1), (204, 1)))
+
+
+def test_the_templates_effect_add_takes(club: busk.OfflineShow) -> None:
+    templates = show_model(club.show, club.effect_templates).templates
+    assert [(t.name, t.source) for t in templates] == [
+        ("Circle", "show"), ("Pulse", "show"), ("Wave", "show"), ("Rainbow", "show"),
+        ("Chase", "library"), ("Saw", "library"), ("Sweep", "library"), ("Flicker", "library"),
+    ]  # fmt: skip
+    assert templates[0] == TemplateInfo(
+        "Circle", "show", "pan add sine, tilt add sine +90°", size=20.0
+    )
+    assert (templates[2].low, templates[2].high) == (0.0, 1.0)
+    assert templates[4].phase == (0.0, 360.0)
+    assert show_model(club.show).templates == ()
