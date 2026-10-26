@@ -236,7 +236,7 @@ rig's 8 192 elements (GAP-01).
 |---|---|---|---|---|
 | `#`, name, profile, `×N`, mode, patch `U.A` (red `—` unpatched) | fixtures, profiles, `mode.elements`, `mode.footprint`, `patch`, `elementPatch`, universes | S | `doc` | |
 | dim, colour, pan, tilt, zoom (live) | `FixtureOutput` (GAP-01) | S | `out` | |
-| Source colouring, legend | `FixtureOutput.source` by family (GAP-01): programmer, playback, effect, none | S | `out` | |
+| Source colouring, legend | `FixtureOutput.source` by family (GAP-01): programmer, playback, effect, none; a parked value reads none | S | `out` | GAP-22 |
 | `▸` selected marker | `ProgrammerStatus.selection` (GAP-02) | S | `prog` | |
 | Row click, Shift-click | `sel fixture N`; Shift: `sel + fixture N` or `sel - fixture N` | S | `prog` | |
 
@@ -1327,7 +1327,8 @@ category, `╳` on overlaps, hover text `fixture N · ch k/fp` in the hint row, 
 "Surfaces": surfaces (kind, device or port, pickup, binding count, the state dot with its
 `detail`, an open web remote's address) and bindings (input, action, feedback, target level %).
 
-**Deferred.** MONITOR, learn mode and the raw `val` (GAP-13).
+**Deferred.** MONITOR, learn mode and the raw `val` (GAP-13). A parked value's own source
+colour (GAP-22, found in this phase): F3 shows it as driven by nothing.
 
 **Tests.** F3 rows for single and multi-element fixtures, split patches and unpatched fixtures;
 live cells and source colours from an `OutputModel`; the marker and Shift toggling. F8 footprint
@@ -1339,11 +1340,114 @@ page, blackout, release all, output); surface states and the web remote's addres
 additions.
 
 **Done when.**
-- [ ] On the TupperDMX show, F3 lists every fixture with live values, F8 shows its two overlaps
+- [x] On the TupperDMX show, F3 lists every fixture with live values, F8 shows its two overlaps
       and its route's state, and F9 shows its surfaces with their state and bindings.
-- [ ] Suites green; guide updated.
+- [x] Suites green; guide updated.
 - [ ] Manual (the user): check F8 against the rig's real patch, and F9 while a controller is
       unplugged and plugged in again.
+
+**Done** (2026-10-26); the manual check is the user's.
+- Suites: the TUI's 393 tests (`tests/tui`), the whole suite 4298 passed, 1 skipped, 18
+  deselected (the opt-in perf and soak tests); ruff, format and
+  `mypy` clean. The new and changed UI tests pass on Textual 8.2.0, the floor, too.
+- **Perf** (`-m perf -s`, and a script alternating this tree with `d85f39e` in a worktree;
+  club-night show). Standalone, the engine's rate with the TUI on F3: 100.0 against 100.0
+  frames/s bare. Under `busk run`, 0 overruns in every run, and the console process over a
+  bare frontend:
+
+  | Page | This tree | `d85f39e` (Phase 3), the same hour |
+  |---|---|---|
+  | F8 (reads neither output nor effects: the frame alone) | +0.197 core | |
+  | F9 | +0.191 core | |
+  | F3, idle | +0.207 to +0.212 core | |
+  | F3, P11's Circle moving the heads | +0.246 to +0.279 core | |
+  | F2, the same | +0.305 to +0.314 core | |
+  | F4, the same | +0.148 to +0.205 core | |
+  | F1, idle | +0.261 to +0.299 core | +0.292 to +0.315 core |
+
+  **The perf test fails today, on F1, at Phase 3's commit too.** The machine measures higher
+  than on 2026-10-25 (the frame alone was +0.138 in Phase 0; a browser used over a core
+  meanwhile), so F1 idle and F2 moving are over the 0.25 gate for both trees; this phase does
+  not change F1 or F2. F3 adds 0.01 core to the frame idle and 0.05–0.08 with the heads
+  moving: rows are converted again only for the fixtures whose output, patch or selection
+  changed (a cache per fixture), and drawn again only on the lines that changed (`RowTable`).
+  The gate is unchanged; it is yours to move, or to measure again on a quiet machine.
+- **Files** as planned (`pages/fixtures.py`, `pages/patch.py`, `pages/surfaces.py`,
+  `widgets/dmxmap.py`), and: `widgets/fixturetable.py` (F3's table and cells, for layout A
+  later), `widgets/legend.py` (a legend that wraps between keys, never inside one: Textual
+  breaks text at its spaces). `pages/placeholder.py` is gone: every page is built
+  (`shell.PAGE_TYPES`, was `BUILT`). Tests: `test_tui_fixtures.py`, `test_tui_patch.py`,
+  `test_tui_surfaces.py`, and additions to the conversion, bridge, live bridge, commands
+  (contract: the new builders, the pre-fills, every club binding unbound by its input),
+  colours, widgets, frame, prompt (the pane cursor test now runs on F3), e2e (F3 follows a
+  typed `set`, a row click and an F8 map click select on the real engine) and perf (F3)
+  tests.
+- **Model.** `FixtureInfo` gains `mode`, `footprint`, `patch` (universe number, address),
+  `split` and `location`; `ProfileInfo.category`; `ElementOutput.sources` (family → source)
+  and `.playback`, with `source(family)`; `RouteView.address`, `.destination`, `.errors`;
+  `SurfaceView` and `SurfacesChanged` (the document's surfaces with their status by id, as
+  routes are); `BindingInfo` (in `bind`'s words, with `input` and the `target` whose level it
+  shows); `ShowModel.bindings`. `View.routes` and `View.surfaces`, parts `routes` and
+  `surfaces`.
+- **Shared pieces.** `RowTable.show(…, lit=)` draws several rows as the chosen one (F3's
+  selection). `ShowHint` (controls) puts a text in the hint row (F8's hovered channel), and
+  the hint row resets on a page change. `RouteLights` (frame) is the status bar's blink,
+  shared with F8; `route_light(…, label=)`. `colors.profile_colors` and `SOURCE_COLORS`.
+- **A bug found and fixed in the status bar:** a route's light was re-checked only when the
+  routes changed, and they stop changing once the sends stop (`output off`): a light could
+  stay `○` mid-blink. The status bar's one-second clock now re-checks the lights
+  (`StatusBar.tick`), as F8 does.
+- **Calls you may veto:**
+  - **F3 is one row per fixture**, not per element: the intensity is a range while the
+    elements differ (`8–100%`), the colour one swatch per element (twelve at most, evenly
+    spaced beyond; an element without colour as white light), pan, tilt and zoom the first
+    element's that has them, and `src` the strongest source among the elements (programmer,
+    effect, playback, nothing).
+  - **F3's words and columns**: `intensity` (busk's word, as F2's) instead of `dim`; a `type`
+    column (the category); `src` as `prog`, `P9`, `fx P11`, `fx` (a programmer effect),
+    `pb`, `—`, from busk's `playback` number; zoom coloured by the beam's source (the spec
+    names dim, pan, tilt and src only). Columns drop when narrow: type, mode, zoom, profile.
+  - **F3's edits** are a strip under the table for the fixture clicked last (else the first
+    selected): `fixture N patch `, `fixture N location {…}` (its place, or zeros), `profile
+    "<name>" category `, `rename fixture N "`. A click on any cell selects, unlike F4's edit
+    cells: F3's rows are for selecting.
+  - **F8's UNIVERSES** has an `overlaps` column (pairs of fixtures that share channels). The
+    two panels are side by side, half and half, from 100 columns.
+  - **F8's ROUTES**: address and destination as `route add` takes them, the light with the
+    packets per second (worked out once a second, while F8 shows), and the state as a word,
+    `open` (with the send errors), `failed: <busk's reason>`, `disabled`, `ignored: …`, `not
+    running` (no output, `--no-output`).
+  - **Type colours**: the spec's five, and beam cyan, blinder white, dimmer amber, effect,
+    fog and other grey; a profile without a category takes amber, cyan, magenta, green,
+    white, grey in show order (`colors.py`). The legend names categories, or the profile.
+  - **The DMX map**: 32 channels to a row when it has fewer than 69 cells; the hovered
+    fixture's channels light up; the hint row text is `1.94 · fixture 501 · ch 3/12`, with
+    `overlap` and each fixture on a shared channel; a click on an overlap selects all its
+    fixtures (`sel fixture 501, fixture 502`). The pane cursor stops on each footprint.
+  - **Split patches**: busk refuses them when it compiles a show (`elementPatch: split
+    patches are not supported yet`), so F3 marks them `split` and F8 draws the main patch
+    only.
+  - **F9's BINDINGS** has one `input` column in `bind`'s words (`cc 1 48`, `osc "/1/f"`,
+    `clock`), not the spec's type, ch and num; `what` in `bind`'s words, a `tap` named only
+    when the show has more than one speed master (as chase rates); `val` in % or `—`; a fader
+    slot with no current page (busk drives nothing then) is `—`.
+  - **F9's SURFACES**: the state as a word (`open`, `failed`, `ignored`, `not open`) and busk's
+    reason and the web remote's addresses under the table (in a column they were cut).
+    Bindings beside surfaces from 132 columns (2 : 3).
+  - **F9's edits** for the surface clicked last (else the first): `bind "<s>" `, `surface "<s>"
+    pickup `; and for the binding clicked: `unbind "<s>" cc 1 48` (whole: Enter runs it) and
+    `feedback "<s>" cc 1 48 `. A clock, bend or hardware binding has none (`unbind` and
+    `feedback` take cc, note and osc only).
+- **Checked in a real pseudo-terminal** (pyte), standalone and under `busk run`: on the
+  TupperDMX show, F3 at 150 columns, F8 with its two overlaps (hover text, a click, a
+  Shift-click, an overlap click), F9 with the web remote and its address; under `busk run`,
+  F8's route `open` with `1/s` (busk sends an unchanged Art-Net universe once a second), and
+  steady after `output off`. On the club show F3 with P1 up, P11's Circle and the washes in
+  the programmer (wash 204 reads `0%` and nothing: it is parked, GAP-22), F8, F9 with 51
+  bindings and the missing nanoKONTROL2's reason; all three at 100 columns.
+- **Found, not fixed:** the tab bar still splits `F8 Patch` at 100 columns (Phase 0's, noted
+  in Phase 2); the `LATE` chip shows for a moment while a standalone show starts (noted in
+  Phase 3).
 
 ### Phase 5: The other Busk layouts (F1 A, F1 C)
 

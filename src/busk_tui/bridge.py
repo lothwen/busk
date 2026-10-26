@@ -54,11 +54,13 @@ from busk import (
     RouteStatus,
     Show,
     ShowLoadError,
+    SurfaceStatus,
     load_show,
 )
 from busk_tui import attributes, commands
 from busk_tui.model import (
     Beat,
+    BindingInfo,
     BridgeEvent,
     Busy,
     CommandDone,
@@ -83,6 +85,7 @@ from busk_tui.model import (
     HeldValue,
     LiveChanged,
     LiveState,
+    Location,
     MasterLevel,
     MasterView,
     Origin,
@@ -107,6 +110,8 @@ from busk_tui.model import (
     SpeedView,
     StoredValue,
     Summary,
+    SurfacesChanged,
+    SurfaceView,
     Targets,
     TemplateInfo,
     UniverseView,
@@ -214,6 +219,7 @@ class _Seen:
     output: tuple[ElementOutput, ...] | None = None  # None: send the next read, whatever it is
     output_at: float = 0.0  # when the output was last read (monotonic)
     routes: tuple[RouteStatus, ...] | Literal["unread"] | None = "unread"
+    surfaces: tuple[SurfaceStatus, ...] | Literal["unread"] | None = "unread"
     frame: int | None = None
     health: tuple[EngineState, bool] | None = None
     late_mark: tuple[float, int] | None = None  # (monotonic time, overruns) of the last look
@@ -607,6 +613,11 @@ class Bridge:
             views = route_views(doc, routes)
             seen.routes = routes
             put(RoutesChanged(views))
+        surfaces = show.surfaces
+        if surfaces is not seen.surfaces or new_doc:
+            surface_list = surface_views(doc, surfaces)
+            seen.surfaces = surfaces
+            put(SurfacesChanged(surface_list))
         if self._watching[1] and time.monotonic() - seen.effects_at >= EFFECTS_S:
             seen.effects_at = time.monotonic()
             effects = show.effects
@@ -700,12 +711,9 @@ def show_model(doc: Show, templates: Sequence[EffectTemplateInfo] = ()) -> ShowM
     groups = names.groups
     playbacks = {playback["id"]: playback["number"] for playback in doc["playbacks"]}
     lists = {cue_list["id"]: cue_list["number"] for cue_list in doc["cueLists"]}
-    modes = {
-        (profile["id"], mode["id"]): len(mode["elements"])
-        for profile in doc["profiles"]
-        for mode in profile["modes"]
-    }
     profiles = {profile["id"]: profile["name"] for profile in doc["profiles"]}
+    universes = {universe["id"]: universe["number"] for universe in doc["universes"]}
+    modes = _modes(doc)
     return ShowModel(
         title=doc["meta"]["title"],
         universes=tuple(UniverseView(u["number"], u["name"]) for u in doc["universes"]),
@@ -756,13 +764,7 @@ def show_model(doc: Show, templates: Sequence[EffectTemplateInfo] = ()) -> ShowM
             for preset in doc["presets"]
         ),
         fixtures=tuple(
-            FixtureInfo(
-                fixture["number"],
-                modes.get((fixture["profileId"], fixture["modeId"]), 1),
-                fixture["name"],
-                profiles.get(fixture["profileId"], ""),
-            )
-            for fixture in doc["fixtures"]
+            fixture_info(fixture, modes, profiles, universes) for fixture in doc["fixtures"]
         ),
         profiles=tuple(profile_info(profile) for profile in doc["profiles"]),
         templates=tuple(
@@ -777,6 +779,47 @@ def show_model(doc: Show, templates: Sequence[EffectTemplateInfo] = ()) -> ShowM
             )
             for template in templates
         ),
+        bindings=tuple(binding_info(binding, doc, names) for binding in doc["bindings"]),
+    )
+
+
+def _modes(doc: Show) -> dict[tuple[str, str], Mapping[str, Any]]:
+    """The document's modes by (profile id, mode id)."""
+    return {
+        (profile["id"], mode["id"]): mode
+        for profile in doc["profiles"]
+        for mode in profile["modes"]
+    }
+
+
+def fixture_info(
+    fixture: Mapping[str, Any],
+    modes: Mapping[tuple[str, str], Mapping[str, Any]],
+    profiles: Mapping[Any, str],
+    universes: Mapping[Any, int],
+) -> FixtureInfo:
+    """A fixture with its profile and mode by name, its footprint, and its
+    patch by universe number (``modes``, ``profiles``, ``universes``: the
+    document's, by id)."""
+    mode = modes.get((fixture["profileId"], fixture["modeId"]))
+    patch = fixture["patch"]
+    place = fixture.get("location")
+    location: Location | None = None
+    if place is not None:
+        location = (float(place["x"]), float(place["y"]), float(place["z"]),
+                    float(place["rx"]), float(place["ry"]), float(place["rz"]))  # fmt: skip
+    return FixtureInfo(
+        number=fixture["number"],
+        elements=1 if mode is None else len(mode["elements"]),
+        name=fixture["name"],
+        profile=profiles.get(fixture["profileId"], ""),
+        mode="" if mode is None else mode["name"],
+        footprint=1 if mode is None else mode["footprint"],
+        patch=None
+        if patch is None or patch["universeId"] not in universes
+        else (universes[patch["universeId"]], patch["address"]),
+        split=bool(fixture.get("elementPatch")),
+        location=location,
     )
 
 
@@ -837,7 +880,9 @@ def profile_info(profile: FixtureProfile) -> ProfileInfo:
             attribute, (min(span), max(span)) if span else DEFAULT_RANGES[attribute]
         )
         ranges.append((attribute, low, high))
-    return ProfileInfo(profile["name"], frozenset(attributes), tuple(ranges))
+    return ProfileInfo(
+        profile["name"], frozenset(attributes), tuple(ranges), profile.get("category")
+    )
 
 
 def master_view(master: Mapping[str, Any], groups: dict[str, GroupInfo]) -> MasterView:
@@ -991,6 +1036,8 @@ def output_model(snapshot: OutputSnapshot) -> OutputModel:
                 pan=out.pan,
                 tilt=out.tilt,
                 zoom=out.zoom,
+                sources=tuple(out.source.items()),
+                playback=out.playback,
             )
             for out in snapshot.fixtures
         ),
@@ -1025,6 +1072,7 @@ def route_views(doc: Show, status: tuple[RouteStatus, ...] | None) -> tuple[Rout
     views: list[RouteView] = []
     for route in doc["output"]["routes"]:
         found = by_id.get(route["id"])
+        address, destination = _route_words(route)
         views.append(
             RouteView(
                 protocol=_PROTOCOLS.get(route["protocol"], route["protocol"]),
@@ -1033,9 +1081,150 @@ def route_views(doc: Show, status: tuple[RouteStatus, ...] | None) -> tuple[Rout
                 state=None if found is None else found.state,
                 detail="" if found is None else found.detail,
                 packets=0 if found is None else found.packets,
+                address=address,
+                destination=destination,
+                errors=0 if found is None else found.errors,
             )
         )
     return tuple(views)
+
+
+def _route_words(route: Mapping[str, Any]) -> tuple[str, str]:
+    """A route's address and destination as ``route add`` takes them: ``1``
+    and ``multicast eth0`` (sACN), ``0.0.1`` and ``unicast 10.0.0.50``
+    (Art-Net), ``enttecPro`` and its port (DMX-USB)."""
+    match route["protocol"]:
+        case "sacn":
+            address = str(route["universe"])
+        case "artnet":
+            port = route["portAddress"]
+            address = f"{port['net']}.{port['subNet']}.{port['universe']}"
+        case "dmxUsb":
+            return route["device"]["driver"], route["device"]["port"]
+        case _:
+            return "", ""
+    destination = route["destination"]
+    if destination["kind"] == "unicast":
+        return address, f"unicast {destination['host']}"
+    return address, f"{destination['kind']} {destination['iface']}"
+
+
+def surface_views(doc: Show, status: tuple[SurfaceStatus, ...] | None) -> tuple[SurfaceView, ...]:
+    """The document's surfaces in show order, each with its status by id
+    (``status`` is ``None`` while no surface is open)."""
+    by_id = {surface.id: surface for surface in status or ()}
+    views: list[SurfaceView] = []
+    for surface in doc["surfaces"]:
+        found = by_id.get(surface["id"])
+        views.append(
+            SurfaceView(
+                name=surface["name"],
+                kind=surface["kind"],
+                device=_device_words(surface["kind"], surface["match"]),
+                pickup=surface["faderPickup"],
+                state=None if found is None else found.state,
+                detail="" if found is None else found.detail,
+                urls=() if found is None else found.urls,
+            )
+        )
+    return tuple(views)
+
+
+def _device_words(kind: str, match: Mapping[str, Any]) -> str:
+    """How a surface is found, as ``surface add`` takes it: ``"nanoKONTROL2"``
+    (MIDI), ``port 8000 feedback 10.0.0.5:9000`` (OSC), ``port 8080 on
+    0.0.0.0`` (web)."""
+    if kind == "midi":
+        return f'"{match.get("deviceName", "")}"'
+    words = [f"port {match['port']}"] if "port" in match else []
+    if kind == "osc" and "host" in match:
+        port = match.get("feedbackPort")
+        words.append(f"feedback {match['host']}" + ("" if port is None else f":{port}"))
+    elif kind == "web" and "host" in match:
+        words.append(f"on {match['host']}")
+    return " ".join(words)
+
+
+_FEEDBACK_WORDS: Final = {"led": "led", "motorFader": "motor", "display": "display"}
+
+
+def binding_info(binding: Mapping[str, Any], doc: Show, names: _Names) -> BindingInfo:
+    """A binding in the words of ``bind`` (``fader 1``, ``button 9 2``,
+    ``master gm``, ``release all``), with the level it shows: a fader slot
+    (counted from 0, as busk keeps it), a playback by number, a master by
+    name."""
+    surface = next((s["name"] for s in doc["surfaces"] if s["id"] == binding["surfaceId"]), "")
+    kind, channel, number = _input_words(binding["input"])
+    what, target = _action_words(binding["action"], doc, names)
+    feedback = ""
+    if "feedback" in binding:
+        given = binding["feedback"]
+        feedback = _FEEDBACK_WORDS.get(given["kind"], given["kind"])
+        if given["address"] != binding["input"]:
+            address = _input_words(given["address"])
+            feedback += " " + BindingInfo("", *address, "", "").input
+    return BindingInfo(surface, kind, channel, number, what, feedback, target)
+
+
+def _input_words(given: Mapping[str, Any]) -> tuple[str, int | None, str]:
+    """An input's kind, channel and number (or path) as ``bind`` names them."""
+    match given["kind"]:
+        case "midiCC":
+            return "cc", given["channel"], str(given["cc"])
+        case "midiNote":
+            return "note", given["channel"], str(given["note"])
+        case "midiPitchBend":
+            return "bend", given["channel"], ""
+        case "midiClock":
+            return "clock", None, ""
+        case "osc":
+            return "osc", None, given["path"]
+        case "hw":
+            return "hw", None, given["controlId"]
+    return given["kind"], None, ""
+
+
+def _action_words(
+    action: Mapping[str, Any], doc: Show, names: _Names
+) -> tuple[str, tuple[str, int | str] | None]:
+    """What a binding drives, as ``bind`` takes it, and the level it shows."""
+    masters = {master["id"]: master for master in doc["masters"]}
+    match action["kind"]:
+        case "playbackFader":
+            return f"fader {action['slot'] + 1}", ("slot", action["slot"])
+        case "playbackButton":
+            return f"button {action['slot'] + 1} {action['button'] + 1}", None
+        case "playbackFaderAbs":
+            number = next(
+                (p["number"] for p in doc["playbacks"] if p["id"] == action["playbackId"]), None
+            )
+            if number is None:
+                return "fader playback ?", None
+            return f"fader playback {number}", ("playback", number)
+        case "master":
+            master = masters.get(action["masterId"])
+            if master is None:
+                return "master ?", None
+            what = "master gm" if master["kind"] == "grand" else f'master "{master["name"]}"'
+            return what, ("master", master["name"])
+        case "tap":
+            speed = names.speeds.get(action["masterId"])
+            return ("tap" if speed is None else f'tap "{speed}"'), None
+        case "page":
+            return f"page {action['delta']:+d}", None
+        case "pageAbs":
+            return f"page {action['number']}", None
+        case "blackout":
+            return ("blackout momentary" if action.get("momentary") else "blackout"), None
+        case "command":
+            command = action["command"]
+            if command["type"] == "RELEASE_ALL":
+                time = f" {command['time']:g}" if "time" in command else ""
+                return f"release all{time}", None
+            if command["type"] == "OUTPUT":
+                return f"output {'on' if command['on'] else 'off'}", None
+            return f"command {command['type']}", None
+    return str(action["kind"]), None
 
 
 _UNDO: Final = re.compile(r"undo: (\d+) steps?, redo: (\d+) steps?")

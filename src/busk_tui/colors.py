@@ -7,11 +7,14 @@ them to the nearest of 16 on a 16-colour one. ``busk.tcss`` uses the same
 values.
 
 Live output colours (fixture swatches) are quantised by :func:`swatch`.
+Fixture types (profile categories) and what drives a value have colours of
+their own (:func:`profile_colors`, :data:`SOURCE_COLORS`).
 """
 
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Final, Literal
 
@@ -125,3 +128,47 @@ def _nearest_level(channel: int) -> int:
 
 def _distance(a: RGB, b: RGB) -> float:
     return math.dist(a, b)
+
+
+CATEGORY_COLORS: Final[dict[str, str]] = {
+    "par": AMBER,
+    "spot": CYAN,
+    "wash": MAGENTA,
+    "pixel": GREEN,
+    "strobe": FG,
+    "beam": CYAN,
+    "blinder": FG,
+    "dimmer": AMBER,
+    "effect": MID,
+    "fog": MID,
+    "other": MID,
+}
+"""A fixture type's colour (plan §3, 8): busk's profile categories, the
+spec's five (par amber, spot cyan, wash magenta, pixel green, strobe the
+foreground) and the rest beside the one they look like."""
+
+UNSET_COLORS: Final = (AMBER, CYAN, MAGENTA, GREEN, FG, MID)
+"""The colours of profiles with no category, by profile in show order."""
+
+
+def profile_colors(profiles: Sequence[tuple[str, str | None]]) -> dict[str, str]:
+    """Each profile's colour by name, from ``(name, category)`` pairs in
+    show order: its category's, else the next of :data:`UNSET_COLORS`."""
+    found: dict[str, str] = {}
+    unset = 0
+    for name, category in profiles:
+        if category in CATEGORY_COLORS:
+            found[name] = CATEGORY_COLORS[category]
+        else:
+            found[name] = UNSET_COLORS[unset % len(UNSET_COLORS)]
+            unset += 1
+    return found
+
+
+SOURCE_COLORS: Final[dict[str, str]] = {
+    "programmer": MAGENTA,
+    "playback": FG,
+    "effect": GREEN,
+    "none": DIM,
+}
+"""What drives a value (spec §8.3's source colouring)."""

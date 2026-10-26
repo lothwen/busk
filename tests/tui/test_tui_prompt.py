@@ -8,13 +8,13 @@ from __future__ import annotations
 import pytest
 from textual import events
 from textual.pilot import Pilot
-from tui_fakes import FakeBridge, Reply, drive, make_app, settle
+from tui_fakes import FakeBridge, Reply, drive, make_app, settle, show_model
 
 import busk
 from busk_tui import colors
-from busk_tui.model import EngineNews, SessionChanged, SessionState
-from busk_tui.pages.placeholder import Placeholder
+from busk_tui.model import EngineNews, FixtureInfo, SessionChanged, SessionState, ShowChanged
 from busk_tui.widgets.dialogs import ConfirmDialog, QuitDialog
+from busk_tui.widgets.fixturetable import FixtureTable
 from busk_tui.widgets.help import HelpOverlay
 from busk_tui.widgets.log import LogView, log_line
 from busk_tui.widgets.prompt import HintRow, Prompt
@@ -377,31 +377,35 @@ def test_a_typed_help_opens_the_overlay_with_its_reply() -> None:
 
 def test_the_pane_cursor_moves_into_the_page_and_back() -> None:
     bridge = FakeBridge()
+    fixtures = (FixtureInfo(101, 1, "Spot 101", "Spot"), FixtureInfo(102, 1, "Spot 102", "Spot"))
+    bridge.events.append(ShowChanged(show_model(fixtures=fixtures)))
     app = make_app(bridge)
 
     async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
         await pilot.press("f3")
-        page = app.query_one("#page-3", Placeholder)
+        prompt = app.query_one(Prompt)
         await pilot.press("tab")
         assert app.cursor.index == 0
-        assert "▸ list fixtures" in str(page.query_one("#placeholder-3").render())
+        assert app.query_one(FixtureTable)._marked == (0, None)
         await pilot.press("down", "down")
-        assert app.cursor.index == 2
+        assert app.cursor.index == 2  # past the rows: the first edit
         await pilot.press("up")
         assert app.cursor.index == 1
-        await pilot.press("enter")
-        assert app.query_one(Prompt).value == "list profiles"
-        assert not app.cursor.active
-        assert bridge.sent == []
+        await pilot.press("enter")  # a row's line runs, and the cursor stays
+        assert app.cursor.active
+        assert bridge.lines() == ["sel fixture 102"]
         await pilot.press("escape", "tab", "escape")
         assert not app.cursor.active
-        assert app.query_one(Prompt).value == ""
+        assert prompt.value == ""
         await pilot.press("tab", "g")  # typing gives the keyboard back
         assert not app.cursor.active
-        assert app.query_one(Prompt).value == "g"
+        assert prompt.value == "g"
         await pilot.press("escape", "tab", "down", "down", "enter")
-        assert app.query_one(Prompt).value == "sel fixture "  # a line to finish
-        await pilot.press("f2")  # another page: the cursor leaves
+        assert prompt.value == "fixture 102 patch "  # a line to finish, for the row chosen
+        assert not app.cursor.active
+        assert bridge.lines() == ["sel fixture 102"]
+        await pilot.press("tab", "f2")  # another page: the cursor leaves
         assert not app.cursor.active
 
     drive(app, body)

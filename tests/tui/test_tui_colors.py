@@ -48,3 +48,22 @@ def test_a_swatch_in_each_mode() -> None:
     assert colors.swatch(red, 1.0, "truecolor") == "#ff0000"
     assert colors.swatch(red, 1.0, "256") == "color(196)"
     assert colors.swatch(red, 1.0, "16") == "color(9)"
+
+
+def test_fixture_types_by_category_else_by_profile_in_show_order() -> None:
+    found = colors.profile_colors(
+        [("Spot", "spot"), ("Odd", None), ("Par", "par"), ("Fog", "fog"), ("Other", "unknown"),
+         ("Wash", "wash"), ("Bar", "pixel"), ("Strobe", "strobe")]
+    )  # fmt: skip
+    assert found == {
+        "Spot": colors.CYAN,
+        "Odd": colors.UNSET_COLORS[0],
+        "Par": colors.AMBER,
+        "Fog": colors.MID,
+        "Other": colors.UNSET_COLORS[1],  # not a busk category: as one with none
+        "Wash": colors.MAGENTA,
+        "Bar": colors.GREEN,
+        "Strobe": colors.FG,
+    }
+    many = colors.profile_colors([(f"P{n}", None) for n in range(8)])
+    assert many["P6"] == colors.UNSET_COLORS[0]  # round again

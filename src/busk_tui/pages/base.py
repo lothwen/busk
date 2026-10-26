@@ -15,13 +15,23 @@ from textual.containers import VerticalScroll
 from textual.widget import Widget
 
 from busk_tui.colors import ColorMode
-from busk_tui.model import EffectsModel, LiveState, OutputModel, ProgrammerModel, ShowModel
+from busk_tui.model import (
+    EffectsModel,
+    LiveState,
+    OutputModel,
+    ProgrammerModel,
+    RouteView,
+    ShowModel,
+    SurfaceView,
+)
 from busk_tui.nav import Item, Stop
 
-type Part = Literal["show", "live", "programmer", "effects", "output", "beats", "playback"]
+type Part = Literal[
+    "show", "live", "programmer", "effects", "output", "beats", "playback", "routes", "surfaces"
+]
 
 ALL_PARTS: Final[frozenset[Part]] = frozenset(
-    ("show", "live", "programmer", "effects", "output", "beats", "playback")
+    ("show", "live", "programmer", "effects", "output", "beats", "playback", "routes", "surfaces")
 )
 
 
@@ -35,6 +45,8 @@ class View:
     programmer: ProgrammerModel | None = None
     effects: EffectsModel | None = None
     output: OutputModel | None = None
+    routes: tuple[RouteView, ...] = ()
+    surfaces: tuple[SurfaceView, ...] = ()
     beats: tuple[float, ...] = ()  # each speed master's beat count, as LiveState.speed
     playback: int = 1  # the selected playback (Space, [ ], the prompt's P1)
     faders: int = 20  # at most this many slots on F1

@@ -27,8 +27,10 @@ from busk_tui.commands import Line, percent
 from busk_tui.shell import BuskApp
 from busk_tui.widgets.bars import HBar
 from busk_tui.widgets.cuetable import CueTable
+from busk_tui.widgets.dmxmap import DmxMap
 from busk_tui.widgets.effects import EffectTable, TemplateTable
 from busk_tui.widgets.encoders import EncoderRow
+from busk_tui.widgets.fixturetable import FixtureTable
 from busk_tui.widgets.frame import StatusBar
 from busk_tui.widgets.log import LogView
 from busk_tui.widgets.playbacks import PlaybackRow
@@ -169,6 +171,36 @@ def test_f4_and_f5_run_cues_and_effects_on_the_real_engine(club_path: Path, tmp_
         log = app.query_one(LogView).entries
         assert ("ui", 'effect add "Circle"') in log
         assert any(kind == "ui" and line.startswith("effect stop ") for kind, line in log)
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_f3_shows_the_real_output_and_f8_selects_from_the_map(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """F3: the programmer's level shows in the sheet, magenta, and a row
+    click selects. F8: a click on a fixture's channels selects it."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=3), standalone=True)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.view.show is not None and app.view.output is not None)
+        await pilot.press(*"sel group 2", "enter", *"set intensity 40%", "enter")
+        table = app.query_one(FixtureTable)
+        await until(pilot, lambda: column(table, "intensity")[2:5] == ["40%"] * 3, timeout=1.0)
+        assert column(table, "source")[2] == "prog"
+        assert column(table, "marker")[2:6] == ["▸"] * 4
+        await click_cell(pilot, table, 0, "name")
+        await until(pilot, lambda: bool(app.programmer and app.programmer.selection == ((101, 1),)))
+        await pilot.press("f8")
+        await pilot.click(app.query(DmxMap).first(), offset=(5 + 32, 0))  # channel 33: 201
+        await until(pilot, lambda: bool(app.programmer and app.programmer.selection == ((201, 1),)))
+        assert ("ui", "sel fixture 201") in app.query_one(LogView).entries
 
     try:
         drive(app, body)

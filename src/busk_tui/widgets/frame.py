@@ -48,6 +48,29 @@ _ENGINE_WARNINGS: dict[EngineState, bool] = {
 }  # the state → whether its chip is red (else dim); "running" has none
 
 
+class RouteLights:
+    """Each route's light: lit while it does not send, blinking while its
+    ``packets`` grow, at most every :data:`BLINK_S`."""
+
+    def __init__(self) -> None:
+        self._lights: list[tuple[int, bool, float]] = []  # per route: packets, on, when it changed
+
+    def update(self, routes: tuple[RouteView, ...], now: float) -> tuple[bool, ...]:
+        """Whether each light is on, given the routes as they are ``now``."""
+        lights: list[tuple[int, bool, float]] = []
+        for index, route in enumerate(routes):
+            packets, on, changed = (
+                self._lights[index] if index < len(self._lights) else (route.packets, True, now)
+            )
+            if route.packets != packets and now - changed >= BLINK_S:
+                on, changed = not on, now
+            elif route.packets == packets and not on and now - changed >= BLINK_S:
+                on, changed = True, now  # it stopped sending: steady
+            lights.append((route.packets, on, changed))
+        self._lights = lights
+        return tuple(on for _, on, _ in lights)
+
+
 class StatusBar(Widget):
     """Row 1: what the show and the engine are doing (spec §5, plan §3 15).
 
@@ -66,25 +89,22 @@ class StatusBar(Widget):
         self.engine: EngineState = "starting"
         self.late = False
         self.beats: float | None = None
-        self._lights: list[tuple[int, bool, float]] = []  # per route: packets, on, when it changed
+        self._lights = RouteLights()
+        self._on: tuple[bool, ...] = ()
 
     # ------------------------------------------------------------- input
 
     def set_routes(self, routes: tuple[RouteView, ...], now: float | None = None) -> None:
         """New route states: a route whose packets grew blinks."""
         now = time.monotonic() if now is None else now
-        lights: list[tuple[int, bool, float]] = []
-        for index, route in enumerate(routes):
-            packets, on, changed = (
-                self._lights[index] if index < len(self._lights) else (route.packets, True, now)
-            )
-            if route.packets != packets and now - changed >= BLINK_S:
-                on, changed = not on, now
-            elif route.packets == packets and not on and now - changed >= BLINK_S:
-                on, changed = True, now  # it stopped sending: steady
-            lights.append((route.packets, on, changed))
-        self._lights = lights
+        self._on = self._lights.update(routes, now)
         self.routes = routes
+        self.refresh()
+
+    def tick(self, now: float | None = None) -> None:
+        """Each second: the clock, and the lights of routes that stopped
+        sending (no new routes come while nothing changes)."""
+        self._on = self._lights.update(self.routes, time.monotonic() if now is None else now)
         self.refresh()
 
     def set_beats(self, beats: float | None) -> None:
@@ -119,9 +139,9 @@ class StatusBar(Widget):
         if live is not None and not live.outputEnabled:
             text.append("  ")
             text.append_text(chip("OUTPUT OFF", True, colors.RED))
-        for route, (_, on, _) in zip(self.routes, self._lights, strict=False):
+        for route, on in zip(self.routes, self._on, strict=False):
             text.append("  ")
-            text.append_text(_route_light(route, on))
+            text.append_text(route_light(route, on))
         gm = 1.0 if live is None else live.gm
         text.append("  GM ", style=colors.DIM)
         text.append(f"{round(gm * 100)}%", style=colors.AMBER if gm < 0.995 else colors.FG)
@@ -161,8 +181,10 @@ def _on_beat(beats: float | None) -> bool:
     return beats is not None and beats % 1.0 < 0.25
 
 
-def _route_light(route: RouteView, on: bool) -> Text:
-    label = f"{route.protocol}·U{route.universe}"
+def route_light(route: RouteView, on: bool, label: str | None = None) -> Text:
+    """``● sACN·U1``: green while open (``○`` while a blink is off), red
+    when it fails, grey otherwise; ``label`` instead of the route's name."""
+    label = f"{route.protocol}·U{route.universe}" if label is None else label
     if route.state == "ok":
         return Text(("● " if on else "○ ") + label, style=colors.GREEN)
     if route.state == "failed":

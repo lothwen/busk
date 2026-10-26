@@ -79,6 +79,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-19](#gap-19-status-under-liveshow) `status` under `LiveShow` | action | nice-to-have | prompt | **done** 2026-10-24 |
 | [GAP-20](#gap-20-completion-and-hints) Completion and hints | read | nice-to-have | prompt | **done** 2026-10-24 |
 | [GAP-21](#gap-21-engine-health) Engine health | read | nice-to-have | status bar | **done** 2026-10-24 |
+| [GAP-22](#gap-22-parked-values-in-the-output-source) Parked values in the output source | read | nice-to-have | F3 | open (found 2026-10-26) |
 
 ---
 
@@ -1715,3 +1716,26 @@ data (§1.2), and shows a dim `LATE` chip while they grow. In the implementation
 instead)". The same chip works under `busk run --frontend`, where it also shows
 `restarting` and `failed`. GAP-11's note that the chip can stay on `frame.seq` no longer
 applies.
+
+## GAP-22: Parked values in the output source
+
+Found while building the TUI's Phase 4 (2026-10-26), not in the first plan.
+
+**Needed by:** F3's source colouring (spec §8.3: magenta programmer, white playback, green
+effect, dim nothing), and later layout A's and C's swatches if they mark what drives them.
+
+**Today:** `FixtureOutput.source` (GAP-01) is `"programmer"`, `"playback"`, `"effect"` or
+`"none"` per family. A family that `park` holds reads `"none"`. On the club-night show,
+`park fixture 204 intensity 0` holds wash 4 dark: after `sel group 2` and `set intensity
+40%`, the programmer holds 40 % for 204, the output says 0 and source `"none"`, so F3 shows
+`0%` and `—` in grey, beside three washes at `40%` from the programmer, with nothing to say
+why. The safety stage's limits (`fixture 301 limits intensity 0.5`) change the value but not
+the source, which is right: the programmer still drives it, within the limit.
+
+**Engine should provide:** a fifth `OutputSource`, `"park"`, for a family whose value park
+holds (all of it, or the attributes of the family it parks). `playback` stays `None` for it.
+The highlight could get a word of its own the same way, if a display wants it.
+
+**Priority:** nice-to-have.
+
+**TUI until then:** F3 shows a parked value as driven by nothing, and the guide says so.

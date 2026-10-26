@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 
+from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.pilot import Pilot
 
@@ -22,6 +23,7 @@ from busk_tui.widgets.controls import (
     chip,
 )
 from busk_tui.widgets.digits import BeatDots, BigDigits, beat_dots, big
+from busk_tui.widgets.legend import Legend
 from busk_tui.widgets.swatch import Swatch, swatch_text
 
 
@@ -245,3 +247,9 @@ def test_swatches() -> None:
     assert str(swatch_text(None).style) == "color(236)"
     assert swatch_text("color(196)", 2).plain == "██"
     assert Swatch("color(196)", width=2).width == 2
+
+
+def test_a_legend_wraps_between_keys_never_inside_one() -> None:
+    legend = Legend([Text("■ programmer"), Text("■ playback"), Text("— unpatched")])
+    assert [line.plain for line in legend.lines(30)] == ["■ programmer   ■ playback", "— unpatched"]
+    assert [line.plain for line in legend.lines(80)] == ["■ programmer   ■ playback   — unpatched"]

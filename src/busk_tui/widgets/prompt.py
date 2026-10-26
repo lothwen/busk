@@ -115,6 +115,6 @@ class HintRow(Static):
         text.append(hint.syntax, style=colors.DIM)
         self.update(text)
 
-    def show_text(self, text: str) -> None:
-        """A plain message instead (Ctrl+C's)."""
-        self.update(Text(text, style=colors.AMBER))
+    def show_text(self, text: str, style: str = colors.AMBER) -> None:
+        """A plain message instead (Ctrl+C's, what is under the mouse)."""
+        self.update(Text(text, style=style))

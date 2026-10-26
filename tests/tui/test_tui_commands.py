@@ -10,8 +10,8 @@ import pytest
 
 import busk
 from busk_tui import commands, config
+from busk_tui.bridge import show_model
 from busk_tui.commands import Line
-from busk_tui.pages.placeholder import PLANNED
 
 BUILDERS: dict[str, tuple[Line, str, bool]] = {
     # name: (a line it builds, that line's text, whether busk runs it as a performance line)
@@ -67,6 +67,15 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
     "blind off": (commands.blind(False), "blind off", False),
     "highlight on": (commands.highlight(True), "highlight on", False),
     "highlight off": (commands.highlight(False), "highlight off", False),
+    "sel fixture": (commands.sel_fixture(101), "sel fixture 101", False),
+    "sel + fixture": (commands.sel_fixture(102, add=True), "sel + fixture 102", False),
+    "sel - fixture": (commands.sel_fixture(101, remove=True), "sel - fixture 101", False),
+    "sel fixtures": (commands.sel_fixtures((201, 202)), "sel fixture 201, fixture 202", False),
+    "sel + fixtures": (
+        commands.sel_fixtures((203, 204), add=True),
+        "sel + fixture 203, fixture 204",
+        False,
+    ),
 }
 
 PREFILLS = (
@@ -82,8 +91,21 @@ PREFILLS = (
     commands.cue_time_prefill(9, "3", "1/3", "delay"),
     commands.cue_time_prefill(9, "3", "1/3"),
     commands.rename_cue_prefill(9, "3"),
+    commands.patch_prefill(101),
+    commands.rename_fixture_prefill(101),
+    commands.category_prefill("Generic Spot 16ch"),
+    commands.bind_prefill("nanoKONTROL2"),
+    commands.feedback_prefill("nanoKONTROL2", "cc 1 0"),
+    commands.pickup_prefill("nanoKONTROL2"),
 )
 """Lines the UI puts in the prompt to finish."""
+
+WHOLE_PREFILLS = (
+    commands.location_prefill(101, None),
+    commands.location_prefill(102, (1.5, -2.0, 4.25, 0.0, 0.0, 90.0)),
+    commands.unbind_prefill("nanoKONTROL2", "cc 1 0"),
+)
+"""Pre-fills that are whole lines: Enter runs them."""
 
 PERFORMANCE_WORDS = {
     "go", "back", "goto", "release", "fader", "flash", "toggle", "button", "gm", "master",
@@ -170,16 +192,21 @@ def test_the_heads_take_what_their_profile_says(
     assert show.execute(f"set {attribute} {value}").ok is taken
 
 
-def test_the_placeholder_lines_are_busks(show: busk.OfflineShow) -> None:
-    """A whole line runs; a line to finish (ending in a space) is one busk
-    takes so far."""
-    for _, lines in PLANNED.values():
-        for line in lines:
-            if line.endswith(" "):
-                answer = show.expected(line)
-                assert answer.error is None, (line, answer.error)
-                assert answer.words or answer.values, line
-            elif line != "output off":  # asked first; runs too, but darkens the show
-                reply = show.execute(line)
-                assert reply.ok, (line, reply.text)
-    assert show.confirmation("output off") is not None
+def test_the_whole_prefills_run(show: busk.OfflineShow) -> None:
+    assert commands.location_prefill(101, None) == (
+        'fixture 101 location {"x": 0, "y": 0, "z": 0, "rx": 0, "ry": 0, "rz": 0}'
+    )
+    for line in WHOLE_PREFILLS:
+        reply = show.execute(line)
+        assert reply.ok, (line, reply.text)
+
+
+def test_every_binding_of_the_show_unbinds_by_its_input(show: busk.OfflineShow) -> None:
+    """F9's unbind pre-fill names a binding's input as busk reads it."""
+    bindings = show_model(show.show).bindings
+    assert len(bindings) > 50
+    for binding in bindings:
+        line = commands.unbind_prefill(binding.surface, binding.input)
+        reply = show.execute(line)
+        assert reply.ok, (line, reply.text)
+    assert show.show["bindings"] == []

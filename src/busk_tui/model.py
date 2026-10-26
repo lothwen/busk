@@ -21,6 +21,12 @@ type EngineState = Literal["starting", "running", "stalled", "restarting", "fail
 
 type RouteState = Literal["ok", "failed", "disabled", "ignored"]
 
+type SurfaceState = Literal["ok", "failed", "ignored"]
+
+type Source = Literal["programmer", "playback", "effect", "none"]
+"""What drives a family of a fixture element's attributes (busk's
+``FixtureOutput.source``)."""
+
 type Rgb = tuple[float, float, float]
 """A colour, each component 0..1 (busk's linear RGB)."""
 
@@ -220,6 +226,12 @@ class ElementOutput:
     pan: float | None
     tilt: float | None
     zoom: float | None
+    sources: tuple[tuple[str, Source], ...] = ()  # (family, what drives it), the families it has
+    playback: int | None = None  # the playback whose cue or effect drives its intensity
+
+    def source(self, family: str) -> Source | None:
+        """What drives ``family``; ``None`` when the element has none of it."""
+        return next((source for name, source in self.sources if name == family), None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -273,6 +285,51 @@ class RouteView:
     state: RouteState | None
     detail: str
     packets: int
+    address: str = ""  # as route add takes it: the sACN universe, 0.0.1, enttecPro
+    destination: str = ""  # multicast eth0, unicast 10.0.0.50, a DMX-USB port
+    errors: int = 0  # the sends that failed since it opened
+
+
+@dataclass(frozen=True, slots=True)
+class SurfaceView:
+    """One control surface: from the show, with its status once the
+    surfaces are open.
+
+    ``state`` is ``None`` while no surface is open (``--no-surfaces``)."""
+
+    name: str
+    kind: str  # midi, osc, web, hid, internal
+    device: str  # how it is found, as surface add takes it: "nanoKONTROL2", port 8000
+    pickup: str  # soft, jump
+    state: SurfaceState | None
+    detail: str
+    urls: tuple[str, ...]  # an open web remote's addresses, with its key
+
+
+@dataclass(frozen=True, slots=True)
+class BindingInfo:
+    """One binding, in the words of ``bind``: its surface, its input
+    (``kind`` cc, note, osc, clock, bend, hw; ``channel``; ``number``, or an
+    OSC path), what it drives (``what``: ``fader 1``, ``master gm``), its
+    feedback, and the level it shows (``target``)."""
+
+    surface: str
+    kind: str
+    channel: int | None
+    number: str  # the CC or note number, the OSC path, a hardware control; "" for the others
+    what: str
+    feedback: str  # led, motor, display, with its address when not the input's; "" for none
+    target: tuple[str, int | str] | None = None  # ("slot", 0), ("playback", 9), ("master", name)
+
+    @property
+    def input(self) -> str:
+        """The input as ``bind`` and ``unbind`` take it (``cc 1 0``, ``osc
+        "/1/fader1"``, ``clock``); a pitch bend and a hardware control, which
+        no line binds, alike (``bend 1``, ``hw fader1``)."""
+        if self.kind == "osc":
+            return f'osc "{self.number}"'
+        channel = [] if self.channel is None else [str(self.channel)]
+        return " ".join([self.kind, *channel, *([self.number] if self.number else [])])
 
 
 @dataclass(frozen=True, slots=True)
@@ -377,12 +434,21 @@ class PresetInfo:
     values: tuple[tuple[str, Summary], ...] = ()  # its other attributes, in the order stored
 
 
+type Location = tuple[float, float, float, float, float, float]
+"""A fixture's place on stage: x, y, z in metres, rx, ry, rz in degrees."""
+
+
 @dataclass(frozen=True, slots=True)
 class FixtureInfo:
     number: int
     elements: int
     name: str = ""
     profile: str = ""  # its profile's name
+    mode: str = ""  # its mode's name
+    footprint: int = 1  # the DMX channels its mode takes
+    patch: tuple[int, int] | None = None  # (universe number, start address); None: unpatched
+    split: bool = False  # it has an element patch (busk does not run those yet)
+    location: Location | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -394,6 +460,7 @@ class ProfileInfo:
     name: str
     attributes: frozenset[str]
     ranges: tuple[tuple[str, float, float], ...]  # (attribute, low, high)
+    category: str | None = None  # par, spot, wash, pixel, strobe …; None: not set
 
     def range(self, attribute: str) -> tuple[float, float] | None:
         return next(((low, high) for name, low, high in self.ranges if name == attribute), None)
@@ -414,6 +481,7 @@ class ShowModel:
     fixtures: tuple[FixtureInfo, ...]
     profiles: tuple[ProfileInfo, ...] = ()
     templates: tuple[TemplateInfo, ...] = ()  # what effect add takes
+    bindings: tuple[BindingInfo, ...] = ()  # in show order
 
     def playback(self, number: int) -> PlaybackInfo | None:
         return next((info for info in self.playbacks if info.number == number), None)
@@ -519,6 +587,11 @@ class RoutesChanged:
 
 
 @dataclass(frozen=True, slots=True)
+class SurfacesChanged:
+    surfaces: tuple[SurfaceView, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class HealthChanged:
     state: EngineState
     late: bool  # the engine's overruns grew over the last second or more
@@ -550,6 +623,7 @@ type BridgeEvent = (
     | EffectsChanged
     | OutputChanged
     | RoutesChanged
+    | SurfacesChanged
     | HealthChanged
     | SessionChanged
     | EngineNews
@@ -563,6 +637,7 @@ STATE_EVENTS: tuple[type, ...] = (
     EffectsChanged,
     OutputChanged,
     RoutesChanged,
+    SurfacesChanged,
     HealthChanged,
     SessionChanged,
 )

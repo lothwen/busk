@@ -295,6 +295,7 @@ class Stub:
     snapshot: busk.EngineSnapshot | None = field(default_factory=lambda: stub_snapshot(1))
     programmer: busk.ProgrammerStatus = field(default_factory=lambda: stub_programmer(1))
     routes: Any = None
+    surfaces: Any = None
     health: busk.EngineHealth | None = field(default_factory=stub_health)
     frame: Any = None
     effects: Any = None

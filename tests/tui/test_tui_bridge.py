@@ -38,6 +38,7 @@ from busk_tui.model import (
     SessionState,
     ShowChanged,
     ShowLoadFailed,
+    SurfacesChanged,
 )
 
 WAIT_S = 5.0
@@ -240,6 +241,33 @@ def test_the_show_only_on_a_new_document(running: tuple[Bridge, Events], stub: S
     assert [master.kind for master in event.show.masters] == ["grand"]
 
 
+def test_the_surfaces_on_a_new_status_and_a_new_document(
+    running: tuple[Bridge, Events], stub: Stub
+) -> None:
+    _, events = running
+    events.until(lambda e: isinstance(e, SurfacesChanged))  # none open yet: None
+    show = busk.new_show("Stub")
+    show["surfaces"] = [{"id": "s-1", "name": "Phone", "kind": "web", "match": {"port": 8080},
+                         "faderPickup": "jump"}]  # fmt: skip
+    stub.show = show
+    event = events.until(lambda e: isinstance(e, SurfacesChanged) and bool(e.surfaces))
+    assert isinstance(event, SurfacesChanged)
+    assert [(v.name, v.state) for v in event.surfaces] == [("Phone", None)]
+    status = (busk.SurfaceStatus(id="s-1", name="Phone", kind="web", state="ok", detail="",
+                                 urls=("http://10.0.0.2:8080/?k=abc",)),)  # fmt: skip
+    stub.surfaces = status
+    event = events.until(
+        lambda e: (
+            isinstance(e, SurfacesChanged) and e.surfaces[:1] != () and e.surfaces[0].state == "ok"
+        )
+    )
+    assert isinstance(event, SurfacesChanged)
+    assert event.surfaces[0].urls == ("http://10.0.0.2:8080/?k=abc",)
+    count = len(events.of(SurfacesChanged))
+    time.sleep(0.2)  # the same status object: nothing new
+    assert len(events.of(SurfacesChanged)) == count
+
+
 def fx_snapshot(seq: int, presence: float = 1.0) -> busk.EffectSnapshot:
     status = busk.EffectStatus(
         playback=11, cue="1", id="fx1", presence=presence, size=1.0, hz=1.0, phase=0.0,
@@ -292,8 +320,9 @@ def test_the_output_only_while_watched_and_only_when_it_changes(
     bridge.watch(output=True, effects=False)
     first = events.until(lambda e: isinstance(e, OutputChanged), "the output")
     assert isinstance(first, OutputChanged)
+    sources = (("intensity", "programmer"),)
     assert first.output.element(101, 1) == ElementOutput(101, 1, 1.0, (1.0, 0.0, 0.0), -45.0,
-                                                         10.0, None)  # fmt: skip
+                                                         10.0, None, sources)  # fmt: skip
     stub.output = out_snapshot(2)  # a new tick, the same output
     time.sleep(0.2)
     assert len(events.of(OutputChanged)) == 1

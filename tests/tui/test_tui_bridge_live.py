@@ -24,6 +24,7 @@ from busk_tui.model import (
     RoutesChanged,
     SessionChanged,
     ShowChanged,
+    SurfacesChanged,
 )
 
 WAIT_S = 15.0  # the show's start
@@ -72,6 +73,12 @@ def test_it_reaches_running_with_the_shows_state(live: tuple[Bridge, Drained]) -
     routes = drained.until(lambda e: isinstance(e, RoutesChanged))
     assert isinstance(routes, RoutesChanged)
     assert [(r.protocol, r.universe, r.state) for r in routes.routes] == [("sACN", 1, None)]
+    surfaces = drained.until(lambda e: isinstance(e, SurfacesChanged))
+    assert isinstance(surfaces, SurfacesChanged)
+    assert [(v.name, v.kind, v.state) for v in surfaces.surfaces] == [
+        ("nanoKONTROL2", "midi", None),  # surfaces=False: none is open
+        ("Phone", "web", None),
+    ]
 
 
 def test_a_performance_line_shows_within_a_second(live: tuple[Bridge, Drained]) -> None:

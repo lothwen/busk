@@ -25,8 +25,10 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   list between sequence and chase, and puts a cue's timing edits in the prompt; F5 lists the
   cues' and the programmer's effects with their live state and wave, and adds, stops, runs
   and removes programmer effects from the show's and the library's templates; F6 applies
-  presets from tiles; F7 has every master and the panic controls. The other pages list the
-  lines to type meanwhile.
+  presets from tiles; F7 has every master and the panic controls; F3 lists every fixture with
+  its patch and live output, coloured by what drives it; F8 shows the universes, the routes
+  with their state and packet rate, and a DMX map per universe with its overlaps; F9 shows
+  the control surfaces with their state and the bindings with the level of what they drive.
 - `OfflineShow.output` and `LiveShow.output`: the engine's output read back per fixture
   element, as two new public types, `OutputSnapshot` and `FixtureOutput`
   ([the library guide](docs/library.md#2-build-a-show-and-render-it-offlineshow)). Each

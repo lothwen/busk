@@ -225,6 +225,10 @@ def test_route_lights_and_their_blink() -> None:
     status.set_routes((route("ok", 50), *routes[1:]), now=0.9)
     status.set_routes((route("ok", 50), *routes[1:]), now=1.2)  # stopped sending: steady on
     assert "● sACN·U1" in status.left_text().plain
+    status.set_routes((route("ok", 60), *routes[1:]), now=1.5)
+    assert "○ sACN·U1" in status.left_text().plain
+    status.tick(now=1.8)  # no new routes come once it stops: the clock makes it steady
+    assert "● sACN·U1" in status.left_text().plain
 
 
 def test_the_beat_dot_is_lit_in_the_first_quarter_of_each_beat() -> None:
@@ -272,8 +276,10 @@ def test_the_bridge_starts_with_the_app_and_watches_nothing(tmp_path: object) ->
 
     async def body(pilot: Pilot[int]) -> None:
         assert bridge.started
-        await pilot.press("f3")
+        await pilot.press("f8")
         assert bridge.watching == (False, False)
+        await pilot.press("f3")
+        assert bridge.watching == (True, False)
         assert isinstance(app.query_one(HintRow), HintRow)
 
     drive(app, body)

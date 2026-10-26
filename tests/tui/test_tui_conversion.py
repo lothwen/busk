@@ -1,8 +1,9 @@
 """The bridge's conversion (``busk_tui.bridge``) of real busk objects, from an
 :class:`busk.OfflineShow` of the club-night show: the playbacks of the
-snapshot, the show model F1, F2, F4, F5, F6 and F7 use (profiles, fixtures, preset
-summaries, cues as stored, effect settings, templates), the programmer's
-values and effects, the running effects and the output."""
+snapshot, the show model the pages use (profiles, fixtures with their patch,
+preset summaries, cues as stored, effect settings, templates, bindings), the
+routes and surfaces, the programmer's values and effects, the running
+effects and the output with its sources."""
 
 from __future__ import annotations
 
@@ -14,11 +15,14 @@ import pytest
 import busk
 from busk_tui.bridge import (
     effects_model,
+    fixture_info,
     live_state,
     output_model,
     profile_info,
     programmer_model,
+    route_views,
     show_model,
+    surface_views,
 )
 from busk_tui.model import (
     EffectInfo,
@@ -83,8 +87,13 @@ def test_the_show_model_has_what_f1_and_f7_show(club: busk.OfflineShow) -> None:
     ]
     position = [p for p in model.presets if p.pool == "position"]
     assert [p.color for p in position] == [None, None]
-    assert FixtureInfo(301, 12, "COLORband PiX 301", "Chauvet DJ COLORband PiX") in model.fixtures
-    assert FixtureInfo(101, 1, "Spot 101", "Generic Spot 16ch") in model.fixtures
+    bar = FixtureInfo(
+        301, 12, "COLORband PiX 301", "Chauvet DJ COLORband PiX", "36-CH", 36, (1, 49)
+    )
+    assert bar in model.fixtures
+    assert (
+        FixtureInfo(101, 1, "Spot 101", "Generic Spot 16ch", "16ch", 16, (1, 1)) in model.fixtures
+    )
 
 
 def test_a_chase_names_its_master_when_the_show_has_two(show: busk.OfflineShow) -> None:
@@ -202,7 +211,10 @@ def test_what_each_profile_takes_and_its_ranges(club: busk.OfflineShow) -> None:
     par = profiles["Eurolite LED ML-56 RGBW"]  # dimmed virtually: no intensity channel
     assert par.attributes == frozenset({"intensity", "color", "color.w"})
     bar = profiles["Chauvet DJ COLORband PiX"]  # maxStrobeHz, but nothing takes a strobe rate
-    assert bar == ProfileInfo("Chauvet DJ COLORband PiX", frozenset({"intensity", "color"}), ())
+    assert bar == ProfileInfo(
+        "Chauvet DJ COLORband PiX", frozenset({"intensity", "color"}), (), "pixel"
+    )
+    assert (spot.category, par.category) == ("spot", "par")
 
 
 def test_a_profile_without_physical_ranges_uses_its_channels_else_the_defaults(
@@ -255,7 +267,12 @@ def test_the_output(show: busk.OfflineShow) -> None:
     head = model.element(101, 1)
     assert head is not None
     assert (head.intensity, head.pan, head.tilt, head.zoom) == (0.5, -45.0, 0.0, 21.0)
-    assert model.element(201, 1) == ElementOutput(201, 1, 1.0, (1.0, 0.0, 0.0), None, None, None)
+    sources = (("intensity", "programmer"), ("color", "programmer"))
+    assert model.element(201, 1) == ElementOutput(
+        201, 1, 1.0, (1.0, 0.0, 0.0), None, None, None, sources
+    )
+    assert head.source("position") == "programmer"
+    assert head.source("focus") is None  # the head has no focus
     assert [out.element for out in model.fixtures if out.number == 301] == list(range(1, 13))
     assert model.element(999, 1) is None
 
@@ -347,3 +364,126 @@ def test_the_templates_effect_add_takes(club: busk.OfflineShow) -> None:
     assert (templates[2].low, templates[2].high) == (0.0, 1.0)
     assert templates[4].phase == (0.0, 360.0)
     assert show_model(club.show).templates == ()
+
+
+# ------------------------------------------------------------ F3, F8, F9
+
+
+RIG_LINES = (
+    "route add 1 artnet 0.0.1 unicast 10.0.0.50",
+    "route add 1 dmxusb enttecPro /dev/ttyUSB0",
+    "route add 1 sacn 2 unicast 10.0.0.9",
+    'surface add osc "TouchOSC" port 8000 feedback 10.0.0.5:9000',
+    'surface add web "Tablet" port 8081 on 127.0.0.1',
+    'bind "TouchOSC" osc "/1/push1" blackout momentary led note 1 40',
+    'bind "TouchOSC" osc "/1/f" fader playback 9',
+    'bind "TouchOSC" osc "/1/p" page 2',
+    'bind "TouchOSC" osc "/1/r" release all 2',
+    'bind "TouchOSC" osc "/1/o" output off',
+    'bind "nanoKONTROL2" clock tap',
+    'bind "nanoKONTROL2" note 1 36 button 1 1 motor',
+    "fixture 102 patch none",
+    'fixture 101 location {"x": 1.5, "y": 2, "z": 4, "rx": 0, "ry": 0, "rz": 90}',
+)
+
+
+def test_fixtures_with_their_mode_patch_and_place(show: busk.OfflineShow) -> None:
+    for line in RIG_LINES:
+        assert show.execute(line).ok, line
+    model = show_model(show.show)
+    spot, loose = model.fixture(101), model.fixture(102)
+    assert spot is not None
+    assert loose is not None
+    assert (spot.mode, spot.footprint, spot.patch) == ("16ch", 16, (1, 1))
+    assert spot.location == (1.5, 2.0, 4.0, 0.0, 0.0, 90.0)
+    assert (loose.patch, loose.location, loose.split) == (None, None, False)
+    split = copy.deepcopy(show.show["fixtures"][6])  # busk does not run element patches yet
+    split["elementPatch"] = {1: {"universeId": split["patch"]["universeId"], "address": 101}}
+    modes = {(p["id"], m["id"]): m for p in show.show["profiles"] for m in p["modes"]}
+    universes = {u["id"]: u["number"] for u in show.show["universes"]}
+    assert fixture_info(split, modes, {}, universes).split
+
+
+def test_routes_in_the_words_of_route_add(show: busk.OfflineShow) -> None:
+    for line in RIG_LINES[:3]:
+        assert show.execute(line).ok, line
+    routes = show.show["output"]["routes"]
+    status = (
+        busk.RouteStatus(id=routes[1]["id"], label="Art-Net r2", universe=1, state="failed",
+                         detail="no route to host", packets=10, errors=3),
+    )  # fmt: skip
+    views = route_views(show.show, status)
+    assert [(v.protocol, v.address, v.destination) for v in views] == [
+        ("sACN", "1", "multicast eth0"),
+        ("ArtNet", "0.0.1", "unicast 10.0.0.50"),
+        ("DMX-USB", "enttecPro", "/dev/ttyUSB0"),
+        ("sACN", "2", "unicast 10.0.0.9"),
+    ]
+    assert (views[1].state, views[1].detail, views[1].packets, views[1].errors) == (
+        "failed", "no route to host", 10, 3
+    )  # fmt: skip
+    assert views[0].state is None  # no status: nothing runs it
+
+
+def test_surfaces_in_the_words_of_surface_add(show: busk.OfflineShow) -> None:
+    for line in RIG_LINES[3:5]:
+        assert show.execute(line).ok, line
+    surfaces = show.show["surfaces"]
+    status = (
+        busk.SurfaceStatus(id=surfaces[0]["id"], name="nanoKONTROL2", kind="midi",
+                           state="failed", detail="unplugged; waiting for it", urls=()),
+        busk.SurfaceStatus(id=surfaces[1]["id"], name="Phone", kind="web", state="ok",
+                           detail="", urls=("http://10.0.0.2:8080/?k=abc",)),
+    )  # fmt: skip
+    views = surface_views(show.show, status)
+    assert [(v.name, v.kind, v.device, v.pickup, v.state) for v in views] == [
+        ("nanoKONTROL2", "midi", '"nanoKONTROL2"', "soft", "failed"),
+        ("Phone", "web", "port 8080", "jump", "ok"),
+        ("TouchOSC", "osc", "port 8000 feedback 10.0.0.5:9000", "jump", None),
+        ("Tablet", "web", "port 8081 on 127.0.0.1", "jump", None),
+    ]
+    assert views[0].detail == "unplugged; waiting for it"
+    assert views[1].urls == ("http://10.0.0.2:8080/?k=abc",)
+
+
+def test_bindings_in_the_words_of_bind(show: busk.OfflineShow) -> None:
+    for line in RIG_LINES[3:12]:
+        assert show.execute(line).ok, line
+    bindings = show_model(show.show).bindings
+    words = {(b.input, b.what, b.feedback, b.target) for b in bindings}
+    assert ("cc 1 0", "fader 1", "", ("slot", 0)) in words
+    assert ("cc 1 32", "button 1 1", "led", None) in words
+    assert ("cc 1 23", "master gm", "", ("master", "Grand Master")) in words
+    assert ("cc 1 22", 'master "FX"', "", ("master", "FX")) in words
+    assert ("cc 1 46", "tap", "led", None) in words  # one speed master: no name
+    assert ("cc 1 61", "page -1", "", None) in words
+    assert ("cc 1 60", "release all", "", None) in words
+    assert ('osc "/1/push1"', "blackout momentary", "led note 1 40", None) in words
+    assert ('osc "/1/f"', "fader playback 9", "", ("playback", 9)) in words
+    assert ('osc "/1/p"', "page 2", "", None) in words
+    assert ('osc "/1/r"', "release all 2", "", None) in words
+    assert ('osc "/1/o"', "output off", "", None) in words
+    assert ("clock", "tap", "", None) in words
+    assert ("note 1 36", "button 1 1", "motor", None) in words
+    clock = next(b for b in bindings if b.kind == "clock")
+    assert (clock.surface, clock.channel, clock.number) == ("nanoKONTROL2", None, "")
+
+
+def test_a_tap_names_its_master_when_the_show_has_two(show: busk.OfflineShow) -> None:
+    assert show.execute('master add speed "Speed 2"').ok
+    assert show.execute('bind "nanoKONTROL2" cc 1 99 tap "Speed 2"').ok
+    taps = [b.what for b in show_model(show.show).bindings if b.what.startswith("tap")]
+    assert taps == ['tap "Speed 1"', 'tap "Speed 2"']
+
+
+def test_the_output_says_what_drives_each_family(show: busk.OfflineShow) -> None:
+    for line in ("fader 11 100%", "go 11", "sel fixture 201", "set intensity 50%"):
+        assert show.execute(line).ok, line
+    show.tick(0.5)
+    model = output_model(show.output)
+    head, wash = model.element(101, 1), model.element(201, 1)
+    assert head is not None
+    assert wash is not None
+    assert head.source("position") == "effect"  # P11's Circle
+    assert wash.source("intensity") == "programmer"
+    assert (head.playback, wash.playback) == (None, None)

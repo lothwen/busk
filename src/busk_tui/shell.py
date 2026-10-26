@@ -60,17 +60,20 @@ from busk_tui.model import (
     SessionChanged,
     SessionState,
     ShowChanged,
+    SurfacesChanged,
 )
 from busk_tui.nav import PaneCursor
 from busk_tui.pages.base import ALL_PARTS, Page, Part, View
 from busk_tui.pages.busk import BuskPage, Slots, follow, step, visible_slots
 from busk_tui.pages.cues import CuesPage
 from busk_tui.pages.effects import EffectsPage
+from busk_tui.pages.fixtures import FixturesPage
 from busk_tui.pages.masters import MastersPage
-from busk_tui.pages.placeholder import Placeholder
+from busk_tui.pages.patch import PatchPage
 from busk_tui.pages.presets import PresetsPage
 from busk_tui.pages.program import ProgramPage
-from busk_tui.widgets.controls import FillPrompt, RunLine
+from busk_tui.pages.surfaces import SurfacesPage
+from busk_tui.widgets.controls import FillPrompt, RunLine, ShowHint
 from busk_tui.widgets.dialogs import ConfirmDialog, QuitChoice, QuitDialog
 from busk_tui.widgets.frame import PAGES, KeyLegend, StatusBar, TabBar
 from busk_tui.widgets.help import HelpOverlay
@@ -87,15 +90,18 @@ NUDGE_S: Final = 0.5
 """``[ ]`` step from the level they last sent for this long; after it, from
 the level the engine shows."""
 
-BUILT: Final[dict[int, type[Page]]] = {
+PAGE_TYPES: Final[dict[int, type[Page]]] = {
     1: BuskPage,
     2: ProgramPage,
+    3: FixturesPage,
     4: CuesPage,
     5: EffectsPage,
     6: PresetsPage,
     7: MastersPage,
+    8: PatchPage,
+    9: SurfacesPage,
 }
-"""The pages built so far; the others are placeholders."""
+"""The pages by F-key."""
 
 COLOR_MODES: Final[dict[str | None, colors.ColorMode]] = {"truecolor": "truecolor", "256": "256"}
 """Rich's colour system → how swatches are quantised (else: 16 colours)."""
@@ -166,7 +172,7 @@ class BuskApp(App[int]):
             yield TabBar(id="tabs")
             with ContentSwitcher(id="main", initial=f"page-{self.page}"):
                 for number, title in PAGES:
-                    yield BUILT.get(number, Placeholder)(number, title)
+                    yield PAGE_TYPES[number](number, title)
             yield LogView(id="log")
             yield HelpOverlay()
         yield PromptRow(id="prompt-row")
@@ -184,7 +190,7 @@ class BuskApp(App[int]):
         for problem in self.settings.problems:
             self.log_view.add("info", problem)
         self.set_interval(DRAIN_S, self.drain)
-        self.set_interval(1.0, self.status.refresh)  # the clock
+        self.set_interval(1.0, self.status.tick)  # the clock, and the route lights
         self.set_interval(0.1, self._show_context)
         if self.standalone:
             loop = asyncio.get_running_loop()
@@ -301,6 +307,11 @@ class BuskApp(App[int]):
                 self._changed.add("output")
             case RoutesChanged(routes=routes):
                 self.status.set_routes(routes)
+                self.view.routes = routes
+                self._changed.add("routes")
+            case SurfacesChanged(surfaces=surfaces):
+                self.view.surfaces = surfaces
+                self._changed.add("surfaces")
             case HealthChanged(state=state, late=late):
                 self.status.engine, self.status.late = state, late
                 self.status.refresh()
@@ -415,6 +426,14 @@ class BuskApp(App[int]):
         self.prompt.cursor_position = len(message.text)
         self.prompt.focus()
 
+    def on_show_hint(self, message: ShowHint) -> None:
+        """What is under the mouse, in the hint row (F8's DMX cells)."""
+        message.stop()
+        if message.text is None:
+            self._show_hint()
+        else:
+            self.query_one(HintRow).show_text(message.text, colors.MID)
+
     def on_input_submitted(self, event: Input.Submitted) -> None:
         event.stop()
         line = event.value.strip()
@@ -485,6 +504,7 @@ class BuskApp(App[int]):
         self.query_one(ContentSwitcher).current = f"page-{number}"
         self.tabs.show(number, False)
         self._show_page()
+        self._show_hint()  # not what was under the mouse on the page before
 
     def _show_page(self) -> None:
         """The page just shown: what the bridge reads for it, and all of it drawn."""

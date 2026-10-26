@@ -99,6 +99,7 @@ class RowTable(Widget):
         self.empty = empty or Text()
         self.rows: tuple[Cells, ...] = ()
         self.chosen: int | None = None
+        self.lit: frozenset[int] = frozenset()
         self.spots: list[tuple[int, str | None]] = []  # the pane cursor's stops: row, cell
         self._hover: int | None = None
         self._marked: tuple[int, str | None] | None = None
@@ -106,16 +107,21 @@ class RowTable(Widget):
         self._width = 0
 
     def show(
-        self, rows: Sequence[Cells], chosen: int | None = None, empty: Text | None = None
+        self,
+        rows: Sequence[Cells],
+        chosen: int | None = None,
+        empty: Text | None = None,
+        lit: frozenset[int] = frozenset(),
     ) -> None:
-        """New rows, the chosen one, and what shows without rows (``None``:
-        as before); the lines that differ are drawn again."""
+        """New rows, the chosen one, what shows without rows (``None``: as
+        before), and other rows drawn as the chosen one is (``lit``: F3's
+        selected fixtures); the lines that differ are drawn again."""
         rows = tuple(rows)
         empty = self.empty if empty is None else empty
-        if rows == self.rows and chosen == self.chosen and empty == self.empty:
+        if rows == self.rows and chosen == self.chosen and empty == self.empty and lit == self.lit:
             return
-        before, was = self.rows, self.chosen
-        self.rows, self.chosen, self.empty = rows, chosen, empty
+        before, was, was_lit = self.rows, self.chosen, self.lit
+        self.rows, self.chosen, self.empty, self.lit = rows, chosen, empty, lit
         if self._hover is not None and self._hover >= len(rows):
             self._hover = None
         if len(rows) != len(before) or not rows:
@@ -125,7 +131,7 @@ class RowTable(Widget):
         changed = {row for row, cells in enumerate(rows) if cells != before[row]}
         if chosen != was:
             changed |= {row for row in (was, chosen) if row is not None}
-        self._redraw_rows(changed)
+        self._redraw_rows(changed | (lit ^ was_lit))
 
     def mark(self, index: int | None) -> None:
         """The pane cursor on spot ``index`` (``None``: nowhere)."""
@@ -170,7 +176,7 @@ class RowTable(Widget):
             line.stylize(MARKED)
         elif row == self._hover:
             line.stylize(f"on {colors.SEL}")
-        elif row == self.chosen:
+        elif row == self.chosen or row in self.lit:
             line.stylize(f"on {colors.BAR}")
         return line
 

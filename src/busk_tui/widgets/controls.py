@@ -68,6 +68,15 @@ class FillPrompt(Message):
         self.text = text
 
 
+class ShowHint(Message):
+    """Show ``text`` in the hint row (what is under the mouse: F8's DMX
+    cells); ``None``: the hint row's own text again."""
+
+    def __init__(self, text: str | None) -> None:
+        super().__init__()
+        self.text = text
+
+
 class CommandButton(Static):
     """``[LABEL]`` in its intent's colour, or reversed (a lit toggle, TAP);
     a click runs its line, unless it is ``inert`` (drawn in the border

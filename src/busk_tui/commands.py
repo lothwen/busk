@@ -13,6 +13,7 @@ there, not on stage. Each phase adds its builders here and to that test.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 
@@ -128,6 +129,20 @@ def sel_none() -> Line:
     return Line("sel none")
 
 
+def sel_fixture(fixture: int, *, add: bool = False, remove: bool = False) -> Line:
+    """``sel fixture 101``; ``add``: ``sel + fixture 101``; ``remove``: ``sel -
+    fixture 101``."""
+    change = "+ " if add else "- " if remove else ""
+    return Line(f"sel {change}fixture {fixture}")
+
+
+def sel_fixtures(fixtures: Sequence[int], *, add: bool = False) -> Line:
+    """Several fixtures at once: ``sel fixture 501, fixture 502`` (``add``:
+    ``sel + …``)."""
+    targets = ", ".join(f"fixture {fixture}" for fixture in fixtures)
+    return Line(f"sel {'+ ' if add else ''}{targets}")
+
+
 def preset(pool: str, preset_number: int) -> Line:
     return Line(f"preset {pool} {preset_number}")
 
@@ -231,3 +246,50 @@ def cue_time_prefill(cue_list: int, cue: str, times: str, then: str = "") -> str
 def rename_cue_prefill(cue_list: int, cue: str) -> str:
     """``rename cue 9/3 "``: the name comes next."""
     return f'rename cue {cue_list}/{cue} "'
+
+
+def patch_prefill(fixture: int) -> str:
+    """``fixture 101 patch ``: an address (``1.101``) or ``none`` next."""
+    return f"fixture {fixture} patch "
+
+
+def location_prefill(fixture: int, location: Sequence[float] | None) -> str:
+    """``fixture 101 location {"x": 0, "y": 0, "z": 0, "rx": 0, "ry": 0, "rz": 0}``,
+    with the fixture's own place when it has one, to change."""
+    values = tuple(location) if location is not None else (0.0,) * 6
+    pairs = ", ".join(
+        f'"{key}": {number(value)}'
+        for key, value in zip(("x", "y", "z", "rx", "ry", "rz"), values, strict=True)
+    )
+    return f"fixture {fixture} location {{{pairs}}}"
+
+
+def rename_fixture_prefill(fixture: int) -> str:
+    """``rename fixture 101 "``: the name comes next."""
+    return f'rename fixture {fixture} "'
+
+
+def category_prefill(profile: str) -> str:
+    """``profile "Generic Spot" category ``: a category or ``none`` next."""
+    return f"profile {quoted(profile)} category "
+
+
+def bind_prefill(surface: str) -> str:
+    """``bind "nanoKONTROL2" ``: an input and what it drives next."""
+    return f"bind {quoted(surface)} "
+
+
+def unbind_prefill(surface: str, given: str) -> str:
+    """``unbind "nanoKONTROL2" cc 1 0``, whole: Enter runs it."""
+    return f"unbind {quoted(surface)} {given}"
+
+
+def feedback_prefill(surface: str, given: str) -> str:
+    """``feedback "nanoKONTROL2" cc 1 0 ``: ``led``, ``motor``, ``display``
+    or ``none`` next."""
+    return f"feedback {quoted(surface)} {given} "
+
+
+def pickup_prefill(surface: str) -> str:
+    """``surface "nanoKONTROL2" pickup ``: ``soft`` or ``jump`` next."""
+    return f"surface {quoted(surface)} pickup "

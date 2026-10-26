@@ -6,11 +6,11 @@ the console prompt on one screen. Every click and key in it is a console line, e
 log, so what the UI does is what you could type.
 
 > **Work in progress.** This version has the frame (the status bar, the log, the prompt with
-> hints and completion, the help overlay and the dialogs) and six pages: [F1 Busk](#f1-busk),
+> hints and completion, the help overlay and the dialogs) and every page: [F1 Busk](#f1-busk),
 > to play the show, [F2 Program](#f2-program) and [F6 Presets](#f6-presets), to build a look,
 > [F4 Cues](#f4-cues) and [F5 Effects](#f5-effects), to run and edit cue lists and effects,
-> and [F7 Masters](#f7-masters). The other pages are not built yet: each one lists console
-> lines to type meanwhile.
+> [F7 Masters](#f7-masters), and the rig: [F3 Fixtures](#f3-fixtures), [F8 Patch](#f8-patch)
+> and [F9 Surfaces](#f9-surfaces). F1 has one of its three layouts so far, B (stack).
 
 ## Install
 
@@ -251,6 +251,47 @@ With the pane cursor (Tab on an empty prompt), a row's name puts its `set` in th
 `[−]` `[+]` run their step, so Enter Enter Enter steps the value. Below 100 columns the
 panels go one under the other.
 
+## F3 Fixtures
+
+Every fixture, with its patch and what it outputs now.
+
+```
+ ┌─ FIXTURES · 7 fixtures · 4 selected · click selects, Shift-click adds ─────────────────────────────────────────┐
+ │      # name                  profile                        type   mode      patch   intensity colour       pan  tilt zoom src     │
+ │    101 Spot 101              Generic Spot 16ch              spot   16ch      1.1           64% ██           12°   10°  21° P1      │
+ │ ▸  201 LED ML-56 RGBW 201    Eurolite LED ML-56 RGBW        par    4-channel 1.33          40% ██                          prog    │
+ │ ▸  204 LED ML-56 RGBW 204    Eurolite LED ML-56 RGBW        par    4-channel 1.45           0% ██                          —       │
+ │    301 COLORband PiX 301     Chauvet DJ COLORband PiX ×12   pixel  36-CH     1.49        8–50% ████████████                fx P13  │
+ │                                                                                                                                    │
+ │ ■ programmer   ■ playback   ■ effect   ■ nothing   — unpatched   ▸ selected                                                        │
+ │ edit fixture 201 LED ML-56 RGBW 201 [patch…] [location…] [category…] [rename…]                                                     │
+```
+
+**A row** is a fixture: `▸` while it is selected (its row lighter), its number, name,
+profile (`×12` for a fixture of twelve elements), type (the profile's category: `par`,
+`spot`, `wash`, `pixel` …), mode and patch (`1.49`; a red `—` while it is not patched). Then
+what busk outputs for it now, after the masters, blackout, park and limits:
+
+- `intensity`: what it emits, `8–50%` while its elements differ;
+- `colour`: one swatch per element (twelve at most) in its colour at its intensity; dark when
+  it is out;
+- `pan`, `tilt` and `zoom` in degrees, on fixtures that have them (before the fixture's
+  orientation);
+- `src`: what drives its intensity: `prog` (the programmer), `P9` (playback 9's cue), `fx
+  P13` (an effect of playback 13's cue), `fx` (a programmer effect), `—` (nothing).
+
+The values are coloured by what drives them: magenta the programmer, white a playback, green
+an effect, grey nothing (the intensity and `src` by what drives the intensity, pan and tilt
+by what drives the position, zoom by the beam's). A parked value counts as nothing: busk
+does not say which values park holds.
+
+A click on a row selects the fixture (`sel fixture 101`); Shift-click adds it to the
+selection, or takes it out when it is in (`sel + fixture 101`, `sel - fixture 101`). The
+edits under the table act on the fixture clicked last (else the first selected): they put
+`fixture 101 patch `, `fixture 101 location {"x": 0, …}` (with its place when it has one),
+`profile "Generic Spot 16ch" category ` or `rename fixture 101 "` in the prompt to finish.
+The pane cursor stops on each row (Enter selects it, and the cursor stays), then the edits.
+
 ## F4 Cues
 
 Every cue list, and the cues of one: go to a cue, record one, switch a list between sequence
@@ -370,6 +411,83 @@ Every master, one panel per kind, three across on a wide terminal:
   1.6 s`, or `off`).
 - **PANIC**: whether the output is on, `[release all]`, `[OUTPUT OFF]` (busk asks first, as
   for a typed `output off`) and `[OUTPUT ON]`.
+
+## F8 Patch
+
+The universes, the output routes and their state, and a map of each universe's channels.
+
+```
+ ┌─ UNIVERSES ──────────────────────────────────────────────┐┌─ ROUTES ──────────────────────────────────────────────────────┐
+ │   U name                        fixtures    used overlaps ││   U proto   address  destination        tx       state         │
+ │   1 Stage                             11  66/512        2 ││   1 ArtNet  0.0.0    unicast 127.0.0.1  ● 1/s    open          │
+ └──────────────────────────────────────────────────────────┘└───────────────────────────────────────────────────────────────┘
+ ┌─ DMX MAP · U1 Stage · 66/512 · 2 overlaps ───────────────────────────────────────────────────────────────────────────────┐
+ │    1 █▓▓▓▓▓▓·························█▓▓▓▓▓▓▓························                                                    │
+ │   65 █▓▓▓▓▓▓▓██▓▓▓▓▓█▓▓▓▓▓█▓▓▓▓▓╳╳╳╳╳╳╳╳╳╳╳╳············╳╳╳╳╳╳╳╳╳╳╳╳·                                                    │
+ │  129 ································································                                                    │
+ │  …                                                                                                                       │
+ █ LED Bar   █ Blinder   █ fog   █ par   █ spot   █ start   ▓ footprint   ╳ overlap   · free
+```
+
+**UNIVERSES**: each universe, how many fixtures are patched in it, how many of its 512
+channels they take, and how many pairs of fixtures overlap (in red). **ROUTES**: each route,
+its protocol, address and destination as `route add` takes them, its light (green while it
+is open, blinking while it sends, red when it fails, grey when it is disabled or nothing
+runs the output, as with `--no-output`) with the packets it sends per second, and its state:
+`open` (with the send errors, if any), `failed:` and busk's reason, `disabled`, `ignored:`
+and why. busk keeps opening a failed route again. An Art-Net or sACN route sends an unchanged
+universe once a second, so an idle look shows `1/s`.
+
+**DMX MAP**, one per universe: 64 channels to a row (32 on a narrow screen), the first one's
+address on the left. A fixture's start address is `█` and the rest of its footprint `▓`, in
+the colour of its type (the profile's category: par amber, spot cyan, wash magenta, pixel
+green, strobe white; a profile without one gets a colour of its own); `╳` in red where two
+fixtures share a channel; `·` is free. The legend names the types. A fixture patched with a
+split patch (one address per element) shows its main patch only: busk does not run split
+patches yet, and F3 marks them `split`.
+
+Hover over a channel and the hint row says what it is (`1.94 · overlap · fixture 501 · ch
+3/12 · fixture 502 · ch 3/12`). A click selects the fixture (`sel fixture 101`), both on an
+overlap (`sel fixture 501, fixture 502`); Shift-click adds it, or takes it out. The pane
+cursor stops on each fixture of the maps, in address order, and Enter selects it. Below 100
+columns ROUTES goes under UNIVERSES.
+
+## F9 Surfaces
+
+The control surfaces (MIDI controllers, OSC apps, the web remote) and what each input is
+bound to.
+
+```
+ ┌─ SURFACES · 2 ─────────────────────────────────────────┐┌─ BINDINGS · 51 ──────────────────────────────────────────────────┐
+ │   name          kind device         pickup binds state ││ surface         input        what                  feedback  val │
+ │ ● nanoKONTROL2  midi "nanoKONTROL2" soft      51 failed││ nanoKONTROL2    cc 1 0       fader 1                         80% │
+ │ ● Phone         web  port 8080      jump       0 open  ││ nanoKONTROL2    cc 1 32      button 1 1            led         — │
+ │                                                        ││ nanoKONTROL2    cc 1 23      master gm                      100% │
+ │ nanoKONTROL2  'nanoKONTROL2' not found; available: …   ││ nanoKONTROL2    cc 1 46      tap                   led         — │
+ │ Phone  http://192.168.1.135:8080/?k=Ri2I1sMN           ││ nanoKONTROL2    cc 1 60      release all                       — │
+ │ edit "nanoKONTROL2" [bind…] [pickup…]                  ││ edit cc 1 32 on "nanoKONTROL2" [unbind…] [feedback…]             │
+```
+
+**SURFACES**: each surface's light (green open, red failed, grey ignored or not open, as
+with `--no-surfaces`), name, kind, how busk finds it (the MIDI device's name, the OSC port
+and where feedback goes, the web remote's port), its fader pickup, how many bindings it has
+and its state. Under the table, busk's reason for a failed or ignored surface, and the web
+remote's addresses, with their key, to open on a phone. A MIDI controller that is unplugged
+turns red, and green again once it is plugged in: busk opens it when it comes back.
+
+**BINDINGS**: each binding's surface, its input as `bind` takes it (`cc 1 48`, `note 1 36`,
+`osc "/1/fader1"`, `clock`), what it drives in `bind`'s words (`fader 1`, `button 9 2`,
+`master gm`, `master "FX"`, `tap`, `page +1`, `blackout momentary`, `release all`, `output
+off`), its feedback (`led`, `motor`, `display`, with its own address when not the input's)
+and `val`, the level of what it drives: the playback in its fader slot on the current page,
+its playback, its master. busk does not report the messages that come in, so F9 has no
+monitor of incoming MIDI, no learn mode and no raw MIDI value yet.
+
+A click on a row chooses it, and the edits under each table act on it: `bind "Phone" ` and
+`surface "Phone" pickup ` for a surface; `unbind "nanoKONTROL2" cc 1 32` (a whole line: Enter
+runs it) and `feedback "nanoKONTROL2" cc 1 32 ` for a binding. The pane cursor stops on the
+surfaces, their edits, the bindings and their edits; Enter on a row chooses it. Below 132
+columns BINDINGS goes under SURFACES.
 
 ## Questions and quitting
 
