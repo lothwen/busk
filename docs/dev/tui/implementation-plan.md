@@ -359,7 +359,7 @@ they answer one of the spec's open questions (§10 of the spec), that is noted.
 6. **The stage plot uses `fixture.location`** (spec open question 3): x right, y downstage, z up,
    in metres. Rows are fixtures with the same depth (y, rounded to 0.1 m), upstage at the top,
    with x along the row. Rows are labelled by position (`y 2.0 · z 5.0`), because busk has no
-   truss names.
+   truss names. *(Phase 5: rows by depth and height, see its Done note.)*
 7. **Cue cells are edited by prompt pre-fill only** (spec open question 4). Selecting a cell puts
    `cue L/C time ` (or `follow `, `wait `) in the prompt.
 8. **Fixture types are profile categories** (GAP-16). A small table in the TUI turns busk's
@@ -1484,11 +1484,107 @@ ordering, x scaling, missing locations), glyphs, pan arrows and tilt from the ou
 layouts keeps the selected playback and is saved in `state.json`.
 
 **Done when.**
-- [ ] A, B and C switch from the header and from `--layout`, and the choice survives a restart.
-- [ ] A shows the rig's live output. With locations set on the TupperDMX show, C draws the rig in
+- [x] A, B and C switch from the header and from `--layout`, and the choice survives a restart.
+- [x] A shows the rig's live output. With locations set on the TupperDMX show, C draws the rig in
       its real order, with the movers' arrows following their pan.
-- [ ] Suites green; guide complete for every page.
+- [x] Suites green; guide complete for every page.
 - [ ] Manual (the user): try A and C on the rig.
+
+**Done** (2026-10-26); the manual check is the user's.
+- Suites: the TUI's 419 tests (`tests/tui`), the whole suite 4324 passed, 1 skipped, 20
+  deselected (the opt-in perf and soak tests); ruff, format and `mypy` clean. The new and
+  changed UI tests pass on Textual 8.2.0, the floor, too.
+- **Perf** (`-m perf -s`, and a script alternating this tree with `bdf1cec` in a worktree;
+  club-night show). Standalone, the engine's rate with the TUI on F1 in each layout:
+  99.9 (B), 99.7 (A) and 100.1 (C) against 100.0 frames/s bare. Under `busk run`, 0 overruns
+  in every run, and the console process over a bare frontend, three runs each, alternating
+  with `bdf1cec`:
+
+  | Page | This tree | `bdf1cec` (Phase 4), the same minutes |
+  |---|---|---|
+  | F1 B, idle | +0.221 to +0.228 core | +0.226 to +0.233 core |
+  | F1 A, idle | +0.221 to +0.233 core | |
+  | F1 A, P11's Circle moving the heads | +0.225 core (three times) | |
+  | F1 C, idle | +0.213 to +0.240 core | |
+  | F1 C, P11's Circle moving the heads | +0.226 to +0.238 core | |
+
+  The first build measured A at +0.264 to +0.294 and C moving at +0.271 to +0.298, over the
+  0.25 gate. Two changes brought them under: fixed-size widgets update without a layout pass
+  (below), and a mover keeps its width whatever its tilt (its arrow and tilt text had changed
+  its width, so the plot moved and was drawn again whole at each read). **The opt-in test
+  still flaps:** a browser renderer used 80 % of a core during the runs, and the bare
+  frontend itself measured 0.006 core in one run and 0.020 in the next. One run of `-m perf`
+  passed every page but F5 with the heads moving (+0.251, Phase 3's page, which this phase
+  makes no costlier); the next measured F1 B +0.272. The gate is unchanged; the alternating
+  runs above are the fair comparison.
+- **Files** as planned (`pages/busk_console.py`, `pages/busk_stage.py`, `widgets/vfader.py`,
+  `widgets/fixture_palette.py`), and: `widgets/playbacks.py` gains `PlaybackColumn` (A) and
+  `PlaybackRow(compact=True)` (C), `position_text`, `FlashButton(label=)`;
+  `widgets/tempo.py` gains `TempoRow` (A and C's one-line tempo) and `first_speed`,
+  `speed_of`, `beats_of`; `widgets/masters.py` gains `MasterBars` (A and C) and
+  `BlackoutButton(short=True)` (`[B.O.]`); `colors.py` gains the rest of adaptation 8's table
+  (`CATEGORY_ROWS`, `CATEGORY_GLYPHS`, `OTHER_GLYPH`); `HBar.level_under` (the vertical fader
+  is an `HBar` on its side). Tests: `test_tui_layouts.py`, and additions to the busk (the
+  pane cursor's layout stops), e2e (A and C on the real engine) and perf (A and C, standalone
+  and under `busk run` with P11's Circle) tests.
+- **The page and the shell.** `BuskPage` holds the three layouts and shows the one in
+  `View.layout`; switching draws every part of it. `Page.watches(view)` replaces reading
+  `WATCH_OUTPUT`/`WATCH_EFFECTS` in the shell, so F1 reads the effects in B and the output in
+  A and C. `BuskApp.action_layout` (the header's click) switches, keeps the selected playback
+  and the pane cursor's item; `app.py` remembers `app.view.layout` at exit (it wrote the
+  layout it started with).
+- **Changed outside this phase's pages, for the F1 gate:** the hint row (Phase 0), the beat
+  dots and the playback rows (Phase 1) update without a layout pass (`Static.update(layout=
+  False)`). Each full layout of F1 costs 7–8 ms, and the hint row's, on every key, was most
+  of them; Textual's `Input` still lays the screen out once per key (not changed: it is
+  Textual's).
+- **Calls you may veto:**
+  - **OUTPUT and PROGRAMMER are 2 : 1, not 3 : 1** (spec flex 3 and 1): at 3 : 1 PROGRAMMER
+    got only its 38 cells at 150 columns and cut the tempo row's `[B.O.]`. The mockup's
+    flex bases make it about this wide too. The tempo row follows the master bars (a blank
+    line between) instead of being pinned to the panel's bottom: Textual cannot stretch a
+    panel to its neighbour's height.
+  - **PROGRAMMER's summary** is `2 fixtures · intensity color pan · 1 effect · BLIND` (the
+    programmer's attributes in busk's words, in the order it got them), not the PROGRAMMER
+    CONTENTS table §5 thought A would reuse: that table needs 90 columns, the panel has 38–50.
+  - **OUTPUT's rows**: busk's categories in adaptation 8's order (PARS, SPOTS, WASHES,
+    PIXELS, STROBES, BEAMS, BLINDERS, DIMMERS, EFFECTS, FOG, OTHER), then a row per profile
+    without a category, labelled with its name (the label column widens to 20 cells for
+    it: the TupperDMX profiles are all `TupperDMX …`). A fixture of many elements has a cell
+    per element up to the row's width, evenly spaced beyond.
+  - **A's columns**: 11 cells with their border, as many to a line as fit, no gap (13 fit at
+    150 columns: page 1 of the club show fits a 48-row screen); `[GO] [◂]` and `[FLASH]` with
+    brackets as every other button; the level line names a fader that is not a level (`40
+    size`); an empty slot is `·`, `—` and nothing else. FLASH is not a pane-cursor stop (R4),
+    as in B.
+  - **C's rows are by depth and height** (both to 0.1 m), not by depth alone (adaptation 6):
+    fixtures one above the other at the same depth (a boom, a truss over the floor) would
+    have shared x. Upstage first, the higher first at a depth; labelled `y 2.0` over `z 5.0`.
+    x is placed on one scale for every row (fixtures above each other on stage are above
+    each other here), and fixtures too close are pushed apart, in order; a row too full for
+    its width is spread over more lines.
+  - **C's glyphs**: the spec's five, beam `◆` and blinder `▲` beside spot and strobe, dimmer
+    `■` beside par, `◇` for effect, fog, other and no category; a fixture of several
+    elements is a `█` per element (twelve at most, as F3).
+  - **The pan arrow is the angle from home**, `↑` at 0°, clockwise (the mockup's): busk's pan
+    is relative to the fixture's home and says nothing of where that points on stage, and
+    `location.rz` is not used. A fixture is a mover when its profile has pan or tilt; its
+    width is fixed (7 cells) so it does not move as its tilt changes.
+  - **The `location` pre-fill** (`[location…]` under the plot) is for the first selected
+    fixture, else the first without a place, with its place when it has one; the fixtures
+    without a place are a `no place` row under AUDIENCE.
+  - **The layout switch is a pane-cursor stop** (three, after the page's controls; Enter
+    switches and the cursor stays). The pane cursor's order in A and C: the playbacks' GO
+    (and ◂ in A), then the programmer's or the right column's controls, then each fixture,
+    then (C) `[location…]`.
+  - **B is unchanged** except the three layout stops at the end of its pane-cursor items.
+- **Checked in a real pseudo-terminal** (pyte), standalone: on the club show with places set (the heads on a truss at
+  `y -1`, the washes at `y 1`, the bar without a place) A and C at 150×48 and 99 columns, P1
+  and the chase in their colours, the selected heads, the movers' arrows and tilt with P11's
+  Circle, a click on C in the header, the restart in C without `--layout`; on the TupperDMX
+  show with places (four heads, three pars, the blinders and the bar), C in the rig's order
+  with the heads' arrows following `set pan spread -90 to 90` (`←`, `↖`, `↗`, `→`), and A with
+  a row per profile (TupperDMX's profiles have no category).
 
 ---
 

@@ -2,8 +2,9 @@
 
 The header says which page of playbacks shows (busk's current page,
 adaptation 4), which of its slots, and the selection, and has the layout
-switch. The layout under it is B, the stack (adaptation 5); A and C come in
-Phase 5.
+switch: A the console, B the stack (the default, adaptation 5), C the
+stage. All three show the same playbacks with the same lines; the switch,
+``--layout`` and the config file choose one, and the TUI remembers it.
 
 The playbacks are the slots of the engine's current page, at most
 ``faders`` of them, or, in a show with no pages, the playbacks by number.
@@ -15,21 +16,27 @@ moves to the playback in the same slot.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import ClassVar, Final
+from functools import partial
+from typing import Final
 
 from rich.style import Style
 from rich.text import Text
 from textual.app import ComposeResult
+from textual.message import Message
 from textual.widget import Widget
 
 from busk_tui import colors
+from busk_tui.config import Layout
 from busk_tui.formats import selection_text
 from busk_tui.model import LiveState, ShowModel
-from busk_tui.nav import Stop
-from busk_tui.pages.base import Page, Part, View
+from busk_tui.nav import Item, Stop
+from busk_tui.pages.base import ALL_PARTS, Page, Part, View
+from busk_tui.pages.busk_console import ConsoleLayout
 from busk_tui.pages.busk_stack import StackLayout
+from busk_tui.pages.busk_stage import StageLayout
+from busk_tui.widgets.controls import MARKED
 
-LAYOUTS: Final = (("A", "console"), ("B", "stack"), ("C", "stage"))
+LAYOUTS: Final[tuple[tuple[Layout, str], ...]] = (("A", "console"), ("B", "stack"), ("C", "stage"))
 
 type Slots = tuple[int | None, ...]
 
@@ -78,7 +85,8 @@ class BuskHeader(Widget):
     def __init__(self) -> None:
         super().__init__()
         self.left = Text()
-        self.shown_layout = "B"
+        self.shown_layout: Layout = "B"
+        self.marked: int | None = None  # the pane cursor on a layout
 
     def show(self, view: View, slots: Slots) -> None:
         text = Text()
@@ -113,10 +121,12 @@ class BuskHeader(Widget):
 
     def render(self) -> Text:
         right = Text("layout", style=colors.DIM)
-        for letter, name in LAYOUTS:
+        for index, (letter, name) in enumerate(LAYOUTS):
             right.append("  ")
             click = Style(meta={"@click": f"app.layout('{letter}')"})
-            if letter == self.shown_layout:
+            if index == self.marked:
+                right.append(f" {letter} {name} ", style=Style.parse(MARKED) + click)
+            elif letter == self.shown_layout:
                 right.append(
                     f" {letter} {name} ", style=Style(color=colors.BG, bgcolor=colors.CYAN) + click
                 )
@@ -130,26 +140,75 @@ class BuskHeader(Widget):
         left.pad_right(self.size.width - left.cell_len - right.cell_len)
         return left + right
 
+    def show_layout(self, layout: Layout) -> None:
+        if layout != self.shown_layout:
+            self.shown_layout = layout
+            self.refresh()
+
+    def mark(self, index: int | None) -> None:
+        self.marked = index
+        self.refresh()
+
 
 class BuskPage(Page):
     """F1 (see the module docs)."""
 
-    WATCH_EFFECTS: ClassVar[bool] = True
+    class LayoutChosen(Message):
+        """The operator chose a layout with the pane cursor."""
+
+        def __init__(self, layout: Layout) -> None:
+            super().__init__()
+            self.layout: Layout = layout
 
     def __init__(self, number: int, title: str) -> None:
         super().__init__(number, title)
         self.header = BuskHeader()
+        self.console = ConsoleLayout()
         self.stack = StackLayout()
+        self.stage = StageLayout()
+        for layout in (self.console, self.stack, self.stage):
+            layout.display = False  # until the first view says which
+        self.shown: Layout | None = None
+
+    @property
+    def shown_layout(self) -> ConsoleLayout | StackLayout | StageLayout:
+        """The layout that shows."""
+        if self.shown == "A":
+            return self.console
+        return self.stage if self.shown == "C" else self.stack
 
     def compose(self) -> ComposeResult:
         yield self.header
+        yield self.console
         yield self.stack
+        yield self.stage
+
+    def watches(self, view: View) -> tuple[bool, bool]:
+        """B shows the running effects, A and C the output."""
+        return (False, True) if view.layout == "B" else (True, False)
 
     def update_view(self, view: View, changed: frozenset[Part]) -> None:
+        if view.layout != self.shown:
+            self.shown = view.layout
+            for letter, layout in (("A", self.console), ("B", self.stack), ("C", self.stage)):
+                layout.display = letter == view.layout
+            self.header.show_layout(view.layout)
+            changed = ALL_PARTS
         slots = visible_slots(view.show, view.live, view.faders)
         if changed & {"show", "live", "programmer"}:
             self.header.show(view, slots)
-        self.stack.update_view(view, changed, slots)
+        self.shown_layout.update_view(view, changed, slots)
 
     def stops(self) -> list[Stop]:
-        return self.stack.stops()
+        layouts = [
+            Stop(
+                Item(f"layout {letter} {name}", action=partial(self.choose_layout, letter)),
+                self.header,
+                index,
+            )
+            for index, (letter, name) in enumerate(LAYOUTS)
+        ]
+        return self.shown_layout.stops() + layouts
+
+    def choose_layout(self, layout: Layout) -> None:
+        self.post_message(self.LayoutChosen(layout))

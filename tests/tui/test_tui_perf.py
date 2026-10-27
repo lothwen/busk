@@ -13,8 +13,9 @@ with the snapshot, F5 reads the effects), besides the frame, the prompt and
 the reader at 20 Hz; under ``busk run`` F2 also with the selected heads
 moving, so its encoders redraw with the output, and F4 and F5 with P11's
 Circle running, so F5's waves move, and F3 (Phase 4: every fixture's
-output) with it, so the heads' cells change. The gates are those of the
-plan's Phase 0 Done note.
+output) with it, so the heads' cells change, and F1's layouts A and C
+(Phase 5: the output in OUTPUT and on the stage) with it too. The gates
+are those of the plan's Phase 0 Done note.
 """
 
 from __future__ import annotations
@@ -62,15 +63,19 @@ def rate(show: Any, seconds: float) -> float:
     return (show.frame.seq - first) / (time.monotonic() - started)
 
 
-@pytest.mark.parametrize("page", [1, 2, 3, 5])
-def test_standalone_keeps_the_engines_rate(club_path: Path, tmp_path: Path, page: int) -> None:
+@pytest.mark.parametrize(
+    ("page", "layout"), [(1, "B"), (1, "A"), (1, "C"), (2, "B"), (3, "B"), (5, "B")]
+)
+def test_standalone_keeps_the_engines_rate(
+    club_path: Path, tmp_path: Path, page: int, layout: config.Layout
+) -> None:
     document, _ = busk.load_show(club_path)
     with busk.LiveShow(document, output=False, tune_interpreter=True) as bare:
         without = rate(bare, SECONDS)
     path = tmp_path / "club.show"
     path.write_bytes(club_path.read_bytes())
     bridge = Bridge.standalone(path, output=False, surfaces=False)
-    app = BuskApp(bridge, config.Settings(page=page), standalone=True)
+    app = BuskApp(bridge, config.Settings(page=page, layout=layout), standalone=True)
     measured: list[float] = []
 
     async def main() -> None:
@@ -91,7 +96,8 @@ def test_standalone_keeps_the_engines_rate(club_path: Path, tmp_path: Path, page
     finally:
         bridge.stop()
     (with_tui,) = measured
-    print(f"\nstandalone: {without:.1f} frames/s bare, {with_tui:.1f} with the TUI on F{page}")
+    where = f"F{page}" + (f" {layout}" if page == 1 else "")
+    print(f"\nstandalone: {without:.1f} frames/s bare, {with_tui:.1f} with the TUI on {where}")
     assert with_tui >= MIN_RATE * without
 
 
@@ -113,10 +119,12 @@ def run_frontend(
     monkeypatch: pytest.MonkeyPatch,
     page: int = 1,
     lines: tuple[str, ...] = (),
+    layout: str = "B",
 ) -> Any:
-    name = f"{mode}-{page}-{len(lines)}"
+    name = f"{mode}-{page}{layout}-{len(lines)}"
     report = tmp_path / f"{name}.json"
-    plan = {"mode": mode, "seconds": SECONDS, "report": str(report), "page": page, "lines": lines}
+    plan = {"mode": mode, "seconds": SECONDS, "report": str(report), "page": page,
+            "layout": layout, "lines": lines}  # fmt: skip
     monkeypatch.setenv("BUSK_TUI_PERF", json.dumps(plan))
     monkeypatch.setenv("PYTHONPATH", os.pathsep.join([str(HERE), os.environ.get("PYTHONPATH", "")]))
     options = (
@@ -141,12 +149,14 @@ def test_under_busk_run_the_engine_runs_on_time(
     busk.save_show(document, show, backups=False)
     idle = run_frontend("bare", show, tmp_path, monkeypatch)
     moving = run_frontend("bare", show, tmp_path, monkeypatch, lines=MOVING)
-    runs = ((1, (), idle), (2, (), idle), (2, MOVING, moving), (3, MOVING, moving),
-            (4, MOVING, moving), (5, MOVING, moving))  # fmt: skip
-    for page, lines, bare in runs:
-        tui = run_frontend("tui", show, tmp_path, monkeypatch, page, lines)
+    runs = ((1, "B", (), idle), (1, "A", MOVING, moving), (1, "C", MOVING, moving),
+            (2, "B", (), idle), (2, "B", MOVING, moving), (3, "B", MOVING, moving),
+            (4, "B", MOVING, moving), (5, "B", MOVING, moving))  # fmt: skip
+    for page, layout, lines, bare in runs:
+        tui = run_frontend("tui", show, tmp_path, monkeypatch, page, lines, layout)
         cores = (tui["cpu"] - bare["cpu"]) / SECONDS
-        what = f"F{page}" + (", P11's Circle running" if lines else "")
+        what = f"F{page}" + (f" {layout}" if page == 1 else "")
+        what += ", P11's Circle running" if lines else ""
         print(
             f"\nbusk run, {what}: overruns {bare['overruns']}/{bare['ticks']} bare, "
             f"{tui['overruns']}/{tui['ticks']} with the TUI; "

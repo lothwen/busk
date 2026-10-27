@@ -650,12 +650,13 @@ def test_the_pane_cursor_reaches_every_control() -> None:
     async def body(pilot: Pilot[int]) -> None:
         started(bridge)
         await settle(pilot, app)
-        labels = [item.line or item.prefill for item in app.current_page.items()]
+        labels = [item.line or item.prefill or item.label for item in app.current_page.items()]
         assert labels == [
             "go 1", "back 1", "go 2", "back 2", "go 3", "back 3",
             'tap "Speed 1"', 'bpm "Speed 1" 119', 'bpm "Speed 1" 121',
             "gm ", 'master "FX" ', 'master "Washes" ', "blackout on",
             "sel group 1", "sel group 2", "preset color 1", "preset color 2",
+            "layout A console", "layout B stack", "layout C stage",
         ]  # fmt: skip
         await pilot.press("tab", "down", "down", "down")  # back 2
         await pilot.press("enter", "enter")
@@ -696,19 +697,6 @@ def test_f1_watches_the_effects_and_other_pages_do_not() -> None:
         assert bridge.watching == (False, False)
         await pilot.press("f1")
         assert bridge.watching == (False, True)
-
-    drive(app, body)
-
-
-def test_layouts_a_and_c_come_later() -> None:
-    app = make_app()
-
-    async def body(pilot: Pilot[int]) -> None:
-        app.action_layout("A")
-        assert list(app.query_one(LogView).entries)[-1] == (
-            "info",
-            "layout A (console) comes in Phase 5; F1 shows B",
-        )
 
     drive(app, body)
 

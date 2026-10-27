@@ -9,19 +9,19 @@ masters amber.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from functools import partial
 from typing import Final
 
 from rich.text import Text
 from textual.app import ComposeResult
-from textual.containers import Horizontal
+from textual.containers import Horizontal, Vertical
 from textual.widgets import Static
 
 from busk_tui import colors, commands
 from busk_tui.commands import Line
-from busk_tui.model import MasterView
-from busk_tui.nav import Item
+from busk_tui.model import LiveState, MasterView, ShowModel
+from busk_tui.nav import Item, Stop
 from busk_tui.widgets.bars import HBar
 from busk_tui.widgets.controls import MARKED, CommandButton
 
@@ -90,16 +90,55 @@ class MasterBar(Horizontal):
 
 
 class BlackoutButton(CommandButton):
-    """``[BLACKOUT]`` (``[BLACKOUT on]``, ``[BLACKOUT off]`` with ``words``):
-    ``blackout on`` or ``blackout off`` by the state it shows, red reversed
-    while on."""
+    """``[BLACKOUT]`` (``[BLACKOUT on]``, ``[BLACKOUT off]`` with ``words``;
+    ``[B.O.]`` when ``short``): ``blackout on`` or ``blackout off`` by the
+    state it shows, red reversed while on."""
 
-    def __init__(self, *, words: bool = False, id: str | None = None) -> None:
+    def __init__(self, *, words: bool = False, short: bool = False, id: str | None = None) -> None:
         self.words = words
+        self.short = short
         super().__init__(self._label(False), commands.blackout(True), "danger", id=id)
 
     def show(self, on: bool) -> None:
         self.change(self._label(on), commands.blackout(not on), reverse=on)
 
     def _label(self, on: bool) -> str:
+        if self.short:
+            return "B.O."
         return f"BLACKOUT {'on' if on else 'off'}" if self.words else "BLACKOUT"
+
+
+class MasterBars(Vertical):
+    """A bar for each of the show's masters of ``kinds``, the grand master
+    as ``GM``; built again when the show's masters change."""
+
+    DEFAULT_CSS = "MasterBars { height: auto; }"
+
+    def __init__(self, kinds: Sequence[str], *, id: str | None = None) -> None:
+        super().__init__(id=id)
+        self.kinds = tuple(kinds)
+        self.masters: tuple[MasterView, ...] | None = None
+        self.bars: list[MasterBar] = []
+
+    def build(self, show: ShowModel | None, live: LiveState | None) -> None:
+        masters = () if show is None else tuple(m for m in show.masters if m.kind in self.kinds)
+        if masters == self.masters:
+            return
+        self.masters = masters
+        levels = {} if live is None else {m.name: m.level for m in live.masters}
+        self.bars = [
+            MasterBar(
+                master, levels.get(master.name, 0.0), label="GM" if master.kind == "grand" else None
+            )
+            for master in masters
+        ]
+        self.remove_children()
+        self.mount_all(self.bars)
+
+    def show_levels(self, live: LiveState) -> None:
+        levels = {master.name: master.level for master in live.masters}
+        for bar in self.bars:
+            bar.show(levels.get(bar.master.name, 0.0))
+
+    def stops(self) -> list[Stop]:
+        return [Stop(master_item(bar.master), bar) for bar in self.bars]

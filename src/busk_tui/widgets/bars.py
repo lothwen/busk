@@ -80,6 +80,10 @@ class HBar(Widget):
         """The level a click at cell ``x`` sets: 0 at the first cell, 1 at the last."""
         return max(0.0, min(1.0, x / max(1, self.size.width - 1)))
 
+    def level_under(self, event: events.MouseEvent) -> float:
+        """The level a click at ``event`` sets."""
+        return self.level_at(event.x)
+
     def _set(self, level: float, origin: Origin) -> None:
         self.level = round(max(0.0, min(1.0, level)), 4)
         self.refresh()
@@ -92,11 +96,11 @@ class HBar(Widget):
         event.stop()
         self.dragging = True
         self.capture_mouse()
-        self._set(self.level_at(event.x), "internal")
+        self._set(self.level_under(event), "internal")
 
     def on_mouse_move(self, event: events.MouseMove) -> None:
         if self.dragging:
-            level = self.level_at(event.x)
+            level = self.level_under(event)
             if level != self.level:
                 self._set(level, "internal")
 
@@ -105,7 +109,7 @@ class HBar(Widget):
             event.stop()
             self.dragging = False
             self.release_mouse()
-            self._set(self.level_at(event.x), "ui")  # the one line the log shows
+            self._set(self.level_under(event), "ui")  # the one line the log shows
 
     def on_mouse_scroll_up(self, event: events.MouseScrollUp) -> None:
         if self.command is not None:

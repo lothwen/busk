@@ -100,7 +100,9 @@ class PromptRow(Horizontal):
 
 
 class HintRow(Static):
-    """The syntax hint under the prompt (spec §7.2)."""
+    """The syntax hint under the prompt (spec §7.2). It changes with every
+    key, and is one line whatever it holds: it is drawn again without a
+    layout pass (one costs F1 7–8 ms)."""
 
     DEFAULT_CSS = (
         f"HintRow {{ height: 1; color: {colors.DIM}; text-wrap: nowrap; text-overflow: ellipsis; }}"
@@ -113,8 +115,8 @@ class HintRow(Static):
             if hint.syntax:
                 text.append("    ")
         text.append(hint.syntax, style=colors.DIM)
-        self.update(text)
+        self.update(text, layout=False)
 
     def show_text(self, text: str, style: str = colors.AMBER) -> None:
         """A plain message instead (Ctrl+C's, what is under the mouse)."""
-        self.update(Text(text, style=style))
+        self.update(Text(text, style=style), layout=False)

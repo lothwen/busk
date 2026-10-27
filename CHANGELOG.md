@@ -29,6 +29,10 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   its patch and live output, coloured by what drives it; F8 shows the universes, the routes
   with their state and packet rate, and a DMX map per universe with its overlaps; F9 shows
   the control surfaces with their state and the bindings with the level of what they drive.
+  F1 has three layouts, chosen in its header or with `--layout` and remembered: the stack,
+  the console (the rig's live output by fixture type, the programmer, vertical faders) and
+  the stage (the fixtures placed by their `location`, in their live colours, with the
+  movers' pan and tilt).
 - `OfflineShow.output` and `LiveShow.output`: the engine's output read back per fixture
   element, as two new public types, `OutputSnapshot` and `FixtureOutput`
   ([the library guide](docs/library.md#2-build-a-show-and-render-it-offlineshow)). Each

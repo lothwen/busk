@@ -25,7 +25,7 @@ import asyncio
 import signal
 import time
 from collections.abc import Callable, Sequence
-from typing import ClassVar, Final
+from typing import ClassVar, Final, cast
 
 from rich.text import Text
 from textual import events
@@ -151,7 +151,7 @@ class BuskApp(App[int]):
         self.settings = settings
         self.standalone = standalone
         self.page = settings.page
-        self.view = View(faders=settings.faders, quick=settings.quick)
+        self.view = View(faders=settings.faders, quick=settings.quick, layout=settings.layout)
         self.cursor = PaneCursor()
         self.session: SessionState | None = None
         self._changed: set[Part] = set()  # the parts of the view since the page last drew
@@ -509,15 +509,27 @@ class BuskApp(App[int]):
     def _show_page(self) -> None:
         """The page just shown: what the bridge reads for it, and all of it drawn."""
         page = self.current_page
-        self.bridge.watch(output=page.WATCH_OUTPUT, effects=page.WATCH_EFFECTS)
+        output, effects = page.watches(self.view)
+        self.bridge.watch(output=output, effects=effects)
         self._changed |= ALL_PARTS
         self._redraw()
 
     def action_layout(self, layout: str) -> None:
-        """A click on F1's layout switch."""
-        if layout != "B":
-            name = {"A": "console", "C": "stage"}.get(layout, layout)
-            self.log_view.add("info", f"layout {layout} ({name}) comes in Phase 5; F1 shows B")
+        """F1's layout switch (a click, or the pane cursor): A the console,
+        B the stack, C the stage. The pane cursor stays where it was."""
+        if layout not in config.LAYOUTS or layout == self.view.layout:
+            return
+        self.view.layout = cast(config.Layout, layout)
+        label = None if self.cursor.current is None else self.cursor.current.label
+        if self.page == 1:
+            self._show_page()
+        if label is not None:
+            self.cursor.follow(self.current_page.items(), label)
+            self.current_page.show_cursor(self.cursor.index)
+
+    def on_busk_page_layout_chosen(self, message: BuskPage.LayoutChosen) -> None:
+        message.stop()
+        self.action_layout(message.layout)
 
     def action_toggle_help(self) -> None:
         if self._modal():

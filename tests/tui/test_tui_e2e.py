@@ -3,7 +3,8 @@
 * On a real show (``--standalone``, no output, no surfaces): a typed ``gm
   50%`` shows in the status bar; Space on F1 makes P1 active, and its row
   shows it; F2's group button, intensity bar and ``[+]``, and an F6 tile,
-  program it; F4 goes to a cue, and F5 adds, stops and removes an effect.
+  program it; F4 goes to a cue, and F5 adds, stops and removes an effect;
+  F3 and F1's layouts A and C show the output, and select from it.
 * On a stub show whose ``save`` is held (plan §4.3): keys, page switching,
   the beat dot and a bar's drag keep working, the drag's lines run, and the
   prompt context shows the held line.
@@ -21,9 +22,11 @@ from textual.pilot import Pilot
 from tui_fakes import Stub, click_cell, column, drive
 
 import busk
-from busk_tui import config
+from busk_tui import colors, config
 from busk_tui.bridge import Bridge
 from busk_tui.commands import Line, percent
+from busk_tui.pages.busk_console import OutputGrid
+from busk_tui.pages.busk_stage import StagePlot
 from busk_tui.shell import BuskApp
 from busk_tui.widgets.bars import HBar
 from busk_tui.widgets.cuetable import CueTable
@@ -201,6 +204,46 @@ def test_f3_shows_the_real_output_and_f8_selects_from_the_map(
         await pilot.click(app.query(DmxMap).first(), offset=(5 + 32, 0))  # channel 33: 201
         await until(pilot, lambda: bool(app.programmer and app.programmer.selection == ((201, 1),)))
         assert ("ui", "sel fixture 201") in app.query_one(LogView).entries
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_layouts_a_and_c_show_the_real_output(club_path: Path, tmp_path: Path) -> None:
+    """A: the programmer's level lights the washes in OUTPUT, and a click
+    selects. C: a place typed at the prompt puts the fixture on the stage."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(layout="A"), standalone=True)
+
+    def lit(grid: OutputGrid | StagePlot, number: int) -> bool:
+        spot = next(spot for spot in grid.spots if spot.number == number)
+        line = grid.lines[spot.y]
+        styles = [str(s.style) for s in line.spans if spot.x <= s.start < spot.x + spot.width]
+        return bool(styles) and f"color({colors.UNLIT})" not in styles
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.view.show is not None and app.view.output is not None)
+        grid = app.query_one(OutputGrid)
+        await until(pilot, lambda: bool(grid.spots))
+        assert not lit(grid, 201)
+        await pilot.press(*"sel group 2", "enter", *"set intensity 40%", "enter")
+        await until(pilot, lambda: lit(grid, 201) and lit(grid, 202), timeout=1.0)
+        assert not lit(grid, 204)  # parked dark
+        spot = next(spot for spot in grid.spots if spot.number == 101)
+        await pilot.click(grid, offset=(spot.x, spot.y))
+        await until(pilot, lambda: bool(app.programmer and app.programmer.selection == ((101, 1),)))
+        app.action_layout("C")
+        place = '{"x": 1, "y": 2, "z": 5, "rx": 0, "ry": 0, "rz": 0}'
+        await pilot.press(*f"fixture 202 location {place}", "enter")
+        plot = app.query_one(StagePlot)
+        await until(pilot, lambda: [row.y for row in plot.rows] == [2.0], timeout=1.0)
+        assert plot.lines[0].plain.startswith("y 2.0")
+        assert lit(plot, 202)
+        assert "sel fixture 202" in [item.line for item in app.current_page.items()]
 
     try:
         drive(app, body)

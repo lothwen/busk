@@ -15,6 +15,7 @@ from textual.containers import VerticalScroll
 from textual.widget import Widget
 
 from busk_tui.colors import ColorMode
+from busk_tui.config import Layout
 from busk_tui.model import (
     EffectsModel,
     LiveState,
@@ -50,6 +51,7 @@ class View:
     beats: tuple[float, ...] = ()  # each speed master's beat count, as LiveState.speed
     playback: int = 1  # the selected playback (Space, [ ], the prompt's P1)
     faders: int = 20  # at most this many slots on F1
+    layout: Layout = "B"  # F1's layout: A console, B stack, C stage
     mode: ColorMode = "256"  # how the terminal shows colours
     quick: tuple[str, ...] = ()  # F2's quick lines
 
@@ -77,6 +79,11 @@ class Page(VerticalScroll):
 
     def update_view(self, view: View, changed: frozenset[Part]) -> None:
         """Redraw what the ``changed`` parts of ``view`` show."""
+
+    def watches(self, view: View) -> tuple[bool, bool]:
+        """Whether the page shows the output and the running effects, as
+        ``view`` has it (F1's depend on its layout)."""
+        return self.WATCH_OUTPUT, self.WATCH_EFFECTS
 
     def stops(self) -> list[Stop]:
         """Where the pane cursor stops, in order."""

@@ -68,7 +68,7 @@ def frontend(show: object) -> None:
         app.run()
     finally:
         bridge.stop()
-        config.write_state(config.state_path(), page=app.page, layout=settings.layout)
+        config.write_state(config.state_path(), page=app.page, layout=app.view.layout)
 
 
 def _standalone(options: config.Options, settings: config.Settings) -> int:
@@ -96,7 +96,7 @@ def _standalone(options: config.Options, settings: config.Settings) -> int:
         code = app.run()
     finally:
         bridge.stop()  # the show stops whatever ended the app: its output is terminated
-        config.write_state(config.state_path(), page=app.page, layout=settings.layout)
+        config.write_state(config.state_path(), page=app.page, layout=app.view.layout)
     return 0 if code is None else code
 
 

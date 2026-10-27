@@ -147,6 +147,37 @@ CATEGORY_COLORS: Final[dict[str, str]] = {
 spec's five (par amber, spot cyan, wash magenta, pixel green, strobe the
 foreground) and the rest beside the one they look like."""
 
+CATEGORY_ROWS: Final[dict[str, str]] = {
+    "par": "PARS",
+    "spot": "SPOTS",
+    "wash": "WASHES",
+    "pixel": "PIXELS",
+    "strobe": "STROBES",
+    "beam": "BEAMS",
+    "blinder": "BLINDERS",
+    "dimmer": "DIMMERS",
+    "effect": "EFFECTS",
+    "fog": "FOG",
+    "other": "OTHER",
+}
+"""Layout A's OUTPUT rows, in order: busk's categories (plan §3, 8)."""
+
+CATEGORY_GLYPHS: Final[dict[str, str]] = {
+    "par": "■",
+    "dimmer": "■",
+    "spot": "◆",
+    "beam": "◆",
+    "wash": "●",
+    "strobe": "▲",
+    "blinder": "▲",
+    "pixel": "█",
+}
+"""Layout C's glyph of a one-element fixture by category (plan §3, 8): the
+spec's five, and the others beside the one they look like."""
+
+OTHER_GLYPH: Final = "◇"
+"""Layout C's glyph for the other categories, and a profile with none."""
+
 UNSET_COLORS: Final = (AMBER, CYAN, MAGENTA, GREEN, FG, MID)
 """The colours of profiles with no category, by profile in show order."""
 

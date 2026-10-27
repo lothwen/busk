@@ -2,7 +2,7 @@
 
 ``$BUSK_TUI_PERF`` is a JSON object: ``mode`` ``"bare"`` (the frontend only
 waits) or ``"tui"`` (the TUI, headless, on the run's show, typing a line now
-and then, on the F-key ``page``), ``lines`` to run on the show first (in
+and then, on the F-key ``page``, F1 in ``layout``), ``lines`` to run on the show first (in
 both modes), ``seconds`` to run, and ``report``, where it writes the
 engine's ticks and overruns over the run and the CPU time this process
 used.
@@ -29,7 +29,7 @@ def main(show: Any) -> None:
     first = show.health
     cpu = time.process_time()
     if plan["mode"] == "tui":
-        _run_tui(show, seconds, plan.get("page", 1))
+        _run_tui(show, seconds, plan.get("page", 1), plan.get("layout", "B"))
     else:
         time.sleep(seconds)
     cpu = time.process_time() - cpu
@@ -46,13 +46,13 @@ def main(show: Any) -> None:
     )
 
 
-def _run_tui(show: Any, seconds: float, page: int) -> None:
+def _run_tui(show: Any, seconds: float, page: int, layout: str) -> None:
     from busk_tui import config
     from busk_tui.bridge import Bridge
     from busk_tui.shell import BuskApp
 
     bridge = Bridge.attached(show)
-    app = BuskApp(bridge, config.Settings(page=page))
+    app = BuskApp(bridge, config.Settings(page=page, layout=layout))  # type: ignore[arg-type]
 
     async def drive() -> None:
         async with app.run_test(size=(150, 48)) as pilot:

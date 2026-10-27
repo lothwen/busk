@@ -10,7 +10,8 @@ log, so what the UI does is what you could type.
 > to play the show, [F2 Program](#f2-program) and [F6 Presets](#f6-presets), to build a look,
 > [F4 Cues](#f4-cues) and [F5 Effects](#f5-effects), to run and edit cue lists and effects,
 > [F7 Masters](#f7-masters), and the rig: [F3 Fixtures](#f3-fixtures), [F8 Patch](#f8-patch)
-> and [F9 Surfaces](#f9-surfaces). F1 has one of its three layouts so far, B (stack).
+> and [F9 Surfaces](#f9-surfaces). F1 has three layouts: A (console), B (stack) and C
+> (stage).
 
 ## Install
 
@@ -35,7 +36,7 @@ TUI ends the run. The options:
 |---|---|
 | `--state-dir D`, `--library D` | As for `busk run` ([Running a show](../running.md)). |
 | `--values FILE`, `--script FILE`, `--iface IF`, `--no-recover`, `--threads`, `--stats FILE`, `--no-log` | Passed on to `busk run` as they are. A `--script` runs before the TUI opens. |
-| `--layout A\|B\|C` | The layout of the F1 page: console, stack (the default) or stage. Remembered. A and C are not built yet: F1 shows B. |
+| `--layout A\|B\|C` | The layout of the F1 page: console, stack (the default) or stage. The one chosen last is remembered. |
 | `--faders N` | At most how many of a page's slots F1 shows, 4–20 (default 20). |
 | `--colors auto\|256\|16\|truecolor` | The terminal's colours (default: as the terminal says). |
 | `--config FILE` | The config file to read (below). |
@@ -135,8 +136,13 @@ is open.
 
 ## F1 Busk
 
-The performance page: the playbacks of busk's current page, with the tempo, the masters,
-the running effects and the selection beside them.
+The performance page: the playbacks of busk's current page, with the tempo, the masters and
+the selection beside them. It has three layouts, which show the same playbacks and run the
+same lines: **B, the stack** (the default, below), **A, the console** (vertical faders under
+the rig's live output) and **C, the stage** (the rig from above, in its live colours). Click
+one in the header (`layout A console B stack C stage`), or start with `--layout A`; the TUI
+remembers the one you chose last. The pane cursor stops on the three after the page's other
+controls.
 
 ```
  page 1 Main · slots 1–13 · sel 101 thru 102                                              layout   A console    B stack    C stage
@@ -189,8 +195,116 @@ programmer effect it runs `effect stop fx5`, and `[off]` runs `effect run fx5`.
 2`; Shift-click adds the group, `sel + group 2`) and a chip per colour preset (`preset color
 1`; a preset with more than one colour is a grey `░░`).
 
-The layout switch (A console, B stack, C stage) is drawn, but only B, the stack, is built.
 Below 100 columns the right column goes under the playbacks.
+
+### Layout A: console
+
+```
+ page 1 Main · slots 1–13 · sel 101 thru 102                                                                layout   A console    B stack    C stage
+
+ ┌─ OUTPUT · 7 fixtures · click selects, Shift-click adds ────────────────────────────────────────┐┌─ PROGRAMMER ───────────────────────────────────┐
+ │ PARS     ███ ███ ███ ███                                                                       ││ sel 101 thru 102 (2)                           │
+ │          201 202 203 204                                                                       ││ programmer empty                               │
+ │                                                                                                ││                                                │
+ │ SPOTS    ███ ███                                                                               ││ color ██ ██ ██ ██                              │
+ │          101 102                                                                               ││                                                │
+ │                                                                                                ││ GM       ████████████████████████████████  100 │
+ │ PIXELS   ████████████                                                                          ││ FX       ████████████████████████████████  100 │
+ │              301                                                                               ││ Wash lev…████████████████████████████████  100 │
+ └────────────────────────────────────────────────────────────────────────────────────────────────┘│                                                │
+                                                                                                   │ Speed 1 120.0 ● ● ● ●             [TAP] [B.O.] │
+                                                                                                   └────────────────────────────────────────────────┘
+ ┌─ PLAYBACKS ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │ ┌─────────┐┌─────────┐┌─────────┐┌─────────┐┌─────────┐┌─────────┐┌─────────┐┌─────────┐┌─────────┐┌─────────┐┌─────────┐┌─────────┐┌──────────┐ │
+ │ │   P1    ││   P2    ││   P3    ││   P4    ││   P5    ││   P6    ││   P7    ││   P8    ││   P9    ││   P10   ││   P11   ││   P12   ││   P13    │ │
+ │ │  Warm   ││  Cool   ││  Blue   ││   Red   ││  Green  ││Audience ││ Centre  ││  Panic  ││  Song   ││  Chase  ││ Circle  ││  Pulse  ││ Bar wave │ │
+ │ │   1/1   ││   —/1   ││   —/1   ││   —/1   ││   —/1   ││   —/1   ││   —/1   ││   —/1   ││   —/5   ││ chase 4 ││   1/1   ││   —/1   ││   —/1    │ │
+ │ │  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ████   ││  ░░░░   ││   ░░░░   │ │
+ │ │  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ████   ││  ░░░░   ││   ░░░░   │ │
+ │ │  ████   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ████   ││  ░░░░   ││   ░░░░   │ │
+ │ │  ████   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ████   ││  ░░░░   ││   ░░░░   │ │
+ │ │  ████   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ████   ││  ░░░░   ││   ░░░░   │ │
+ │ │  ████   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ████   ││  ████   ││  ░░░░   ││   ░░░░   │ │
+ │ │  ████   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ████   ││  ████   ││  ░░░░   ││   ░░░░   │ │
+ │ │  ████   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ████   ││  ████   ││  ░░░░   ││   ░░░░   │ │
+ │ │  ████   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ████   ││  ████   ││  ░░░░   ││   ░░░░   │ │
+ │ │  ████   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ████   ││  ████   ││  ░░░░   ││   ░░░░   │ │
+ │ │   80    ││    0    ││    0    ││    0    ││    0    ││    0    ││    0    ││    —    ││    0    ││   50    ││100 size ││ 0 size  ││  0 size  │ │
+ │ │[GO] [◂] ││[GO] [◂] ││[GO] [◂] ││[GO] [◂] ││[GO] [◂] ││[GO] [◂] ││[GO] [◂] ││[GO] [◂] ││[GO] [◂] ││[GO] [◂] ││[GO] [◂] ││[GO] [◂] ││ [GO] [◂] │ │
+ │ │ [FLASH] ││ [FLASH] ││ [FLASH] ││ [FLASH] ││ [FLASH] ││ [FLASH] ││ [FLASH] ││ [FLASH] ││ [FLASH] ││ [FLASH] ││ [FLASH] ││ [FLASH] ││ [FLASH]  │ │
+ │ └─────────┘└─────────┘└─────────┘└─────────┘└─────────┘└─────────┘└─────────┘└─────────┘└─────────┘└─────────┘└─────────┘└─────────┘└──────────┘ │
+ └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**OUTPUT** has a row per fixture type (the profile's category: PARS, SPOTS, WASHES, PIXELS,
+STROBES …; a profile with no category has a row of its own, named after it), and each
+fixture in it in what busk outputs now: its colour at its intensity, after the masters,
+blackout, park and limits (dark when it is out). A fixture of one element is `███`, one of
+several a `█` per element. The number under it is cyan while the fixture is selected, on a
+lighter background. A click selects the fixture (`sel fixture 201`); Shift-click adds it or
+takes it out (`sel + fixture 201`, `sel - fixture 201`).
+
+**PROGRAMMER** shows the selection, what the programmer holds (`2 fixtures · intensity color
+pan`, its effects, and `BLIND` while blind is on), the colour chips, the bars of the grand,
+size and group masters, and the tempo row: the first speed master's BPM and beat, `[TAP]`
+and `[B.O.]` (blackout on, and off again while it is lit).
+
+**PLAYBACKS** is a column per slot, as many to a line as fit: the number, the name, where it
+is in its list (`2/5`, `chase 4`, `—/5` while idle), its fader (ten rows, in the colour of
+its current cue), the level (with `size`, `rate`, `xfade` or `temp` when the fader is not a
+level), `[GO] [◂]` and `[FLASH]`. Click or drag the fader to set it (logged once, when you
+let go), or use the wheel (5 %, not logged); FLASH is held while the mouse button is down.
+The selected playback has a cyan border. Below 100 columns PROGRAMMER goes under OUTPUT.
+
+### Layout C: stage
+
+```
+ page 1 Main · slots 1–13 · sel 101 thru 102                                                                layout   A console    B stack    C stage
+
+ ┌─ STAGE · click selects, Shift-click adds ────────────────────────────────────────────────────────────────┐┌─ PLAYBACKS ──────────────────────────┐
+ │ y -1.0    ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄   ◆   ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄   ◆   ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ││ P1  Warm         ███████▎░  80  [GO] │
+ │ z 5.0                       101                                                    102                   ││ P2  Cool         ░░░░░░░░░   0  [GO] │
+ │                            ↑ 10°                                                  ↑ 1°                   ││ P3  Blue         ░░░░░░░░░   0  [GO] │
+ │                                                                                                          ││ P4  Red          ░░░░░░░░░   0  [GO] │
+ │ y 1.0     ┄┄┄┄ ■ ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ■ ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ■ ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ■ ┄┄┄┄┄ ││ P5  Green        ░░░░░░░░░   0  [GO] │
+ │ z 4.0         201                         202                        203                        204      ││ P6  Audience     ░░░░░░░░░   0  [GO] │
+ │                                                                                                          ││ P7  Centre       ░░░░░░░░░   0  [GO] │
+ │           · · · · · · · · · · · · · · · · · · · · ·  AUDIENCE  · · · · · · · · · · · · · · · · · · · · · ││ P8  Panic no fa… ░░░░░░░░░   —  [GO] │
+ │                                                                                                          ││ P9  Song         ░░░░░░░░░   0  [GO] │
+ │ no place  ████████████                                                                                   ││ P10 Chase        ████▌░░░░  50  [GO] │
+ │               301                                                                                        ││ P11 Circle size  █████████ 100  [GO] │
+ │                                                                                                          ││ P12 Pulse size   ░░░░░░░░░   0  [GO] │
+ │ place fixture 101 Spot 101 [location…]                                                                   ││ P13 Bar wave si… ░░░░░░░░░   0  [GO] │
+ └──────────────────────────────────────────────────────────────────────────────────────────────────────────┘└──────────────────────────────────────┘
+                                                                                                             ┌─ MASTERS ────────────────────────────┐
+                                                                                                             │ GM       ██████████████████████  100 │
+                                                                                                             │ FX       ██████████████████████  100 │
+                                                                                                             │ Wash lev…██████████████████████  100 │
+                                                                                                             │                                      │
+                                                                                                             │ Speed 1 120.0 ● ● ● ●   [TAP] [B.O.] │
+                                                                                                             └──────────────────────────────────────┘
+```
+
+**STAGE** draws the fixtures where they hang, from above, with the audience at the bottom.
+busk places a fixture with its `location` (`fixture 101 location {"x": -2, "y": -1, "z": 5,
+"rx": 0, "ry": 0, "rz": 0}`, in metres: x to the right, y towards the audience, z up). A row
+is the fixtures at one depth and height (to 0.1 m), labelled `y` over `z`: upstage at the
+top, and the higher first at the same depth (a truss above the floor). Along a row each
+fixture is at its x, on one scale for every row, so fixtures one above the other on stage
+are one above the other here; fixtures too close to fit are pushed apart, in order.
+
+A fixture is its type's glyph (`■` par, `◆` spot, `●` wash, `▲` strobe, `◇` others) in its
+live colour and intensity, or a `█` per element, its number under it (cyan while selected).
+A fixture with pan or tilt also shows them: the pan as an arrow (`↑` at 0°, `→` at 90°,
+clockwise: the angle from the fixture's home, not a direction on stage) and the tilt in
+degrees. Fixtures without a place are under AUDIENCE, in a `no place` row. `[location…]`
+puts `fixture N location {…}` in the prompt, with the fixture's place when it has one, for
+the first selected fixture (else the first without a place): select a fixture, click it,
+type its place. Clicks select as in OUTPUT.
+
+The right column has the playbacks as compact rows (`[GO]` only), MASTERS with the tempo
+row, and QUICK (the group buttons and colour chips). Below 100 columns it goes under the
+stage.
 
 ## F2 Program
 

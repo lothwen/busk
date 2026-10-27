@@ -80,7 +80,8 @@ def beat_dots(beats: float | None) -> Text:
 
 
 class BeatDots(Static):
-    """Beat dots that follow a speed master's beat count."""
+    """Beat dots that follow a speed master's beat count (drawn again
+    without a layout pass: they are always the same size)."""
 
     DEFAULT_CSS = "BeatDots { width: auto; height: 1; }"
 
@@ -93,4 +94,4 @@ class BeatDots(Static):
         new = None if beats is None else int(beats // 1)
         self.beats = beats
         if old != new:
-            self.update(beat_dots(beats))
+            self.update(beat_dots(beats), layout=False)

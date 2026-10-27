@@ -40,6 +40,18 @@ ModalScreen {
     width: 100%;
 }
 
+.narrow ConsoleLayout > #console-top,
+.narrow StageLayout {
+    layout: vertical;
+}
+
+.narrow ConsoleLayout #console-output,
+.narrow ConsoleLayout #console-programmer,
+.narrow StageLayout > #stage-panel,
+.narrow StageLayout > #stage-side {
+    width: 100%;
+}
+
 #hint {
     padding: 0 0;
 }
