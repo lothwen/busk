@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import ClassVar, Final, Literal
 
 from textual.containers import VerticalScroll
+from textual.message import Message
 from textual.widget import Widget
 
 from busk_tui.colors import ColorMode
@@ -80,9 +81,17 @@ class Page(VerticalScroll):
     def update_view(self, view: View, changed: frozenset[Part]) -> None:
         """Redraw what the ``changed`` parts of ``view`` show."""
 
+    class WatchesChanged(Message):
+        """What the page watches (:meth:`watches`) has changed: F6's edit
+        mode. The app tells the bridge if the page is the one shown."""
+
+        def __init__(self, page: Page) -> None:
+            super().__init__()
+            self.page = page
+
     def watches(self, view: View) -> tuple[bool, bool]:
         """Whether the page shows the output and the running effects, as
-        ``view`` has it (F1's depend on its layout)."""
+        ``view`` has it (F1's depend on its layout, F6's on its edit mode)."""
         return self.WATCH_OUTPUT, self.WATCH_EFFECTS
 
     def stops(self) -> list[Stop]:

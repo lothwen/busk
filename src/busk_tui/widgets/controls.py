@@ -44,7 +44,8 @@ class RunLine(Message):
     drag's moves, the wheel). With a ``key``, a newer line with the same key
     replaces this one if it has not been sent yet. ``done`` is called with
     whether the line succeeded, once it has run (not for a line replaced
-    before it was sent, nor for one cancelled)."""
+    before it was sent, nor for one cancelled). ``ask``: the TUI's own
+    question before the line (a delete), asked when the engine asks none."""
 
     def __init__(
         self,
@@ -52,12 +53,14 @@ class RunLine(Message):
         origin: Origin = "ui",
         key: str | None = None,
         done: Callable[[bool], None] | None = None,
+        ask: str | None = None,
     ) -> None:
         super().__init__()
         self.line = line
         self.origin: Origin = origin
         self.key = key
         self.done = done
+        self.ask = ask
 
 
 class FillPrompt(Message):
@@ -80,7 +83,8 @@ class ShowHint(Message):
 class CommandButton(Static):
     """``[LABEL]`` in its intent's colour, or reversed (a lit toggle, TAP);
     a click runs its line, unless it is ``inert`` (drawn in the border
-    colour). The owner changes it with :meth:`change`."""
+    colour). With a ``hint``, the hint row shows it while the mouse is on
+    the button. The owner changes it with :meth:`change`."""
 
     DEFAULT_CSS = """
     CommandButton { width: auto; height: 1; }
@@ -96,6 +100,7 @@ class CommandButton(Static):
         reverse: bool = False,
         dim: bool = False,
         inert: bool = False,
+        hint: str | None = None,
         id: str | None = None,
     ) -> None:
         self.label = label
@@ -104,8 +109,17 @@ class CommandButton(Static):
         self.reverse = reverse
         self.dim = dim
         self.inert = inert
+        self.hint = hint
         self.marked = False
         super().__init__(self._text(), id=id)
+
+    def on_enter(self, event: events.Enter) -> None:
+        if self.hint is not None:
+            self.post_message(ShowHint(self.hint))
+
+    def on_leave(self, event: events.Leave) -> None:
+        if self.hint is not None:
+            self.post_message(ShowHint(None))
 
     def change(
         self,
@@ -125,8 +139,9 @@ class CommandButton(Static):
         self.reverse = self.reverse if reverse is None else reverse
         self.dim = self.dim if dim is None else dim
         self.inert = self.inert if inert is None else inert
-        if self._text() != before:
-            self.update(self._text())
+        after = self._text()
+        if (after.plain, after.style) != (before.plain, before.style):  # Text's == ignores style
+            self.update(after)
 
     def mark(self, index: int | None) -> None:
         """Draw the pane cursor on it (any ``index``), or not (``None``)."""
@@ -151,16 +166,44 @@ class CommandButton(Static):
             self.post_message(RunLine(self.line))
 
 
+class ActionButton(CommandButton):
+    """A :class:`CommandButton` whose click calls ``action``, the page's own
+    (open a dialog, enter a mode), instead of running a line; not while it
+    is ``inert``."""
+
+    def __init__(
+        self,
+        label: str,
+        action: Callable[[], None],
+        intent: Intent = "neutral",
+        *,
+        inert: bool = False,
+        hint: str | None = None,
+        id: str | None = None,
+    ) -> None:
+        super().__init__(label, Line(""), intent, inert=inert, hint=hint, id=id)
+        self.action = action
+
+    def on_click(self, event: events.Click) -> None:
+        event.stop()
+        event.prevent_default()  # not CommandButton's: it would run the empty line
+        if not self.inert:
+            self.action()
+
+
 @dataclass(frozen=True, slots=True)
 class StripButton:
     """One button of a :class:`ButtonStrip`: its label as drawn, its line,
     and the line a Shift-click runs instead (``None``: the same). With a
-    ``prefill``, a click puts that in the prompt instead of running a line."""
+    ``prefill``, a click puts that in the prompt instead of running a line;
+    with an ``action``, a click calls it instead (a toggle of the page's own;
+    keep one callable per button, so that equal buttons compare equal)."""
 
     label: Text
     line: Line
     shift: Line | None = None
     prefill: str | None = None
+    action: Callable[[], None] | None = None
 
 
 class ButtonStrip(Widget):
@@ -226,6 +269,9 @@ class ButtonStrip(Widget):
             return
         event.stop()
         button = self.buttons[index]
+        if button.action is not None:
+            button.action()
+            return
         if button.prefill is not None:
             self.post_message(FillPrompt(button.prefill))
             return

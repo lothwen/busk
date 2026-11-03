@@ -12,7 +12,7 @@ from textual.pilot import Pilot
 
 from busk_tui import colors
 from busk_tui.commands import Line, percent
-from busk_tui.widgets.bars import HBar, bar_text
+from busk_tui.widgets.bars import HBar, bar_text, signed_bar_text
 from busk_tui.widgets.controls import (
     ButtonStrip,
     Chip,
@@ -64,6 +64,18 @@ def test_bars_fill_in_eighths_of_a_cell() -> None:
     text = bar_text(0.5, 4, colors.GREEN)
     assert colors.GREEN in str(text.spans[0].style)
     assert colors.TRACK in str(text.spans[-1].style)
+
+
+def test_a_signed_bar_fills_from_its_centre() -> None:
+    assert signed_bar_text(0.5, 10, colors.FG).plain == "░░░░░│░░░░"  # 0: the centre marked
+    assert signed_bar_text(0.8, 10, colors.FG).plain == "░░░░░███░░"
+    assert signed_bar_text(0.2, 10, colors.FG).plain == "░░███░░░░░"
+    assert signed_bar_text(0.0, 4, colors.FG).plain == "██░░"
+    assert signed_bar_text(1.7, 4, colors.FG).plain == "░░██"
+    assert signed_bar_text(0.5, 1, colors.FG).plain == "│"
+    assert signed_bar_text(0.5, 0, colors.FG).plain == ""
+    text = signed_bar_text(1.0, 4, colors.AMBER)
+    assert colors.AMBER in str(text.spans[1].style)
 
 
 def test_a_click_sets_the_level_and_logs_once() -> None:
@@ -168,6 +180,27 @@ def test_an_inert_button_runs_nothing() -> None:
         button.change(inert=False)
         await pilot.click(CommandButton)
         assert app.lines == [("set intensity by 5%", "ui", None)]
+
+    bench(app, body)
+
+
+def test_a_change_of_look_alone_redraws_a_button() -> None:
+    """Rich's ``Text`` equality ignores the style: a button that changes
+    only its look (lit, inert, intent) must still be drawn again."""
+    button = CommandButton("target", Line(""), inert=True)
+    app = Bench(button)
+
+    def drawn() -> str:
+        return str(button.content.style)  # type: ignore[union-attr]
+
+    async def body(pilot: Pilot[None]) -> None:
+        assert drawn() == colors.BORDER
+        button.change(inert=False)
+        assert drawn() == colors.MID
+        button.change(intent="record", reverse=True)
+        assert drawn() == f"bold {colors.BG} on {colors.MAGENTA}"
+        button.change(intent="neutral", reverse=False)
+        assert drawn() == colors.MID
 
     bench(app, body)
 

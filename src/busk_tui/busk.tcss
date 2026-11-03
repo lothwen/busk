@@ -52,6 +52,16 @@ ModalScreen {
     width: 100%;
 }
 
+/* F6: the PRESET panel goes under the pools. */
+.narrow #presets-body {
+    layout: vertical;
+}
+
+.narrow #presets-body > #preset-panel {
+    width: 100%;
+    margin-left: 0;
+}
+
 #hint {
     padding: 0 0;
 }

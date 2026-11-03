@@ -37,6 +37,27 @@ def bar_text(level: float, width: int, color: str) -> Text:
     return text
 
 
+def signed_bar_text(level: float, width: int, color: str) -> Text:
+    """A signed value as a bar ``width`` cells wide, filled from its centre
+    (``level`` 0.5) towards ``level``, in whole cells; with nothing filled, a
+    ``│`` marks the centre."""
+    if width <= 0:
+        return Text()
+    level = max(0.0, min(1.0, level))
+    left, right = sorted((round(width / 2), round(level * width)))
+    text = Text()
+    if left == right:
+        mark = min(left, width - 1)
+        text.append("░" * mark, style=colors.TRACK)
+        text.append("│", style=colors.MID)
+        text.append("░" * (width - mark - 1), style=colors.TRACK)
+        return text
+    text.append("░" * left, style=colors.TRACK)
+    text.append("█" * (right - left), style=color)
+    text.append("░" * (width - right), style=colors.TRACK)
+    return text
+
+
 class HBar(Widget):
     """A horizontal bar; a control when it has a ``command`` (see the module
     docs). The owner sets the level it shows with :meth:`show_level`, which

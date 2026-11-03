@@ -2,9 +2,10 @@
 
 ``$BUSK_TUI_PERF`` is a JSON object: ``mode`` ``"bare"`` (the frontend only
 waits) or ``"tui"`` (the TUI, headless, on the run's show, typing a line now
-and then, on the F-key ``page``, F1 in ``layout``), ``lines`` to run on the show first (in
-both modes), ``seconds`` to run, and ``report``, where it writes the
-engine's ticks and overruns over the run and the CPU time this process
+and then, on the F-key ``page``, F1 in ``layout``, F6 with the PRESET panel
+open on a new preset of the pool ``edit``), ``lines`` to run on the show
+first (in both modes), ``seconds`` to run, and ``report``, where it writes
+the engine's ticks and overruns over the run and the CPU time this process
 used.
 """
 
@@ -29,7 +30,7 @@ def main(show: Any) -> None:
     first = show.health
     cpu = time.process_time()
     if plan["mode"] == "tui":
-        _run_tui(show, seconds, plan.get("page", 1), plan.get("layout", "B"))
+        _run_tui(show, seconds, plan.get("page", 1), plan.get("layout", "B"), plan.get("edit"))
     else:
         time.sleep(seconds)
     cpu = time.process_time() - cpu
@@ -46,9 +47,10 @@ def main(show: Any) -> None:
     )
 
 
-def _run_tui(show: Any, seconds: float, page: int, layout: str) -> None:
+def _run_tui(show: Any, seconds: float, page: int, layout: str, edit: str | None) -> None:
     from busk_tui import config
     from busk_tui.bridge import Bridge
+    from busk_tui.pages.presets import PresetsPage
     from busk_tui.shell import BuskApp
 
     bridge = Bridge.attached(show)
@@ -56,6 +58,12 @@ def _run_tui(show: Any, seconds: float, page: int, layout: str) -> None:
 
     async def drive() -> None:
         async with app.run_test(size=(150, 48)) as pilot:
+            if edit is not None:
+                presets = app.query_one(PresetsPage)
+                while not any(t.pool == edit for t in presets.tiles):
+                    await pilot.pause(0.05)
+                tiles = presets.tiles
+                presets.choose(next(t for t in tiles if t.pool == edit and t.preset is None))
             end = time.monotonic() + seconds
             while time.monotonic() < end:
                 for key in ("g", "m", "space", "8", "0", "%", "enter"):

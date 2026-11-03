@@ -370,11 +370,15 @@ class BuskApp(App[int]):
         key: str | None = None,
         performance: bool = False,
         done: Callable[[bool], None] | None = None,
+        ask: str | None = None,
     ) -> None:
         """Send ``line``: after the engine's question, if it asks one (not
-        for a control's keyed moves), echoed unless ``internal``. ``done``
-        is called with the line's success once it has run."""
+        for a control's keyed moves), else after ``ask``, the TUI's own;
+        echoed unless ``internal``. ``done`` is called with the line's
+        success once it has run."""
         question = None if key is not None else self.bridge.confirmation(line)
+        if question is None:
+            question = ask
         if question is None:
             self._send(line, origin, key, performance, done)
             return
@@ -415,7 +419,9 @@ class BuskApp(App[int]):
         message.stop()
         self._disarm()
         line = message.line
-        self.run_line(line.text, message.origin, message.key, line.performance, message.done)
+        self.run_line(
+            line.text, message.origin, message.key, line.performance, message.done, message.ask
+        )
 
     def on_fill_prompt(self, message: FillPrompt) -> None:
         """A pre-fill from a page: the text goes in the prompt, to finish."""
@@ -427,7 +433,8 @@ class BuskApp(App[int]):
         self.prompt.focus()
 
     def on_show_hint(self, message: ShowHint) -> None:
-        """What is under the mouse, in the hint row (F8's DMX cells)."""
+        """What is under the mouse, in the hint row (F8's DMX cells, F6's
+        panel buttons)."""
         message.stop()
         if message.text is None:
             self._show_hint()
@@ -530,6 +537,14 @@ class BuskApp(App[int]):
     def on_busk_page_layout_chosen(self, message: BuskPage.LayoutChosen) -> None:
         message.stop()
         self.action_layout(message.layout)
+
+    def on_page_watches_changed(self, message: Page.WatchesChanged) -> None:
+        """A page now watches other parts (F6's edit mode): the bridge reads
+        them if it is the page shown."""
+        message.stop()
+        if message.page is self.current_page:
+            output, effects = message.page.watches(self.view)
+            self.bridge.watch(output=output, effects=effects)
 
     def action_toggle_help(self) -> None:
         if self._modal():

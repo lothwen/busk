@@ -14,8 +14,10 @@ the reader at 20 Hz; under ``busk run`` F2 also with the selected heads
 moving, so its encoders redraw with the output, and F4 and F5 with P11's
 Circle running, so F5's waves move, and F3 (Phase 4: every fixture's
 output) with it, so the heads' cells change, and F1's layouts A and C
-(Phase 5: the output in OUTPUT and on the stage) with it too. The gates
-are those of the plan's Phase 0 Done note.
+(Phase 5: the output in OUTPUT and on the stage) with it too, and F6
+editing a new position preset (``docs/plans/tui-presets-plan.md`` step 3:
+the PRESET panel's pan and tilt rows show the output). The gates are those
+of the plan's Phase 0 Done note.
 """
 
 from __future__ import annotations
@@ -120,11 +122,12 @@ def run_frontend(
     page: int = 1,
     lines: tuple[str, ...] = (),
     layout: str = "B",
+    edit: str | None = None,
 ) -> Any:
-    name = f"{mode}-{page}{layout}-{len(lines)}"
+    name = f"{mode}-{page}{layout}-{len(lines)}{edit or ''}"
     report = tmp_path / f"{name}.json"
     plan = {"mode": mode, "seconds": SECONDS, "report": str(report), "page": page,
-            "layout": layout, "lines": lines}  # fmt: skip
+            "layout": layout, "lines": lines, "edit": edit}  # fmt: skip
     monkeypatch.setenv("BUSK_TUI_PERF", json.dumps(plan))
     monkeypatch.setenv("PYTHONPATH", os.pathsep.join([str(HERE), os.environ.get("PYTHONPATH", "")]))
     options = (
@@ -149,13 +152,16 @@ def test_under_busk_run_the_engine_runs_on_time(
     busk.save_show(document, show, backups=False)
     idle = run_frontend("bare", show, tmp_path, monkeypatch)
     moving = run_frontend("bare", show, tmp_path, monkeypatch, lines=MOVING)
-    runs = ((1, "B", (), idle), (1, "A", MOVING, moving), (1, "C", MOVING, moving),
-            (2, "B", (), idle), (2, "B", MOVING, moving), (3, "B", MOVING, moving),
-            (4, "B", MOVING, moving), (5, "B", MOVING, moving))  # fmt: skip
-    for page, layout, lines, bare in runs:
-        tui = run_frontend("tui", show, tmp_path, monkeypatch, page, lines, layout)
+    runs = ((1, "B", (), idle, None), (1, "A", MOVING, moving, None),
+            (1, "C", MOVING, moving, None), (2, "B", (), idle, None),
+            (2, "B", MOVING, moving, None), (3, "B", MOVING, moving, None),
+            (4, "B", MOVING, moving, None), (5, "B", MOVING, moving, None),
+            (6, "B", MOVING, moving, "position"))  # fmt: skip
+    for page, layout, lines, bare, edit in runs:
+        tui = run_frontend("tui", show, tmp_path, monkeypatch, page, lines, layout, edit)
         cores = (tui["cpu"] - bare["cpu"]) / SECONDS
         what = f"F{page}" + (f" {layout}" if page == 1 else "")
+        what += f" editing a {edit} preset" if edit else ""
         what += ", P11's Circle running" if lines else ""
         print(
             f"\nbusk run, {what}: overruns {bare['overruns']}/{bare['ticks']} bare, "

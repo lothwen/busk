@@ -144,6 +144,22 @@ def test_a_selection_and_its_undo_step(live: tuple[Bridge, Drained]) -> None:
     drained.until(lambda e: isinstance(e, SessionChanged) and e.session.undo == 1)
 
 
+def test_the_options_follow_the_selection(live: tuple[Bridge, Drained]) -> None:
+    """The reader asks busk's completion for the options on its own thread."""
+    bridge, drained = live
+    bridge.send("sel group 1", "typed")
+    event = drained.until(lambda e: isinstance(e, ProgrammerChanged) and e.programmer.selection)
+    assert isinstance(event, ProgrammerChanged)
+    assert event.programmer.offered("gobo1") == ("open", "breakup")
+    assert event.programmer.offered("shutter") == ("closed", "open", "strobe")
+    bridge.send("sel group 2", "typed")  # the washes: no gobo, no shutter
+    event = drained.until(
+        lambda e: isinstance(e, ProgrammerChanged) and e.programmer.selection[:1] == ((201, 1),)
+    )
+    assert isinstance(event, ProgrammerChanged)
+    assert event.programmer.options == (("gobo1", ()), ("shutter", ()))
+
+
 def test_after_stop_no_busk_thread_is_left(club_path: Path, tmp_path: Path) -> None:
     path = tmp_path / "club.show"
     path.write_bytes(club_path.read_bytes())

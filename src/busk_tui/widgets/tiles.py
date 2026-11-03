@@ -2,16 +2,17 @@
 
 A tile is one preset: its number (dim) and a preview on the first line,
 its name on the second, in a border that turns cyan under the mouse. A
-click runs ``preset <pool> N``. The preview is what the preset stores,
-where all its values of an attribute agree, else ``mixed``:
+click runs ``preset <pool> N``; in F6's edit mode it chooses the preset
+for the PRESET panel instead (its border magenta). The preview is what the
+preset stores, where all its values of an attribute agree, else ``mixed``:
 
 * colour: a swatch of the one colour it gives;
 * position: ``pan/tilt`` (``-30°/40°``);
 * intensity: a block as high as the level, and the level;
 * the other pools: their first attribute and its value (``zoom 20°``).
 
-The last tile of a pool, ``+ record``, puts ``record preset <pool> N "``
-in the prompt, with the next free number.
+The last tile of a pool, ``+ record``, opens the PRESET panel to record a
+preset, the pool's last number plus one.
 """
 
 from __future__ import annotations
@@ -20,12 +21,13 @@ from typing import Final
 
 from rich.text import Text
 from textual import events
+from textual.message import Message
 from textual.widget import Widget
 
 from busk_tui import attributes, colors, commands
 from busk_tui.colors import ColorMode
 from busk_tui.model import PresetInfo, Summary
-from busk_tui.widgets.controls import MARKED, FillPrompt, RunLine
+from busk_tui.widgets.controls import MARKED, RunLine
 from busk_tui.widgets.effects import BLOCKS
 
 TILE_WIDTH: Final = 16
@@ -75,8 +77,17 @@ class PresetTile(Widget):
     PresetTile {{
         height: 4; border: solid {colors.TRACK}; padding: 0 1;
     }}
+    PresetTile.-chosen {{ border: solid {colors.MAGENTA}; }}
     PresetTile:hover {{ border: solid {colors.CYAN}; background: {colors.BAR}; }}
     """
+
+    class Chosen(Message):
+        """The tile was clicked to choose its preset (in edit mode), or to
+        record one (the record tile)."""
+
+        def __init__(self, tile: PresetTile) -> None:
+            super().__init__()
+            self.tile = tile
 
     def __init__(self, pool: str, preset: PresetInfo | None, number: int, mode: ColorMode) -> None:
         super().__init__()
@@ -85,18 +96,16 @@ class PresetTile(Widget):
         self.number = number
         self.mode: ColorMode = mode
         self.marked = False
+        self.editing = False  # a click chooses the preset instead of applying it
 
     @property
     def line(self) -> str | None:
-        """The line a click runs; ``None`` for the record tile."""
+        """The line a click runs out of edit mode; ``None`` for the record tile."""
         return None if self.preset is None else commands.preset(self.pool, self.number).text
 
-    @property
-    def prefill(self) -> str | None:
-        """The record tile's pre-fill."""
-        if self.preset is not None:
-            return None
-        return commands.record_preset_prefill(self.pool, self.number)
+    def choose(self, chosen: bool) -> None:
+        """Draw it as the preset the PRESET panel shows, or not."""
+        self.set_class(chosen, "-chosen")
 
     def mark(self, index: int | None) -> None:
         self.marked = index is not None
@@ -124,7 +133,7 @@ class PresetTile(Widget):
 
     def on_click(self, event: events.Click) -> None:
         event.stop()
-        if self.prefill is not None:
-            self.post_message(FillPrompt(self.prefill))
+        if self.preset is None or self.editing:
+            self.post_message(self.Chosen(self))
         else:
             self.post_message(RunLine(commands.preset(self.pool, self.number)))

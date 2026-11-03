@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Literal
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,6 +169,36 @@ def step_number(attribute: str, change: float) -> Line:
     return Line(f"set {attribute} by {number(change)}")
 
 
+def set_color(red: float, green: float, blue: float) -> Line:
+    """A whole colour, 0..1 each, to two decimals: ``set color 1 0.25 0``
+    (busk derives the white, amber and UV emitters)."""
+    return Line(f"set color {number(red)} {number(green)} {number(blue)}")
+
+
+def set_option(attribute: str, option: str) -> Line:
+    """A discrete attribute's option: ``set gobo1 star``."""
+    return Line(f"set {attribute} {option}")
+
+
+def set_spread(
+    attribute: str,
+    low: float,
+    high: float,
+    how: Literal["center", "edges"] | None = None,
+    *,
+    level: bool = False,
+) -> Line:
+    """A fan over the selection, from ``low`` to ``high``: ``set pan spread
+    -30 30``, ``set intensity spread 0% 100% edges`` (``level``: 0..1, sent
+    as percentages); ``how`` ``center`` or ``edges`` mirrors it."""
+    ends = (percent(low), percent(high)) if level else (number(low), number(high))
+    return Line(" ".join(["set", attribute, "spread", *ends, *([how] if how else [])]))
+
+
+def clear() -> Line:
+    return Line("clear")
+
+
 def blind(on: bool) -> Line:
     return Line(f"blind {'on' if on else 'off'}")
 
@@ -192,6 +223,43 @@ def effect_add(template: str) -> Line:
     """A programmer effect on the selection, with the template's defaults:
     ``effect add "Circle"``."""
     return Line(f"effect add {quoted(template)}")
+
+
+# ---------------------------------------------------------------- presets
+
+
+def record_preset(
+    pool: str,
+    preset_number: int,
+    scope: str | None,
+    merge: Literal["merge", "replace", "remove"] | None = None,
+    name: str | None = None,
+) -> Line:
+    """The programmer's values in the pool's families as a preset, at
+    ``scope``: ``record preset color 5 global "Crimson"``; ``merge`` (or
+    ``replace``, ``remove``) for one that exists: ``record preset color 5
+    global merge``. Without a name, busk names a new one (``Color 5``).
+    ``remove`` takes every scope (busk ignores one), so it is sent without:
+    ``record preset color 5 remove``."""
+    words = ["record", "preset", pool, str(preset_number), *([scope] if scope else [])]
+    if merge is not None:
+        words.append(merge)
+    if name is not None:
+        words.append(quoted(name))
+    return Line(" ".join(words))
+
+
+def delete_preset(pool: str, preset_number: int) -> Line:
+    return Line(f"delete preset {pool} {preset_number}")
+
+
+def rename_preset(pool: str, preset_number: int, name: str) -> Line:
+    return Line(f"rename preset {pool} {preset_number} {quoted(name)}")
+
+
+def renumber_preset(pool: str, preset_number: int, new_number: int) -> Line:
+    """``preset color 7 number 9``."""
+    return Line(f"preset {pool} {preset_number} number {new_number}")
 
 
 # ------------------------------------------------------------------- cues
@@ -224,11 +292,6 @@ def set_prefill(attribute: str) -> str:
 
 
 FADE_PREFILL = "fade "
-
-
-def record_preset_prefill(pool: str, preset_number: int) -> str:
-    """``record preset color 5 "``: the name comes next."""
-    return f'record preset {pool} {preset_number} "'
 
 
 def cue_prefill(cue_list: int, cue: str, verb: str) -> str:

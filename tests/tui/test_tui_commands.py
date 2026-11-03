@@ -4,12 +4,15 @@ the club-night show (plan §4.6)."""
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 
 import pytest
 
 import busk
-from busk_tui import commands, config
+from busk.commands.record import POOL_FAMILIES
+from busk.model.attributes import ATTRIBUTES
+from busk_tui import attributes, commands, config
 from busk_tui.bridge import show_model
 from busk_tui.commands import Line
 
@@ -76,6 +79,52 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
         "sel + fixture 203, fixture 204",
         False,
     ),
+    "sel heads": (commands.sel_fixtures((101, 102)), "sel fixture 101, fixture 102", False),
+    "set color": (commands.set_color(1.0, 0.254, 0.0), "set color 1 0.25 0", False),
+    "set option": (commands.set_option("gobo1", "breakup"), "set gobo1 breakup", False),
+    "set spread": (commands.set_spread("pan", -30.0, 30.0), "set pan spread -30 30", False),
+    "set spread center": (
+        commands.set_spread("tilt", 10.0, 40.5, "center"),
+        "set tilt spread 10 40.5 center",
+        False,
+    ),
+    "set spread level": (
+        commands.set_spread("intensity", 0.0, 1.0, "edges", level=True),
+        "set intensity spread 0% 100% edges",
+        False,
+    ),
+    "record preset": (
+        commands.record_preset("color", 5, "global", name="Crimson"),
+        'record preset color 5 global "Crimson"',
+        False,
+    ),
+    "record preset merge": (
+        commands.record_preset("color", 5, "target", "merge"),
+        "record preset color 5 target merge",
+        False,
+    ),
+    "record preset replace": (
+        commands.record_preset("color", 5, "global", "replace"),
+        "record preset color 5 global replace",
+        False,
+    ),
+    "record preset remove": (
+        commands.record_preset("color", 5, None, "remove"),
+        "record preset color 5 remove",
+        False,
+    ),
+    "rename preset": (
+        commands.rename_preset("color", 5, "Scarlet"),
+        'rename preset color 5 "Scarlet"',
+        False,
+    ),
+    "renumber preset": (
+        commands.renumber_preset("color", 5, 9),
+        "preset color 5 number 9",
+        False,
+    ),
+    "delete preset": (commands.delete_preset("color", 9), "delete preset color 9", False),
+    "clear": (commands.clear(), "clear", False),
 }
 
 PREFILLS = (
@@ -83,7 +132,6 @@ PREFILLS = (
     commands.set_prefill("color"),
     commands.set_prefill("shutter"),
     commands.FADE_PREFILL,
-    commands.record_preset_prefill("color", 5),
     commands.cue_prefill(9, "3", "time"),
     commands.cue_prefill(9, "3", "follow"),
     commands.cue_prefill(9, "3", "wait"),
@@ -153,7 +201,9 @@ def test_each_builder_is_marked_as_busk_runs_it(name: str) -> None:
 
 def test_busk_accepts_every_builders_line(show: busk.OfflineShow) -> None:
     """With the heads selected, holding a colour (for its components and
-    ``by``), and an effect to stop; ``sel none`` last."""
+    ``by``), and an effect to stop; in the table's order (a preset is
+    recorded, merged into, replaced, removed from, renamed, renumbered and
+    deleted), ``sel none`` last."""
     assert show.execute("sel group 1").ok  # something to undo and redo, an effect to stop
     assert show.execute('effect add "Circle" id fx5').ok
     assert show.execute("preset color 2").ok
@@ -210,3 +260,85 @@ def test_every_binding_of_the_show_unbinds_by_its_input(show: busk.OfflineShow) 
         reply = show.execute(line)
         assert reply.ok, (line, reply.text)
     assert show.show["bindings"] == []
+
+
+def test_the_families_are_busks() -> None:
+    assert dict(attributes.FAMILY_OF) == {
+        attribute: definition.family for attribute, definition in ATTRIBUTES.items()
+    }
+    assert attributes.family_of("color.w") == "color"
+    assert attributes.family_of("nothing") is None
+
+
+def test_the_pools_record_busks_families() -> None:
+    assert dict(attributes.POOL_FAMILIES) == dict(POOL_FAMILIES)
+    assert sorted(attributes.POOLS) == sorted(POOL_FAMILIES)
+    assert sorted(attributes.DEFAULT_SCOPE) == sorted(POOL_FAMILIES)
+
+
+UNITS = {"normalized": "level", "degrees": "degrees", "hz": "hz", "degPerSec": "degps"}
+
+
+def test_every_scalar_has_a_row_and_every_discrete_attribute_options() -> None:
+    """The PRESET panel's rows: a bar for each of busk's scalars, in its unit
+    and under its family; options for each discrete attribute but
+    ``control``, in registry order."""
+    rows = {
+        encoder.attribute: (family, encoder.unit)
+        for family, encoders in attributes.ROWS
+        for encoder in encoders
+    }
+    for attribute, definition in ATTRIBUTES.items():
+        if definition.kind == "scalar":
+            assert rows[attribute] == (definition.family, UNITS[definition.unit]), attribute
+    assert all(attributes.family_of(name) == family for name, (family, _) in rows.items())
+    discrete = [
+        attribute
+        for attribute, definition in ATTRIBUTES.items()
+        if definition.kind == "discrete" and definition.family != "control"
+    ]
+    assert list(attributes.DISCRETE) == discrete
+    assert all(
+        attributes.family_of(attribute) == family
+        for family, found in attributes.OPTIONS
+        for attribute in found
+    )
+
+
+def test_f2_keeps_its_rows() -> None:
+    assert [
+        (family, [encoder.attribute for encoder in encoders])
+        for family, encoders in attributes.FAMILIES
+    ] == [
+        ("intensity", ["intensity"]),
+        ("position", ["pan", "tilt"]),
+        ("color", ["color.r", "color.g", "color.b", "color.w", "cto"]),
+        ("beam", ["zoom", "iris", "frost"]),
+        ("focus", ["focus"]),
+        ("shutter", ["strobeRate"]),
+    ]
+
+
+def test_busk_records_each_pool_at_the_default_scope(club_path: Path) -> None:
+    """A record line without a scope: busk stores the values at the scope
+    ``DEFAULT_SCOPE`` says. The heads get a focus channel for the focus
+    pool (no profile of the show has one)."""
+    document, _ = busk.load_show(club_path)
+    document = copy.deepcopy(document)
+    spot = next(p for p in document["profiles"] if p["name"] == "Generic Spot 16ch")
+    for mode in spot["modes"]:
+        for channel in mode["channels"]:
+            if channel.get("component") == "white":
+                del channel["component"]
+                channel["attribute"] = "focus"
+    show = busk.OfflineShow(document)
+    for line in ("sel group 1", "set intensity 50%", "set pan 10", "set color 1 0 0",
+                 "set zoom 20", "set focus 50%"):  # fmt: skip
+        assert show.execute(line).ok, line
+    for number, pool in enumerate(attributes.POOLS, start=11):
+        reply = show.execute(f"record preset {pool} {number}")
+        assert reply.ok, (pool, reply.text)
+        stored = next(p for p in show.show["presets"] if (p["pool"], p["number"]) == (pool, number))
+        assert {value["scope"]["kind"] for value in stored["values"]} == {
+            attributes.DEFAULT_SCOPE[pool]
+        }, pool

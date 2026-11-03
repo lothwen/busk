@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 
 import busk
+from busk_tui import attributes
 from busk_tui.bridge import (
     effects_model,
     fixture_info,
@@ -21,6 +22,7 @@ from busk_tui.bridge import (
     profile_info,
     programmer_model,
     route_views,
+    selection_options,
     show_model,
     surface_views,
 )
@@ -33,17 +35,27 @@ from busk_tui.model import (
     MasterView,
     PageInfo,
     PlaybackView,
+    PresetEntry,
     ProfileInfo,
     StoredValue,
     Targets,
     TemplateInfo,
 )
 
+TUPPER = Path(__file__).resolve().parents[2] / "examples" / "tupperdmx" / "tupper-demo.show"
+
 
 @pytest.fixture
 def show(club_path: Path, tmp_path: Path) -> busk.OfflineShow:
     document, _ = busk.load_show(club_path)
     return busk.OfflineShow(document, path=tmp_path / "club.show")
+
+
+@pytest.fixture
+def tupper() -> busk.OfflineShow:
+    """The TupperDMX demo show, to select on (not saved)."""
+    document, _ = busk.load_show(TUPPER)
+    return busk.OfflineShow(document)
 
 
 def masters_by_id(show: busk.OfflineShow) -> dict[str, MasterView]:
@@ -231,6 +243,95 @@ def test_a_profile_without_physical_ranges_uses_its_channels_else_the_defaults(
     assert profile_info({**bare, "modes": [mode]}).range("tilt") == (-135.0, 135.0)
 
 
+def test_amber_and_uv_emitters_and_the_rotation_ranges(
+    club: busk.OfflineShow, tupper: busk.OfflineShow
+) -> None:
+    par = next(p for p in club.show["profiles"] if p["name"] == "Eurolite LED ML-56 RGBW")
+
+    def with_white_as(component: str) -> ProfileInfo:
+        mode = {**par["modes"][0], "channels": [
+            {**channel, "component": component} if channel.get("component") == "white" else channel
+            for channel in par["modes"][0]["channels"]
+        ]}  # fmt: skip
+        return profile_info({**par, "modes": [mode]})
+
+    assert with_white_as("amber").attributes == frozenset({"intensity", "color", "color.a"})
+    assert with_white_as("uv").attributes == frozenset({"intensity", "color", "color.uv"})
+    head = next(p for p in tupper.show["profiles"] if p["name"] == "TupperDMX Moving Head")
+    info = profile_info(head)
+    assert {"gobo1", "gobo1Rotation", "prism", "zoom"} <= info.attributes
+    assert info.range("gobo1Rotation") == (-360.0, 360.0)  # its channel spans -360..-10, 10..360
+    bare = {**head, "modes": [{**head["modes"][0], "channels": [
+        {**channel, "capabilities": [{"kind": "function", "dmx": [0, 255], "fn": "goboIndex"}]}
+        if channel["attribute"] == "gobo1Rotation" else channel
+        for channel in head["modes"][0]["channels"]
+    ]}]}  # fmt: skip
+    assert profile_info(bare).range("gobo1Rotation") == (-360.0, 360.0)  # the default
+
+
+def test_a_presets_entries_in_each_scope_and_the_cues_that_use_it(show: busk.OfflineShow) -> None:
+    for line in ("sel group 1", "set zoom 20", 'record preset beam 1 "Narrow"'):
+        assert show.execute(line).ok, line
+    by_key = {(p.pool, p.number): p for p in show_model(show.show).presets}
+    red = by_key["color", 2]
+    assert red.entries == (
+        PresetEntry("global", None, "color", (("r", 1.0), ("g", 0.0), ("b", 0.0))),
+    )
+    assert red.used_by == (
+        (4, "1"), (10, "1"), (10, "2"), (10, "3"), (10, "4"), (15, "1"), (18, "2"),
+    )  # fmt: skip
+    assert red.palettes == ()
+    assert by_key["position", 1].entries == (  # Audience: a fan, per target
+        PresetEntry("target", (101, 1), "pan", -30.0),
+        PresetEntry("target", (102, 1), "pan", 30.0),
+        PresetEntry("target", (101, 1), "tilt", 40.0),
+        PresetEntry("target", (102, 1), "tilt", 40.0),
+    )
+    narrow = by_key["beam", 1]
+    assert narrow.entries == (PresetEntry("profile", "Generic Spot 16ch", "zoom", 20.0),)
+    assert (narrow.used_by, narrow.palettes) == ((), ())
+
+
+def test_an_effect_palette_that_takes_a_preset(show: busk.OfflineShow) -> None:
+    doc = copy.deepcopy(show.show)
+    red = next(p["id"] for p in doc["presets"] if p["name"] == "Red")
+    rainbow = next(t for t in doc["effects"] if t["name"] == "Rainbow")
+    layer = next(layer for layer in rainbow["layers"] if "palette" in layer)
+    layer["palette"] += [{"presetId": red}, {"presetId": red}]
+    by_name = {p.name: p for p in show_model(doc).presets}
+    assert by_name["Red"].palettes == ("Rainbow",)
+    assert by_name["Blue"].palettes == ()
+
+
+def test_the_options_each_selection_offers(tupper: busk.OfflineShow) -> None:
+    rig = attributes.taken(show_model(tupper.show))
+
+    def options(line: str) -> dict[str, tuple[str, ...]]:
+        assert tupper.execute(line).ok, line
+        return dict(selection_options(tupper.expected, tupper.programmer.selection, rig))
+
+    heads = options("sel group 4")
+    assert list(heads) == ["gobo1", "prism", "effect", "shutter"]  # the rig's, registry order
+    assert heads["gobo1"] == (
+        "open", "breakup", "dots", "lines", "star", "spiral", "triangles", "closed",
+    )  # fmt: skip
+    assert heads["prism"] == ("off", "prism3")
+    assert heads["effect"] == ()  # no head takes one
+    blinders = options("sel group 2")
+    assert blinders["effect"] == ("off", "autoProgram", "soundActive")
+    assert blinders["shutter"] == ("open", "strobe")
+    assert blinders["gobo1"] == ()
+    assert tupper.execute("sel none").ok
+    assert selection_options(tupper.expected, (), rig) == ()
+
+
+def test_the_programmer_carries_the_options_it_is_given(tupper: busk.OfflineShow) -> None:
+    assert tupper.execute("sel group 4").ok
+    model = programmer_model(tupper.programmer, tupper.show, (("prism", ("off", "prism3")),))
+    assert model.offered("prism") == ("off", "prism3")
+    assert model.offered("gobo1") == ()
+
+
 def test_presets_summarise_each_attribute(show: busk.OfflineShow) -> None:
     for line in ("sel group 1", "set zoom 20", 'record preset beam 1 "Narrow"', "sel fixture 101",
                  "set zoom 25", "sel group 1", 'record preset beam 2 target "Two"'):  # fmt: skip
@@ -251,7 +352,8 @@ def test_the_programmers_values(show: busk.OfflineShow) -> None:
     assert HeldValue(101, 1, "intensity", 0.5, None) in values
     assert HeldValue(102, 1, "pan", -45.0, None) in values
     assert HeldValue(101, 1, "shutter", "strobe", None) in values
-    assert HeldValue(201, 1, "color", (("r", 1.0), ("g", 0.0), ("b", 0.0)), "Red") in values
+    red = (("r", 1.0), ("g", 0.0), ("b", 0.0))
+    assert HeldValue(201, 1, "color", red, "Red", ("color", 2)) in values
     assert (
         HeldValue(202, 1, "color", (("r", 1.0), ("g", 0.5), ("b", 0.0), ("w", 0.25)), None)
         in values

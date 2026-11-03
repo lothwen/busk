@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from busk_tui import attributes
-from busk_tui.model import CueInfo, FixtureInfo, StoredValue, Targets
+from busk_tui.model import CueInfo, CueListInfo, FixtureInfo, StoredValue, Targets
 
 
 def selection_text(selection: Sequence[tuple[int, int]], fixtures: Sequence[FixtureInfo]) -> str:
@@ -119,3 +119,40 @@ def _value_text(attribute: str, value: float | str | tuple[tuple[str, float], ..
     if isinstance(value, tuple):
         return attributes.rgb_text(value)
     return attributes.summary_text(attribute, value)
+
+
+def cues_text(cues: Sequence[tuple[int, str]], lists: Sequence[CueListInfo]) -> str:
+    """Cues as ``list/cue`` (``4/1, 10/1–10/4, 15/1``): a run of cues that
+    follow one another in one list is its first and its last."""
+    order = {
+        (cue_list.number, cue.number): index
+        for cue_list in lists
+        for index, cue in enumerate(cue_list.cues)
+    }
+    runs: list[list[tuple[int, str]]] = []
+    for cue in cues:
+        last = runs[-1][-1] if runs else None
+        if (
+            last is not None
+            and last[0] == cue[0]
+            and last in order
+            and order.get(cue) == order[last] + 1
+        ):
+            runs[-1].append(cue)
+        else:
+            runs.append([cue])
+    return ", ".join(
+        f"{run[0][0]}/{run[0][1]}" + ("" if len(run) == 1 else f"–{run[-1][0]}/{run[-1][1]}")
+        for run in runs
+    )
+
+
+def numbers_text(numbers: Sequence[int]) -> str:
+    """Numbers in order, runs compressed: ``1–4, 7``."""
+    runs: list[list[int]] = []
+    for number in sorted(numbers):
+        if runs and number == runs[-1][-1] + 1:
+            runs[-1].append(number)
+        else:
+            runs.append([number])
+    return ", ".join(str(run[0]) if len(run) == 1 else f"{run[0]}–{run[-1]}" for run in runs)

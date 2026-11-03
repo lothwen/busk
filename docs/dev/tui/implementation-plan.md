@@ -280,6 +280,13 @@ rig's 8 192 elements (GAP-01).
 | Tile preview | the preset's stored values: shown when every value of that attribute is the same, else `mixed` | S | `doc` | |
 | Tile click | `preset <pool> N` | S | | |
 | Recording, new tiles at once | `record preset <pool> N "name"`; the document changes | S | `doc` | |
+| *(presets plan)* edit mode, PRESET panel: what a preset holds and who uses it | `presets[].values`; the cues' and effect palettes' references | S | `doc` | |
+| *(presets plan)* `[record]`, `[merge]`, `[replace]`, `[remove]`, scope, RECORDS | `record preset <pool> N [scope] [merge\|replace\|remove] ["name"]`; RECORDS from `ProgrammerStatus.values` | S | `prog` | |
+| *(presets plan)* `[rename…]`, `[number…]`, `[delete]` | `rename preset`, `preset <pool> N number M`, `delete preset` (the TUI asks first) | S | `doc` | |
+| *(presets plan)* editors: encoder rows, colour picker, option chips, spreads | `set …`, `set color r g b`, `set <attribute> <option>` (the options from `expected("set <attribute> ")`), `set <attribute> spread <from> <to> [center\|edges]` | S | `prog`, `out`, `exp` | |
+
+F6's edit mode and PRESET panel, which give every preset operation a control, are planned and
+recorded in [the presets plan](../../plans/tui-presets-plan.md).
 
 ### 2.8 F7 Masters (spec §8.7)
 

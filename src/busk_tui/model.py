@@ -184,11 +184,14 @@ class HeldValue:
     attribute: str
     value: Value
     preset: str | None  # the preset's name, for a preset reference
+    ref: tuple[str, int] | None = None  # the preset's pool and number, for a preset reference
 
 
 @dataclass(frozen=True, slots=True)
 class ProgrammerModel:
-    """The programmer (busk's ``ProgrammerStatus``)."""
+    """The programmer (busk's ``ProgrammerStatus``), and the options the
+    selection offers for each discrete attribute the rig takes (read from
+    busk's completion of ``set <attribute> ``)."""
 
     version: int
     selection: tuple[tuple[int, int], ...]  # (fixture number, element) pairs, in order
@@ -199,6 +202,12 @@ class ProgrammerModel:
     effects: tuple[EffectInfo, ...]  # in the order they were added
     stopped: frozenset[str]  # the ids of the stopped effects
     values: tuple[HeldValue, ...] = ()  # in the order the programmer holds them
+    options: tuple[tuple[str, tuple[str, ...]], ...] = ()  # (attribute, options), registry order
+
+    def offered(self, attribute: str) -> tuple[str, ...]:
+        """The options the selection offers for the discrete ``attribute``
+        (``open``, ``breakup`` …); none when no selected element takes it."""
+        return next((found for name, found in self.options if name == attribute), ())
 
     def held(self, number: int, element: int, attribute: str) -> HeldValue | None:
         """The value the programmer holds for one attribute of one element."""
@@ -426,12 +435,28 @@ number, or a discrete value's slot; ``None`` where they differ (mixed)."""
 
 
 @dataclass(frozen=True, slots=True)
+class PresetEntry:
+    """One value a preset stores (busk's ``PresetValue``): its scope
+    (``global``, ``profile`` or ``target``), where that is (``None`` for
+    ``global``, the profile's name, or a ``(fixture number, element)`` pair),
+    the attribute, and the value."""
+
+    scope: str
+    where: str | tuple[int, int] | None
+    attribute: str
+    value: Value
+
+
+@dataclass(frozen=True, slots=True)
 class PresetInfo:
     pool: str
     number: int
     name: str
     color: Rgb | None  # the colour it gives, when it gives one colour everywhere
     values: tuple[tuple[str, Summary], ...] = ()  # its other attributes, in the order stored
+    entries: tuple[PresetEntry, ...] = ()  # what it stores, in the order stored
+    used_by: tuple[tuple[int, str], ...] = ()  # the cues that take it: (list, cue), in that order
+    palettes: tuple[str, ...] = ()  # the effect templates whose colour palette takes it
 
 
 type Location = tuple[float, float, float, float, float, float]

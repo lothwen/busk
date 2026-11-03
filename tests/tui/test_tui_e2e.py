@@ -3,8 +3,11 @@
 * On a real show (``--standalone``, no output, no surfaces): a typed ``gm
   50%`` shows in the status bar; Space on F1 makes P1 active, and its row
   shows it; F2's group button, intensity bar and ``[+]``, and an F6 tile,
-  program it; F4 goes to a cue, and F5 adds, stops and removes an effect;
-  F3 and F1's layouts A and C show the output, and select from it.
+  program it; F6's PRESET panel records presets and changes them, and
+  on the TupperDMX show records a colour from its picker and a beam preset
+  from its option chips and bars; F4
+  goes to a cue, and F5 adds, stops and removes an effect; F3 and F1's
+  layouts A and C show the output, and select from it.
 * On a stub show whose ``save`` is held (plan §4.3): keys, page switching,
   the beat dot and a bar's drag keep working, the drag's lines run, and the
   prompt context shows the held line.
@@ -18,25 +21,34 @@ from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 
+from textual import events
 from textual.pilot import Pilot
+from textual.widget import Widget
 from tui_fakes import Stub, click_cell, column, drive
 
 import busk
-from busk_tui import colors, config
+from busk_tui import attributes, colors, commands, config
 from busk_tui.bridge import Bridge
 from busk_tui.commands import Line, percent
 from busk_tui.pages.busk_console import OutputGrid
+from busk_tui.pages.busk_stack import StackLayout
 from busk_tui.pages.busk_stage import StagePlot
+from busk_tui.pages.presets import PresetsPage
+from busk_tui.pages.program import EncoderPanel
 from busk_tui.shell import BuskApp
 from busk_tui.widgets.bars import HBar
+from busk_tui.widgets.colorpicker import cell_color, rgb_of
+from busk_tui.widgets.controls import ButtonStrip
 from busk_tui.widgets.cuetable import CueTable
 from busk_tui.widgets.dmxmap import DmxMap
 from busk_tui.widgets.effects import EffectTable, TemplateTable
-from busk_tui.widgets.encoders import EncoderRow
+from busk_tui.widgets.encoders import EncoderBar, EncoderRow
 from busk_tui.widgets.fixturetable import FixtureTable
 from busk_tui.widgets.frame import StatusBar
 from busk_tui.widgets.log import LogView
+from busk_tui.widgets.options import LIT, OptionRow
 from busk_tui.widgets.playbacks import PlaybackRow
+from busk_tui.widgets.preset_panel import Chosen
 from busk_tui.widgets.programmer import ProgrammerTable
 from busk_tui.widgets.tiles import PresetTile
 
@@ -133,6 +145,362 @@ def test_f2_and_f6_program_the_real_engine(club_path: Path, tmp_path: Path) -> N
         table = app.query_one(ProgrammerTable).content
         assert "Red" in str(table)
         assert ("ui", "preset color 2") in app.query_one(LogView).entries
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+async def tap(pilot: Pilot[int], widget: Widget, x: int = 0) -> None:
+    """A click on ``widget`` (at cell ``x``), scrolled into sight first."""
+    widget.scroll_visible(animate=False)
+    await pilot.pause()
+    await pilot.click(widget, offset=(x, 0))
+
+
+async def tap_button(pilot: Pilot[int], strip: ButtonStrip, label: str) -> None:
+    """A click on the button ``[label]`` of ``strip``."""
+    strip.scroll_visible(animate=False)
+    await pilot.pause()
+    for y, line in enumerate(strip.lines(strip.size.width)):
+        x = line.plain.find(f"[{label}]")
+        if x >= 0:
+            await pilot.click(strip, offset=(x + 1, y))
+            return
+    raise AssertionError(f"no button [{label}]")
+
+
+def test_f6_records_and_changes_presets_from_controls_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """The PRESET panel only: an intensity preset (Heads, the bar,
+    ``[record]``), a position preset at ``target`` (pan and tilt); then on
+    it ``[its fixtures]``, ``[load]``, ``[+]`` and ``[merge]``; ``[remove]``
+    with only tilt held; and ``[replace]``."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=6), standalone=True)
+
+    def stored(pool: str, number: int) -> list[tuple[str, object, str, object]]:
+        show = app.view.show
+        presets = () if show is None else show.presets
+        found = next((p for p in presets if p.pool == pool and p.number == number), None)
+        return [] if found is None else [
+            (e.scope, e.where, e.attribute, e.value) for e in found.entries
+        ]  # fmt: skip
+
+    def held(attribute: str) -> list[object]:
+        values = () if app.programmer is None else app.programmer.values
+        return [value.value for value in values if value.attribute == attribute]
+
+    async def body(pilot: Pilot[int]) -> None:
+        panel = app.query_one(PresetsPage).panel
+
+        def row(attribute: str) -> EncoderRow:
+            return next(r for r in panel.rows if r.encoder.attribute == attribute)
+
+        await until(pilot, lambda: app.programmer is not None and bool(app.query(PresetTile)))
+        record = next(t for t in app.query(PresetTile) if t.pool == "intensity")
+        await pilot.click(record)
+        await tap_button(pilot, panel.groups, "Heads")
+        await until(pilot, lambda: app.programmer.selection == ((101, 1), (102, 1)))  # type: ignore[union-attr]
+        bar = row("intensity").bar
+        await tap(pilot, bar, bar.size.width // 2)
+        await until(pilot, lambda: len(held("intensity")) == 2 and not panel.record.inert)
+        level = held("intensity")[0]
+        await tap(pilot, panel.record)
+        await until(pilot, lambda: panel.chosen == Chosen("intensity", 1))
+        assert stored("intensity", 1) == [("global", None, "intensity", level)]
+
+        tiles = app.query(PresetTile)
+        await pilot.click(next(t for t in tiles if t.pool == "position" and t.preset is None))
+        assert panel.chosen == Chosen("position", 3, new=True)
+        assert panel.scope() == "target"
+        for attribute, x in (("pan", 3 / 4), ("tilt", 1 / 4)):
+            bar = row(attribute).bar
+            await tap(pilot, bar, round((bar.size.width - 1) * x))
+        await until(pilot, lambda: len(held("pan")) == 2 and len(held("tilt")) == 2)
+        pan, tilt = held("pan")[0], held("tilt")[0]
+        await until(pilot, lambda: not panel.record.inert)
+        await tap(pilot, panel.record)
+        await until(pilot, lambda: panel.chosen == Chosen("position", 3))
+        heads = ((101, 1), (102, 1))
+        assert stored("position", 3) == [
+            *(("target", head, "pan", pan) for head in heads),
+            *(("target", head, "tilt", tilt) for head in heads),
+        ]
+
+        await tap(pilot, panel.clear)
+        await until(pilot, lambda: not held("pan") and not app.programmer.selection)  # type: ignore[union-attr]
+        await tap_button(pilot, panel.groups, "its fixtures")
+        await until(pilot, lambda: app.programmer.selection == heads)  # type: ignore[union-attr]
+        await tap(pilot, panel.load)
+        await until(pilot, lambda: held("pan") == [pan, pan] and not row("pan").plus.inert)
+        await tap(pilot, row("pan").plus)
+        await until(pilot, lambda: held("pan") == [pan + 15, pan + 15])  # type: ignore[operator]
+        await tap(pilot, panel.writes["merge"])
+        await until(pilot, lambda: ("target", heads[0], "pan", pan + 15) in stored("position", 3))  # type: ignore[operator]
+        assert [e[2] for e in stored("position", 3)] == ["pan", "pan", "tilt", "tilt"]
+
+        await tap(pilot, panel.clear)
+        await tap_button(pilot, panel.groups, "its fixtures")
+        await until(pilot, lambda: app.programmer.selection == heads)  # type: ignore[union-attr]
+        bar = row("tilt").bar
+        await tap(pilot, bar, bar.size.width - 1)
+        await until(pilot, lambda: len(held("tilt")) == 2 and not held("pan"))
+        await tap(pilot, panel.writes["remove"])
+        await until(pilot, lambda: [e[2] for e in stored("position", 3)] == ["pan", "pan"])
+        await tap(pilot, panel.writes["replace"])
+        top = held("tilt")[0]
+        await until(pilot, lambda: [e[2] for e in stored("position", 3)] == ["tilt", "tilt"])
+        assert stored("position", 3)[0] == ("target", heads[0], "tilt", top)
+        log = [line for kind, line in app.query_one(LogView).entries if kind == "ui"]
+        assert [line for line in log if line.startswith("record ")] == [
+            "record preset intensity 1 global",
+            "record preset position 3 target",
+            "record preset position 3 target merge",
+            "record preset position 3 remove",
+            "record preset position 3 target replace",
+        ]
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+TUPPER = Path(__file__).resolve().parents[2] / "examples" / "tupperdmx" / "tupper-demo.show"
+
+
+def test_f6_records_a_colour_from_the_picker_on_the_real_engine(tmp_path: Path) -> None:
+    """TupperDMX, the PRESET panel only: ``[Pars]``, a click on the colour
+    field, ``[record]``; the new preset then shows on F2's chips and F1's."""
+    path = tmp_path / "tupper.show"
+    path.write_bytes(TUPPER.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=6), standalone=True)
+
+    def held() -> list[tuple[float, float, float]]:
+        values = () if app.programmer is None else app.programmer.values
+        return [rgb_of(v.value) for v in values if v.attribute == "color"]  # type: ignore[arg-type]
+
+    def chip(strip: ButtonStrip) -> str | None:
+        """The style of the chip of colour 5, if ``strip`` has one."""
+        found = [b for b in strip.buttons if b.line.text == "preset color 5"]
+        return str(found[0].label.style) if found else None
+
+    async def body(pilot: Pilot[int]) -> None:
+        panel = app.query_one(PresetsPage).panel
+        await until(pilot, lambda: app.programmer is not None and bool(app.query(PresetTile)))
+        tiles = app.query(PresetTile)
+        await pilot.click(next(t for t in tiles if t.pool == "color" and t.preset is None))
+        assert panel.chosen == Chosen("color", 5, new=True)
+        await tap_button(pilot, panel.groups, "Pars")
+        pars = ((401, 1), (402, 1), (403, 1))
+        await until(pilot, lambda: app.programmer.selection == pars)  # type: ignore[union-attr]
+        (picker,) = panel.pickers
+        field = picker.field
+        field.scroll_visible(animate=False)
+        await pilot.pause()
+        x = field.size.width // 3
+        await pilot.click(field, offset=(x, 3))
+        rgb = cell_color(x, 3, field.size.width)
+        await until(pilot, lambda: held() == [rgb] * 3 and not panel.record.inert)
+        await tap(pilot, panel.record)
+        await until(pilot, lambda: panel.chosen == Chosen("color", 5))
+        show = app.view.show
+        assert show is not None
+        preset = next(p for p in show.presets if p.pool == "color" and p.number == 5)
+        assert [(e.scope, e.where, e.attribute, rgb_of(e.value)) for e in preset.entries] == [  # type: ignore[arg-type]
+            ("global", None, "color", rgb)
+        ]
+        swatch = colors.swatch(rgb, 1.0, app.view.mode)
+        await pilot.press("f2")
+        f2 = next(p for p in app.query(EncoderPanel) if p.family == "color")
+        assert f2.chips is not None
+        await until(pilot, lambda: chip(f2.chips) == swatch)  # type: ignore[arg-type]
+        await pilot.press("f1")
+        await until(pilot, lambda: chip(app.query_one(StackLayout).chips) == swatch)
+        log = [line for kind, line in app.query_one(LogView).entries if kind == "ui"]
+        assert log == ["sel group 3", commands.set_color(*rgb).text, "record preset color 5 global"]
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_f6_records_a_beam_preset_with_a_gobo_on_the_real_engine(tmp_path: Path) -> None:
+    """TupperDMX, the PRESET panel only: the heads, ``[star]``, the zoom
+    and rotation bars, ``[record]`` at the beam pool's ``profile``; then the
+    blinders' ``[soundActive]`` and their effect rate."""
+    path = tmp_path / "tupper.show"
+    path.write_bytes(TUPPER.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=6), standalone=True)
+
+    def held(attribute: str) -> list[object]:
+        values = () if app.programmer is None else app.programmer.values
+        return [value.value for value in values if value.attribute == attribute]
+
+    async def body(pilot: Pilot[int]) -> None:
+        panel = app.query_one(PresetsPage).panel
+
+        def row(attribute: str) -> EncoderRow:
+            return next(r for r in panel.rows if r.encoder.attribute == attribute)
+
+        def options(attribute: str) -> OptionRow:
+            return next(r for r in panel.options if r.attribute == attribute)
+
+        def lit(found: OptionRow) -> list[str]:
+            buttons = found.chips.buttons
+            return [b.label.plain for b in buttons if str(b.label.spans[0].style) == LIT]
+
+        await until(pilot, lambda: app.programmer is not None and bool(app.query(PresetTile)))
+        tiles = app.query(PresetTile)
+        await pilot.click(next(t for t in tiles if t.pool == "beam" and t.preset is None))
+        assert panel.scope() == "profile"
+        await tap_button(pilot, panel.groups, "Heads")
+        heads = ((501, 1), (502, 1), (503, 1), (504, 1))
+        await until(pilot, lambda: app.programmer.selection == heads)  # type: ignore[union-attr]
+        await until(pilot, lambda: bool(options("gobo1").chips.buttons))
+        await tap_button(pilot, options("gobo1").chips, "star")
+        await until(pilot, lambda: held("gobo1") == ["star"] * 4)
+        await until(pilot, lambda: lit(options("gobo1")) == ["[star]"])
+        for attribute, x in (("zoom", 1 / 2), ("gobo1Rotation", 3 / 4)):
+            bar = row(attribute).bar
+            await tap(pilot, bar, round((bar.size.width - 1) * x))
+        await until(pilot, lambda: len(held("zoom")) == 4 and len(held("gobo1Rotation")) == 4)
+        zoom, turn = held("zoom")[0], held("gobo1Rotation")[0]
+        assert turn > 0  # type: ignore[operator]
+        await tap(pilot, panel.record)
+        await until(pilot, lambda: panel.chosen == Chosen("beam", 1))
+        show = app.view.show
+        assert show is not None
+        preset = next(p for p in show.presets if p.pool == "beam" and p.number == 1)
+        head = "TupperDMX Moving Head"
+        assert sorted((e.scope, e.where, e.attribute, e.value) for e in preset.entries) == [
+            ("profile", head, "gobo1", "star"),
+            ("profile", head, "gobo1Rotation", turn),
+            ("profile", head, "zoom", zoom),
+        ]
+
+        await tap_button(pilot, panel.groups, "Blinders")
+        await until(pilot, lambda: len(app.programmer.selection) == 8)  # type: ignore[union-attr]
+        await until(pilot, lambda: bool(options("effect").chips.buttons))
+        await tap_button(pilot, options("effect").chips, "soundActive")
+        await until(pilot, lambda: held("effect") == ["soundActive"] * 2)  # one cell of each
+        bar = row("effectRate").bar
+        await until(pilot, lambda: bar.settable)
+        await tap(pilot, bar, bar.size.width - 1)
+        await until(pilot, lambda: held("effectRate") == [1.0] * 2)
+        log = [line for kind, line in app.query_one(LogView).entries if kind == "ui"]
+        assert log == [
+            "sel group 4",
+            "set gobo1 star",
+            f"set zoom {commands.number(zoom)}",  # type: ignore[arg-type]
+            f"set gobo1Rotation {commands.number(turn)}",  # type: ignore[arg-type]
+            "record preset beam 1 profile",
+            "sel group 2",
+            "set effect soundActive",
+            "set effectRate 100%",
+        ]
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def scroll(widget: Widget, *, up: bool) -> events.MouseEvent:
+    """A wheel notch on ``widget``."""
+    kind = events.MouseScrollUp if up else events.MouseScrollDown
+    return kind(widget, 0, 0, 0, 0, 0, False, False, False)
+
+
+async def reach(
+    pilot: Pilot[int],
+    bar: EncoderBar,
+    steps: tuple[Widget, Widget],
+    span: tuple[float, float],
+    target: float,
+    now: Callable[[], float | None],
+) -> None:
+    """``target`` (degrees) from controls only: the bar's nearest cell that
+    is a whole number of wheel notches (5°) away, then ``[−]`` or ``[+]``
+    (15°), then the wheel; ``now`` reads the value the programmer holds."""
+
+    def value_at(x: int) -> float:
+        return attributes.to_value(bar.level_at(x), span, "degrees")
+
+    cells = [x for x in range(bar.size.width) if (target - value_at(x)) % 5 == 0]
+    x = min(cells, key=lambda x: abs(target - value_at(x)))
+    await tap(pilot, bar, x)
+    await until(pilot, lambda: now() == value_at(x))
+    change = round(target - value_at(x))
+    minus, plus = steps
+    for _ in range(abs(change) // 15):
+        await tap(pilot, plus if change > 0 else minus)
+    for _ in range(abs(change) % 15 // 5):
+        bar.post_message(scroll(bar, up=change > 0))
+    await until(pilot, lambda: now() == target)
+
+
+def test_f6_rebuilds_the_audience_fan_from_controls_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """The club script's Audience (``set pan spread -30 30``, ``set tilt
+    40``, recorded per target) rebuilt from the PRESET panel only: Heads,
+    pan as a spread (its two bars and steps), tilt's bar, steps and wheel,
+    then ``[record]``: the same stored values."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=6), standalone=True)
+
+    def stored(number: int) -> list[tuple[str, object, str, object]]:
+        show = app.view.show
+        presets = () if show is None else show.presets
+        found = next(p for p in presets if p.pool == "position" and p.number == number)
+        return [(e.scope, e.where, e.attribute, e.value) for e in found.entries]
+
+    def held_on(attribute: str, number: int) -> float | None:
+        values = () if app.programmer is None else app.programmer.values
+        found = (v.value for v in values if v.attribute == attribute and v.number == number)
+        value = next(found, None)
+        return value if isinstance(value, float) else None
+
+    async def body(pilot: Pilot[int]) -> None:
+        panel = app.query_one(PresetsPage).panel
+        await until(pilot, lambda: app.programmer is not None and bool(app.query(PresetTile)))
+        tiles = app.query(PresetTile)
+        await pilot.click(next(t for t in tiles if t.pool == "position" and t.preset is None))
+        assert panel.chosen == Chosen("position", 3, new=True)
+        assert panel.scope() == "target"
+        await tap_button(pilot, panel.groups, "Heads")
+        await until(pilot, lambda: app.programmer.selection == ((101, 1), (102, 1)))
+        await tap_button(pilot, panel.spread_lines[0].chips, "pan")
+        fan = next(row for row in panel.spreads if row.encoder.attribute == "pan")
+        await until(pilot, lambda: fan.display and fan.reading is not None)
+        assert fan.reading is not None
+        for end, target, number in ((0, -30.0, 101), (1, 30.0, 102)):
+            part = fan.ends[end]
+            await reach(pilot, part.bar, (part.minus, part.plus), fan.reading.span, target,
+                        lambda number=number: held_on("pan", number))  # type: ignore[misc]  # fmt: skip
+        tilt = next(row for row in panel.rows if row.encoder.attribute == "tilt")
+        assert tilt.reading is not None
+        await reach(pilot, tilt.bar, (tilt.minus, tilt.plus), tilt.reading.span, 40.0,
+                    lambda: held_on("tilt", 102))  # fmt: skip
+        assert [end.shown.plain for end in fan.ends] == ["-30°", "30°"]
+        await until(pilot, lambda: not panel.record.inert)
+        await tap(pilot, panel.record)
+        await until(pilot, lambda: panel.chosen == Chosen("position", 3))
+        assert sorted(stored(3), key=str) == sorted(stored(1), key=str)  # Audience's
+        log = [line for kind, line in app.query_one(LogView).entries if kind == "ui"]
+        assert "record preset position 3 target" in log
+        assert any(line.startswith("set pan spread ") for line in log)
 
     try:
         drive(app, body)

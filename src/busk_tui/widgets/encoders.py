@@ -12,6 +12,7 @@ from the programmer, dim from the output, ``—`` with neither.
   send ``set <attribute> by <change>``, which acts only where the
   programmer holds the attribute (question Q11): elsewhere they are inert.
 * A click on the attribute's name puts ``set <attribute> `` in the prompt.
+* A rotation's bar (degrees per second, signed) fills from its centre, 0.
 
 What the row sent shows at once, magenta, until busk has run it and the
 programmer shows it (the pending value).
@@ -35,7 +36,7 @@ from busk_tui.attributes import Encoder, Reading
 from busk_tui.commands import Line
 from busk_tui.model import Origin
 from busk_tui.nav import Item, Stop
-from busk_tui.widgets.bars import HBar
+from busk_tui.widgets.bars import HBar, signed_bar_text
 from busk_tui.widgets.controls import MARKED, CommandButton, FillPrompt, RunLine
 
 DRAG_S: Final = 0.1
@@ -64,12 +65,18 @@ class EncoderBar(HBar):
             self.bar = bar
             self.up = up
 
-    def __init__(self, color: str) -> None:
+    def __init__(self, color: str, *, signed: bool = False) -> None:
         super().__init__(color=color, classes="enc-bar")
+        self.signed = signed
         self.settable = False
         self.steps = False
         self._sent_at = 0.0
         self._later: Timer | None = None
+
+    def render(self) -> Text:
+        if self.signed:
+            return signed_bar_text(self.level, self.size.width, self.color)
+        return super().render()
 
     def on_mouse_down(self, event: events.MouseDown) -> None:
         if not self.settable:
@@ -150,7 +157,7 @@ class EncoderRow(Horizontal):
         self.marked = False
         self.name_text = Static(self._label(), classes="enc-name")
         self.minus = CommandButton("−", Line(""), inert=True)
-        self.bar = EncoderBar(encoder.color)
+        self.bar = EncoderBar(encoder.color, signed=encoder.unit == "degps")
         self.plus = CommandButton("+", Line(""), inert=True)
         self.shown = Text("—", style=colors.DIM)
         self.value = Static(self.shown, classes="enc-value")
@@ -189,8 +196,8 @@ class EncoderRow(Horizontal):
         value, source = reading.value, reading.source
         if self.pending is not None:
             value, source = self.pending, "programmer"
-        if value is None:
-            self.bar.show_level(0.0, colors.TRACK)
+        if value is None:  # an empty bar; a signed one's empty at its centre, 0
+            self.bar.show_level(0.5 if self.bar.signed else 0.0, colors.TRACK)
             self._show_value(Text("—", style=colors.DIM))
             return
         color = encoder.color if source == "programmer" else f"{encoder.color} dim"

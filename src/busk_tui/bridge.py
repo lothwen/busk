@@ -14,7 +14,9 @@ own (plan §4.1):
   controls, in order; they never wait for an ordered line (busk's GAP-12);
 * the **reader** looks at the show's published state 20 times a second (the
   output and the running effects, while a page shows them, 10 times) and
-  sends an event only when something changed;
+  sends an event only when something changed; when the selection changes,
+  it asks busk's completion which options the selection offers (busk's
+  ``expected`` only reads, so any thread may ask);
 * a **log handler** on the ``busk`` logger turns its records into
   :class:`~busk_tui.model.EngineNews`.
 
@@ -39,13 +41,14 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from queue import Empty, SimpleQueue
-from typing import Any, Final, Literal
+from typing import Any, Final, Literal, cast
 
 from busk import (
     EffectSnapshot,
     EffectTemplateInfo,
     EngineHealth,
     EngineSnapshot,
+    Expected,
     FixtureProfile,
     LiveShow,
     OutputSnapshot,
@@ -95,6 +98,7 @@ from busk_tui.model import (
     PageView,
     PlaybackInfo,
     PlaybackView,
+    PresetEntry,
     PresetInfo,
     ProfileInfo,
     ProgrammerChanged,
@@ -213,6 +217,8 @@ class _Seen:
     live: LiveState | None = None
     programmer: int | None = None
     programmer_model: ProgrammerModel | None = None
+    selection: tuple[tuple[int, int], ...] | None = None  # the selection the options are for
+    options: tuple[tuple[str, tuple[str, ...]], ...] = ()
     effects: tuple[EffectView, ...] | None = None  # None: send the next read, whatever it is
     effects_at: float = 0.0  # when the effects were last read (monotonic)
     output_seq: int | None = None
@@ -601,7 +607,13 @@ class Bridge:
         programmer = show.programmer
         new_programmer = programmer.version != seen.programmer
         if new_programmer or new_doc:  # a new document may rename an effect's template
-            changed = programmer_model(programmer, doc)
+            if new_doc or programmer.selection != seen.selection:
+                # busk's completion reads the show's newest programmer: a selection
+                # made since the read above shows at the next look, as a new version.
+                rig = attributes.taken(seen.show)
+                seen.options = selection_options(show.expected, programmer.selection, rig)
+                seen.selection = programmer.selection
+            changed = programmer_model(programmer, doc, seen.options)
             seen.programmer = programmer.version
             if changed != seen.programmer_model:
                 seen.programmer_model = changed
@@ -714,6 +726,8 @@ def show_model(doc: Show, templates: Sequence[EffectTemplateInfo] = ()) -> ShowM
     profiles = {profile["id"]: profile["name"] for profile in doc["profiles"]}
     universes = {universe["id"]: universe["number"] for universe in doc["universes"]}
     modes = _modes(doc)
+    users = _preset_users(doc)
+    palettes = _preset_palettes(doc)
     return ShowModel(
         title=doc["meta"]["title"],
         universes=tuple(UniverseView(u["number"], u["name"]) for u in doc["universes"]),
@@ -760,6 +774,9 @@ def show_model(doc: Show, templates: Sequence[EffectTemplateInfo] = ()) -> ShowM
                 preset["name"],
                 _preset_color(preset["values"]),
                 _preset_summary(preset["values"]),
+                entries=tuple(preset_entry(stored, profiles, names) for stored in preset["values"]),
+                used_by=tuple(users.get(preset["id"], ())),
+                palettes=tuple(palettes.get(preset["id"], ())),
             )
             for preset in doc["presets"]
         ),
@@ -823,12 +840,19 @@ def fixture_info(
     )
 
 
-RANGED: Final = ("pan", "tilt", "zoom", "strobeRate")
+ROTATIONS: Final = ("gobo1Rotation", "gobo2Rotation", "prismRotation", "effectRotation")
+
+RANGED: Final = ("pan", "tilt", "zoom", "strobeRate", *ROTATIONS)
 """The attributes whose range is the profile's (the others are 0..1)."""
 
 DEFAULT_RANGES: Final = {"pan": (-270.0, 270.0), "tilt": (-135.0, 135.0), "zoom": (5.0, 60.0),
-                         "strobeRate": (0.0, 25.0)}  # fmt: skip
-"""A range the profile does not give (the spec's pan and tilt)."""
+                         "strobeRate": (0.0, 25.0),
+                         **dict.fromkeys(ROTATIONS, (-360.0, 360.0))}  # fmt: skip
+"""A range the profile does not give (the spec's pan and tilt; a rotation
+both ways, at a turn a second at most)."""
+
+EMITTERS: Final = {"white": "color.w", "amber": "color.a", "uv": "color.uv"}
+"""The colour components ``set`` names, by the emitter they drive."""
 
 
 def profile_info(profile: FixtureProfile) -> ProfileInfo:
@@ -836,9 +860,10 @@ def profile_info(profile: FixtureProfile) -> ProfileInfo:
     channels: their attributes (``control`` is never set), the attribute a
     function range takes as its parameter (``strobeRate`` of a shutter's
     strobe), ``intensity`` where a mode dims its colour virtually, and
-    ``color.w`` where a colour channel drives a white emitter. The ranges
-    are the profile's ``physical`` ones (pan and tilt centred on 0), else
-    those its channels' capabilities span, else :data:`DEFAULT_RANGES`."""
+    ``color.w``, ``color.a`` and ``color.uv`` where a colour channel drives
+    a white, amber or UV emitter. The ranges are the profile's ``physical``
+    ones (pan and tilt centred on 0), else those its channels'
+    capabilities span, else :data:`DEFAULT_RANGES`."""
     attributes: set[str] = set()
     spans: dict[str, list[float]] = {}
     for mode in profile["modes"]:
@@ -850,8 +875,9 @@ def profile_info(profile: FixtureProfile) -> ProfileInfo:
             attributes.add(attribute)
             if attribute == "color":
                 colored = True
-                if channel.get("component") == "white":
-                    attributes.add("color.w")
+                component = EMITTERS.get(channel.get("component", ""))
+                if component is not None:
+                    attributes.add(component)
             for capability in channel["capabilities"]:
                 if capability["kind"] == "range" and attribute in RANGED:
                     spans.setdefault(attribute, []).extend(capability["value"])
@@ -1000,7 +1026,39 @@ def live_state(snapshot: EngineSnapshot, masters: dict[str, MasterView]) -> Live
     )
 
 
-def programmer_model(programmer: ProgrammerStatus, doc: Show) -> ProgrammerModel:
+OPTION_KEYWORDS: Final = frozenset({"spread", "preset"})
+"""The words busk completes after ``set <discrete attribute> `` that are no
+option of it."""
+
+
+def selection_options(
+    expected: Callable[[str], Expected],
+    selection: Sequence[tuple[int, int]],
+    rig: frozenset[str],
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    """The options the selection offers for each discrete attribute the
+    ``rig`` takes, in busk's registry order: what busk completes after
+    ``set <attribute> `` (``expected``: the show's), its keywords left out.
+    Nothing for an empty selection."""
+    if not selection:
+        return ()
+    found: list[tuple[str, tuple[str, ...]]] = []
+    for attribute in attributes.DISCRETE:
+        if attribute not in rig:
+            continue
+        answer = expected(f"set {attribute} ")
+        words = () if answer.error is not None else answer.words
+        found.append((attribute, tuple(word for word in words if word not in OPTION_KEYWORDS)))
+    return tuple(found)
+
+
+def programmer_model(
+    programmer: ProgrammerStatus,
+    doc: Show,
+    options: tuple[tuple[str, tuple[str, ...]], ...] = (),
+) -> ProgrammerModel:
+    """The programmer as the UI has it, with the selection's ``options``
+    (:func:`selection_options`)."""
     names = _names(doc)
     return ProgrammerModel(
         version=programmer.version,
@@ -1018,9 +1076,11 @@ def programmer_model(programmer: ProgrammerStatus, doc: Show) -> ProgrammerModel
                 attribute=value.attribute,
                 value=_value(value.value),
                 preset=None if value.preset is None else value.preset[2],
+                ref=None if value.preset is None else (value.preset[0], value.preset[1]),
             )
             for value in programmer.values
         ),
+        options=options,
     )
 
 
@@ -1309,6 +1369,54 @@ def _value(value: Any) -> Value:
         )
         return components
     return float(value)
+
+
+def preset_entry(
+    stored: Mapping[str, Any], profiles: Mapping[Any, str], names: _Names
+) -> PresetEntry:
+    """One value a preset stores, its scope's profile by name and its
+    target by fixture number (``profiles``: the document's names, by id)."""
+    scope = stored["scope"]
+    where: str | tuple[int, int] | None = None
+    if scope["kind"] == "profile":
+        where = profiles.get(scope["profileId"], scope["profileId"])
+    elif scope["kind"] == "target":
+        target = scope["target"]
+        where = (names.fixtures.get(target["fixtureId"], 0), target["element"] + 1)
+    return PresetEntry(scope["kind"], where, stored["attribute"], _value(stored["value"]))
+
+
+def _preset_users(doc: Show) -> dict[str, list[tuple[int, str]]]:
+    """Each preset's cues, by its id: the cues with an entry that takes it,
+    as (list number, cue number), by list number and in cue order."""
+    users: dict[str, list[tuple[int, str]]] = {}
+    for cue_list in sorted(doc["cueLists"], key=lambda found: found["number"]):
+        for cue in cue_list["cues"]:
+            cue_key = (cue_list["number"], cue["number"])
+            for entry in cue["entries"]:
+                source = entry["value"]
+                if source["kind"] != "preset":
+                    continue
+                found = users.setdefault(source["presetId"], [])
+                if not found or found[-1] != cue_key:
+                    found.append(cue_key)
+    return users
+
+
+def _preset_palettes(doc: Show) -> dict[str, list[str]]:
+    """Each preset's effect templates, by its id: those with a colour layer
+    whose palette takes it, by name, in show order."""
+    palettes: dict[str, list[str]] = {}
+    for template in doc["effects"]:
+        layers = cast(Sequence[Mapping[str, Any]], template["layers"])
+        for layer in layers:
+            for entry in layer.get("palette", ()):  # a colour layer's
+                if "presetId" not in entry:
+                    continue
+                found = palettes.setdefault(entry["presetId"], [])
+                if template["name"] not in found:
+                    found.append(template["name"])
+    return palettes
 
 
 def _preset_summary(values: Sequence[Mapping[str, Any]]) -> tuple[tuple[str, Summary], ...]:

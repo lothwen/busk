@@ -1,10 +1,12 @@
-"""The two dialogs: the engine's question before a line, and quitting.
+"""The dialogs: a question before a line (the engine's, or the TUI's own),
+quitting, and a line of text to type (a preset's name or number).
 
-Both are modal: while one is open, its keys are the only ones.
+All are modal: while one is open, its keys are the only ones.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import ClassVar, Literal
 
 from rich.text import Text
@@ -14,7 +16,7 @@ from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical
 from textual.message import Message
 from textual.screen import ModalScreen
-from textual.widgets import Static
+from textual.widgets import Input, Static
 
 from busk_tui import colors
 
@@ -60,7 +62,8 @@ class Choice(Static):
 
 
 class ConfirmDialog(ModalScreen[bool]):
-    """The engine's yes/no question before a line; No unless ``y``."""
+    """A yes/no question before a line, the engine's or the TUI's own; No
+    unless ``y``."""
 
     DEFAULT_CSS = _css("ConfirmDialog")
     BINDINGS: ClassVar[list[BindingType]] = [
@@ -129,3 +132,55 @@ class QuitDialog(ModalScreen[QuitChoice]):
 
     def on_choice_chosen(self, message: Choice.Chosen) -> None:
         self.action_choose(message.value)
+
+
+class TextDialog(ModalScreen[str | None]):
+    """A line of text to type, under ``title`` and a ``note``: Enter runs
+    ``check`` on it, which returns what is wrong with it (shown, and the
+    dialog stays) or ``None`` (the dialog closes with the text); Esc
+    cancels (``None``)."""
+
+    DEFAULT_CSS = (
+        _css("TextDialog")
+        + f"""
+    TextDialog > Vertical {{ width: 60; }}
+    TextDialog Input {{ width: 100%; margin-top: 1; }}
+    TextDialog .error {{ color: {colors.RED}; width: 100%; height: auto; }}
+    """
+    )
+    BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("escape", "cancel", "Cancel", show=False),
+    ]
+
+    def __init__(
+        self, title: str, value: str, check: Callable[[str], str | None], note: str = ""
+    ) -> None:
+        super().__init__()
+        self.title_text = title
+        self.initial = value
+        self.check = check
+        self.note = note
+        self.error = Static("", classes="error")
+
+    def compose(self) -> ComposeResult:
+        with Vertical() as box:
+            box.border_title = self.title_text
+            if self.note:
+                yield Static(self.note, classes="note")
+            yield Input(self.initial)
+            yield self.error
+            yield Static("Enter: OK · Esc: cancel", classes="note")
+
+    def on_mount(self) -> None:
+        self.query_one(Input).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        event.stop()
+        problem = self.check(event.value)
+        if problem is None:
+            self.dismiss(event.value)
+        else:
+            self.error.update(problem)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)

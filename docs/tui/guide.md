@@ -108,7 +108,8 @@ selected playback (`P1`: the one Space and `[ ]` act on) and how many steps `und
 
 **The hint row** under it says what may come where the cursor is (`next: off on`, `<a
 fixture number>`, `<Enter>`), or the mistake that stops the line (`error: no fixture 999`),
-then the matching forms of `help`.
+then the matching forms of `help`. With the mouse on some controls, it says what is there
+instead: F8's DMX cells, F6's `[merge]` and its neighbours.
 
 ## Keys
 
@@ -500,16 +501,122 @@ templates go under the effects.
 
 ## F6 Presets
 
-Every preset, as tiles, one panel per pool that has presets: COLOR, POSITION, BEAM,
-INTENSITY, FOCUS and ALL. A tile shows the preset's number and name and what it gives where
-all its values agree: the colour as a swatch, `pan/tilt` (`-30°/40°`), the intensity as a
-block and a percentage, or its first attribute (`zoom 20°`); `mixed` where they differ (one
+Every preset, as tiles, one panel per pool: COLOR, POSITION, BEAM, INTENSITY, FOCUS and ALL.
+A pool shows when it has presets, or when your rig can record into it (a profile of the rig
+takes one of its attributes). A tile shows the preset's number and name and what it gives
+where all its values agree: the colour as a swatch, `pan/tilt` (`-30°/40°`), the intensity as
+a block and a percentage, or its first attribute (`zoom 20°`); `mixed` where they differ (one
 value per fixture). A click runs `preset color 2` on the selection, which the header names
-(`applies to 101 thru 102 (2)`).
+(`applies to 101 thru 102 (2)`). A preset recorded at the prompt shows at once.
 
-The last tile of each pool, `+ record`, puts `record preset color 5 "` in the prompt, with the
-next free number: type the name, close the quotes, Enter. A preset recorded at the prompt
-shows at once. A pool with no preset yet does not show: record its first one at the prompt.
+### Edit mode and the PRESET panel
+
+`[edit]`, at the right of the header, turns edit mode on (`[edit ●]`). So does the last tile of
+each pool, `+ record`. In edit mode a tile click chooses the preset for the PRESET panel
+instead of applying it, and `[done]` turns edit mode off.
+
+```
+ applies to 101 thru 102 (2) · click a tile to edit it                                   [edit ●]
+ ┌─ POSITION ──────────────────────────────┐ ┌─ PRESET · new position 3 ────────────────────────┐
+ │ ┌───────────────┐ ┌───────────────┐     │ │ number [−] 3 [+] [number…] [name: Position 3…]   │
+ │ │ 1   mixed/40° │ │ 2   mixed/10° │     │ │                                                  │
+ │ │ Audience      │ │ Centre        │     │ │ scope  [global] [profile] [target]               │
+ │ └───────────────┘ └───────────────┘     │ │                                                  │
+ │ ┌───────────────┐                       │ │ SELECTION 101 thru 102 (2)                       │
+ │ │ + record      │                       │ │ [Heads] [Washes] [Bar] [All] [none]              │
+ │ │ as 3          │                       │ │                                                  │
+ │ └───────────────┘                       │ │ POSITION                                         │
+ └─────────────────────────────────────────┘ │ pan        from [−] ███████▌░░░░░░░░░ [+]   -30° │
+                                             │              to [−] █████████▌░░░░░░░ [+]    30° │
+                                             │                 [centre] [edges]                 │
+                                             │ tilt            [−] ███████████░░░░░░ [+]    40° │
+                                             │ spread          [pan] [tilt]                     │
+                                             │                                                  │
+                                             │ RECORDS                                          │
+                                             │ pan   on 101 thru 102 (2)                        │
+                                             │ tilt  on 101 thru 102 (2)                        │
+                                             │                                                  │
+                                             │ [record]                                         │
+                                             │                                                  │
+                                             │ [clear] [blind on] [done]                        │
+                                             └──────────────────────────────────────────────────┘
+```
+
+The panel works through the programmer, as busk does. Its editors send `set` lines, so what
+you set shows on stage unless `[blind on]` is lit. Its `[record]`, `[merge]`, `[replace]` and
+`[remove]` send `record preset` lines. Each line is echoed `ui>` in the log with busk's
+answer (a drag's, the last one).
+
+**A new preset** (`+ record`) starts at the pool's next free number. `[−]` `[+]` step over
+the free numbers, and `[number…]` types one. `[name: Position 3…]` types a name; without
+one, busk names it `Position 3`. These send nothing until `[record]`.
+
+**scope** is what `[record]`, `[merge]` and `[replace]` record at: `global` (one value for
+every fixture), `profile` (one per profile) or `target` (one per fixture). The pool's default
+is lit at first: `global` for colour and intensity, `profile` for beam and focus, `target`
+for position and all. Where the values differ, busk falls back to a narrower scope and says
+so in its answer.
+
+**SELECTION** shows the selection, with a button per group and `[none]`, as on F2.
+
+**The editors** are a section per family the pool records. A row shows when a profile of your
+rig takes its attribute, and acts on the selection:
+
+- encoder rows, as on F2, plus the attributes F2 has no row for: rotations (in degrees per
+  second, `-` turns the other way, the bar filled from its centre), the fixture effects'
+  rate, fade and settings, `color.a` and `color.uv`;
+- in COLOR, the colour picker. Its field runs through the hues across and the saturation
+  down (palest at the top): a click sends that colour, `set color 1 0.25 0`, and a drag
+  sends as it moves and logs the last. The field is mouse only; the named chips under it
+  (`[red]`, `[amber]`, `[warm]` …) send theirs from the keyboard too. Then the programmer's
+  colour, and the component rows, which act once a colour is held;
+- option rows for the discrete attributes (gobos, prisms, shutters, colour wheels, fixture
+  effects): a chip per option the selection offers. A click sends `set gobo1 star`; the
+  programmer's option is lit;
+- `spread [pan] [tilt] …`, a toggle per row (every row but a colour's components). A row
+  toggled on becomes a fan over the selection: a `from` bar for the first selected fixture, a
+  `to` bar for the last, and the ones between spaced evenly. A bar, `[−]` `[+]` or the wheel send
+  the whole fan, `set pan spread -30 30`. `[centre]` mirrors it, with `from` at both ends and
+  `to` in the middle (`set pan spread -30 30 center`), and `[edges]` the other way round.
+  busk keeps the value each fixture got, not the fan, so the bars read the ends back from
+  those values.
+
+**RECORDS** is what a record takes now: every value the programmer holds in the pool's
+families, for every fixture that has one. busk records those, selected or not, and RECORDS
+says how many are not selected. With nothing to record, it says "set a value above", and
+`[record]`, `[merge]`, `[replace]` and `[remove]` are grey.
+
+`[record]` sends `record preset position 3 target "Name"` (the name only when you gave one).
+The panel then shows the new preset. `[clear]` clears the programmer; `[blind on|off]` is lit
+while blind is on.
+
+**A preset of the show** (a tile clicked in edit mode) has, instead of the number and name:
+
+- `[rename…]` and `[number…]`, each a dialog, then one line (`rename preset color 2 "…"`,
+  `preset color 2 number 9`). The number dialog lists the numbers taken and refuses them; a
+  name cannot hold a double quote;
+- `[delete]`, after a question (busk asks none). It is grey while cues or effect palettes use
+  the preset: the panel names them (`used by cue 4/1, 10/1–10/4`), and they must stop using
+  it first;
+- HOLDS: each value it stores, then its scope and where (`pan  -30°  target 101`). A line too
+  long for the panel ends in `…`: a long profile name is cut, never the value.
+
+Its scope starts at the one its values share. `[its fixtures]` selects the fixtures it gives
+a value to, and `[load]` applies it on the selection, so the editors show its values. Then,
+in place of `[record]`:
+
+- `[merge]` adds the programmer's values; a value of the same scope and attribute is replaced;
+- `[replace]`: the programmer's values become the preset's;
+- `[remove]` removes what the programmer's fixtures see, for the attributes the programmer
+  holds.
+
+The usual way to change a preset: `[its fixtures]`, `[load]`, change the values, `[merge]`.
+With the mouse on `[load]`, the three above, `[centre]` or `[edges]`, the hint row says what
+it does.
+
+The pane cursor stops on `[edit]`, the tiles (Enter applies, or chooses in edit mode), and
+every control of the panel in reading order. The panel is beside the pools from 100 columns,
+and under them below that; there, a tile click scrolls down to it.
 
 ## F7 Masters
 
@@ -606,7 +713,11 @@ columns BINDINGS goes under SURFACES.
 ## Questions and quitting
 
 A line busk asks about first, such as `output off`, opens a dialog with busk's question.
-The line runs only on **y**; **n**, Enter or Esc cancel it (`cancelled` in the log).
+The line runs only on **y**; **n**, Enter or Esc cancel it (`cancelled` in the log). F6's
+`[delete]` asks the TUI's own question the same way.
+
+A name or a number (F6's `[rename…]`, `[number…]`, `[name…]`) is typed in a small dialog:
+Enter takes it, Esc cancels. What it refuses shows in red, and the dialog stays open.
 
 `quit`, `exit` (also from a script you `source`), Ctrl+C twice and Ctrl+Q open the quit
 dialog. With unsaved edits it offers **s** Save and quit, **q** Quit without saving and **c**
