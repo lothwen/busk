@@ -231,6 +231,42 @@ COMMANDS: list[tuple[str, dict[str, Any]]] = [
     ("fixture 201 patch none", {"type": "PATCH_FIXTURE", "fixtureId": "fx-par1", "patch": None}),
     # output and surfaces
     (
+        "route r1 off",
+        {
+            "type": "BATCH",
+            "label": "switched route r1 off",
+            "commands": [
+                {
+                    "type": "SET",
+                    "path": ["output", "routes", {"id": "r1"}, "enabled"],
+                    "value": False,
+                }
+            ],
+        },
+    ),
+    (
+        "ROUTE r1 ON",
+        {
+            "type": "BATCH",
+            "label": "switched route r1 on",
+            "commands": [
+                {
+                    "type": "SET",
+                    "path": ["output", "routes", {"id": "r1"}, "enabled"],
+                    "value": True,
+                }
+            ],
+        },
+    ),
+    (
+        "delete route r1",
+        {
+            "type": "BATCH",
+            "label": "deleted route r1",
+            "commands": [{"type": "DELETE", "path": ["output", "routes", {"id": "r1"}]}],
+        },
+    ),
+    (
         "route add 1 sacn 5",
         {
             "type": "ADD",
@@ -628,6 +664,20 @@ def test_queries_and_session_actions(line: str, action: object) -> None:
             "route add 1 artnet 1.2",
             "expected an Art-Net port address as net.sub.universe, got '1.2'",
         ),
+        ("route", "expected add or a route id"),
+        ("route r-x on", "no route r-x"),
+        ("route R1 on", "no route R1"),  # an id, typed as it is
+        ("route r1", "expected on or off"),
+        ("route r1 maybe", "expected on or off, got 'maybe'"),
+        ("route r1 on now", "unexpected 'now'"),
+        ("delete group 1 cascade", "unexpected 'cascade'"),
+        ("delete fixture 101 cascade now", "unexpected 'now'"),
+        ("delete universe 1 cascade now", "unexpected 'now'"),
+        ("delete fixture 999 cascade", "no fixture 999"),
+        ("delete universe 9 cascade", "no universe 9"),
+        ("delete route", "expected a route id"),
+        ("delete route r-x", "no route r-x"),
+        ("delete route r1 now", "unexpected 'now'"),
         ("go 9", "no playback 9"),
         ("cue 1/9 timing.fadeIn 2", "no cue 1/9"),
         ("playback 3", "expected a property, e.g. name or timing.fadeIn"),

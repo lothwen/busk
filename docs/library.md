@@ -291,9 +291,10 @@ last = health
 ```
 
 `confirmation(line)` is the yes/no question to ask before running `line`, the one `busk
-run`'s prompt asks: `"Turn all DMX output off?"` before `output off`. It is `None` for a
-line that runs at once: every other line, and a line that does not parse (`execute` says
-why). `execute` never asks, as in a script, so a frontend asks first. The question is
+run`'s prompt asks: `"Turn all DMX output off?"` before `output off`, and a question of its
+own before `route <id> off`, `delete route <id>` and a `delete … cascade`, which says what
+would go. It is `None` for a line that runs at once: every other line, and a line that does
+not parse (`execute` says why). `execute` never asks, as in a script, so a frontend asks first. The question is
 text to show as it is. Asking changes nothing, and a frontend may ask from its own
 thread:
 

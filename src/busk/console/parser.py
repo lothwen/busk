@@ -26,6 +26,7 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
     route add U artnet <net>.<sub>.<uni> [unicast <host>]
     route add U dmxusb enttecPro|dmxking <port> [hz N]
         (hz: the widget's output rate, 40 by default)
+    route <id> on|off
     surface add midi "<device>"
     surface add osc "<name>" [port N] [feedback <host>[:<port>]]
     surface add web "<name>" [port N] [on <host>]
@@ -42,9 +43,10 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
     page P slot S playback N | page P slot S clear
     playback N goto <cue>
     <entity> <prop[.sub…]> <value>     (value as JSON, else a bare string)
-    rename <entity> "name" | delete <entity>
+    rename <entity> "name" | delete <entity> | delete route <id>
         <entity> = fixture N | group N | preset <pool> N | cuelist N | cue L/C
                  | playback N | page N | universe N | show
+    delete fixture N cascade | delete universe N cascade
     cue L/C time <in>[/<out>] [delay <in>[/<out>]] [<curve>]
     cue L/C time <family> <fade> [delay <d>] [<curve>]
         <curve> = linear | easeIn | easeOut | easeInOut | snapStart | snapEnd
@@ -181,6 +183,19 @@ displays that group fixtures by kind; ``none`` removes it. It is a label:
 the profile keeps its revision, and ``profile update`` keeps the show's
 category.
 
+Routes (GAP-23). A route has no number, so a line names it by its id, as
+``list routes`` prints it, and Tab offers the ids. ``route <id> on|off`` sets
+whether it sends; ``delete route <id>`` removes it. ``off`` and ``delete``
+stop a universe's output, so an interactive prompt asks first, as for
+``output off``. A disabled route is not checked against the others, so
+``on`` is refused where its sACN universe or port is taken by then.
+
+Deletes that cascade (GAP-24, :mod:`busk.console.cascade`). A plain ``delete``
+is refused while anything uses what it deletes. ``delete fixture N cascade``
+takes the fixture out of everything that names it, and ``delete universe N
+cascade`` unpatches its fixtures and removes its routes, each in one undo
+step. An interactive prompt asks first, always, saying what would go.
+
 Completion (Tab and ``?`` at the prompt, :mod:`busk.console.prompt`).
 :func:`expected` parses a line up to the word being typed. Where the line
 runs out, the parser notes what it was looking for: keywords, names in
@@ -200,6 +215,7 @@ from typing import Any, Final, cast
 
 from busk.commands.patch import deep_copy
 from busk.commands.types import Command, EditPath
+from busk.console.cascade import fixture_cascade, universe_cascade
 from busk.model.attributes import ATTRIBUTES, AttributeDefinition
 from busk.model.common import TargetRef
 from busk.model.cue import CUE_NUMBER
@@ -1370,7 +1386,22 @@ class _Parser:
     # output and surfaces
 
     def _cmd_route(self) -> Action:
-        self.expect("add")
+        """``route add …``, or ``route <id> on|off``: off asks first at a prompt."""
+        token = self.take("add or a route id", "add", *self._route_ids())
+        if token.lower == "add":
+            return self._route_add()
+        route = self._route(token.text)
+        on = self.expect("on", "off") == "on"
+        self.done()
+        path = ["output", "routes", {"id": route["id"]}, "enabled"]
+        command = _labelled(
+            f"switched route {route['id']} {'on' if on else 'off'}",
+            {"type": "SET", "path": path, "value": on},
+        )
+        question = None if on else f"Switch route {self._route_text(route)} off?"
+        return Submit(command, confirm=question)
+
+    def _route_add(self) -> Action:
         universe = self.by_number("universes", self.integer("a universe number"), "universe")
         protocol = self.expect("sacn", "artnet", "dmxusb")
         route: dict[str, Any] = {
@@ -1412,6 +1443,21 @@ class _Parser:
 
     def _route_id(self) -> str:
         return self.ctx.ids.new("r", {r["id"] for r in self.show["output"]["routes"]})
+
+    def _route_ids(self) -> list[str]:
+        """The show's route ids, as typed."""
+        return [_word(route["id"]) for route in self.show["output"]["routes"]]
+
+    def _route(self, ident: str) -> dict[str, Any]:
+        for route in self.show["output"]["routes"]:
+            if route["id"] == ident:
+                return cast(dict[str, Any], route)
+        raise ParseError(f"no route {ident}")
+
+    def _route_text(self, route: Mapping[str, Any]) -> str:
+        """A route as a question names it: ``r-1 of universe 1``."""
+        universe = _by_id(self.show["universes"], route["universeId"])
+        return f"{route['id']} of universe {universe['number']}"
 
     def _cmd_surface(self) -> Action:
         """``surface add midi|osc|web …`` or ``surface "<name>" pickup soft|jump``."""
@@ -1866,10 +1912,35 @@ class _Parser:
         return self.submit({"type": "SET", "path": keys, "value": name})
 
     def _cmd_delete(self) -> Action:
-        head = self.word("an entity", *sorted(_ENTITIES - {"show"}))
+        head = self.word("an entity", *sorted(_ENTITIES - {"show"} | {"route"}))
+        if head == "route":
+            return self._delete_route()
         if head not in _ENTITIES or head == "show":
             raise ParseError(f"cannot delete {head!r}")
-        return self.submit({"type": "DELETE", "path": self.entity_path(head)})
+        path = self.entity_path(head)
+        if head in ("fixture", "universe") and self.keyword("cascade"):
+            self.done()
+            return self._cascade(head, path)
+        return self.submit({"type": "DELETE", "path": path})
+
+    def _cascade(self, head: str, path: EditPath) -> Action:
+        """``delete fixture|universe N cascade``: always asks first at a prompt."""
+        if head == "fixture":
+            fixture = _element(self.show["fixtures"], path)
+            cascade = fixture_cascade(self.show, fixture, self.ctx.programmer)
+        else:
+            cascade = universe_cascade(self.show, _element(self.show["universes"], path))
+        return Submit(_labelled(cascade.label, *cascade.commands), confirm=cascade.question)
+
+    def _delete_route(self) -> Action:
+        """``delete route <id>``: asks first at a prompt, as ``output off`` does."""
+        route = self._route(self.take("a route id", *self._route_ids()).text)
+        self.done()
+        command = _labelled(
+            f"deleted route {route['id']}",
+            {"type": "DELETE", "path": ["output", "routes", {"id": route["id"]}]},
+        )
+        return Submit(command, confirm=f"Delete route {self._route_text(route)}?")
 
     def _name(self) -> str | None:
         token = self.peek()
@@ -2352,6 +2423,11 @@ def _element(items: Sequence[Any], path: EditPath) -> Mapping[str, Any]:
     names (the parser built the path, so it exists)."""
     selector = cast(Mapping[str, Any], path[-1])
     return cast(Mapping[str, Any], next(item for item in items if item["id"] == selector["id"]))
+
+
+def _by_id(items: Iterable[Mapping[str, Any]], ident: str) -> Mapping[str, Any]:
+    """The element of ``items`` with ``ident`` (the show validated, so it exists)."""
+    return next(item for item in items if item["id"] == ident)
 
 
 def _port(text: str) -> int | None:

@@ -17,6 +17,13 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   shutters and fixture effects, and spreads. Every pool the rig can record into now shows.
   Under SELECTION, a hint says what the scope lit keeps, and a row no profile of the show takes
   shows dimmed.
+- `route <id> on|off` and `delete route <id>`. A route is named by its id, as `list routes`
+  prints it, and Tab offers the ids. `route <id> off` and `delete route <id>` ask first at
+  the prompt, as `output off` does.
+- `delete fixture N cascade` and `delete universe N cascade`, each one undo step. A fixture
+  leaves everything that names it, and a universe unpatches its fixtures and removes its
+  routes. The prompt always asks first and says what would go. A plain `delete` is still
+  refused while anything uses what it deletes.
 
 ### Fixed
 

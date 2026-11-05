@@ -444,6 +444,72 @@ def test_busk_run_calls_the_frontend_with_its_show(
     )  # nothing over the frontend
 
 
+def test_the_route_lines_reach_the_engine_process_and_undo_takes_each_back(
+    tmp_path: Path, receiver: Receiver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GAP-23, under ``busk run`` with processes: the line runs in the console
+    process, the root's output reconciles, and the state comes back."""
+    report_path = plan(
+        tmp_path,
+        monkeypatch,
+        steps=[
+            {"line": "route r1 off", "routes": [["r1", "disabled"]]},
+            {"line": "undo", "routes": [["r1", "ok"]]},
+            {"line": "route r1 off", "routes": [["r1", "disabled"]]},
+            {"line": "route r1 on", "routes": [["r1", "ok"]]},
+            {"line": "undo", "routes": [["r1", "disabled"]]},
+            {"line": "redo", "routes": [["r1", "ok"]]},
+            {"line": "delete route r1", "routes": []},
+            {"line": "undo", "routes": [["r1", "ok"]]},
+        ],
+    )
+    with BuskRun(
+        run_show(tmp_path), *frontend(tmp_path, "--no-log"), sacn_port=receiver.port
+    ) as busk:
+        assert busk.wait() == 0, busk.err
+    report = json.loads(report_path.read_text())
+    assert report["timeout"] is None, report
+    assert [step[:3] for step in report["steps"]] == [
+        ["Switch route r1 of universe 1 off?", "switched route r1 off", True],
+        [None, "undid: switched route r1 off", True],
+        ["Switch route r1 of universe 1 off?", "switched route r1 off", True],
+        [None, "switched route r1 on", True],
+        [None, "undid: switched route r1 on", True],
+        [None, "redid: switched route r1 on", True],
+        ["Delete route r1 of universe 1?", "deleted route r1", True],
+        [None, "undid: deleted route r1", True],
+    ]
+
+
+def test_a_universe_that_cascades_goes_from_the_engine_process_and_comes_back(
+    tmp_path: Path, receiver: Receiver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GAP-24, under ``busk run`` with processes: the route closes, the frames
+    stop naming the universe, and ``undo`` brings them back."""
+    report_path = plan(
+        tmp_path,
+        monkeypatch,
+        steps=[
+            {"line": "delete universe 1 cascade", "routes": [], "universes": []},
+            {"line": "undo", "routes": [["r1", "ok"]], "universes": [1]},
+        ],
+    )
+    with BuskRun(
+        run_show(tmp_path), *frontend(tmp_path, "--no-log"), sacn_port=receiver.port
+    ) as busk:
+        assert busk.wait() == 0, busk.err
+    report = json.loads(report_path.read_text())
+    assert report["timeout"] is None, report
+    gone, back = report["steps"]
+    assert gone[0] == 'Delete universe 1 "Stage"? 3 fixtures lose their patch and 1 route goes.'
+    assert gone[1].startswith('deleted universe 1 "Stage": 3 fixtures unpatched, 1 route gone')
+    assert gone[2] is True
+    assert gone[-1] == []  # no fixture is patched
+    assert back[0] is None
+    assert back[2] is True
+    assert back[-1] == [101, 102, 201]
+
+
 def test_a_frontend_that_raises_comes_back_with_its_console(
     tmp_path: Path, receiver: Receiver, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -71,7 +71,6 @@ CURVES = ("linear", "easeIn", "easeOut", "easeInOut", "snapStart", "snapEnd", "b
 
 # (line, words, values, runnable): the line ends where the next word starts
 EXPECTED: list[tuple[str, tuple[str, ...], tuple[str, ...], bool]] = [
-    ("route ", ("add",), (), False),
     ("route add ", (), ("a universe number",), False),
     ("route add 1 ", ("sacn", "artnet", "dmxusb"), (), False),
     ("route add 1 sacn 1 ", ("unicast", "multicast", "broadcast"), (), True),
@@ -104,8 +103,17 @@ EXPECTED: list[tuple[str, tuple[str, ...], tuple[str, ...], bool]] = [
     ("list ", LIST_KINDS, (), False),
     ("rename ", ("cue", "cuelist", "fixture", "group", "page", "playback", "preset", "show",
                  "universe"), (), False),
-    ("delete ", ("cue", "cuelist", "fixture", "group", "page", "playback", "preset",
+    ("delete ", ("cue", "cuelist", "fixture", "group", "page", "playback", "preset", "route",
                  "universe"), (), False),
+    ("delete fixture 101 ", ("cascade",), (), True),
+    ("delete fixture 101 cascade ", (), (), True),
+    ("delete universe 1 ", ("cascade",), (), True),
+    ("delete group 1 ", (), (), True),
+    ("delete route ", ("r1",), (), False),
+    ("delete route r1 ", (), (), True),
+    ("route ", ("add", "r1"), (), False),
+    ("route r1 ", ("on", "off"), (), False),
+    ("route r1 off ", (), (), True),
     ("master ", ("add", '"Grand Master"', '"Speed 1"'), (), False),
     ("tap ", ('"Speed 1"',), (), True),
     ("release ", ("all",), ("a playback number",), False),
@@ -348,7 +356,7 @@ def complete(console: Console, line: str, *, kind: str = "\t", libedit: bool = F
 def test_tab_completes_a_keyword_with_a_space(console: Console) -> None:
     assert complete(console, "rou") == ["route "]
     assert complete(console, "Rou") == ["route "]
-    assert complete(console, "route ") == ["add "]  # the only word that may come
+    assert complete(console, "effect template ") == ["add "]  # the only word that may come
     assert complete(console, "route add 1 s") == ["sacn "]
 
 
@@ -360,6 +368,7 @@ def test_tab_completes_a_name_in_quotes(console: Console) -> None:
 
 def test_tab_lists_several_words(console: Console) -> None:
     assert complete(console, "route add 1 ") == ["sacn ", "artnet ", "dmxusb "]
+    assert complete(console, "route ") == ["add ", "r1 "]
 
 
 def test_tab_shows_the_help_where_a_value_may_come(console: Console) -> None:
@@ -376,7 +385,7 @@ def test_question_mark_never_completes(console: Console) -> None:
 def test_libedit_prints_the_help_itself(
     console: Console, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert complete(console, "route ", libedit=True) == ["add "]
+    assert complete(console, "effect template ", libedit=True) == ["add "]
     assert complete(console, "route add 1 ", libedit=True) == []
     out = capsys.readouterr().out
     assert "\nnext: artnet  dmxusb  sacn\n" in out

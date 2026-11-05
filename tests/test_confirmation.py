@@ -3,9 +3,10 @@
 ``OfflineShow.confirmation(line)`` and ``LiveShow.confirmation(line)`` give
 the yes/no question ``busk run``'s prompt asks before running ``line``, or
 ``None`` to run it at once, so a frontend asks the same without parsing the
-line. Only ``output off`` asks. Asking changes nothing (no id is used up, no
-step is committed), and ``execute`` never asks. Appendix A's show, with its
-surface "MIDI Controller".
+line. ``output off`` asks, and so do the lines that stop a universe's output
+(GAP-23): ``route <id> off`` and ``delete route <id>``. Asking changes nothing
+(no id is used up, no step is committed), and ``execute`` never asks. Appendix
+A's show, with its surface "MIDI Controller".
 """
 
 from __future__ import annotations
@@ -51,9 +52,29 @@ def test_output_off_asks_however_it_is_typed(offline: OfflineShow, line: str) ->
 
 
 @pytest.mark.parametrize(
+    ("line", "question"),
+    [
+        ("route r1 off", "Switch route r1 of universe 1 off?"),
+        ("ROUTE r1 OFF  # for the soundcheck", "Switch route r1 of universe 1 off?"),
+        ("delete route r1", "Delete route r1 of universe 1?"),
+        ("DELETE ROUTE r1", "Delete route r1 of universe 1?"),
+    ],
+)
+def test_the_lines_that_stop_a_route_ask(offline: OfflineShow, line: str, question: str) -> None:
+    assert offline.confirmation(line) == question
+
+
+def test_a_route_that_is_off_still_asks(offline: OfflineShow) -> None:
+    assert offline.execute("route r1 off").ok
+    assert offline.confirmation("route r1 off") == "Switch route r1 of universe 1 off?"
+    assert offline.confirmation("delete route r1") == "Delete route r1 of universe 1?"
+
+
+@pytest.mark.parametrize(
     "line",
     [
         "output on",
+        "route r1 on",
         "release all",
         "release all 2",
         "blackout on",
@@ -75,7 +96,12 @@ def test_every_other_line_runs_at_once(offline: OfflineShow, line: str) -> None:
 
 @pytest.mark.parametrize(
     ("line", "error"),
-    [("output of", "expected on or off, got 'of'"), ("output", "expected on or off")],
+    [
+        ("output of", "expected on or off, got 'of'"),
+        ("output", "expected on or off"),
+        ("route r-x off", "no route r-x"),
+        ("delete route r-x", "no route r-x"),
+    ],
 )
 def test_a_line_that_does_not_parse_is_left_to_execute(
     offline: OfflineShow, line: str, error: str

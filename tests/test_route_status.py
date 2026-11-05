@@ -461,6 +461,44 @@ def test_a_live_show_lists_its_routes_from_start_to_stop(
     assert live.routes is after  # nothing changes once stopped
 
 
+def quiet(receiver: Receiver) -> bool:
+    """Nothing came for 0.2 s, after what was on its way when a route closed."""
+    receiver.drain()
+    time.sleep(0.2)
+    return receiver.drain() == []
+
+
+def test_the_route_lines_change_a_running_show_and_undo_takes_each_back(
+    three_routes: Show, receiver: Receiver
+) -> None:
+    """GAP-23. ``route <id> off`` stops what is sent, and ``delete route``
+    takes the route away."""
+    ok, off = ("r1", "ok"), ("r1", "disabled")
+    others = [("r2", "disabled"), ("r3", "failed")]
+
+    with LiveShow(three_routes) as live:
+
+        def states() -> list[tuple[str, str]]:
+            return [(route.id, route.state) for route in live.routes or ()]
+
+        def after(line: str, wanted: list[tuple[str, str]]) -> None:
+            assert live.execute(line).ok, line
+            eventually(lambda: states() == wanted)
+
+        eventually(lambda: receiver.drain() != [])
+        after("route r1 off", [off, *others])
+        eventually(lambda: quiet(receiver))
+        after("undo", [ok, *others])
+        eventually(lambda: receiver.drain() != [])
+        after("route r1 off", [off, *others])
+        after("route r1 on", [ok, *others])
+        after("undo", [off, *others])
+        after("redo", [ok, *others])
+        after("delete route r1", others)
+        after("undo", [ok, *others])
+        eventually(lambda: receiver.drain() != [])
+
+
 def test_a_live_show_gives_the_same_object_while_nothing_changed(three_routes: Show) -> None:
     doc = cast(dict[str, Any], three_routes)
     for route in doc["output"]["routes"]:

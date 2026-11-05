@@ -80,6 +80,8 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-20](#gap-20-completion-and-hints) Completion and hints | read | nice-to-have | prompt | **done** 2026-10-24 |
 | [GAP-21](#gap-21-engine-health) Engine health | read | nice-to-have | status bar | **done** 2026-10-24 |
 | [GAP-22](#gap-22-parked-values-in-the-output-source) Parked values in the output source | read | nice-to-have | F3 | open (found 2026-10-26) |
+| [GAP-23](#gap-23-removing-and-switching-routes) Removing and switching routes | action | important | F8 | **done** 2026-11-05 |
+| [GAP-24](#gap-24-deletes-that-cascade) Deletes that cascade | action | important | F3, F8 | **done** 2026-11-05 |
 
 ---
 
@@ -1739,3 +1741,120 @@ The highlight could get a word of its own the same way, if a display wants it.
 **Priority:** nice-to-have.
 
 **TUI until then:** F3 shows a parked value as driven by nothing, and the guide says so.
+
+## GAP-23: Removing and switching routes
+
+**Status:** done 2026-11-05 (see **Done** at the end of this section).
+
+Found while planning the TUI's rig controls (`docs/plans/tui-rig-plan.md`, 2026-11-05).
+
+**Needed by:** F8. A universe sends nothing without a route, and `delete universe` is
+refused while a route sends it.
+
+**Today:** `route` takes only `add`, and `delete` does not take `route`. Only `undo` takes a
+route back, and nothing switches one off, though a route has an `enabled` flag that the
+output follows.
+
+**Engine should provide:** `delete route <id>` and `route <id> on|off`, each one undo step.
+
+**Priority:** important.
+
+**TUI until then:** F8 shows routes read-only.
+
+**Done** (2026-11-05). Both lines, as the plan's §5.1 asks. No public name was added
+(`busk.__all__` stays at 36). Documented in `docs/console.md` (the Output row and the Routes
+note), `docs/library.md` (`confirmation`), `busk help` and the parser's module docs. What it
+settles:
+
+- **A route is named by its id,** as `effect remove <id>` names an effect and as `list routes`
+  prints it. Tab offers the ids, after `route ` beside `add`, and after `delete route `. An
+  id is typed as it is, and an unknown one is refused by name (`no route r-x`).
+- **`route <id> off` and `delete route <id>` ask first,** through `Submit.confirm`, as `output
+  off` does: `Switch route r-1 of universe 1 off?`, `Delete route r-1 of universe 1?`. `route
+  <id> on` does not. As with `output off`, they ask whatever the route's state, so a route
+  already off still asks.
+- **The replies name the route:** `switched route r-1 off`, `deleted route r-1`. Each line is
+  a labelled `BATCH` of one edit, so the undo step has that label too, instead of a document
+  path. `undo` prints `undid: deleted route r-1`.
+- **`route <id> on` is refused where it would clash.** The validator skips a disabled route,
+  so its sACN universe or its port may be taken while it is off. The line then fails with
+  the validator's message.
+- `list routes` already marked a disabled route, for every protocol, so it did not change.
+- Tests: the rows of `tests/test_console_parser.py`, completion in
+  `tests/test_console_prompt.py`, the questions in `tests/test_confirmation.py`, undo, `list
+  routes`, a refused `on` and a plain `delete universe` in `tests/test_console.py`, a running
+  `LiveShow` in `tests/test_route_status.py` (what the receiver gets stops), and `busk run`
+  with processes in `tests/test_frontend.py`, through a new `steps` key of the probe.
+
+F8 can now give a route `[off]`, `[on]` and `[delete]`: each sends its line through
+`LiveShow.execute()` after `confirmation()`, and reads the state from `LiveShow.routes`.
+
+## GAP-24: Deletes that cascade
+
+**Status:** done 2026-11-05 (see **Done** at the end of this section).
+
+Found while planning the TUI's rig controls (`docs/plans/tui-rig-plan.md`, 2026-11-05).
+
+**Needed by:** F3's and F8's `[delete]`.
+
+**Today:** `delete fixture N` is refused while a group, a preset's target value, a cue entry,
+a cue's per-target values, a cue effect, a cue release, a park entry or a binding names the
+fixture. `delete universe N` is refused while a fixture is patched in it or a route sends
+it. That is every fixture and every universe of both shipped shows: 17 of the 18 fixtures
+are in a group, and the other is used by a cue.
+
+**Engine should provide:** `delete fixture N cascade` and `delete universe N cascade`, each
+one undo step, with a question that says what would go. Without `cascade`, both stay as they
+are.
+
+**Priority:** important.
+
+**TUI until then:** `[delete]` would be inert on every fixture of both shows.
+
+**Done** (2026-11-05). Both lines, as the plan's §5.2 asks, in a new module,
+`busk.console.cascade`, a pure function of the show that the parser calls. Each line is one
+`BATCH`, so the session validates the result once and refuses it whole. No public name was
+added (`busk.__all__` stays at 36). Documented in `docs/console.md` (the Edit row and the
+note), `docs/library.md` (`confirmation`), `busk help` and the parser's module docs. What it
+settles, the first three beyond the plan:
+
+- **A group's layout follows.** `layout.cells` holds positions in `members`, so removing a
+  member would leave cells on the wrong member, or past the end, which the validator
+  refuses. The fixture's cells go empty, and the others follow their members. `record group`
+  drops a layout that loses a member, but here the shape is kept: the operator took one
+  fixture out of a matrix, and the hole is what happened. Neither shipped show has a layout,
+  so neither the plan's prototype nor its verify list met this.
+- **Every binding command that names the fixture, not only `SELECT`.** The validator also
+  checks `PATCH_FIXTURE` and a `SET_ATTRIBUTE`'s per-target values, and looks inside a
+  `BATCH`, so without them the line would be refused on such a show. `ADD_EFFECT` names
+  targets too. The validator does not check it, so a plain `delete` leaves it dangling, but
+  the rule is the same, so the cascade covers it. The universe cascade removes a binding that
+  patches into the universe.
+- **A per-target entry left with no value goes,** even when its targets are a group: it would
+  say nothing to any target. A per-target value for the fixture leaves the entry either way,
+  so a cue that reaches the fixture through a group is touched only then.
+- **What goes:** an entry, an effect, a release or a binding left with no target. **What
+  stays:** a group, a preset or a cue left empty, for the operator to keep or delete. An
+  emptied `releases` stays as `[]`, which means the same as none.
+- **The question always comes,** through `Submit.confirm`, even with nothing to cascade, so a
+  frontend can always send `cascade` and show the answer. `Delete fixture 101? It leaves
+  groups 1, 4 and presets position 1, 2.` Kinds are parted by `;` from three on, since a kind
+  has commas of its own: `It leaves groups 2, 4; cue 10/3 and 1 parked value.` `Delete universe
+  1 "Stage"? 7 fixtures lose their patch and 1 route goes.`
+- **The programmer holds a fixture** when it is selected, has a value there, or is named by an
+  effect's targets. The question then ends `The programmer holds it.` An effect on a group
+  does not count: the group loses the fixture and the effect runs on.
+- **The reply counts what it took:** `deleted fixture 101: left 2 groups, 2 presets`, `deleted
+  universe 1 "Stage": 7 fixtures unpatched, 1 route gone`. The same text is the undo step's
+  label.
+- `elementPatch` is not touched: a show with a split patch does not compile, so it never
+  reaches a session.
+- Tests: `tests/test_cascade.py` (67: each kind of reference, what goes and what stays, layouts,
+  all 18 fixtures with `undo` and in a row saved and reloaded, universe 1 of both shows, the
+  questions and replies, a running `LiveShow`; 31 mutations of `cascade.py` and 7 of the
+  parser's lines for GAP-23 and GAP-24, all caught), the parser's rows, completion in
+  `tests/test_console_prompt.py`, and `busk run` with processes in `tests/test_frontend.py`.
+
+F3's and F8's `[delete]` can now always send `… cascade`: `confirmation()` gives the question,
+so the TUI keeps no list of what can reference a fixture. A delete that succeeds takes the
+panel back to its start, so a second click cannot reach the next one.

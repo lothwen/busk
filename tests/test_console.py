@@ -39,6 +39,57 @@ def run(console: Console, *lines: str) -> list[str]:
     return texts
 
 
+def test_a_route_can_be_switched_off_on_and_deleted_each_in_one_undo_step(
+    console: Console,
+) -> None:
+    listed = "r1  U1 → sACN 1 multicast eth0"
+    assert run(console, "route r1 off", "list routes") == [
+        "switched route r1 off",
+        f"{listed} (disabled)",
+    ]
+    assert run(console, "undo", "list routes") == ["undid: switched route r1 off", listed]
+    assert run(console, "route r1 off", "route r1 on", "list routes") == [
+        "switched route r1 off",
+        "switched route r1 on",
+        listed,
+    ]
+    assert run(console, "delete route r1", "list routes") == ["deleted route r1", "no routes"]
+    assert run(console, "undo", "list routes") == ["undid: deleted route r1", listed]
+
+
+def test_list_routes_marks_every_kind_of_disabled_route(console: Console) -> None:
+    run(
+        console,
+        "route add 1 artnet 0.0.1",
+        "route add 1 dmxusb enttecPro /dev/ttyUSB0",
+    )
+    for route in console.session.show["output"]["routes"]:
+        run(console, f"route {route['id']} off")
+    lines = run(console, "list routes")[0].splitlines()
+    assert len(lines) == 3
+    assert all(line.endswith(" (disabled)") for line in lines)
+
+
+def test_a_route_cannot_come_on_where_it_would_clash(console: Console) -> None:
+    """A disabled route is not checked, so the universe it sent may be taken
+    meanwhile. busk refuses the line that would send it twice."""
+    run(console, 'universe add 2 "Side"', "route r1 off", "route add 2 sacn 1")
+    reply = console.execute("route r1 on")
+    assert not reply.ok
+    assert "already sent by route" in reply.text
+    assert run(console, "list routes")[0].startswith("r1  U1 → sACN 1 multicast eth0 (disabled)")
+
+
+def test_a_universe_freed_of_its_routes_and_fixtures_is_deleted_plainly(console: Console) -> None:
+    run(console, 'universe add 2 "Side"', "route add 2 sacn 2", "fixture 201 patch 2.1")
+    route = console.session.show["output"]["routes"][-1]["id"]
+    assert not console.execute("delete universe 2").ok
+    run(console, "fixture 201 patch none")
+    assert not console.execute("delete universe 2").ok  # the route still sends it
+    run(console, f"delete route {route}", "delete universe 2")
+    assert [u["number"] for u in console.session.show["universes"]] == [1]
+
+
 def test_commands_print_their_result(console: Console) -> None:
     assert run(console, "sel group 1", "set pan 10", "clear") == [
         "2 targets selected",

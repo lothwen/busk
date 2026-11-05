@@ -7,6 +7,9 @@ attached show, and follows the plan in the JSON file ``$BUSK_TEST_FRONTEND``:
   file next to the plan says the first call was made);
 * ``lines``: console lines to run, once the show's frame, output and effects
   have come (reading them asks for them);
+* ``steps``: then, for each, ask about its ``line`` and run it, and wait until
+  the show's routes are its ``routes`` (each id and state) and, when it has
+  them, the frame's universes are its ``universes``;
 * ``effectOf``: then wait until that playback's effect runs;
 * ``colorOf``: then wait until that playback has a colour in the snapshot;
 * ``records``: then wait until a ``busk.run`` record contains each text;
@@ -86,6 +89,21 @@ def run(show: Any, plan: dict[str, Any], records: Records, report: dict[str, Any
     if not wait("reads", lambda: None not in (show.frame, show.output, show.effects)):
         return
     report["replies"] = [[line, *_reply(show.execute(line))] for line in plan.get("lines", [])]
+    report["steps"] = []
+    for step in plan.get("steps", []):
+        question = show.confirmation(step["line"])
+        reply = _reply(show.execute(step["line"]))
+
+        def routed(step: dict[str, Any] = step) -> bool:
+            wanted = step.get("universes", [int(n) for n in show.frame.universes])
+            return [[r.id, r.state] for r in show.routes or ()] == step["routes"] and (
+                [int(n) for n in show.frame.universes] == wanted
+            )
+
+        if not wait(f"the routes and universes after {step['line']!r}", routed):
+            return
+        patched = sorted(f["number"] for f in show.show["fixtures"] if f["patch"] is not None)
+        report["steps"].append([question, *reply, patched])
     effect_of = plan.get("effectOf")
 
     def running() -> bool:

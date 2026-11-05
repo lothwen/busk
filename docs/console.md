@@ -55,11 +55,11 @@ session, as the web remote's commands do. `help` prints the grammar.
 | Programmer | `clear`, `blind on\|off`, `fade 2` (programmer changes fade over 2 s), `programmer` |
 | Record | `record group N`, `record preset <pool> N [global\|profile\|target]`, `record cue L/C [only <family>…] [freeze]`, `record slot S [only <family>…]`; each takes `merge`, `replace` or `remove` and a `"name"` |
 | Patch | `universe add 1 "Stage"`, `fixture add 101 thru 104 "Generic Spot 16ch" mode 16ch at 1.1`, `fixture 101 patch 2.1`, `fixture 101 patch none` |
-| Output | `route add 1 sacn 1 [unicast 10.0.0.20 \| multicast IF]`, `route add 1 artnet 0.0.1 [unicast 10.0.0.20 \| broadcast IF]`, `route add 1 dmxusb enttecPro\|dmxking /dev/ttyUSB0 [hz 40]` |
+| Output | `route add 1 sacn 1 [unicast 10.0.0.20 \| multicast IF]`, `route add 1 artnet 0.0.1 [unicast 10.0.0.20 \| broadcast IF]`, `route add 1 dmxusb enttecPro\|dmxking /dev/ttyUSB0 [hz 40]`, `route r-1 on\|off`, `delete route r-1` |
 | Surfaces | `surface add midi "nanoKONTROL2"`, `surface add osc "Touch" [port 8000] [feedback 10.0.0.5:9000]`, `surface add web "Phone" [port 8080] [on 10.0.0.2]`, `surface "nanoKONTROL2" pickup soft\|jump` |
 | Bindings, feedback | `bind "nanoKONTROL2" cc 1 0 fader 1`, `… cc 1 32 button 1 1 [led]`, `… cc 1 7 fader playback 18 [motor]`, `… cc 1 23 master gm`, `… cc 1 18 master "Speed 1"`, `… cc 1 46 tap ["Speed 1"]`, `… cc 1 42 blackout [momentary]`, `… cc 1 62 page +1`, `… note 1 60 page 2`, `bind "Touch" osc "/fader/1" fader 1 [display osc "/label/1"]`, `bind "nanoKONTROL2" clock tap`, `… cc 1 60 release all [2]`, `… note 1 61 output off`, `feedback "nanoKONTROL2" cc 1 32 thru 39 led\|motor\|display\|none`, `unbind "nanoKONTROL2" cc 1 60 [thru 61]` |
 | Pages | `page 2`, `page next\|prev`, `page add 2 ["Washes"]`, `page 2 slot 1 playback 14`, `page 2 slot 5 clear`, `record slot 2.1`, `playback 9 goto 4` |
-| Edit | `playback 3 exclusivity color`, `cue 3/1 timing.fadeIn 1`, `playback 1 buttons ["toggle", "flash", "release"]`, `show meta.title "Club Night"`, `rename group 1 "Heads"`, `delete cue 10/2` |
+| Edit | `playback 3 exclusivity color`, `cue 3/1 timing.fadeIn 1`, `playback 1 buttons ["toggle", "flash", "release"]`, `show meta.title "Club Night"`, `rename group 1 "Heads"`, `delete cue 10/2`, `delete fixture 101 cascade`, `delete universe 2 cascade` |
 | Timing, triggers | `cue 9/1 time 3 easeInOut`, `cue 9/3 time 1/3 delay 0/1`, `cue 9/2 time position 4 [delay 1] [easeOut]`, `… bezier 0.4 0 0.2 1`, `cue 9/3 wait 8`, `cue 9/5 follow 4`, `cue 9/2 go`, `cue 9/5 release group 1 [only pan tilt]` |
 | Cue lists, tempo | `cuelist 9 tracking true`, `cuelist 10 chase bpm ["Speed 1"] [x 2] [forward\|reverse\|bounce\|random] [crossfade 0.25]`, `cuelist 10 chase hz 4`, `cuelist 10 sequence`, `master add speed "Speed 1" [bpm 120] [steps 0.5, 1, 2]` |
 | Effects, masters | `effect add "Circle" [id fx1] [hz 0.5 \| bpm ["Speed 1"] [x 0.5]] [size 15] [low 0 high 1] [phase 0 180] [groups N] [blocks N] [wings 2] [forward\|reverse\|bounce] [fadein 1] [sizemaster "FX"] [speedmaster "Speed 1"]`, `effect remove fx1`, `effect clear`, `effect stop fx1`, `effect run fx1`, `effect template add "Name" [{…layers…}]`, `cue 9/4 effect rainbow size 0.5`, `master add size "FX"`, `master add group "Wash level" group 2`, `master add fadetime "Fade"` |
@@ -157,6 +157,25 @@ session, as the web remote's commands do. `help` prints the grammar.
   `beam`, `pixel`, `strobe`, `blinder`, `dimmer`, `effect`, `fog` or `other`, for
   displays that group fixtures by kind; `none` removes it. The output never depends on
   it, the profile keeps its revision, and `profile update` keeps it.
+* **Routes.** A route has no number: `list routes` prints its id, which `route <id> on|off`
+  and `delete route <id>` take, and Tab offers the ids. A route that is off stays in the
+  show and sends nothing. `route <id> off` and `delete route <id>` stop a universe's
+  output, so the prompt asks first, as for `output off`. A route that is off is not
+  checked against the others, so `route <id> on` is refused when its sACN universe or its
+  port is taken by then.
+* **Deletes that cascade.** A plain `delete` is refused while anything uses what it deletes
+  (see **Errors**). `delete fixture N cascade` takes the fixture out of everything that
+  names it: groups, presets' target values, cues, park entries and bindings. A cue entry, a
+  cue effect, a release or a binding left with no target goes with it. A group, a preset or
+  a cue left empty stays, for you to keep or delete. `delete universe N cascade` unpatches
+  its fixtures, which stay in the show, and removes its routes. Each is one undo step. The
+  prompt always asks first and says what would go, and the reply counts it:
+
+  ```
+  busk> delete fixture 101 cascade
+  Delete fixture 101? It leaves groups 1, 4 and presets position 1, 2. [y/N] y
+  deleted fixture 101: left 2 groups, 2 presets
+  ```
 * **Undo** walks one timeline of show edits and programmer changes (1000 steps): the last
   action, whatever it was. Blind and the programmer's fade time are modes and are never
   undone. Saving is not a step.
