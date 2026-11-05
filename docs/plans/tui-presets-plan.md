@@ -179,9 +179,10 @@ These follow the project's earlier calls and the "engine first" rule. Each is op
     cyan, sky, blue, violet, magenta, pink, white, warm (`1 0.75 0.45`, the club's Warm) and
     cool (`0.75 0.85 1`). The club's own presets use `0 0 1`, `1 0 0`, `0 1 0` and `1 0.5 0`,
     and the chips give the same values for blue, red, green and amber.
-13. **Rows follow the rig, as on F2.** A row shows when some profile of the show takes its
-    attribute, and acts only where the selection does (F2's `Selected` rule). The panel's
-    layout therefore does not jump when the selection changes.
+13. **Rows follow the rig, as on F2** (changed on 2026-11-05: see "After the plan" in §6). A row
+    shows when some profile of the show takes its attribute, and acts only where the selection
+    does (F2's `Selected` rule). The panel's layout therefore does not jump when the selection
+    changes.
 14. **F6 reads the output only while the panel is open** (`Page.watches`). The encoders show
     the output's values dim, as on F2. The perf test gets an "F6 editing" case.
 15. **Layout.** The panel is 52 cells wide, to the right of the pools, at 100 columns or more.
@@ -642,6 +643,18 @@ a stop.
      the panel.
 8. **The user's:** on the rig, record a colour preset from the picker, a beam preset with a
    gobo and a position fan; rename, renumber and delete one; update one with `[merge]`.
+
+**After the plan** (2026-11-05). On 2026-11-03 the user asked why `+ record` needs a selection
+and why no Color Macro row shows. Their answers to the two choices that came out of it:
+- **A hint under SELECTION** (`preset_panel.KEEPS`) says what the scope lit keeps. A value that
+  differs falls back to a narrower scope, so the `global` and `profile` hints say "if they
+  agree". `test_each_scope_keeps_what_the_panels_hint_says` checks them against busk.
+- **A row no profile of the show takes shows dimmed,** last in its section:
+  `colorMacro       no fixture takes it`. It has no control and no pane-cursor stop. `pool_rows`
+  now gives every family of the pool, so `all` has a FOCUS section on the club show. F2 is
+  unchanged, and call 1 still decides which pools show.
+- **The cost:** the panel gets taller. At 150×48 on the club show, `color` goes from 28 lines to
+  37 and `beam` from 22 to 39, past the 30 the panel shows, so `[record]` needs a scroll there.
 
 ## 7. Found while planning (busk, not fixed here)
 

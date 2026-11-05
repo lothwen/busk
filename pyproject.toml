@@ -1,6 +1,6 @@
 [project]
 name = "busk"
-version = "0.1.0"
+version = "0.1.1"
 description = "A real-time busking lighting console: show files, fixture import, a DMX engine and its command line"
 readme = "README.md"
 # PEP 639: the wheel's METADATA carries License-Expression and the file (tests/test_packaging.py).

@@ -319,6 +319,39 @@ def test_f2_keeps_its_rows() -> None:
     ]
 
 
+def test_each_scope_keeps_what_the_panels_hint_says(club_path: Path) -> None:
+    """``preset_panel.KEEPS``: a global value reaches fixtures it was not
+    recorded on, a profile value its profile's, a target value only its own;
+    values that differ fall back to a narrower scope."""
+    document, _ = busk.load_show(club_path)
+    show = busk.OfflineShow(document)
+
+    def run(*lines: str) -> busk.Reply:
+        replies = [show.execute(line) for line in lines]
+        return replies[-1]
+
+    def applies(fixture: int, preset: str) -> bool:
+        reply = run("clear", f"sel fixture {fixture}", f"preset {preset}")
+        run("clear")
+        return reply.ok
+
+    run("sel fixture 201", "set color 1 0 0", "record preset color 30 global", "clear")
+    assert applies(101, "color 30")
+    assert applies(301, "color 30")
+    run("sel fixture 101", "set zoom 20", "record preset beam 30 profile", "clear")
+    assert applies(102, "beam 30")
+    assert not applies(201, "beam 30")
+    run("sel fixture 101", "set pan 10", "record preset position 30 target", "clear")
+    assert applies(101, "position 30")
+    assert not applies(102, "position 30")
+    differ = run(
+        "sel fixture 201", "set color 1 0 0", "sel fixture 202", "set color 0 1 0",
+        "record preset color 31 global",
+    )  # fmt: skip
+    assert "2 target values (values differ)" in differ.text
+    run("clear")
+
+
 def test_busk_records_each_pool_at_the_default_scope(club_path: Path) -> None:
     """A record line without a scope: busk stores the values at the scope
     ``DEFAULT_SCOPE`` says. The heads get a focus channel for the focus

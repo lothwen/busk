@@ -6,10 +6,11 @@ its users, rename, renumber, delete, a new preset's number and name, the
 pane cursor and the layout; the editors: the scope, the selection and
 ``[its fixtures]``, a section of encoder rows per family (a rotation's bar
 signed), RECORDS, ``[record]``, ``[load]``, the writes and their hints,
-the output read while the panel shows, and the programmer followed; the
-colour picker: the field's cells, its marker and colour modes, a click and
-a drag, the named chips, the readout, and the component rows once a
-colour is held; option rows: what the selection offers, the lit option,
+the output read while the panel shows, the programmer followed, the hint
+on what a scope keeps, and the rows no profile takes; the colour picker:
+the field's cells, its marker and colour modes, a click and a drag, the
+named chips, the readout, and the component rows once a colour is held;
+option rows: what the selection offers, the lit option,
 nothing selected, and their pane-cursor stops; spread: busk's rule, the
 ends read back, the toggles, the bars, steps and curves, the last spread
 sent, a drag, and the pane cursor. Headless, with a fake bridge."""
@@ -67,7 +68,7 @@ from busk_tui.widgets.encoders import EncoderRow
 from busk_tui.widgets.log import LogView
 from busk_tui.widgets.options import LIT, OptionRow
 from busk_tui.widgets.panel import Panel
-from busk_tui.widgets.preset_panel import HINTS, Chosen, PresetPanel, free_step
+from busk_tui.widgets.preset_panel import HINTS, KEEPS, Chosen, PresetPanel, free_step
 from busk_tui.widgets.prompt import HintRow
 from busk_tui.widgets.spread import SpreadLine, SpreadRow
 from busk_tui.widgets.tiles import PresetTile, preview
@@ -308,10 +309,33 @@ def test_a_pools_editor_has_the_rows_and_options_the_rig_takes(club: busk.Offlin
         ("beam", ["zoom"], ("gobo1",)),
         ("shutter", ["strobeRate"], ("shutter",)),
     ]
-    assert shown("focus") == []
+    assert shown("focus") == [("focus", [], ())]
     assert [family for family, _, _ in shown("all")] == [
-        "intensity", "position", "color", "beam", "shutter",
+        "intensity", "position", "color", "beam", "focus", "shutter",
     ]  # fmt: skip
+
+
+def test_a_pools_editor_lists_the_rows_no_profile_takes(club: busk.OfflineShow) -> None:
+    model = model_of(club.show)
+
+    def absent(pool: str) -> dict[str, tuple[str, ...]]:
+        return {section.family: section.absent for section in attributes.pool_rows(pool, model)}
+
+    assert absent("color") == {
+        "color": (
+            "color.a", "color.uv", "cto", "colorMacroRate",
+            "colorWheel", "colorMacro", "colorEffect",
+        ),
+    }  # fmt: skip
+    assert absent("intensity") == {"intensity": ()}
+    assert absent("focus") == {"focus": ("focus",)}
+    for pool, families in attributes.POOL_FAMILIES.items():  # taken or not, every row is there
+        sections = attributes.pool_rows(pool, model)
+        found = {encoder.attribute for section in sections for encoder in section.encoders}
+        found |= {name for section in sections for name in (*section.options, *section.absent)}
+        rows = {e.attribute for family, row in attributes.ROWS if family in families for e in row}
+        options = {name for family, row in attributes.OPTIONS if family in families for name in row}
+        assert found == rows | options
 
 
 def test_what_a_record_takes_and_who_is_not_selected() -> None:
@@ -784,6 +808,32 @@ def test_the_scope_starts_at_the_pools_default_or_the_presets_own(club: busk.Off
     drive(app, body)
 
 
+def test_the_hint_under_selection_says_what_the_scope_keeps(club: busk.OfflineShow) -> None:
+    bridge, app = club_app(club)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        page(app).choose(tile(app, "color", None))
+        await pilot.pause()
+        assert plain(panel(app).keeps) == KEEPS["global"]
+        for scope in ("profile", "target", "global"):
+            await tap(pilot, panel(app).scopes[scope])
+            await pilot.pause()
+            assert plain(panel(app).keeps) == KEEPS[scope]
+            assert panel(app).keeps.size.height == 2  # the same height: nothing jumps
+        assert bridge.lines() == []  # a hint, as a scope, sends nothing
+        page(app).choose(tile(app, "position", None))
+        assert plain(panel(app).keeps) == KEEPS["target"]
+        page(app).choose(tile(app, "beam", None))
+        assert plain(panel(app).keeps) == KEEPS["profile"]
+        page(app).choose(tile(app, "color", 2))  # Red: its values are global
+        assert plain(panel(app).keeps) == KEEPS["global"]
+        children = list(panel(app).children)
+        assert children.index(panel(app).keeps) == children.index(panel(app).selection) + 1
+
+    drive(app, body)
+
+
 def test_a_preset_of_the_show_starts_at_the_scope_its_values_share(club: busk.OfflineShow) -> None:
     show = model_of(club.show)
     blue = next(p for p in show.presets if p.name == "Blue")
@@ -938,6 +988,7 @@ def test_a_new_preset_has_no_load_nor_writes_and_one_of_the_show_no_record(
         await pilot.click(page(app).edit)  # nothing chosen: no editors
         assert panel(app).hint.display
         assert not panel(app).editors.display
+        assert not panel(app).keeps.display
         assert not panel(app).clear.display
         assert [item.label for item in page(app).items()][-1] == "done"
 
@@ -966,8 +1017,51 @@ def test_the_editors_have_a_section_per_family_the_pool_records(club: busk.Offli
         page(app).choose(tile(app, "all", None))
         await pilot.pause()
         assert [name for name, _ in sections()] == [
-            "INTENSITY", "POSITION", "COLOR", "BEAM", "SHUTTER",
+            "INTENSITY", "POSITION", "COLOR", "BEAM", "FOCUS", "SHUTTER",
         ]  # fmt: skip
+
+    drive(app, body)
+
+
+def test_a_row_no_profile_takes_shows_dimmed_and_does_nothing(club: busk.OfflineShow) -> None:
+    bridge, app = club_app(club)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        page(app).choose(tile(app, "color", None))
+        await pilot.pause()
+        rows = list(panel(app).query(".pp-absent"))
+        assert [plain(row).split()[0] for row in rows] == [
+            "color.a", "color.uv", "cto", "colorMacroRate",
+            "colorWheel", "colorMacro", "colorEffect",
+        ]  # fmt: skip
+        assert plain(rows[0]) == "color.a          no fixture takes it"
+        assert {row.content.style for row in rows} == {colors.DIM}
+        section = list(panel(app).editors.children[0].children)
+        assert section[-len(rows) :] == rows  # after the rows that act
+        assert not {stop.widget for stop in panel(app).stops()} & set(rows)
+        await tap(pilot, rows[0])
+        assert bridge.lines() == []
+        page(app).choose(tile(app, "all", None))  # the rig takes nothing of the family
+        await pilot.pause()
+        block = next(b for b in panel(app).editors.children if plain(b.children[0]) == "FOCUS")
+        assert [plain(row) for row in block.children[1:]] == [
+            "focus            no fixture takes it"
+        ]
+
+    drive(app, body)
+
+
+def test_a_long_attribute_keeps_a_gap_before_no_fixture_takes_it(club: busk.OfflineShow) -> None:
+    _, app = club_app(club)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        page(app).choose(tile(app, "beam", None))
+        await pilot.pause()
+        rows = {plain(row).split()[0]: row for row in panel(app).query(".pp-absent")}
+        assert plain(rows["soundSensitivity"]) == "soundSensitivity no fixture takes it"
+        assert rows["soundSensitivity"].size.height == 1  # no wrap at the panel's width
 
     drive(app, body)
 
@@ -1151,7 +1245,7 @@ def test_the_colour_section_starts_with_the_picker(club: busk.OfflineShow) -> No
         heading, first, *rows = block.children
         assert plain(heading) == "COLOR"
         assert first is picker(app)
-        assert rows == panel(app).rows
+        assert rows[: len(panel(app).rows)] == panel(app).rows  # then the dimmed ones
         assert rows[0].encoder.attribute == "color.r"
         labels = [item.label for item in page(app).items()]
         chips = [labels.index(button.line.text) for button in chip_buttons("256")]
@@ -1367,7 +1461,8 @@ def test_option_rows_offer_what_the_selection_offers(tupper: busk.OfflineShow) -
         assert not effect.chips.display
         assert plain(effect.none) == "the selection has no effect"
         (beam, shutter) = panel(app).editors.children
-        assert [type(child).__name__ for child in beam.children] == [
+        acting = [child for child in beam.children if not child.has_class("pp-absent")]
+        assert [type(child).__name__ for child in acting] == [
             "Static", "EncoderRow", "SpreadRow", "EncoderRow", "SpreadRow",
             "EncoderRow", "SpreadRow", "SpreadLine",
             "OptionRow", "OptionRow", "OptionRow",

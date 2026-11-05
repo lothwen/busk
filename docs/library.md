@@ -23,7 +23,7 @@ busk is not on PyPI. Install it from a checkout of its repository, at a release 
 without `--branch`, for `main`):
 
 ```bash
-git clone --branch v0.1.0 https://github.com/lothwen/busk.git
+git clone --branch v0.1.1 https://github.com/lothwen/busk.git
 uv add ./busk                       # into your uv project
 uv add ./busk --extra midi          # with MIDI surfaces
 pip install "./busk[midi]"
@@ -31,8 +31,8 @@ pip install "./busk[midi]"
 
 - **An install from a checkout builds busk from source**, so it fetches the build backend (`uv_build`)
   from the package index. On a machine without network access, install a wheel instead:
-  `uv build` in a checkout writes `dist/busk-0.1.0-py3-none-any.whl`, and
-  `pip install busk-0.1.0-py3-none-any.whl` installs it.
+  `uv build` in a checkout writes `dist/busk-0.1.1-py3-none-any.whl`, and
+  `pip install busk-0.1.1-py3-none-any.whl` installs it.
 - **The `midi` extra** adds [`mido`](https://mido.readthedocs.io/) and `python-rtmidi`, for
   MIDI surfaces. Without it, busk works as before, except that each MIDI surface reports
   `MIDI s-…: unavailable: install busk[midi]` once and stays closed. On Linux, MIDI needs
@@ -43,7 +43,7 @@ pip install "./busk[midi]"
   with Python 3.12, 3.13 and 3.14. Other POSIX systems should work but are untested.
   Windows is not supported: the USB DMX driver needs `termios`.
 
-The package also installs the `busk` command: `busk --version` prints `busk 0.1.0`.
+The package also installs the `busk` command: `busk --version` prints `busk 0.1.1`.
 
 ## The examples
 
@@ -479,7 +479,7 @@ take `str` or `os.PathLike`.
 | `ImportFailed` | A profile that cannot be imported (also a `ValueError`) |
 | `ScriptError` | A script line that failed: `path`, `line`, `text`, `output` |
 
-`busk.__version__` is the version, `"0.1.0"`.
+`busk.__version__` is the version, `"0.1.1"`.
 
 ## Errors
 

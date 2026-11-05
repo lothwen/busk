@@ -136,7 +136,7 @@ def test_the_template_is_a_valid_empty_show() -> None:
         "title": "Club Night",
         "created": "2026-10-11T12:00:00Z",
         "modified": "2026-10-11T12:00:00Z",
-        "app": "busk 0.1.0",
+        "app": "busk 0.1.1",
     }
     assert show["pages"] == [{"id": "page-000000000002", "name": "Main", "number": 1, "slots": []}]
     assert show["masters"] == [{"id": "m-000000000003", "name": "Grand Master", "kind": "grand"}]

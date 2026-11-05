@@ -240,17 +240,19 @@ def recordable(show: ShowModel | None) -> tuple[str, ...]:
 @dataclass(frozen=True, slots=True)
 class Section:
     """One family of a pool's editor: its encoder rows and its discrete
-    attributes, those the rig takes."""
+    attributes, those the rig takes, and the attributes of either kind that
+    no profile of the show takes (``absent``)."""
 
     family: str
     encoders: tuple[Encoder, ...]
     options: tuple[str, ...]
+    absent: tuple[str, ...]
 
 
 def pool_rows(pool: str, show: ShowModel | None) -> list[Section]:
     """The sections of ``pool``'s editor, by family in the order shown (the
-    ``all`` pool has every family); a family the rig takes nothing of is
-    left out."""
+    ``all`` pool has every family). A family the rig takes nothing of is
+    there too, with its rows ``absent``."""
     rig = taken(show)
     families = POOL_FAMILIES[pool]
     discrete = dict(OPTIONS)
@@ -260,8 +262,9 @@ def pool_rows(pool: str, show: ShowModel | None) -> list[Section]:
             continue
         rows = tuple(encoder for encoder in encoders if encoder.taken_as in rig)
         options = tuple(attribute for attribute in discrete.get(family, ()) if attribute in rig)
-        if rows or options:
-            sections.append(Section(family, rows, options))
+        absent = tuple(encoder.attribute for encoder in encoders if encoder.taken_as not in rig)
+        absent += tuple(attribute for attribute in discrete.get(family, ()) if attribute not in rig)
+        sections.append(Section(family, rows, options, absent))
     return sections
 
 

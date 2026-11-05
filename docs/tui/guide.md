@@ -523,14 +523,17 @@ instead of applying it, and `[done]` turns edit mode off.
  │ │ Audience      │ │ Centre        │     │ │ scope  [global] [profile] [target]               │
  │ └───────────────┘ └───────────────┘     │ │                                                  │
  │ ┌───────────────┐                       │ │ SELECTION 101 thru 102 (2)                       │
- │ │ + record      │                       │ │ [Heads] [Washes] [Bar] [All] [none]              │
- │ │ as 3          │                       │ │                                                  │
- │ └───────────────┘                       │ │ POSITION                                         │
- └─────────────────────────────────────────┘ │ pan        from [−] ███████▌░░░░░░░░░ [+]   -30° │
+ │ │ + record      │                       │ │ the preset keeps a value per fixture: only       │
+ │ │ as 3          │                       │ │ those fixtures can take it                       │
+ │ └───────────────┘                       │ │ [Heads] [Washes] [Bar] [All] [none]              │
+ └─────────────────────────────────────────┘ │                                                  │
+                                             │ POSITION                                         │
+                                             │ pan        from [−] ███████▌░░░░░░░░░ [+]   -30° │
                                              │              to [−] █████████▌░░░░░░░ [+]    30° │
                                              │                 [centre] [edges]                 │
                                              │ tilt            [−] ███████████░░░░░░ [+]    40° │
                                              │ spread          [pan] [tilt]                     │
+                                             │ positionSpeed    no fixture takes it             │
                                              │                                                  │
                                              │ RECORDS                                          │
                                              │ pan   on 101 thru 102 (2)                        │
@@ -557,10 +560,17 @@ is lit at first: `global` for colour and intensity, `profile` for beam and focus
 for position and all. Where the values differ, busk falls back to a narrower scope and says
 so in its answer.
 
-**SELECTION** shows the selection, with a button per group and `[none]`, as on F2.
+**SELECTION** shows the selection, with a button per group and `[none]`, as on F2. A preset
+keeps no group, and the dim line under SELECTION says what it does keep at the scope lit. At
+`global` the selection only gives the values, and a value reaches every fixture that takes the
+attribute. At `profile` it reaches every fixture of its profile. At `target` the preset keeps a
+value per fixture, and only those fixtures can take it. busk needs a selection all the same: it
+records from the programmer, and the programmer holds values per fixture.
 
-**The editors** are a section per family the pool records. A row shows when a profile of your
-rig takes its attribute, and acts on the selection:
+**The editors** are a section per family the pool records. A row acts on the selection when a
+profile of your rig takes its attribute. The family's other attributes come last in the
+section, dimmed (`colorMacro       no fixture takes it`): they do nothing, and show what a
+preset could hold with such a fixture in the rig. The rows that act are:
 
 - encoder rows, as on F2, plus the attributes F2 has no row for: rotations (in degrees per
   second, `-` turns the other way, the bar filled from its centre), the fixture effects'

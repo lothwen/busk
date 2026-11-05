@@ -18,9 +18,10 @@ does:
   ``[merge]`` and ``[replace]`` record at. A new preset starts at the
   pool's default; a preset of the show at the scope its values share, else
   the pool's default.
-* SELECTION: the selection, a button per group, ``[none]``, and for a
-  preset of the show ``[its fixtures]``: ``sel fixture 101, fixture 102``,
-  the fixtures it gives a value to.
+* SELECTION: the selection, what the scope lit keeps of it
+  (:data:`KEEPS`), a button per group, ``[none]``, and for a preset of the
+  show ``[its fixtures]``: ``sel fixture 101, fixture 102``, the fixtures
+  it gives a value to.
 * A section per family the pool records, with an encoder row
   (:mod:`busk_tui.widgets.encoders`) per attribute the rig takes; a
   rotation's bar is signed. Where the rig takes a colour, the colour
@@ -32,6 +33,8 @@ does:
   ``[centre]`` and ``[edges]`` (``set pan spread -30 30``). Then an option
   row (:mod:`busk_tui.widgets.options`) per discrete attribute the rig
   takes: a chip per option the selection offers (``set gobo1 star``).
+  Last, dimmed, a line per attribute of the family that no profile of the
+  show takes: it does nothing, and shows what a preset could hold.
 * RECORDS: what a record takes now, the programmer's values in the pool's
   families, and how many of their elements are not selected (busk records
   them too).
@@ -107,6 +110,17 @@ HINTS: Final[dict[str, str]] = {
     "remove": "removes what the programmer's fixtures see, for the attributes the programmer holds",
 }
 """What the mouse on a button shows in the hint row."""
+
+_VALUES: Final = "the selection only gives the values: if they agree, the preset keeps"
+
+KEEPS: Final[dict[str, str]] = {
+    "global": f"{_VALUES} no fixtures",
+    "profile": f"{_VALUES} one per profile",
+    "target": "the preset keeps a value per fixture: only those fixtures can take it",
+}
+"""What a preset keeps of the selection at each scope. Values that differ
+fall back to a narrower scope, so ``global`` and ``profile`` hold only where
+they agree (``_cascade`` in ``busk.commands.record``)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -260,6 +274,11 @@ def selection_heading(
     return text
 
 
+def absent_text(attribute: str) -> Text:
+    """A row no profile of the show takes."""
+    return Text(f"{attribute:<16} no fixture takes it", style=colors.DIM)
+
+
 def records_text(found: Records, fixtures: Sequence[FixtureInfo]) -> Text:
     """RECORDS: each attribute a record takes and the elements it takes it
     for, and how many of those are not selected; or what to do first."""
@@ -368,6 +387,7 @@ class PresetPanel(VerticalScroll):
             Static("scope  ", classes="pp-word"), *self.scopes.values(), classes="pp-row"
         )
         self.selection = Static("", classes="pp-heading")
+        self.keeps = Static("", classes="pp-heading")
         self.groups = ButtonStrip()
         self.editors = Vertical(classes="pp-editors")
         self.records = Static("", classes="pp-text")
@@ -391,6 +411,7 @@ class PresetPanel(VerticalScroll):
         yield self.use
         yield self.scope_row
         yield self.selection
+        yield self.keeps
         yield self.groups
         yield self.editors
         yield self.records
@@ -473,16 +494,18 @@ class PresetPanel(VerticalScroll):
         self.load.display = preset is not None
         for button in self.writes.values():
             button.display = preset is not None
-        for widget in (self.scope_row, self.selection, self.groups, self.editors, self.records):
+        for widget in (
+            self.scope_row, self.selection, self.keeps, self.groups, self.editors, self.records,
+        ):  # fmt: skip
             widget.display = editing
         self.write_row.display = self.clear.display = self.blind.display = editing
 
     def _build_editors(self, sections: list[Section]) -> None:
         """A section per family: the colour picker where the rig takes a
         colour, an encoder row per attribute, each with its spread row
-        (hidden until toggled), the spread toggles, then an option row per
-        discrete attribute (new widgets: a removed one cannot be mounted
-        again)."""
+        (hidden until toggled), the spread toggles, an option row per
+        discrete attribute, then a dimmed line per attribute no profile
+        takes (new widgets: a removed one cannot be mounted again)."""
         self.sections = sections
         self.rows, self.pickers, self.options, self.parts = [], [], [], []
         self.spreads, self.spread_lines = [], []
@@ -510,11 +533,10 @@ class PresetPanel(VerticalScroll):
             options = [OptionRow(attribute) for attribute in section.options]
             self.options += options
             parts += options
-            if not parts:
-                continue
             self.parts += parts
             heading = Static(Text(section.family.upper(), style=colors.CYAN))
-            blocks.append(Vertical(heading, *parts, classes="pp-section"))
+            absent = [Static(absent_text(name), classes="pp-absent") for name in section.absent]
+            blocks.append(Vertical(heading, *parts, *absent, classes="pp-section"))
         self.editors.remove_children()
         if blocks:
             self.editors.mount_all(blocks)
@@ -524,6 +546,8 @@ class PresetPanel(VerticalScroll):
         for name, button in self.scopes.items():
             lit = name == scope
             button.change(intent="record" if lit else "neutral", reverse=lit)
+        if scope is not None:
+            _put(self.keeps, Text(KEEPS[scope], style=colors.DIM))
 
     def _draw_selection(self, preset: PresetInfo | None) -> None:
         show, programmer = self.show, self.programmer

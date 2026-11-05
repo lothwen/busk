@@ -10,6 +10,23 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- F6 edits presets from controls. `[edit]` or a `+ record` tile opens the PRESET panel: what a
+  preset holds and the cues that use it, rename, renumber, delete after a question, and new
+  presets and new values recorded through the programmer. Its editors are the encoder rows, a
+  colour picker (a hue × saturation field and named chips), option chips for gobos, prisms,
+  shutters and fixture effects, and spreads. Every pool the rig can record into now shows.
+  Under SELECTION, a hint says what the scope lit keeps, and a row no profile of the show takes
+  shows dimmed.
+
+### Fixed
+
+- A TUI button whose look alone changed was not redrawn: a lit scope or curve, `[−]` `[+]`
+  turning active, F5's `RUN` dimming.
+
+## [0.1.1] - 2026-10-27
+
+### Added
+
 - `busk-tui`, a terminal UI, behind the new extra `busk[tui]`
   ([the terminal UI](docs/tui/guide.md)). `busk-tui SHOW` runs the show under `busk run` as
   its frontend, with a status bar that follows the engine (routes, grand master, tempo,
@@ -202,7 +219,7 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 - The web remote showed a TAP button that did nothing in a show without a speed master
   that takes taps.
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-10-18
 
 The first release with a public API. Phases 0–7 built the console and its `busk` command
 line; Phase 8 ([plan](docs/plans/phase-8-plan.md)) made it a library too.
@@ -256,5 +273,6 @@ line; Phase 8 ([plan](docs/plans/phase-8-plan.md)) made it a library too.
 The command line is otherwise unchanged: every command, flag, exit code and output line
 is the same as before Phase 8.
 
-[Unreleased]: https://github.com/lothwen/busk/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/lothwen/busk/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/lothwen/busk/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/lothwen/busk/releases/tag/v0.1.0
