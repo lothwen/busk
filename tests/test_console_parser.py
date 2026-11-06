@@ -698,6 +698,41 @@ def test_errors_say_what_the_operator_typed(line: str, error: str) -> None:
     assert raised.value.message == error
 
 
+@pytest.mark.parametrize(
+    ("line", "error"),
+    [
+        ('sel "back\\slash"', "bad escape in a quote at column 10"),
+        ('sel "a" "\\q"', "bad escape in a quote at column 10"),
+        ('  sel "\\q"', "bad escape in a quote at column 8"),
+        ('sel "a\tb"', "control character in a quote at column 7"),
+    ],
+)
+def test_a_quote_json_cannot_read_is_a_refused_line(line: str, error: str) -> None:
+    with pytest.raises(ParseError) as raised:
+        tokenize(line)
+    assert raised.value.message == error
+    assert raised.value.__cause__ is None
+
+
+def test_a_broken_unicode_escape_is_refused_too() -> None:
+    with pytest.raises(ParseError, match=r"^bad escape in a quote at column \d+$"):
+        tokenize('sel "\\u12"')
+
+
+@pytest.mark.parametrize(
+    ("quoted", "text"),
+    [
+        ('"C:\\new"', "C:\new"),  # a JSON escape: a newline, as before
+        ('"say \\"hi\\""', 'say "hi"'),
+        ('"back\\\\slash"', "back\\slash"),
+        ('"caf\\u00e9"', "café"),
+        ('"café 🎉"', "café 🎉"),
+    ],
+)
+def test_a_quote_reads_json_escapes(quoted: str, text: str) -> None:
+    assert tokenize(quoted)[0][0].text == text
+
+
 def test_tokens_keep_their_positions_and_comments_end_the_line() -> None:
     tokens, end = tokenize('record cue 1/2 "a \\"b\\"" , x # tail')
     assert [(t.text, t.start, t.quoted) for t in tokens] == [
@@ -1714,6 +1749,12 @@ PHASE7_COMMANDS: list[tuple[str, dict[str, Any]]] = [
     ("fixture 201 thru 101 limits none",  # only MH 1 has limits
      labelled("removed the limits of fixture 201 thru 101",
               {"type": "DELETE", "path": ["fixtures", {"id": "fx-mh1"}, "limits"]})),
+    ("fixture 101 limits tilt none",  # its only limit: `limits` goes with it
+     labelled("removed the tilt limit of fixture 101",
+              {"type": "DELETE", "path": ["fixtures", {"id": "fx-mh1"}, "limits"]})),
+    ("fixture 201 thru 101 limits tilt none",  # only MH 1 has it
+     labelled("removed the tilt limit of fixture 201 thru 101",
+              {"type": "DELETE", "path": ["fixtures", {"id": "fx-mh1"}, "limits"]})),
     # the strobe cap
     ("safety strobe 2.5",
      labelled("strobe cap 2.5 Hz",
@@ -1752,6 +1793,39 @@ def test_park_and_limits_on_a_show_without_any() -> None:
     assert p7_command("safety strobe 3", load_doc(APPENDIX_A))["commands"] == [
         {"type": "SET", "path": ["safety"], "value": {"strobeMaxHz": 3}}
     ]
+
+
+@pytest.mark.parametrize(
+    ("word", "key"), [("pan", "pan"), ("tilt", "tilt"), ("intensity", "intensityMax")]
+)
+def test_one_limit_goes_and_the_others_stay(word: str, key: str) -> None:
+    doc = load_doc(APPENDIX_A)
+    doc["fixtures"][0]["limits"] = {"pan": [-90, 90], "tilt": [-90, 10], "intensityMax": 0.5}
+    doc["fixtures"][1]["limits"] = {key: [-90, 90] if key != "intensityMax" else 0.5}
+    limited = ["fixtures", {"id": "fx-mh1"}, "limits"]
+    assert p7_command(f"fixture 101 thru 102 limits {word} none", doc) == labelled(
+        f"removed the {word} limit of fixture 101 thru 102",
+        {"type": "DELETE", "path": [*limited, key]},
+        {"type": "DELETE", "path": ["fixtures", {"id": "fx-mh2"}, "limits"]},
+    )
+
+
+def test_a_location_goes_with_its_line() -> None:
+    doc = load_doc(APPENDIX_A)
+    doc["fixtures"][0]["location"] = {"x": 1, "y": 2, "z": 3, "rx": 0, "ry": 0, "rz": 0}
+    assert p7_command("fixture 101 location none", doc) == labelled(
+        "removed the location of fixture 101",
+        {"type": "DELETE", "path": ["fixtures", {"id": "fx-mh1"}, "location"]},
+    )
+
+
+def test_a_location_is_still_set_as_a_generic_edit() -> None:
+    keys = {"x": 1, "y": 2, "z": 3, "rx": 0, "ry": 0, "rz": 0}
+    assert p7_command(f"fixture 101 location {json.dumps(keys)}") == {
+        "type": "SET",
+        "path": ["fixtures", {"id": "fx-mh1"}, "location"],
+        "value": keys,
+    }
 
 
 def test_park_gives_every_element_of_a_fixture_an_entry() -> None:
@@ -1871,6 +1945,15 @@ def test_profile_update_errors(tmp_path: Path) -> None:
         ("fixture 101 limits zoom 1 2", "expected pan or tilt or intensity or none, got 'zoom'"),
         ("fixture 102 limits none", "fixture 102 has no limits"),
         ("fixture 101.1 limits none", "expected a fixture number, got '101.1'"),
+        ("fixture 101 limits pan none", "fixture 101 has no pan limit"),
+        ("fixture 102 limits tilt none", "fixture 102 has no tilt limit"),
+        ("fixture 201 limits intensity none", "fixture 201 has no intensity limit"),
+        ("fixture 201 thru 102 limits pan none", "fixture 201 thru 102 has no pan limit"),
+        ("fixture 101 limits tilt none now", "unexpected 'now'"),
+        ("fixture 999 limits tilt none", "no fixture 999"),
+        ("fixture 101 location none", "fixture 101 has no location"),
+        ("fixture 101 location none now", "unexpected 'now'"),
+        ("fixture 999 location none", "no fixture 999"),
         ("safety strobe", "expected a rate in Hz, or off"),
         ("safety flash 3", "expected strobe, got 'flash'"),
         ("release all soon", "unexpected 'soon'"),
@@ -1931,6 +2014,8 @@ def test_help_lists_the_phase_7_commands() -> None:
         "release all [<seconds>] | output on|off",
         "park <targets> <attribute> <value> | unpark <targets> [<attribute>] | unpark all",
         "fixture N [thru M] limits pan|tilt <min> <max>",
+        "fixture N [thru M] limits pan|tilt|intensity none",
+        "fixture N location <location> | fixture N location none",
         "safety strobe <hz> | safety strobe off",
         'profile update "<name>" | profile "<name>" category <category>|none',
     ):

@@ -146,6 +146,15 @@ def offline(directory: Path) -> bytes:
         assert show_.execute(f'effect add "{offered.name}"').ok
         assert (offered.id, offered.summary, offered.low, offered.high, embeds, phase) is not None
         assert size > 0
+    for choice in show_.fixture_profiles:
+        listed_profile: busk.FixtureProfileInfo = choice
+        embedded: bool = listed_profile.source == "show"
+        for each in listed_profile.modes:
+            mode: busk.FixtureModeInfo = each
+            channels: int = mode.footprint
+            assert (mode.name, channels, mode.elements) is not None
+        maker: str = listed_profile.manufacturer
+        assert (listed_profile.name, listed_profile.id, maker, embedded) is not None
     return universes[1][:16]
 
 
@@ -172,6 +181,8 @@ def live(path: str, host: Callable[[busk.LiveShow], None]) -> busk.Show:
         programmer: busk.ProgrammerStatus = live.programmer
         assert programmer.version >= 1
         templates: tuple[busk.EffectTemplateInfo, ...] = live.effect_templates
+        profiles: tuple[busk.FixtureProfileInfo, ...] = live.fixture_profiles
+        assert all(profile.modes for profile in profiles)
         tab: tuple[str, ...] = live.expected("go").words
         assert tab == ("go", "goto")
         assert all(template.name for template in templates)

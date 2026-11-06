@@ -8,7 +8,7 @@ The public API
 ==============
 
 Every public name is importable from ``busk`` itself; ``__all__`` lists the
-39 of them. The library guide, ``docs/library.md``, has the examples and the
+41 of them. The library guide, ``docs/library.md``, has the examples and the
 reference.
 
 Show documents
@@ -25,9 +25,11 @@ Running a show
     (:meth:`~OfflineShow.execute`) and scripts, read their output back
     per fixture (:attr:`~OfflineShow.output`) and show their running
     effects (:attr:`~OfflineShow.effects`), their programmer
-    (:attr:`~OfflineShow.programmer`) and the effect templates ``effect
-    add`` takes (:attr:`~OfflineShow.effect_templates`), and say what may
-    come next in a line being typed (:meth:`~OfflineShow.expected`); a
+    (:attr:`~OfflineShow.programmer`), the effect templates ``effect add``
+    takes (:attr:`~OfflineShow.effect_templates`) and the fixture profiles
+    ``fixture add`` takes (:attr:`~OfflineShow.fixture_profiles`), and say
+    what may come next in a line being typed
+    (:meth:`~OfflineShow.expected`); a
     :class:`LiveShow` also shows its output routes
     (:attr:`~LiveShow.routes`), control surfaces
     (:attr:`~LiveShow.surfaces`) and how its engine is doing
@@ -41,7 +43,8 @@ Data types
     :class:`EngineHealth`;
     :class:`OutputSnapshot` with :class:`FixtureOutput`;
     :class:`EffectSnapshot` with :class:`EffectStatus`;
-    :class:`EffectTemplateInfo`; :class:`Expected`; :class:`ProgrammerStatus`
+    :class:`EffectTemplateInfo`; :class:`FixtureProfileInfo` with
+    :class:`FixtureModeInfo`; :class:`Expected`; :class:`ProgrammerStatus`
     with :class:`ProgrammerValue`; :class:`RouteStatus`;
     :class:`SurfaceStatus`; :class:`IdFactory` and :class:`CounterIds`.
 Errors
@@ -105,8 +108,10 @@ __all__ = [
     "EngineHealth",
     "EngineSnapshot",
     "Expected",
+    "FixtureModeInfo",
     "FixtureOutput",
     "FixtureProfile",
+    "FixtureProfileInfo",
     "IdFactory",
     "ImportFailed",
     "ImportReport",
@@ -155,6 +160,8 @@ _EXPORTS: dict[str, str] = {
     "CommandResult": "busk.session.session",
     "Reply": "busk.console.console",
     "EffectTemplateInfo": "busk.console.console",
+    "FixtureModeInfo": "busk.console.console",
+    "FixtureProfileInfo": "busk.console.console",
     "Expected": "busk.console.parser",
     "EngineSnapshot": "busk.engine.snapshot",
     "PlaybackStatus": "busk.engine.snapshot",
@@ -182,6 +189,8 @@ if TYPE_CHECKING:  # what type checkers see: the same table, as explicit re-expo
     from busk.commands.types import Command as Command
     from busk.compiler.compile import UnsupportedFeature as UnsupportedFeature
     from busk.console.console import EffectTemplateInfo as EffectTemplateInfo
+    from busk.console.console import FixtureModeInfo as FixtureModeInfo
+    from busk.console.console import FixtureProfileInfo as FixtureProfileInfo
     from busk.console.console import Reply as Reply
     from busk.console.parser import Expected as Expected
     from busk.engine.snapshot import EffectSnapshot as EffectSnapshot

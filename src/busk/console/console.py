@@ -70,6 +70,7 @@ from busk.console.parser import (
     Submit,
     SubmitAll,
     expected,
+    find_profile,
     find_template,
     parse,
 )
@@ -135,6 +136,37 @@ class EffectTemplateInfo:
     low: float | None
     high: float | None
     phase: tuple[float, float] | None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class FixtureModeInfo:
+    """One mode of a :class:`FixtureProfileInfo`: ``name``, as ``fixture add
+    … mode <mode>`` takes it, the channels it takes (``footprint``) and how
+    many ``elements`` it has, each its own target (a bar's cells)."""
+
+    name: str
+    footprint: int
+    elements: int
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class FixtureProfileInfo:
+    """One fixture profile that ``fixture add`` takes, as a display lists it
+    (GAP-27 of ``docs/dev/tui/engine-gaps.md``).
+
+    ``name`` is the name ``fixture add N "<name>"`` takes for it. ``source``
+    is ``"show"`` for a profile the show holds (in ``show["profiles"]``, with
+    ``id``), and ``"library"`` for one of the profile library's that the show
+    has no copy of: ``fixture add`` embeds it into the show first, and from
+    then on it is the show's, with the same id. ``modes`` are its modes, in
+    the profile's order.
+    """
+
+    name: str
+    id: str
+    source: Literal["show", "library"]
+    manufacturer: str
+    modes: tuple[FixtureModeInfo, ...]
 
 
 class Console:
@@ -251,6 +283,37 @@ class Console:
                 low=defaults.get("low"),
                 high=defaults.get("high"),
                 phase=None if phase is None else (phase["start"], phase["end"]),
+            )
+        return tuple(found.values())
+
+    def fixture_profiles(self, show: Show) -> tuple[FixtureProfileInfo, ...]:
+        """Every profile ``fixture add`` takes in ``show``, once, as it finds
+        them by name (:func:`~busk.console.parser.find_profile`): the show's
+        in show order, then the profile library's that the show has no copy
+        of. Each is listed under the first name that finds it; one that no
+        name finds is left out (a show profile named like an earlier one, a
+        library profile whose name a show profile has)."""
+        names = [p["name"] for p in show["profiles"]] + [p["name"] for p in self.library]
+        found: dict[str, FixtureProfileInfo] = {}
+        for name in names:
+            resolved = find_profile(show, self.library, name)
+            assert resolved is not None  # each name finds at least its own profile
+            profile, embed = resolved
+            if profile["id"] in found:
+                continue
+            found[profile["id"]] = FixtureProfileInfo(
+                name=name,
+                id=profile["id"],
+                source="library" if embed else "show",
+                manufacturer=profile["manufacturer"],
+                modes=tuple(
+                    FixtureModeInfo(
+                        name=mode["name"],
+                        footprint=mode["footprint"],
+                        elements=len(mode["elements"]),
+                    )
+                    for mode in profile["modes"]
+                ),
             )
         return tuple(found.values())
 

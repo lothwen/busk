@@ -201,6 +201,23 @@ the same tuple until a template changes:
 
 ```
 
+`fixture_profiles` does the same for the fixture profiles `fixture add` takes: the show's,
+then those of the profile library that the show has no copy of yet, which `fixture add`
+embeds into the show first (`source` says which). Each has the name `fixture add` takes,
+its `manufacturer`, and its `modes`, each with its name, the channels it takes
+(`footprint`) and how many `elements` it has, so a frontend can place a fixture before the
+show holds its profile. It is the same tuple until a profile changes:
+
+```python
+>>> profiles = offline.fixture_profiles                         # the script used three
+>>> [(p.name, p.source) for p in profiles][2:4]
+[('Chauvet DJ COLORband PiX', 'show'), ('RGB Par 3ch', 'library')]
+>>> bar = profiles[2]
+>>> bar.manufacturer, bar.modes[0].name, bar.modes[0].footprint, bar.modes[0].elements
+('Chauvet DJ', '36-CH', 36, 12)
+
+```
+
 **Commands happen now.** Each `execute`, `submit` and script line has taken effect when
 the call returns, at the current engine time. Time moves only with `tick`, so a fade or
 a chase stays where it was until then. `ids=busk.CounterIds()` makes the ids of new
@@ -447,7 +464,7 @@ take `str` or `os.PathLike`.
 | `read_ofl` | `read_ofl(path, *, manufacturer=None) -> ImportReport`: convert an Open Fixture Library profile |
 | `read_gdtf` | `read_gdtf(path, *, manufacturer=None) -> ImportReport`: convert a GDTF file |
 | `ProfileLibrary` | The built-in profiles plus directories of profiles, for `fixture add`: `get(id)`, `find(id or name)`, iteration, `problems` |
-| `OfflineShow` | A show on a clock you drive: `submit`, `execute`, `confirmation`, `expected`, `run_script`, `save`, `tick`; `show`, `warnings`, `snapshot`, `output`, `effects`, `programmer`, `effect_templates`, `time` |
+| `OfflineShow` | A show on a clock you drive: `submit`, `execute`, `confirmation`, `expected`, `run_script`, `save`, `tick`; `show`, `warnings`, `snapshot`, `output`, `effects`, `programmer`, `effect_templates`, `fixture_profiles`, `time` |
 | `LiveShow` | A show in real time in your process: as `OfflineShow`, with `start`, `stop` and `with`, `frame` instead of `tick`, `routes`, `surfaces` and `health` |
 | `DmxFrame` | One engine output: `seq`, `time`, and `universes`, a mapping of universe number to 512 bytes |
 | `EngineHealth` | How a `LiveShow`'s engine is doing: `state` (`"starting"`, `"running"`, `"stalled"`, `"stopped"`; under `busk run` with processes also `"restarting"`, `"failed"`), `ticks`, `overruns`, `lastTickAge` (seconds since its newest tick, or `None`) |
@@ -467,6 +484,8 @@ take `str` or `os.PathLike`.
 | `EffectSnapshot` | The effect instances one tick ran: `seq`, `time`, `effects` |
 | `EffectStatus` | One instance in it: `playback`, `cue`, `id` (where it is defined), `presence`, `size`, `hz`, `phase`, `wave` and `colors` (its next cycle, 20 samples) |
 | `EffectTemplateInfo` | One effect template `effect add` takes: `name` (as it takes it), `id`, `source` (`"show"` or `"library"`), `summary` (its layers in one line), `size`, `low`, `high`, `phase` (the library's defaults, or `None`) |
+| `FixtureProfileInfo` | One fixture profile `fixture add` takes: `name` (as it takes it), `id`, `source` (`"show"` or `"library"`), `manufacturer`, `modes` |
+| `FixtureModeInfo` | One mode of it: `name` (as `fixture add` takes it), `footprint` (the channels it takes), `elements` (how many) |
 | `Expected` | What `expected(line)` returns, about the word being typed at the end of the line: `words` (the keywords and names that may come there and that it starts), `values` (anything else, described), `runnable` (the line before it runs as it is), `error` (the mistake that stops it, or `None`), `start` (where that word starts) |
 | `ProgrammerStatus` | The programmer: `version`, `selection` (`(number, element)` pairs), `blind`, `highlight`, `fadeTime`, `values`, `effects` (as the show file holds them), `stopped` (the ids of the stopped effects) |
 | `ProgrammerValue` | One value in it: `number`, `element`, `attribute`, `value` (in the show's units), `preset` (`(pool, number, name)`, or `None`) |

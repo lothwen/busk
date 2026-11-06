@@ -574,19 +574,61 @@ one conversation, which ends with a status memory and a stop. The engine's tests
    - one limit removed with the others kept, the last one taking `limits` with it, and `undo`;
    - `thru` over fixtures with and without that limit, and refused when none has it;
    - `location none`, refused without a location, and `undo`.
+
+   **Done** (2026-11-05). As planned, with these additions:
+   - `help` gained `fixture N location <location>` beside `none`. A form that fits hides the generic
+     edit from `?`, so `none` would have been the only way it showed.
+   - Tab offers `location` after a fixture, and `none` after `location` and after a limit's name,
+     beside what else may come there.
 4. **GAP-26, mode and profile** (§5.4). Verify, on a two-mode test profile:
    - `fixture N mode` and its completion, past 512 refused and an overlap warned;
    - `fixture N profile … mode …` to an embedded and to a library profile, `undo` taking the
      embedded profile back, and a 12-element bar refused while groups name its elements;
    - the show's copy used when the library's revision differs, as for `fixture add`.
+
+   **Done** (2026-11-05). As planned, with these additions, which the user may veto:
+   - The reply is `fixture 102 runs 3ch`, or `fixture 102 runs RGB Par 3ch, 3ch`, and the undo step
+     has the same label.
+   - `fixture add` now shares its parsing of `"<profile>" mode <mode>` with these lines
+     (`_profile_and_mode`, `_mode`), so they take the same words.
+   - A cue or a parked value on an element the mode lacks refuses the line too. §5.4 named groups
+     only. Each was run.
+   - What the programmer holds on a lost element goes dormant. `ProgrammerStatus` and the output are
+     right, and `undo` brings it back, but the `programmer` line prints `selection: 1, 1, 1…`, one
+     `1` per lost element. That is §8 item 4 again, so it was left.
+   - Beyond the list: a running `LiveShow` follows a profile and `undo`, and so does the engine
+     process under `busk run`, through a new `elements` key of the probe's `steps`.
 5. **GAP-27, `fixture_profiles`** (§5.5). Verify:
    - its names equal `expected('fixture add 900 ')` on both shows, with a `--library` directory, and
      under `busk run`;
    - the same tuple until a profile changes, and a profile moving from `library` to `show` when
      `fixture add` embeds it;
    - the public API golden, `api_consumer.py` and the tested example in `docs/library.md`.
+
+   **Done** (2026-11-05). As planned, with these additions:
+   - `find_profile` in `busk.console.parser` is `fixture add`'s lookup, moved out of the parser's
+     class as `find_template` was for GAP-15, so the list cannot drift from the line.
+   - One difference from `expected()`, which §2 did not meet: for a renamed copy of a library
+     profile, `expected()` offers both names, which find the same profile, and `fixture_profiles`
+     lists it once, under the show's. On both shipped shows the names are equal, which a test holds.
+   - As for templates, a profile is listed under the first name that finds it, and one no name
+     finds is left out.
+   - `busk.__all__` is now 41, and the golden's diff only adds.
 6. **A bad escape** (§5.6). Verify: all four calls of §2 with `"back\slash"`, and that `"C:\new"`
    and a JSON `\"` still read as they did.
+
+   **Done** (2026-11-05). As planned, with these additions:
+   - A literal tab or other control character in a quote raised the same error, which §2 did not
+     list, so it is refused too: `control character in a quote at column 7`. A bad escape reads `bad
+     escape in a quote at column 25`, the column of its backslash. For a broken `\u12` it is the
+     column of the `u`, where `json` stops.
+   - A lone surrogate, `"\ud800"`, is read, then refused by the validator, so it raises nothing.
+   - `docs/console.md` gained a note on names in quotes, which had none.
+   - 46 mutations of the lines of steps 3 to 6. 44 were caught at once. One showed a missing test,
+     since every profile had revision 1, and that test now catches it. The other showed a redundant
+     `not embed` in `_profile`, which went.
+   - Steps 3 to 6 were built in one working tree, so they share one run of the whole suite: 4643
+     passed, 1 skipped, 20 deselected, in 17:59 (group A left 4524).
 
 **C. Read and universes**
 

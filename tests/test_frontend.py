@@ -14,7 +14,7 @@
 * **``busk run --frontend``**, real process trees running
   ``tests/process_site/frontend_probe.py``: the frontend gets the show
   (frames, output, effects, routes, the programmer, the effect templates,
-  lines that run, a profile's category, ``status``, the playbacks' colours,
+  the fixture profiles, lines that run, a profile's category, ``status``, the playbacks' colours,
   what may come in a line being typed, the engine's health, a ``quit`` that
   says so and ends nothing) and busk run's lines as ``busk.run``
   records, none printed over it; one that raises is restarted with its console while the engine
@@ -44,7 +44,7 @@ import numpy as np
 import pytest
 
 import test_route_status
-from builders import APPENDIX_A, load_doc, localhost_route
+from builders import APPENDIX_A, channel, load_doc, localhost_route, mode, profile
 from busk import LiveShow
 from busk.cli import main
 from busk.compiler.compile import CompiledShow, compile_show
@@ -508,6 +508,54 @@ def test_a_universe_that_cascades_goes_from_the_engine_process_and_comes_back(
     assert back[0] is None
     assert back[2] is True
     assert back[-1] == [101, 102, 201]
+
+
+def test_a_library_profile_is_listed_taken_and_undone_from_the_engine_process(
+    tmp_path: Path, receiver: Receiver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GAP-26 and GAP-27, under ``busk run`` with processes and a ``--library``
+    directory: the console process lists what ``fixture add`` takes, and the
+    engine process follows a fixture to a profile the show did not hold."""
+    cells = [channel(k, "intensity", element=k) for k in range(2)]
+    extra = {**profile("prof-extra", mode(cells, mode_id="Two", elements=2)), "name": "Extra"}
+    library = tmp_path / "library"
+    library.mkdir()
+    (library / "extra.json").write_text(json.dumps(extra))
+    report_path = plan(
+        tmp_path,
+        monkeypatch,
+        steps=[
+            {
+                "line": 'fixture 201 profile "Extra" mode Two',
+                "routes": [["r1", "ok"]],
+                "elements": [[101, 1], [102, 1], [201, 1], [201, 2]],
+            },
+            {
+                "line": "undo",
+                "routes": [["r1", "ok"]],
+                "elements": [[101, 1], [102, 1], [201, 1]],
+            },
+            {
+                "line": 'fixture 201 profile "Extra" mode Two',
+                "routes": [["r1", "ok"]],
+                "elements": [[101, 1], [102, 1], [201, 1], [201, 2]],
+            },
+        ],
+    )
+    options = frontend(tmp_path, "--no-log", "--library", str(library))
+    with BuskRun(run_show(tmp_path), *options, sacn_port=receiver.port) as busk:
+        assert busk.wait() == 0, busk.err
+    report = json.loads(report_path.read_text())
+    assert report["timeout"] is None, report
+    before, after = report["profilesBefore"], report["profiles"]
+    assert before[:2] == [["Generic Spot 16ch", "show", [16]], ["RGB Par 3ch", "show", [3]]]
+    assert ["Extra", "library", [2]] in before
+    assert [json.dumps(name) for name, _, _ in before] == report["adds"][1:]  # after `thru`
+    assert after[:3] == [*before[:2], ["Extra", "show", [2]]]
+    took, undid, again = report["steps"]
+    assert took[:3] == [None, "fixture 201 runs Extra, Two", True]
+    assert undid[:3] == [None, "undid: fixture 201 runs Extra, Two", True]
+    assert again[:3] == took[:3]
 
 
 def test_a_frontend_that_raises_comes_back_with_its_console(

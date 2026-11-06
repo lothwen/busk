@@ -22,6 +22,7 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
     universe add N ["name"]
     fixture add N [thru M] "<profile>" mode <mode> [at U.A]
     fixture N patch U.A | fixture N patch none
+    fixture N mode <mode> | fixture N profile "<profile>" mode <mode>
     route add U sacn <universe> [unicast <host> | multicast <iface>]
     route add U artnet <net>.<sub>.<uni> [unicast <host>]
     route add U dmxusb enttecPro|dmxking <port> [hz N]
@@ -64,6 +65,9 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
     park <targets> <attribute> <value> | unpark <targets> [<attribute>] | unpark all
     fixture N [thru M] limits pan|tilt <min> <max>
     fixture N [thru M] limits intensity <max> | fixture N [thru M] limits none
+    fixture N [thru M] limits pan|tilt|intensity none
+    fixture N location <location> | fixture N location none
+        <location> = {"x": 0, "y": 0, "z": 0, "rx": 0, "ry": 0, "rz": 0}
     safety strobe <hz> | safety strobe off
     profile update "<name>" | profile "<name>" category <category>|none
         <category> = par | spot | wash | beam | pixel | strobe | blinder | dimmer
@@ -196,6 +200,22 @@ takes the fixture out of everything that names it, and ``delete universe N
 cascade`` unpatches its fixtures and removes its routes, each in one undo
 step. An interactive prompt asks first, always, saying what would go.
 
+Removing a limit and a location (GAP-25). ``limits pan|tilt|intensity none``
+removes that limit from each fixture named and keeps the others; the last one
+takes ``limits`` with it. Like ``limits none``, it is refused when no fixture
+named has it. ``fixture N location none`` removes the location, ``fixture N
+location {…}`` being the generic edit.
+
+Changing a fixture's mode and profile (GAP-26). ``fixture N mode <mode>`` takes
+a mode of the fixture's profile, by name or id, in any case, as ``fixture add``
+does. ``fixture N profile "<profile>" mode <mode>`` finds the profile as
+``fixture add`` does, embedding a library profile first, in one undo step. Both
+leave the rest to the validator, which refuses a footprint past channel 512 or
+a target on an element the new mode lacks, and warns of an overlap. What the
+new profile cannot do is kept and does nothing, as a preset's pan on a par.
+The facades' ``fixture_profiles`` (GAP-27) lists every profile ``fixture add``
+takes, the library's too, found by :func:`find_profile`, ``fixture add``'s rule.
+
 Completion (Tab and ``?`` at the prompt, :mod:`busk.console.prompt`).
 :func:`expected` parses a line up to the word being typed. Where the line
 runs out, the parser notes what it was looking for: keywords, names in
@@ -220,7 +240,7 @@ from busk.model.attributes import ATTRIBUTES, AttributeDefinition
 from busk.model.common import TargetRef
 from busk.model.cue import CUE_NUMBER
 from busk.model.effect import EffectTemplate
-from busk.model.profile import PROFILE_CATEGORIES, option_capabilities
+from busk.model.profile import PROFILE_CATEGORIES, FixtureProfile, option_capabilities
 from busk.model.show import Show
 from busk.model.validate import COLOR_COMPONENTS
 from busk.session.ids import IdFactory, RandomIds
@@ -401,6 +421,26 @@ def find_template(
     return library.template, library.defaults, True
 
 
+def find_profile(
+    show: Show, library: ProfileLibrary, name: str
+) -> tuple[FixtureProfile, bool] | None:
+    """The profile ``fixture add`` uses for ``"<name>"`` and whether it must be
+    embedded: the show's copy if it has one (the library's profile id, or
+    ``name`` as an id or a name, any case), else the library's; ``None`` if
+    neither has it."""
+    known = library.find(name)
+    folded = name.casefold()
+    embedded = next(
+        (p for p in show["profiles"]
+         if (known is not None and p["id"] == known["id"])
+         or p["id"] == name or p["name"].casefold() == folded),
+        None,
+    )  # fmt: skip
+    if embedded is not None:
+        return embedded, False
+    return None if known is None else (known, True)
+
+
 # ---------------------------------------------------------------- tokenizer
 
 _TOKEN: Final = re.compile(r'\s*(?:(?P<quoted>"(?:[^"\\]|\\.)*")|(?P<comma>,)|(?P<word>[^\s",]+))')
@@ -434,7 +474,12 @@ def tokenize(line: str) -> tuple[list[Token], int]:
             raise ParseError(f"unterminated quote at column {column}")
         start = match.start(match.lastgroup or "word")
         if match["quoted"] is not None:
-            tokens.append(Token(json.loads(match["quoted"]), start, quoted=True))
+            try:
+                text = json.loads(match["quoted"])
+            except json.JSONDecodeError as exc:
+                what = "bad escape" if "escape" in exc.msg else "control character"
+                raise ParseError(f"{what} in a quote at column {start + exc.pos + 1}") from None
+            tokens.append(Token(text, start, quoted=True))
         elif match["comma"] is not None:
             tokens.append(Token(",", start))
         else:
@@ -1295,32 +1340,13 @@ class _Parser:
         last = self.integer("a fixture number after thru") if self.keyword("thru") else first
         if last < first:
             raise ParseError("fixture add needs ascending numbers: N thru M with M ≥ N")
-        names = [p["name"] for p in self.show["profiles"]] + [p["name"] for p in self.ctx.library]
-        token = self.take('a profile name in quotes, e.g. "Generic Spot 16ch"', *_quoted(names))
-        self.expect("mode")
-        offered: list[str] = []
-        if self.peek() is None:  # Tab offers the profile's modes
-            with contextlib.suppress(ParseError):
-                offered = [_word(m["name"]) for m in self._profile(token.text)[0]["modes"]]
-        mode_name = self.take("a mode name", *offered).text
+        profile_name, mode_name = self._profile_and_mode()
         patch: tuple[str, int] | None = None
         if self.keyword("at"):
             patch = self._address()
         self.done()
-        profile, notes, embed = self._profile(token.text)
-        mode = next(
-            (
-                m
-                for m in profile["modes"]
-                if mode_name.lower() in (m["name"].lower(), m["id"].lower())
-            ),
-            None,
-        )
-        if mode is None:
-            modes = ", ".join(m["name"] for m in profile["modes"])
-            raise ParseError(
-                f"profile {profile['name']!r} has no mode {mode_name!r} (modes: {modes})"
-            )
+        profile, notes, embed = self._profile(profile_name)
+        mode = _mode(profile, mode_name)
         used = {f["number"] for f in self.show["fixtures"]}
         taken = self.taken("fixtures")
         commands: list[dict[str, Any]] = []
@@ -1344,30 +1370,72 @@ class _Parser:
         label = f"added fixture {span}: {profile['name']}, {mode['name']}"
         return Submit(cast(Command, {"type": "BATCH", "label": label, "commands": commands}), notes)
 
+    def _profile_and_mode(self) -> tuple[str, str]:
+        """``"<profile>" mode <mode>``, each as typed. Tab offers the profiles
+        ``fixture add`` takes, then that profile's modes."""
+        names = [p["name"] for p in self.show["profiles"]] + [p["name"] for p in self.ctx.library]
+        token = self.take('a profile name in quotes, e.g. "Generic Spot 16ch"', *_quoted(names))
+        self.expect("mode")
+        offered: list[str] = []
+        if self.peek() is None:
+            with contextlib.suppress(ParseError):
+                offered = [_word(m["name"]) for m in self._profile(token.text)[0]["modes"]]
+        return token.text, self.take("a mode name", *offered).text
+
+    def _fixture_mode(self) -> Action:
+        """``fixture N mode <mode>`` (GAP-26): a mode of the fixture's profile."""
+        fixture = self.by_number("fixtures", self.integer("a fixture number"), "fixture")
+        self.expect("mode")
+        profile = _by_id(self.show["profiles"], fixture["profileId"])
+        name = self.take("a mode name", *(_word(m["name"]) for m in profile["modes"])).text
+        self.done()
+        mode = _mode(profile, name)
+        path = ["fixtures", {"id": fixture["id"]}, "modeId"]
+        return Submit(
+            _labelled(
+                f"fixture {fixture['number']} runs {mode['name']}",
+                {"type": "SET", "path": path, "value": mode["id"]},
+            )
+        )
+
+    def _fixture_profile(self) -> Action:
+        """``fixture N profile "<profile>" mode <mode>`` (GAP-26): another
+        profile, found as ``fixture add`` finds it, in one undo step."""
+        fixture = self.by_number("fixtures", self.integer("a fixture number"), "fixture")
+        self.expect("profile")
+        profile_name, mode_name = self._profile_and_mode()
+        self.done()
+        profile, notes, embed = self._profile(profile_name)
+        mode = _mode(profile, mode_name)
+        path = ["fixtures", {"id": fixture["id"]}]
+        commands: list[dict[str, Any]] = []
+        if embed:
+            commands.append({"type": "ADD", "path": ["profiles"], "value": profile})
+        commands += [
+            {"type": "SET", "path": [*path, "profileId"], "value": profile["id"]},
+            {"type": "SET", "path": [*path, "profileRevision"], "value": profile["revision"]},
+            {"type": "SET", "path": [*path, "modeId"], "value": mode["id"]},
+        ]
+        label = f"fixture {fixture['number']} runs {profile['name']}, {mode['name']}"
+        return Submit(_labelled(label, *commands), notes)
+
     def _profile(self, name: str) -> tuple[dict[str, Any], tuple[str, ...], bool]:
         """The profile to use: the show's embedded copy if it has one (with a
         note when the library's revision differs), else the library's, which
         must then be embedded."""
-        library = self.ctx.library.find(name)
-        folded = name.casefold()
-        embedded = next(
-            (p for p in self.show["profiles"]
-             if (library is not None and p["id"] == library["id"])
-             or p["id"] == name or p["name"].casefold() == folded),
-            None,
-        )  # fmt: skip
-        if embedded is not None:
-            notes: tuple[str, ...] = ()
-            if library is not None and library["revision"] != embedded["revision"]:
-                notes = (
-                    f"warning: the show embeds {embedded['name']!r} revision "
-                    f"{embedded['revision']!r}, the library has {library['revision']!r}: "
-                    "using the show's copy",
-                )
-            return cast(dict[str, Any], embedded), notes, False
-        if library is None:
+        found = find_profile(self.show, self.ctx.library, name)
+        if found is None:
             raise ParseError(f"no profile {name!r} in the library (see 'library')")
-        return cast(dict[str, Any], library), (), True
+        profile, embed = found
+        library = self.ctx.library.find(name)
+        notes: tuple[str, ...] = ()
+        if library is not None and library["revision"] != profile["revision"]:
+            notes = (
+                f"warning: the show embeds {profile['name']!r} revision "
+                f"{profile['revision']!r}, the library has {library['revision']!r}: "
+                "using the show's copy",
+            )
+        return cast(dict[str, Any], profile), notes, embed
 
     def _address(self) -> tuple[str, int]:
         token = self.take("an address as U.A, e.g. 1.101")
@@ -1712,14 +1780,25 @@ class _Parser:
             if self.keyword("add"):
                 return self._fixture_add()
             following = self.peek(1)
-            if following is not None and following.lower == "patch":
+            word = "" if following is None else following.lower
+            if word == "patch":
                 return self._patch()
-            thru = following is not None and following.lower == "thru"
+            if word == "mode":
+                return self._fixture_mode()
+            if word == "profile":
+                return self._fixture_profile()
+            if word == "location":
+                value = self.peek(2)
+                if value is None:  # the value may be any location: `_set` describes it
+                    self.offers.append("none")
+                elif value.lower == "none":
+                    return self._no_location()
+            thru = word == "thru"
             after = self.peek(3) if thru else following
             if (after is not None and after.lower == "limits") or (thru and after is None):
                 return self._limits()  # N thru M comes only before limits
             if following is None and self.peek() is not None:  # fixture N: Tab offers these
-                self.offers += ("patch", "thru", "limits")
+                self.offers += ("patch", "thru", "limits", "mode", "profile", "location")
         if head == "universe" and self.keyword("add"):
             return self._universe_add()
         if head == "page":
@@ -2191,6 +2270,9 @@ class _Parser:
             deletes = [{"type": "DELETE", "path": ["fixtures", {"id": f["id"]}, "limits"]}
                        for f in limited]  # fmt: skip
             return Submit(_labelled(f"removed the limits of {span}", *deletes))
+        if self.keyword("none"):
+            self.done()
+            return self._no_limit(fixtures, what, span)
         if what == "intensity":
             high = self.number("a maximum intensity, e.g. 0.5 or 50%")
             key, value, text = "intensityMax", cast(Any, high), f"intensity at most {high:g}"
@@ -2207,6 +2289,33 @@ class _Parser:
             for f in fixtures
         ]  # fmt: skip
         return Submit(_labelled(f"limited {span}: {text}", *sets))
+
+    def _no_limit(self, fixtures: Sequence[Mapping[str, Any]], what: str, span: str) -> Action:
+        """``… limits pan|tilt|intensity none`` (GAP-25): that limit goes from
+        the fixtures that have it. The last one takes ``limits`` with it, so
+        the show holds no empty ``limits``."""
+        key = "intensityMax" if what == "intensity" else what
+        limited = [f for f in fixtures if key in f.get("limits", {})]
+        if not limited:
+            raise ParseError(f"{span} has no {what} limit")
+        deletes = []
+        for fixture in limited:
+            path: EditPath = ["fixtures", {"id": fixture["id"]}, "limits"]
+            deletes.append(
+                {"type": "DELETE", "path": path if len(fixture["limits"]) == 1 else [*path, key]}
+            )
+        return Submit(_labelled(f"removed the {what} limit of {span}", *deletes))
+
+    def _no_location(self) -> Action:
+        """``fixture N location none`` (GAP-25)."""
+        fixture = self.by_number("fixtures", self.integer("a fixture number"), "fixture")
+        self.expect("location")
+        self.expect("none")
+        self.done()
+        if "location" not in fixture:
+            raise ParseError(f"fixture {fixture['number']} has no location")
+        delete = {"type": "DELETE", "path": ["fixtures", {"id": fixture["id"]}, "location"]}
+        return Submit(_labelled(f"removed the location of fixture {fixture['number']}", delete))
 
     def _cmd_safety(self) -> Action:
         """``safety strobe <hz>`` sets the show's strobe-rate cap (decision 13);
@@ -2428,6 +2537,16 @@ def _element(items: Sequence[Any], path: EditPath) -> Mapping[str, Any]:
 def _by_id(items: Iterable[Mapping[str, Any]], ident: str) -> Mapping[str, Any]:
     """The element of ``items`` with ``ident`` (the show validated, so it exists)."""
     return next(item for item in items if item["id"] == ident)
+
+
+def _mode(profile: Mapping[str, Any], name: str) -> Mapping[str, Any]:
+    """The mode of ``profile`` that ``name`` names, by name or id, in any case."""
+    folded = name.lower()
+    for mode in profile["modes"]:
+        if folded in (mode["name"].lower(), mode["id"].lower()):
+            return cast(Mapping[str, Any], mode)
+    modes = ", ".join(m["name"] for m in profile["modes"])
+    raise ParseError(f"profile {profile['name']!r} has no mode {name!r} (modes: {modes})")
 
 
 def _port(text: str) -> int | None:

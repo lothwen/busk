@@ -54,17 +54,17 @@ session, as the web remote's commands do. `help` prints the grammar.
 | Values | `set intensity 80%`, `set pan -45`, `set color 1 0.5 0 w 0.2`, `set gobo1 breakup`, `set pan spread -30 30 [center\|edges]`, `set color preset color 1`, `preset position 1`, `set intensity by 5%`, `set pan by -15`, `set color.r 50%`, `set color.b by -10%` |
 | Programmer | `clear`, `blind on\|off`, `fade 2` (programmer changes fade over 2 s), `programmer` |
 | Record | `record group N`, `record preset <pool> N [global\|profile\|target]`, `record cue L/C [only <family>…] [freeze]`, `record slot S [only <family>…]`; each takes `merge`, `replace` or `remove` and a `"name"` |
-| Patch | `universe add 1 "Stage"`, `fixture add 101 thru 104 "Generic Spot 16ch" mode 16ch at 1.1`, `fixture 101 patch 2.1`, `fixture 101 patch none` |
+| Patch | `universe add 1 "Stage"`, `fixture add 101 thru 104 "Generic Spot 16ch" mode 16ch at 1.1`, `fixture 101 patch 2.1`, `fixture 101 patch none`, `fixture 101 mode 16ch`, `fixture 101 profile "RGB Par 3ch" mode 3ch` |
 | Output | `route add 1 sacn 1 [unicast 10.0.0.20 \| multicast IF]`, `route add 1 artnet 0.0.1 [unicast 10.0.0.20 \| broadcast IF]`, `route add 1 dmxusb enttecPro\|dmxking /dev/ttyUSB0 [hz 40]`, `route r-1 on\|off`, `delete route r-1` |
 | Surfaces | `surface add midi "nanoKONTROL2"`, `surface add osc "Touch" [port 8000] [feedback 10.0.0.5:9000]`, `surface add web "Phone" [port 8080] [on 10.0.0.2]`, `surface "nanoKONTROL2" pickup soft\|jump` |
 | Bindings, feedback | `bind "nanoKONTROL2" cc 1 0 fader 1`, `… cc 1 32 button 1 1 [led]`, `… cc 1 7 fader playback 18 [motor]`, `… cc 1 23 master gm`, `… cc 1 18 master "Speed 1"`, `… cc 1 46 tap ["Speed 1"]`, `… cc 1 42 blackout [momentary]`, `… cc 1 62 page +1`, `… note 1 60 page 2`, `bind "Touch" osc "/fader/1" fader 1 [display osc "/label/1"]`, `bind "nanoKONTROL2" clock tap`, `… cc 1 60 release all [2]`, `… note 1 61 output off`, `feedback "nanoKONTROL2" cc 1 32 thru 39 led\|motor\|display\|none`, `unbind "nanoKONTROL2" cc 1 60 [thru 61]` |
 | Pages | `page 2`, `page next\|prev`, `page add 2 ["Washes"]`, `page 2 slot 1 playback 14`, `page 2 slot 5 clear`, `record slot 2.1`, `playback 9 goto 4` |
-| Edit | `playback 3 exclusivity color`, `cue 3/1 timing.fadeIn 1`, `playback 1 buttons ["toggle", "flash", "release"]`, `show meta.title "Club Night"`, `rename group 1 "Heads"`, `delete cue 10/2`, `delete fixture 101 cascade`, `delete universe 2 cascade` |
+| Edit | `playback 3 exclusivity color`, `cue 3/1 timing.fadeIn 1`, `playback 1 buttons ["toggle", "flash", "release"]`, `show meta.title "Club Night"`, `rename group 1 "Heads"`, `delete cue 10/2`, `delete fixture 101 cascade`, `delete universe 2 cascade`, `fixture 101 location {"x": 1, "y": 2, "z": 3, "rx": 0, "ry": 0, "rz": 0}`, `fixture 101 location none` |
 | Timing, triggers | `cue 9/1 time 3 easeInOut`, `cue 9/3 time 1/3 delay 0/1`, `cue 9/2 time position 4 [delay 1] [easeOut]`, `… bezier 0.4 0 0.2 1`, `cue 9/3 wait 8`, `cue 9/5 follow 4`, `cue 9/2 go`, `cue 9/5 release group 1 [only pan tilt]` |
 | Cue lists, tempo | `cuelist 9 tracking true`, `cuelist 10 chase bpm ["Speed 1"] [x 2] [forward\|reverse\|bounce\|random] [crossfade 0.25]`, `cuelist 10 chase hz 4`, `cuelist 10 sequence`, `master add speed "Speed 1" [bpm 120] [steps 0.5, 1, 2]` |
 | Effects, masters | `effect add "Circle" [id fx1] [hz 0.5 \| bpm ["Speed 1"] [x 0.5]] [size 15] [low 0 high 1] [phase 0 180] [groups N] [blocks N] [wings 2] [forward\|reverse\|bounce] [fadein 1] [sizemaster "FX"] [speedmaster "Speed 1"]`, `effect remove fx1`, `effect clear`, `effect stop fx1`, `effect run fx1`, `effect template add "Name" [{…layers…}]`, `cue 9/4 effect rainbow size 0.5`, `master add size "FX"`, `master add group "Wash level" group 2`, `master add fadetime "Fade"` |
 | Perform | `go 9`, `back 9`, `goto 9 4`, `release 3 [2]`, `fader 3 75%`, `flash 3 on\|off`, `toggle 3`, `button 3 2 on\|off`, `gm 0.5`, `master "Speed 1" 0.75`, `tap ["Speed 1"]`, `bpm ["Speed 1"] 128`, `blackout on\|off` |
-| Safety, panic | `park fixture 204 intensity 0`, `park group 2 color 1 0 0`, `unpark fixture 204 [intensity]`, `unpark all`, `fixture 101 thru 102 limits tilt -90 10`, `fixture 301 limits intensity 50%`, `fixture 101 limits none`, `safety strobe 3\|off`, `highlight on\|off`, `release all [2]`, `output on\|off` |
+| Safety, panic | `park fixture 204 intensity 0`, `park group 2 color 1 0 0`, `unpark fixture 204 [intensity]`, `unpark all`, `fixture 101 thru 102 limits tilt -90 10`, `fixture 301 limits intensity 50%`, `fixture 101 limits tilt none`, `fixture 101 limits none`, `safety strobe 3\|off`, `highlight on\|off`, `release all [2]`, `output on\|off` |
 | Profiles | `profile update "Generic Spot 16ch"` (to the library's other revision), `profile "Generic Spot 16ch" category wash\|none`, `list profiles` |
 | Session | `undo`, `redo`, `save [PATH]`, `list fixtures\|groups\|presets\|cuelists\|playbacks\|pages\|universes\|routes\|surfaces\|bindings\|masters\|profiles\|effects\|park`, `list cues 9`, `library`, `info`, `status`, `source FILE`, `quit` |
 
@@ -148,10 +148,21 @@ session, as the web remote's commands do. `help` prints the grammar.
 * **Safety, panic and profiles** (see [Safety](safety.md) and [Fixture profiles](profiles.md#updating-a-shows-profiles)). `park` replaces what
   was parked on the slots it names and `unpark` removes it, each as one undo step (park
   entries have no ids, so the whole list is set). `limits` sets one key of each fixture's
-  limits and keeps the others. `release all` and `output on|off` are performance
+  limits and keeps the others, `limits pan none` removes one and keeps the others, and
+  `limits none` removes them all. `release all` and `output on|off` are performance
   commands, like `go`, and can be bound; `bind` adds a binding next to those already on an
   input, so `unbind "<surface>" <input> [thru N]` frees it first. `info` adds the
   processes, their restarts and the event log file.
+* **Mode and profile.** `fixture N mode <mode>` takes another mode of the fixture's profile,
+  by name or id, in any case, as `fixture add` takes it. `fixture N profile "<profile>" mode
+  <mode>` takes another profile, found as `fixture add` finds it: the show's copy when it
+  has one, else the library's, which the line embeds. Each is one undo step, and Tab offers
+  the profiles and their modes. A mode that would run past channel 512 is refused, and so
+  is one that lacks an element a group, a cue or a parked value names. An overlap warns, as
+  it does for `fixture add`. busk does not ask first: what the new profile cannot do stays
+  and does nothing, as a preset's pan on a par, and `undo` takes the line back.
+* **Names in quotes** read JSON escapes, so `\"` is a double quote and `\\` a backslash, and
+  `"C:\new"` holds a newline. A backslash before anything else is refused, with its column.
 * **Categories** (see [Fixture profiles](profiles.md#categories)). `profile "<name>"
   category <category>` labels a profile the show embeds as a `par`, `spot`, `wash`,
   `beam`, `pixel`, `strobe`, `blinder`, `dimmer`, `effect`, `fog` or `other`, for

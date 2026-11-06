@@ -579,6 +579,13 @@ one) is left out. The facades list again only for a new show object (an edit rep
 the show) and keep the previous tuple when the new one is equal. Only the console's show
 and library are read, so under `busk run` the engine process has nothing to send.
 
+**The fixture profiles** (`busk.console.console`; GAP-27 of
+[`tui/engine-gaps.md`](tui/engine-gaps.md)). The same again, for `fixture add`:
+`find_profile` (`busk.console.parser`) is its rule, and `Console.fixture_profiles`, which
+the facades' `fixture_profiles` is, lists what that rule reaches. `fixture N profile`
+finds its profile with the same rule. The list is the only place a frontend can read a
+library profile's footprint before the show embeds it: `expected()` gives names only.
+
 **Completion** (`busk.console.parser`, `busk.console.prompt`; GAP-20 of
 [`tui/engine-gaps.md`](tui/engine-gaps.md)). The parser's `expected(line)` parses a line
 cut where its next word starts, with a throwaway id factory. Where the tokens run out, the

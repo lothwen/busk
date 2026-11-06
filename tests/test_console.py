@@ -9,7 +9,8 @@ from typing import Any
 
 import pytest
 
-from builders import APPENDIX_A, load_doc
+from builders import APPENDIX_A, load_doc, show_of
+from busk import OfflineShow, ScriptError
 from busk.console.console import Console, interact
 from busk.console.parser import SubmitAll
 from busk.console.prompt import Editing
@@ -611,6 +612,100 @@ def test_limits_and_the_strobe_cap_reach_the_engine(console: Console, live: Live
     assert live.lanes("fx-mh1", "tilt") == [45.0]
     assert live.lanes("fx-mh2", "tilt") == [10.0]
     assert live.lanes("fx-mh2", "strobeRate") == [10.0]
+
+
+def test_one_limit_goes_the_others_stay_and_undo_brings_it_back(
+    console: Console, live: Live
+) -> None:
+    def limits() -> Any:
+        return live.session.show["fixtures"][0].get("limits")
+
+    run(console, "fixture 101 limits pan -90 90", "fixture 101 limits intensity 50%")
+    whole = limits()
+    assert set(whole) == {"tilt", "pan", "intensityMax"}
+    assert run(console, "fixture 101 limits pan none") == ["removed the pan limit of fixture 101"]
+    assert set(limits()) == {"tilt", "intensityMax"}
+    assert run(console, "undo") == ["undid: removed the pan limit of fixture 101"]
+    assert limits() == whole
+    run(console, "fixture 101 limits pan none", "fixture 101 limits intensity none")
+    assert set(limits()) == {"tilt"}
+    run(console, "fixture 101 limits tilt none")
+    assert limits() is None  # the last one takes `limits` with it: no empty one stays
+    run(console, "undo")
+    assert set(limits()) == {"tilt"}
+
+
+def test_thru_takes_a_limit_from_those_that_have_it_in_one_undo_step(console: Console) -> None:
+    def limits() -> list[Any]:
+        return [f.get("limits") for f in console.session.show["fixtures"]]
+
+    run(console, "fixture 102 limits tilt -90 10", "fixture 102 limits pan -90 90")
+    before = limits()
+    assert run(console, "fixture 101 thru 201 limits tilt none") == [
+        "removed the tilt limit of fixture 101 thru 201"
+    ]
+    assert limits() == [None, {"pan": (-90.0, 90.0)}, None]
+    assert run(console, "undo") == ["undid: removed the tilt limit of fixture 101 thru 201"]
+    assert limits() == before
+
+
+def test_a_limit_removed_leaves_the_engine_too(console: Console, live: Live) -> None:
+    run(console, "fixture 101 limits tilt -90 10", "sel fixture 101", "set tilt 45")
+    live.tick()
+    assert live.lanes("fx-mh1", "tilt") == [10.0]
+    run(console, "fixture 101 limits tilt none")
+    live.tick()
+    assert live.lanes("fx-mh1", "tilt") == [45.0]
+
+
+def test_a_location_goes_and_undo_brings_it_back(console: Console, live: Live) -> None:
+    def location() -> Any:
+        return live.session.show["fixtures"][0].get("location")
+
+    place = {"x": 1, "y": 2, "z": 3, "rx": 0, "ry": 0, "rz": 0}
+    assert not console.execute("fixture 101 location none").ok
+    run(console, f"fixture 101 location {json.dumps(place)}")
+    assert location() == place
+    assert run(console, "fixture 101 location none") == ["removed the location of fixture 101"]
+    assert location() is None
+    assert run(console, "undo") == ["undid: removed the location of fixture 101"]
+    assert location() == place
+    reply = console.execute("fixture 102 location none")
+    assert (reply.ok, reply.text) == (False, "error: fixture 102 has no location")
+
+
+@pytest.mark.parametrize(
+    ("line", "error"),
+    [
+        ('rename fixture 101 "back\\slash"', "bad escape in a quote at column 25"),
+        ('set "\\q"', "bad escape in a quote at column 6"),
+        ('rename fixture 101 "tab\there"', "control character in a quote at column 24"),
+    ],
+)
+def test_a_bad_escape_is_a_refused_line_wherever_it_goes(
+    line: str, error: str, tmp_path: Path
+) -> None:
+    offline = OfflineShow(show_of(load_doc(APPENDIX_A)))
+    before = offline.show
+    reply = offline.execute(line)
+    assert (reply.ok, reply.text) == (False, f"error: {error}")
+    assert offline.expected(f"{line} ").error == error
+    assert offline.confirmation(line) is None
+    script = tmp_path / "script.busk"
+    script.write_text(f"sel fixture 101\n{line}\nclear\n", encoding="utf-8")
+    with pytest.raises(ScriptError) as raised:
+        offline.run_script(script)
+    assert (raised.value.line, raised.value.text) == (2, line)
+    assert raised.value.output[-1] == f"error: {error}"
+    assert offline.show == before
+
+
+def test_a_quote_read_as_json_still_reads_as_it_did() -> None:
+    offline = OfflineShow(show_of(load_doc(APPENDIX_A)))
+    assert offline.execute('rename fixture 101 "C:\\new"').ok
+    assert offline.show["fixtures"][0]["name"] == "C:\new"  # \n is a newline, as before
+    assert offline.execute('rename fixture 101 "say \\"hi\\""').ok
+    assert offline.show["fixtures"][0]["name"] == 'say "hi"'
 
 
 def test_release_all_releases_every_playback(console: Console, live: Live) -> None:

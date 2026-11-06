@@ -35,7 +35,10 @@ control surfaces (:class:`~busk.io.surfaces.SurfaceStatus`, GAP-08).
 ``confirmation(line)`` is the question ``busk run``'s prompt asks before a
 dangerous line (GAP-10), for a frontend to ask too, and ``effect_templates``
 the templates ``effect add`` takes, the show's and the effect library's
-(:class:`~busk.console.console.EffectTemplateInfo`, GAP-15). A line's
+(:class:`~busk.console.console.EffectTemplateInfo`, GAP-15), and
+``fixture_profiles`` the profiles ``fixture add`` takes, the show's and the
+profile library's (:class:`~busk.console.console.FixtureProfileInfo`, GAP-27).
+A line's
 :class:`~busk.console.console.Reply` says whether it asked to quit, for a
 frontend to end as ``busk run``'s prompt does (GAP-18), and ``status``
 answers with ``busk run``'s status line (GAP-19). ``expected(line)`` is what
@@ -88,7 +91,13 @@ from typing import Final, Literal, Self
 
 from busk.commands.types import Command
 from busk.compiler.compile import CompiledShow, compile_show
-from busk.console.console import Console, EffectTemplateInfo, Reply, status_line
+from busk.console.console import (
+    Console,
+    EffectTemplateInfo,
+    FixtureProfileInfo,
+    Reply,
+    status_line,
+)
 from busk.console.parser import Expected
 from busk.engine.clock import SWITCH_INTERVAL, Clock, FakeClock, MonotonicClock
 from busk.engine.effect_status import EffectCapture, read_effects
@@ -232,6 +241,7 @@ class _Facade:
     _console: Console
     _status: tuple[SessionSnapshot, ProgrammerStatus] | None = None  # the last programmer read
     _templates: tuple[Show, tuple[EffectTemplateInfo, ...]] | None = None  # and templates read
+    _profiles: tuple[Show, tuple[FixtureProfileInfo, ...]] | None = None  # and profiles read
 
     # ----------------------------------------------------------- reading
 
@@ -271,6 +281,23 @@ class _Facade:
             templates = cached[1]
         self._templates = (show, templates)  # one assignment, as for the programmer
         return templates
+
+    @property
+    def fixture_profiles(self) -> tuple[FixtureProfileInfo, ...]:
+        """The fixture profiles ``fixture add N "<name>"`` takes: the show's,
+        in show order, then the profile library's that the show has no copy
+        of, in library order, each with its modes and what they take (see
+        :class:`~busk.console.console.FixtureProfileInfo`). The same tuple
+        until one of them changes."""
+        show = self._session.show  # one read, as for the templates
+        cached = self._profiles
+        if cached is not None and cached[0] is show:
+            return cached[1]
+        profiles = self._console.fixture_profiles(show)
+        if cached is not None and cached[1] == profiles:
+            profiles = cached[1]
+        self._profiles = (show, profiles)  # one assignment, as for the programmer
+        return profiles
 
     @property
     def warnings(self) -> tuple[Issue, ...]:

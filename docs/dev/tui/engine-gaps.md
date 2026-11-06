@@ -29,8 +29,9 @@ The TUI runs a `busk.LiveShow` in its own process, or, since GAP-11, is run by `
   `LiveShow.effects` (`EffectSnapshot`), since GAP-10 `LiveShow.confirmation(line)`
   (the question to ask before a line), since GAP-15 `LiveShow.effect_templates`
   (`EffectTemplateInfo`), since GAP-20 `LiveShow.expected(line)` (`Expected`, what
-  may come where the word being typed starts) and since GAP-21 `LiveShow.health`
-  (`EngineHealth`). Since GAP-16 a profile in `LiveShow.show`
+  may come where the word being typed starts), since GAP-21 `LiveShow.health`
+  (`EngineHealth`) and since GAP-27 `LiveShow.fixture_profiles`
+  (`FixtureProfileInfo`). Since GAP-16 a profile in `LiveShow.show`
   may have a `category`, and since GAP-17 a playback in the snapshot has the `color` of
   its current cue. The `busk.*` loggers feed the TUI's log pane.
 - **Text is not parsed.** `docs/library.md` says message text (`Reply.text`, CLI output, log
@@ -82,6 +83,9 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-22](#gap-22-parked-values-in-the-output-source) Parked values in the output source | read | nice-to-have | F3 | open (found 2026-10-26) |
 | [GAP-23](#gap-23-removing-and-switching-routes) Removing and switching routes | action | important | F8 | **done** 2026-11-05 |
 | [GAP-24](#gap-24-deletes-that-cascade) Deletes that cascade | action | important | F3, F8 | **done** 2026-11-05 |
+| [GAP-25](#gap-25-removing-one-limit-and-a-location) Removing one limit, and a location | action | nice-to-have | F3 | **done** 2026-11-05 |
+| [GAP-26](#gap-26-changing-a-fixtures-mode-and-profile) Changing a fixture's mode and profile | action | important | F3 | **done** 2026-11-05 |
+| [GAP-27](#gap-27-what-fixture-add-takes) What `fixture add` takes | read | important | F3 | **done** 2026-11-05 |
 
 ---
 
@@ -1858,3 +1862,137 @@ settles, the first three beyond the plan:
 F3's and F8's `[delete]` can now always send `… cascade`: `confirmation()` gives the question,
 so the TUI keeps no list of what can reference a fixture. A delete that succeeds takes the
 panel back to its start, so a second click cannot reach the next one.
+
+## GAP-25: Removing one limit, and a location
+
+**Status:** done 2026-11-05 (see **Done** at the end of this section).
+
+Found while planning the TUI's rig controls (`docs/plans/tui-rig-plan.md`, 2026-11-05).
+
+**Needed by:** F3's `[none]` on a limit and `[no place]`.
+
+**Today:** `limits none` removes every limit of a fixture, and `limits tilt none` is refused.
+`location none` is refused, and nothing else removes a location but `undo`.
+
+**Engine should provide:** `fixture N [thru M] limits pan|tilt|intensity none` and `fixture N
+location none`, each one undo step.
+
+**Priority:** nice-to-have.
+
+**TUI until then:** only `[no limits]`, and no way to take a fixture off the plot.
+
+**Done** (2026-11-05). Both lines, as the plan's §5.3 asks. No public name was added.
+Documented in `docs/console.md` (the Safety and Edit rows and the Safety note), `busk help`
+and the parser's module docs. What it settles:
+
+- **One limit goes and the others stay.** The last one takes `limits` with it, so no `limits:
+  {}` is left. With `thru`, the line acts on the fixtures that have that limit, in one undo
+  step, and it is refused when none has it: `fixture 102 has no tilt limit`.
+- **`location none` is refused without a location,** as the plan asks: `fixture 102 has no
+  location`.
+- **The replies say what went:** `removed the tilt limit of fixture 101`, `removed the
+  location of fixture 101`.
+- **Tab** offers `none` beside the numbers of a limit, and `location` and then `none` after a
+  fixture. `help` gained `fixture N location <location>` as well: a form that fits hides the
+  generic edit from `?`, which would have left `none` as the only way shown.
+- Tests: the rows of `tests/test_console_parser.py`, completion in
+  `tests/test_console_prompt.py`, and undo and the engine in `tests/test_console.py`.
+
+F3 can now give each limit its own `[none]` and a location its `[no place]`, each sending one
+line through `LiveShow.execute()`.
+
+## GAP-26: Changing a fixture's mode and profile
+
+**Status:** done 2026-11-05 (see **Done** at the end of this section).
+
+Found while planning the TUI's rig controls (`docs/plans/tui-rig-plan.md`, 2026-11-05).
+
+**Needed by:** F3's mode chips and `[profile…]`.
+
+**Today:** `fixture N modeId "mode-3"` works with busk's internal id, which a console line
+should not need. Nothing changes a fixture's profile: three fields must change together.
+
+**Engine should provide:** `fixture N mode "<mode>"` and `fixture N profile "<profile>" mode
+"<mode>"`, each one undo step, by name, as `fixture add` takes them.
+
+**Priority:** important.
+
+**TUI until then:** a fixture is deleted and added again, which loses what uses it.
+
+**Done** (2026-11-05). Both lines, as the plan's §5.4 asks. No public name was added.
+Documented in `docs/console.md` (the Patch row and the note), `busk help` and the parser's
+module docs. `fixture add` now shares its parsing with them. What it settles:
+
+- **A mode is taken as `fixture add` takes it:** by name or id, in any case, bare or in
+  quotes. Tab offers the names, in quotes where they need them.
+- **A profile is found as `fixture add` finds it.** The show's copy when it has one, with the
+  same warning when the library's revision differs, else the library's, embedded in the same
+  `BATCH`, so `undo` takes it back too.
+- **The validator decides the rest.** A footprint past channel 512 is refused, and so is a
+  mode that lacks an element a group, a cue or a parked value names. The plan named groups
+  only. The whole line is refused, so nothing is embedded. An overlap warns.
+- **busk does not ask.** What the new profile cannot do stays and does nothing: a preset's pan
+  on a par, a tilt limit, which warns.
+- **What the programmer holds on a lost element goes dormant,** as for a deleted fixture.
+  `ProgrammerStatus` leaves it out, the output is right, and `undo` brings it back. The
+  `programmer` line still prints it, one `1` per lost element in `selection: 1, 1, 1`: the
+  plan's §8 item 4 again.
+- **The reply says what the fixture runs:** `fixture 102 runs 3ch`, `fixture 102 runs RGB Par
+  3ch, 3ch`.
+- `fixture N modeId` still works: it is the generic edit.
+- Tests: `tests/test_fixture_mode.py`, on a test profile of three modes, since no shipped
+  profile has two, with a running `LiveShow`, and `busk run` with processes in
+  `tests/test_frontend.py`, where the engine process follows a fixture to a profile from a
+  `--library` directory. Completion is in `tests/test_console_prompt.py`.
+
+F3 can now offer mode chips and `[profile…]`: each sends one line, and a refusal shows in the
+log.
+
+## GAP-27: What `fixture add` takes
+
+**Status:** done 2026-11-05 (see **Done** at the end of this section).
+
+Found while planning the TUI's rig controls (`docs/plans/tui-rig-plan.md`, 2026-11-05).
+
+**Needed by:** F3's new fixture form, whose picker shows each profile's modes and footprints,
+and places the fixture before it is added.
+
+**Today:** `expected('fixture add 900 ')` lists the names and `expected('fixture add 900
+"<profile>" mode ')` the modes, but nothing gives a footprint. A library profile is not in
+the document until the first `fixture add` embeds it.
+
+**Engine should provide:** `fixture_profiles` on both facades, on the model of
+`effect_templates` (GAP-15).
+
+**Priority:** important.
+
+**TUI until then:** the form cannot say what an address takes, nor propose one.
+
+**Done** (2026-11-05). `OfflineShow.fixture_profiles` and `LiveShow.fixture_profiles`, a tuple
+of a new public dataclass, `FixtureProfileInfo` (`name`, `id`, `source`, `manufacturer`,
+`modes`), whose `modes` are another, `FixtureModeInfo` (`name`, `footprint`, `elements`).
+`busk.__all__` is now 41. Documented in `docs/library.md` (a tested example and the
+reference) and `docs/dev/internals.md`. What it settles:
+
+- **One rule.** `find_profile` in `busk.console.parser` is `fixture add`'s lookup, moved out of
+  the parser's class as `find_template` was for GAP-15, so the list cannot drift from the
+  line. `fixture N profile` uses it too.
+- **The order is `expected()`'s:** the show's profiles, in show order, then the library's that
+  the show has no copy of, in library order. Each is listed once, under the first name that
+  finds it, and one that no name finds is left out, as for templates.
+- **One difference from `expected()`.** For a renamed copy of a library profile, `expected()`
+  offers both names, which find the same profile, and `fixture_profiles` lists it once, under
+  the show's. On both shipped shows the names are equal, which a test holds.
+- **`elements` is a count,** and `modes` keep the profile's order. A profile the show holds
+  says `source` `"show"`, so it moves from `"library"` when `fixture add` or `fixture N profile`
+  embeds it, and back with `undo`.
+- **The same tuple until one changes,** as for templates. Only the console's show and library
+  are read, so under `busk run` the engine process has nothing to send.
+- **No `busk.ProfileLibrary` in the bridge,** though it is public: it would load the library a
+  second time and need the `--library` directories passed on. The plan's §5.5 has the numbers.
+- Tests: `tests/test_fixture_profiles.py`, the public API golden, `tests/api_consumer.py`, the
+  tested example in `docs/library.md`, and `busk run` with processes and a `--library`
+  directory in `tests/test_frontend.py`.
+
+F3's picker can now be `LiveShow.fixture_profiles` as it is, read by the bridge with the show,
+as F5 reads `effect_templates`.

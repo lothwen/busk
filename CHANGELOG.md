@@ -24,9 +24,20 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   leaves everything that names it, and a universe unpatches its fixtures and removes its
   routes. The prompt always asks first and says what would go. A plain `delete` is still
   refused while anything uses what it deletes.
+- `fixture N [thru M] limits pan|tilt|intensity none` removes one limit and keeps the others,
+  and `fixture N location none` removes a location.
+- `fixture N mode <mode>` and `fixture N profile "<profile>" mode <mode>` change what a fixture
+  runs, by name, each in one undo step. The profile is found as `fixture add` finds it, and a
+  library profile is embedded with the line. Tab offers the profiles and their modes.
+- `OfflineShow.fixture_profiles` and `LiveShow.fixture_profiles` list the profiles `fixture add`
+  takes, the library's too, with each mode's footprint and elements: two new public types,
+  `FixtureProfileInfo` and `FixtureModeInfo`.
 
 ### Fixed
 
+- A name in quotes with a bad escape (`"back\slash"`) or a control character raised
+  `JSONDecodeError` out of `execute`, `expected`, `confirmation` and `run_script`. It is now a
+  refused line that names the column.
 - A TUI button whose look alone changed was not redrawn: a lit scope or curve, `[−]` `[+]`
   turning active, F5's `RUN` dimming.
 

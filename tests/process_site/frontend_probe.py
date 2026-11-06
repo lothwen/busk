@@ -9,7 +9,8 @@ attached show, and follows the plan in the JSON file ``$BUSK_TEST_FRONTEND``:
   have come (reading them asks for them);
 * ``steps``: then, for each, ask about its ``line`` and run it, and wait until
   the show's routes are its ``routes`` (each id and state) and, when it has
-  them, the frame's universes are its ``universes``;
+  them, the frame's universes are its ``universes`` and the output's fixture
+  elements its ``elements`` (each number and element);
 * ``effectOf``: then wait until that playback's effect runs;
 * ``colorOf``: then wait until that playback has a colour in the snapshot;
 * ``records``: then wait until a ``busk.run`` record contains each text;
@@ -88,6 +89,8 @@ def run(show: Any, plan: dict[str, Any], records: Records, report: dict[str, Any
 
     if not wait("reads", lambda: None not in (show.frame, show.output, show.effects)):
         return
+    report["adds"] = list(show.expected("fixture add 900 ").words)
+    report["profilesBefore"] = _profiles(show)
     report["replies"] = [[line, *_reply(show.execute(line))] for line in plan.get("lines", [])]
     report["steps"] = []
     for step in plan.get("steps", []):
@@ -96,8 +99,11 @@ def run(show: Any, plan: dict[str, Any], records: Records, report: dict[str, Any
 
         def routed(step: dict[str, Any] = step) -> bool:
             wanted = step.get("universes", [int(n) for n in show.frame.universes])
-            return [[r.id, r.state] for r in show.routes or ()] == step["routes"] and (
-                [int(n) for n in show.frame.universes] == wanted
+            output = [[f.number, f.element] for f in show.output.fixtures]
+            return (
+                [[r.id, r.state] for r in show.routes or ()] == step["routes"]
+                and [int(n) for n in show.frame.universes] == wanted
+                and output == step.get("elements", output)
             )
 
         if not wait(f"the routes and universes after {step['line']!r}", routed):
@@ -141,6 +147,7 @@ def run(show: Any, plan: dict[str, Any], records: Records, report: dict[str, Any
     report["routes"] = [[r.id, r.state] for r in show.routes or ()]
     report["selection"] = [list(target) for target in show.programmer.selection]
     report["templates"] = [[t.name, t.source] for t in show.effect_templates]
+    report["profiles"] = _profiles(show)
     report["categories"] = [[p["name"], p.get("category")] for p in show.show["profiles"]]
     report["colors"] = [[p.number, p.color] for p in show.snapshot.playbacks]
     expected = show.expected("set gobo1 o")  # what the selection's gobos offer
@@ -161,6 +168,10 @@ def follow(show: Any, states: list[str]) -> list[str]:
         if (state := show.health.state) != seen[-1]:
             seen.append(state)
     return seen
+
+
+def _profiles(show: Any) -> list[list[Any]]:
+    return [[p.name, p.source, [m.footprint for m in p.modes]] for p in show.fixture_profiles]
 
 
 def _reply(reply: Any) -> list[Any]:

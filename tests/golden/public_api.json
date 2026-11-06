@@ -177,6 +177,18 @@
     },
     "module": "busk.console.parser"
   },
+  "FixtureModeInfo": {
+    "fields": [
+      "name: str",
+      "footprint: int",
+      "elements: int"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, *, name: str, footprint: int, elements: int) -> None"
+    },
+    "module": "busk.console.console"
+  },
   "FixtureOutput": {
     "fields": [
       "number: int",
@@ -213,6 +225,20 @@
     },
     "kind": "TypedDict",
     "module": "busk.model.profile"
+  },
+  "FixtureProfileInfo": {
+    "fields": [
+      "name: str",
+      "id: str",
+      "source: Literal['show', 'library']",
+      "manufacturer: str",
+      "modes: tuple[FixtureModeInfo, ...]"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, *, name: str, id: str, source: Literal['show', 'library'], manufacturer: str, modes: tuple[FixtureModeInfo, ...]) -> None"
+    },
+    "module": "busk.console.console"
   },
   "IdFactory": {
     "kind": "protocol",
@@ -265,6 +291,7 @@
       "effects": "property: EffectSnapshot | None",
       "execute": "(self, line: str) -> Reply",
       "expected": "(self, line: str) -> Expected",
+      "fixture_profiles": "property: tuple[FixtureProfileInfo, ...]",
       "frame": "property: DmxFrame | None",
       "health": "property: EngineHealth | None",
       "output": "property: OutputSnapshot | None",
@@ -291,6 +318,7 @@
       "effects": "property: EffectSnapshot",
       "execute": "(self, line: str) -> Reply",
       "expected": "(self, line: str) -> Expected",
+      "fixture_profiles": "property: tuple[FixtureProfileInfo, ...]",
       "output": "property: OutputSnapshot",
       "programmer": "property: ProgrammerStatus",
       "run_script": "(self, path: str | os.PathLike[str]) -> list[str]",

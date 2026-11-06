@@ -77,10 +77,22 @@ EXPECTED: list[tuple[str, tuple[str, ...], tuple[str, ...], bool]] = [
     ("sel fixture ", (), ("a fixture number",), False),
     ("sel fixture 101 ", ("thru", ","), (), True),
     ("fixture ", ("add",), ("a fixture number",), False),
-    ("fixture 101 ", ("patch", "thru", "limits"), ("a property, e.g. name or timing.fadeIn",),
+    ("fixture 101 ", ("patch", "thru", "limits", "mode", "profile", "location"),
+     ("a property, e.g. name or timing.fadeIn",),
      False),
     ("fixture 101 thru ", (), ("a fixture number after thru",), False),
     ("fixture 101 thru 102 ", ("limits",), (), False),
+    ("fixture 101 limits tilt ", ("none",), ("the lowest tilt in degrees",), False),
+    ("fixture 101 limits intensity ", ("none",), ("a maximum intensity, e.g. 0.5 or 50%",), False),
+    ("fixture 101 limits tilt none ", (), (), True),
+    ("fixture 101 thru 102 limits tilt none ", (), (), True),
+    ("fixture 101 location ", ("none",), ("a value",), False),
+    ("fixture 101 mode ", ("16ch",), (), False),
+    ("fixture 101 mode 16ch ", (), (), True),
+    ("fixture 101 profile ", PROFILES, (), False),
+    ('fixture 101 profile "RGB Par 3ch" ', ("mode",), (), False),
+    ('fixture 101 profile "RGB Par 3ch" mode ', ("3ch",), (), False),
+    ('fixture 101 profile "RGB Par 3ch" mode 3ch ', (), (), True),
     ("fixture add 5 ", ("thru", *PROFILES), (), False),
     ('fixture add 5 "Generic Spot 16ch" mode ', ("16ch",), (), False),
     ("set ", (*ATTRIBUTES, "color.r", "color.g", "color.b", "color.w", "color.a", "color.uv"), (),
@@ -152,6 +164,10 @@ def test_what_may_follow_a_line(
     ("line", "error"),
     [
         ("sel fixture 99 ", "no fixture 99"),
+        ("fixture 101 limits pan none ", "fixture 101 has no pan limit"),
+        ("fixture 101 location none ", "fixture 101 has no location"),
+        ("fixture 101 mode nope ", "profile 'Generic Spot 16ch' has no mode 'nope' (modes: 16ch)"),
+        ('rename group 1 "back\\slash" ', "bad escape in a quote at column 21"),
         ("xyz ", "unknown command 'xyz' (try 'help')"),
         ('master "Sp', "unterminated quote at column 8"),
         (
@@ -297,6 +313,12 @@ def test_grammar_keeps_the_forms_that_fit_with_the_definitions_they_use() -> Non
         '    record cue L[/C] [only <family>…] [<merge>] [freeze] ["name"]'
     ]
     assert grammar("release ") == ["    release N [<seconds>]", "    release all [<seconds>]"]
+    assert grammar("fixture 101 mode ") == ["    fixture N mode <mode>"]
+    assert grammar("fixture 101 profile ") == ['    fixture N profile "<profile>" mode <mode>']
+    assert grammar("fixture 101 location ") == [
+        "    fixture N location <location> | fixture N location none",
+        '        <location> = {"x": 0, "y": 0, "z": 0, "rx": 0, "ry": 0, "rz": 0}',
+    ]
 
 
 def test_grammar_shows_an_entitys_generic_edit_until_a_sub_command_fits() -> None:
