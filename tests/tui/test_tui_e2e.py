@@ -9,8 +9,10 @@
   goes to a cue, and F5 adds, stops and removes an effect; F3 and F1's
   layouts A and C show the output, and select from it; F3's FIXTURE panel
   renames, renumbers and deletes a fixture, sets a profile's category, a
-  fixture's mode, its limits, orientation and location; F8 adds, renames,
-  renumbers and deletes universes.
+  fixture's mode, its limits, orientation and location, patches it, changes
+  its profile and adds new ones from the library; F8 adds, renames, renumbers
+  and deletes universes, and patches and adds at a place on its map; a new show
+  gets a rig from controls alone.
 * On a stub show whose ``save`` is held (plan §4.3): keys, page switching,
   the beat dot and a bar's drag keep working, the drag's lines run, and the
   prompt context shows the held line.
@@ -58,6 +60,7 @@ from busk_tui.widgets.log import LogView
 from busk_tui.widgets.options import LIT, OptionRow
 from busk_tui.widgets.playbacks import PlaybackRow
 from busk_tui.widgets.preset_panel import Chosen
+from busk_tui.widgets.profile_picker import ProfileDialog
 from busk_tui.widgets.programmer import ProgrammerTable
 from busk_tui.widgets.tiles import PresetTile
 
@@ -487,6 +490,183 @@ def test_f3_sets_limits_orientation_and_location_from_controls_on_the_real_engin
         await until(pilot, lambda: stored(203).limits.intensity == 0.7)
         assert stored(201).limits.intensity == 0.7
         assert stored(202).limits.intensity is None  # thru would have covered it
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_f3_and_f8_patch_a_fixture_and_add_one_at_a_place_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """F3's PATCH moves 102 and unpatches it; F8's map places it again, and adds a
+    library profile at a place, which embeds it; ``[change]`` takes it elsewhere."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=3), standalone=True)
+
+    def stored(number: int) -> FixtureInfo | None:
+        show = app.view.show
+        return None if show is None else show.fixture(number)
+
+    def patch_of(number: int) -> tuple[int, int] | None:
+        found = stored(number)
+        assert found is not None
+        return found.patch
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.view.show is not None)
+        page = app.query_one(FixturesPage)
+        panel = page.panel
+        chooser = panel.patching
+        await tap(pilot, page.edit)
+        await until(pilot, lambda: page.editing and len(page.rig.rows) == 7)
+        await click_cell(pilot, page.rig, 1, "name")
+        await until(pilot, lambda: panel.selected == {102})
+        assert str(panel.patch_words.content) == "PATCH 1.17–1.32"
+
+        await tap(pilot, chooser.next_free)
+        assert chooser.at == (1, 85)  # as the plan's picture has it
+        assert str(chooser.takes.content) == "takes 1.85–1.100 · free"
+        await tap(pilot, panel.send_patch)
+        await until(pilot, lambda: patch_of(102) == (1, 85))
+        await until(pilot, lambda: panel.send_patch.inert)
+
+        await tap_button(pilot, chooser.chips, "none")
+        await tap(pilot, panel.send_patch)
+        await until(pilot, lambda: patch_of(102) is None)
+        await until(pilot, lambda: str(panel.patch_words.content) == "PATCH none")
+
+        await pilot.press("f8")
+        await until(pilot, lambda: app.page == 8)
+        patch_page = app.query_one(PatchPage)
+        dmx_map = app.query_one(DmxMap)
+        await pilot.click(dmx_map, offset=(5 + 99 - 64, 1))  # 1.100
+        await until(pilot, lambda: patch_page.place == (1, 100))
+        await tap_button(pilot, patch_page.place_strip, "patch 102 here")
+        await until(pilot, lambda: patch_of(102) == (1, 100))
+        await until(pilot, lambda: patch_page.place is None)
+        await until(pilot, lambda: any(p.fixture == 102 for p in dmx_map.prints))
+
+        await pilot.click(dmx_map, offset=(5 + 56, 7))  # 1.505
+        await until(pilot, lambda: patch_page.place == (1, 505))
+        await tap_button(pilot, patch_page.place_strip, "add fixture here…")
+        await until(pilot, lambda: app.page == 3 and panel.adding)
+        form = panel.form
+        assert form.patching.at == (1, 505)
+        await tap(pilot, form.choose)
+        await until(pilot, lambda: isinstance(app.screen, ProfileDialog))
+        assert isinstance(app.screen, ProfileDialog)
+        assert [c.source for c in app.screen.shown if c.name == "RGB Par 3ch"] == ["library"]
+        await pilot.press(*"rgb par", "enter")
+        await until(pilot, lambda: form.profile == "RGB Par 3ch")
+        assert str(form.patching.takes.content) == "takes 1.505–1.507 · free"
+        await tap(pilot, form.send)
+        await until(pilot, lambda: stored(302) is not None)
+        assert patch_of(302) == (1, 505)
+        show = app.view.show
+        assert show is not None
+        assert show.profile("RGB Par 3ch") is not None  # embedded by the add
+        assert [c.source for c in show.choices if c.name == "RGB Par 3ch"] == ["show"]
+        await until(pilot, lambda: form.number == 303)
+        await tap(pilot, form.done)
+        assert not panel.adding
+
+        await tap(pilot, panel.ask_swap)
+        await until(pilot, lambda: isinstance(app.screen, ProfileDialog))
+        await pilot.press(*"rgb par", "enter")
+        await until(pilot, lambda: panel.swapping.display)
+        await tap(pilot, panel.swap_send)
+
+        def changed() -> bool:
+            found = stored(102)
+            return found is not None and found.profile == "RGB Par 3ch" and found.footprint == 3
+
+        await until(pilot, changed)
+        await until(pilot, lambda: not panel.swapping.display)
+        await until(pilot, lambda: str(panel.patch_words.content) == "PATCH 1.100–1.102")
+        await pilot.press(*"undo", "enter")  # takes the profile back
+        await until(pilot, lambda: not changed())
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_a_new_show_gets_its_rig_from_controls_on_the_real_engine(tmp_path: Path) -> None:
+    """A universe, four pars with ``thru`` at an address, a rename, limits on
+    two, one deleted, then ``undo``."""
+    path = tmp_path / "new.show"
+    busk.save_show(busk.new_show("New"), path, backups=False)
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=8), standalone=True)
+
+    def rig() -> list[FixtureInfo]:
+        show = app.view.show
+        return [] if show is None else sorted(show.fixtures, key=lambda f: f.number)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.view.show is not None)
+        await tap_button(pilot, app.query_one(PatchPage).universe_edits, "+ universe…")
+        await until(pilot, lambda: isinstance(app.screen, FormDialog))
+        await pilot.press("tab", *"Stage", "enter")
+        await until(pilot, lambda: app.view.show is not None and len(app.view.show.universes) == 1)
+
+        await pilot.press("f3")
+        await until(pilot, lambda: app.page == 3)
+        page = app.query_one(FixturesPage)
+        panel = page.panel
+        form = panel.form
+        await tap(pilot, page.add_button)
+        await until(pilot, lambda: panel.adding)
+        assert form.number == 1
+        assert form.patching.at == (1, 1)
+        await tap(pilot, form.choose)
+        await until(pilot, lambda: isinstance(app.screen, ProfileDialog))
+        await pilot.press(*"rgb par", "enter")
+        await until(pilot, lambda: form.profile == "RGB Par 3ch")
+        for _ in range(3):
+            await tap(pilot, form.more)
+        assert form.count == 4
+        assert str(form.range.content) == "1 thru 4"
+        await tap(pilot, form.patching.ask)
+        await until(pilot, lambda: isinstance(app.screen, TextDialog))
+        await pilot.press(*"10", "enter")
+        await until(pilot, lambda: form.patching.at == (1, 10))
+        assert str(form.patching.takes.content) == "takes 1.10–1.21 · free"
+        await tap(pilot, form.send)
+        await until(pilot, lambda: len(rig()) == 4)
+        assert [f.patch for f in rig()] == [(1, 10), (1, 13), (1, 16), (1, 19)]
+        await until(pilot, lambda: form.number == 5)
+        await until(pilot, lambda: form.patching.at == (1, 22))  # twelve more do not fit 1–9
+        await tap(pilot, form.done)
+
+        await click_cell(pilot, page.rig, 0, "name")
+        await until(pilot, lambda: panel.chosen == 1 and panel.selected == {1})
+        await tap(pilot, panel.rename)
+        await until(pilot, lambda: isinstance(app.screen, TextDialog))
+        await pilot.press(*"Left", "enter")
+        await until(pilot, lambda: rig()[0].name == "Left")
+
+        await pilot.click(page.rig, offset=(10, 2), shift=True)
+        await until(pilot, lambda: panel.selected == {1, 2})
+        await tap(pilot, panel.limits["intensity"].buttons[0])
+        await until(pilot, lambda: isinstance(app.screen, FormDialog))
+        await pilot.press(*"50", "enter")
+        await until(pilot, lambda: rig()[1].limits.intensity == 0.5)
+        assert [f.limits.intensity for f in rig()] == [0.5, 0.5, None, None]
+
+        await click_cell(pilot, page.rig, 2, "name")
+        await until(pilot, lambda: panel.chosen == 3)
+        await tap(pilot, panel.delete)
+        await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+        await pilot.press("y")
+        await until(pilot, lambda: [f.number for f in rig()] == [1, 2, 4])
+        await pilot.press(*"undo", "enter")
+        await until(pilot, lambda: [f.number for f in rig()] == [1, 2, 3, 4])
 
     try:
         drive(app, body)

@@ -6,11 +6,14 @@ own completion (:meth:`busk_tui.model.ProgrammerModel.offered`). A click
 sends ``set gobo1 star``. The programmer's option for the first selected
 element is lit. With no option to offer, the row says why: nothing is
 selected, or the selection has no such attribute.
+
+:func:`pick_chips` is the same chip for a choice that sends nothing (F3's
+universe and mode).
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Mapping, Sequence
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -19,6 +22,7 @@ from textual.widgets import Static
 
 from busk_tui import colors, commands
 from busk_tui.attributes import Selected
+from busk_tui.commands import Line
 from busk_tui.model import ProgrammerModel
 from busk_tui.nav import Stop
 from busk_tui.widgets.controls import ButtonStrip, StripButton
@@ -36,6 +40,23 @@ def option_buttons(attribute: str, offered: Sequence[str], lit: str | None) -> l
         label = Text()
         label.append(f"[{option}]", style=LIT if option == lit else colors.MID)
         buttons.append(StripButton(label, commands.set_option(attribute, option)))
+    return buttons
+
+
+def pick_chips[K](
+    labels: Mapping[K, str], lit: K, pick: Callable[[K], Callable[[], None]]
+) -> list[StripButton]:
+    """A chip per key, labelled as ``labels`` has it, each calling ``pick(key)``
+    (one callable per key: equal buttons compare equal). The ``lit`` one is
+    reversed, and a note: it is chosen already."""
+    buttons = []
+    for key, word in labels.items():
+        label = Text()
+        label.append(f"[{word}]", style=LIT if key == lit else colors.MID)
+        if key == lit:
+            buttons.append(StripButton(label, Line(""), note=True))
+        else:
+            buttons.append(StripButton(label, Line(""), action=pick(key)))
     return buttons
 
 

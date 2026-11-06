@@ -238,25 +238,25 @@ def test_the_rows_go_by_number_as_list_fixtures_has_them() -> None:
         assert column(page.table, "number") == ["3", "150", "901"]
         await pilot.click(page.table, offset=(20, 2))
         assert bridge.lines() == ["sel fixture 150"]
-        assert [item.line for item in page.items()[1:4]] == [
+        assert [item.line for item in page.items()[2:5]] == [
             "sel fixture 3", "sel fixture 150", "sel fixture 901",
         ]  # fmt: skip
 
     drive(app, body)
 
 
-def test_the_pane_cursor_stops_on_edit_then_the_rows() -> None:
+def test_the_pane_cursor_stops_on_add_and_edit_then_the_rows() -> None:
     bridge = FakeBridge()
     app = on_f3(bridge)
 
     async def body(pilot: Pilot[int]) -> None:
         await settle(pilot, app)
         items = app.current_page.items()
-        assert items[0].label == "edit"
-        assert [item.line for item in items[1:]] == [
+        assert [item.label for item in items[:2]] == ["+ add", "edit"]
+        assert [item.line for item in items[2:]] == [
             "sel fixture 101", "sel fixture 301", "sel fixture 302", "sel fixture 401"
         ]  # fmt: skip
-        await pilot.press("tab", "down", "down", "down", "enter")  # 302: selected, and chosen
+        await pilot.press("tab", *["down"] * 4, "enter")  # 302: selected, and chosen
         assert bridge.lines() == ["sel fixture 302"]
         assert app.query_one(FixturesPage).panel.chosen == 302
 
@@ -830,10 +830,11 @@ def test_the_pane_cursor_stops_on_every_control_and_no_inert_one() -> None:
         rows = [f"fixture {f.number} {f.name}" for f in FIXTURES]
         chips = [f'profile "Head" category {word}' for word in CATEGORIES if word != "spot"]
         assert labels == [
-            "edit",
+            "+ add", "edit",
             *rows,
-            "rename…", "number…", "delete",
+            "rename…", "number…", "delete", "profile…",
             *chips,
+            "[none]", "address…", "next free",
             "pan limit…", "tilt limit…", "intensity limit…",  # no fixture here has one to remove
             "invert pan", "invert tilt", "swap pan/tilt",
             "pan offset…", "tilt offset…",
@@ -859,7 +860,7 @@ def test_the_pane_cursor_marks_the_table_that_shows() -> None:
 
     async def body(pilot: Pilot[int]) -> None:
         page = await enter(pilot, app)
-        await pilot.press("tab", "down")
+        await pilot.press("tab", "down", "down")
         line = page.rig.line(1, page.rig.size.width)
         assert MARKED in [str(span.style) for span in line.spans]
 

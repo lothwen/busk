@@ -78,7 +78,7 @@ def next_number(taken: Collection[int]) -> int:
     return max(taken, default=0) + 1
 
 
-def _css(name: str) -> str:
+def dialog_css(name: str) -> str:
     return f"""
     {name} {{ align: center middle; background: black 55%; }}
     {name} > Vertical {{
@@ -118,7 +118,7 @@ class ConfirmDialog(ModalScreen[bool]):
     """A yes/no question before a line, the engine's or the TUI's own; No
     unless ``y``."""
 
-    DEFAULT_CSS = _css("ConfirmDialog")
+    DEFAULT_CSS = dialog_css("ConfirmDialog")
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("y", "choose('yes')", "Yes", show=False),
         Binding("n,escape,enter", "choose('no')", "No", show=False),
@@ -150,7 +150,7 @@ class QuitDialog(ModalScreen[QuitChoice]):
     there are unsaved edits (without any, it offers Quit and Cancel);
     ``None`` when that is not known."""
 
-    DEFAULT_CSS = _css("QuitDialog")
+    DEFAULT_CSS = dialog_css("QuitDialog")
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("s", "choose('save')", "Save and quit", show=False),
         Binding("q", "choose('quit')", "Quit", show=False),
@@ -194,7 +194,7 @@ class TextDialog(ModalScreen[str | None]):
     cancels (``None``)."""
 
     DEFAULT_CSS = (
-        _css("TextDialog")
+        dialog_css("TextDialog")
         + f"""
     TextDialog > Vertical {{ width: 60; }}
     TextDialog Input {{ width: 100%; margin-top: 1; }}
@@ -247,7 +247,7 @@ class FormDialog(ModalScreen[tuple[str, ...] | None]):
     (the dialog closes with the values, in order); Esc cancels (``None``)."""
 
     DEFAULT_CSS = (
-        _css("FormDialog")
+        dialog_css("FormDialog")
         + f"""
     FormDialog > Vertical {{ width: 60; }}
     FormDialog Horizontal {{ width: 100%; margin-top: 0; }}

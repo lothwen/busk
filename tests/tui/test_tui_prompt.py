@@ -386,13 +386,13 @@ def test_the_pane_cursor_moves_into_the_page_and_back() -> None:
         await pilot.press("f3")
         prompt = app.query_one(Prompt)
         await pilot.press("tab")
-        assert app.cursor.index == 0  # [edit]
-        await pilot.press("down")
+        assert app.cursor.index == 0  # [+ add], then [edit]
+        await pilot.press("down", "down")
         assert app.query_one(FixtureTable)._marked == (0, None)
         await pilot.press("down", "down")
-        assert app.cursor.index == 2  # the last row: it stops at the end
+        assert app.cursor.index == 3  # the last row: it stops at the end
         await pilot.press("up")
-        assert app.cursor.index == 1
+        assert app.cursor.index == 2
         await pilot.press("down", "enter")  # a row's line runs, and the cursor stays
         assert app.cursor.active
         assert bridge.lines() == ["sel fixture 102"]

@@ -18,8 +18,16 @@ packets sent per second, and the state with busk's word for why (``failed:
 A DMX MAP per universe (:mod:`busk_tui.widgets.dmxmap`), and a legend of
 the fixture types it shows. A click on a fixture's channels selects it
 (``sel fixture 101``; both fixtures of an overlap); a Shift-click adds it
-to the selection or takes it out. The pane cursor stops on each universe and
-its strip, then on each footprint.
+to the selection or takes it out.
+
+A click on a free channel arms a place and sends nothing. The strip above the
+maps then offers ``[patch 102 here]``, for exactly one selected fixture, and
+``[add fixture here…]``, which opens F3's new fixture form there, and the map
+draws what the fixture would take. A click on a fixture, or that universe's
+map changing, clears the place.
+
+The pane cursor stops on each universe and its strip, on what the place offers,
+then on each footprint.
 """
 
 from __future__ import annotations
@@ -33,6 +41,7 @@ from rich.text import Text
 from textual import events
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
+from textual.message import Message
 
 from busk_tui import colors, commands
 from busk_tui.commands import Line
@@ -48,7 +57,16 @@ from busk_tui.widgets.dialogs import (
     check_number,
     next_number,
 )
-from busk_tui.widgets.dmxmap import OVERLAP, DmxMap, Footprint, footprints, overlaps, used
+from busk_tui.widgets.dmxmap import (
+    CHANNELS,
+    OVERLAP,
+    DmxMap,
+    Footprint,
+    footprints,
+    free_from,
+    overlaps,
+    used,
+)
 from busk_tui.widgets.frame import RouteLights, route_light
 from busk_tui.widgets.legend import Legend
 from busk_tui.widgets.panel import Panel
@@ -63,6 +81,7 @@ RATE_S: Final = 1.0
 
 NO_UNIVERSES: Final = 'no universes · universe add 1 "Stage"'
 NO_ROUTES: Final = "no routes · route add 1 sacn 1"
+NO_PLACE: Final = "click a free channel to place a fixture there"
 
 
 class UniverseTable(RowTable):
@@ -164,20 +183,32 @@ class PatchPage(Page):
     PatchPage #patch-row > Panel {{ width: 1fr; }}
     PatchPage #patch-row.stacked {{ layout: vertical; }}
     PatchPage #patch-row.stacked > Panel {{ width: 100%; }}
+    PatchPage #place-strip {{ margin-left: 1; }}
     PatchPage #dmx-maps {{ height: auto; }}
     PatchPage #patch-legend {{ margin-top: 1; color: {colors.DIM}; }}
     """
+
+    class AddHere(Message):
+        """``[add fixture here…]``: F3's new fixture form, at this place."""
+
+        def __init__(self, universe: int, address: int) -> None:
+            super().__init__()
+            self.universe = universe
+            self.address = address
 
     def __init__(self, number: int, title: str) -> None:
         super().__init__(number, title)
         self.universes = UniverseTable(Text(NO_UNIVERSES, style=colors.DIM), id="universe-table")
         self.universe_edits = ButtonStrip(id="universe-edits")
         self.routes = RoutesTable(Text(NO_ROUTES, style=colors.DIM), id="route-table")
+        self.place_strip = ButtonStrip(id="place-strip")
+        self.place_strip.display = False
         self.maps_box = Vertical(id="dmx-maps")
         self.legend = Legend(id="patch-legend")
         self.maps: dict[int, tuple[Panel, DmxMap]] = {}
         self.shown_universes: tuple[UniverseView, ...] = ()  # by number
         self.chosen: int | None = None  # the universe clicked last, by number
+        self.place: tuple[int, int] | None = None  # the free channel clicked last
         self.shown_routes: tuple[RouteView, ...] = ()
         self._view = View()
         self._lights = RouteLights()
@@ -189,6 +220,7 @@ class PatchPage(Page):
         with Horizontal(id="patch-row"):
             yield Panel("universes", self.universes, self.universe_edits, id="universes-panel")
             yield Panel("routes", self.routes, id="routes-panel")
+        yield self.place_strip
         yield self.maps_box
         yield self.legend
 
@@ -210,6 +242,8 @@ class PatchPage(Page):
             self.shown_routes = view.routes
             self._on = self._lights.update(view.routes, time.monotonic())
             self._draw_routes()
+        if "programmer" in changed:
+            self._draw_place()
 
     # ---------------------------------------------------------- routes
 
@@ -286,7 +320,12 @@ class PatchPage(Page):
             if pairs:
                 meta += f" · {pairs} overlap{'s' if pairs > 1 else ''}"
             panel.set_title("dmx map", meta)
+            if these != dmx_map.prints and self.place and self.place[0] == universe.number:
+                self.place = None
             dmx_map.show(these)
+        if self.place is not None and self.place[0] not in self.maps:
+            self.place = None
+        self._draw_place()
         self.legend.show(legend(show, profile_colors))
 
     def _draw_universe_edits(self) -> None:
@@ -305,6 +344,54 @@ class PatchPage(Page):
                 StripButton(button_label("delete", colors.RED), delete),
             ]
         self.universe_edits.show(buttons)
+
+    # ---------------------------------------------------------- the place
+
+    def selected(self) -> frozenset[int]:
+        programmer = self._view.programmer
+        return frozenset(() if programmer is None else (n for n, _ in programmer.selection))
+
+    def placing(self) -> FixtureInfo | None:
+        """What a place would patch: the fixture selected, if it is the only one."""
+        selected, show = self.selected(), self._view.show
+        return show.fixture(min(selected)) if len(selected) == 1 and show is not None else None
+
+    def _draw_place(self) -> None:
+        """The strip above the maps, and what the place takes on its map."""
+        self.place_strip.display = bool(self.maps)
+        fixture = self.placing()
+        for universe, (_, dmx_map) in self.maps.items():
+            if self.place is None or self.place[0] != universe:
+                dmx_map.place(None)
+            elif fixture is None:
+                dmx_map.place(self.place[1])
+            else:
+                dmx_map.place(self.place[1], fixture.footprint, fixture.number)
+        self.place_strip.show(self._place_buttons(fixture))
+
+    def _place_buttons(self, fixture: FixtureInfo | None) -> list[StripButton]:
+        def note(words: str) -> StripButton:
+            return StripButton(Text(words, style=colors.DIM), Line(""), note=True)
+
+        if self.place is None:
+            return [note(NO_PLACE)]
+        universe, channel = self.place
+        free = free_from(self.maps[universe][1].prints, channel)
+        buttons = [note(f"place {universe}.{channel} · {free} free from here ·")]
+        if fixture is None:
+            buttons.append(note("select one fixture to patch it here ·"))
+        elif channel + fixture.footprint - 1 > CHANNELS:
+            buttons.append(note(f"{fixture.number} would go past channel {CHANNELS} ·"))
+        else:
+            label = button_label(f"patch {fixture.number} here", colors.GREEN)
+            buttons.append(StripButton(label, commands.patch_fixture(fixture.number, self.place)))
+        label = button_label("add fixture here…", colors.MID)
+        buttons.append(StripButton(label, Line(""), action=self.add_here))
+        return buttons
+
+    def add_here(self) -> None:
+        if self.place is not None:
+            self.post_message(self.AddHere(*self.place))
 
     # ------------------------------------------------------- the universes
 
@@ -388,10 +475,16 @@ class PatchPage(Page):
         if message.table is self.universes and message.row < len(self.shown_universes):
             self.choose(self.shown_universes[message.row].number)
 
+    def on_dmx_map_place_clicked(self, message: DmxMap.PlaceClicked) -> None:
+        message.stop()
+        self.place = (message.universe, message.channel)
+        self._draw_place()
+
     def on_dmx_map_clicked(self, message: DmxMap.Clicked) -> None:
         message.stop()
-        programmer = self._view.programmer
-        selected = set() if programmer is None else {n for n, _ in programmer.selection}
+        self.place = None
+        self._draw_place()
+        selected = self.selected()
         fixtures = message.fixtures
         if len(fixtures) > 1:
             line = commands.sel_fixtures(fixtures, add=message.shift)
@@ -414,6 +507,7 @@ class PatchPage(Page):
             item = Item(label, action=partial(self.choose, shown.number))
             stops.append(Stop(item, self.universes, row))
         stops += strip_stops(self.universe_edits)
+        stops += strip_stops(self.place_strip)
         for universe, (_, dmx_map) in self.maps.items():
             for index, print_ in enumerate(dmx_map.prints):
                 fixture: FixtureInfo | None = names.get(print_.fixture)

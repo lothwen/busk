@@ -798,6 +798,31 @@ one conversation, which ends with a status memory and a stop. The engine's tests
       and the map redraws;
     - no selection, and two selected;
     - on a running show, under `busk run`: a patch reaches the DMX frame at the new address.
+
+    **Done** (2026-11-06). As planned, with these additions, which the user may veto:
+    - **PATCH is a widget of its own,** `widgets/patch_chooser.py`, since the panel and the form share
+      it. Its choice follows the show until the operator makes one: the fixture's patch in the panel,
+      the free room in the form.
+    - **`[next free]` counts the fixture's own channels as taken,** so it gives a new place, as §3
+      draws: 102 goes to 1.85 on the club show, not back to 1.17.
+    - **The chip of the fixture's own universe gives back its patch,** not the first free run, so a
+      wrong chip can be undone. §4 call 6 has every universe propose its free room.
+    - **`[address…]` takes any address from 1 to 512,** on a universe with no room too, so an overlap
+      stays the operator's to make. The `takes` line then reads it.
+    - **The strip above the maps always holds its row,** with `click a free channel to place a
+      fixture there` until a place is armed. Shown only then, it would push the map a row down under
+      the mouse. It goes only when the show has no universe.
+    - **`[patch 102 here]` gives way to `102 would go past channel 512`,** as `[patch]` goes inert
+      (§4 call 6). An overlap stays live, and red in the preview.
+    - The place's buttons are pane cursor stops, though only the mouse can arm a place (§4 call 19):
+      once they show, the keyboard reaches them.
+    - `DmxMap.place` takes the fixture too (`own`), so a fixture is not red on itself. `free_from` is
+      new in `dmxmap.py`.
+    - `pick_chips` in `options.py` is a chip that sends nothing. `_css` in `dialogs.py` is public now,
+      as `dialog_css`, for the picker. A universe's chip shows 24 characters of its name, since a chip
+      never wraps.
+    - The test under `busk run` moves the fixture both ways, with F3's `[patch]` and with F8's place,
+      through a new frontend, `tests/tui/tui_rig_frontend.py`.
 12. **The new fixture form and the picker** (§6.6, §4 calls 7–10, 20). Verify:
     - the picker: the filter, ↑ ↓, Enter, Esc, a long list, and an empty result;
     - a library profile not yet embedded shows its footprint, and adding it embeds it;
@@ -810,6 +835,55 @@ one conversation, which ends with a status memory and a stop. The engine's tests
       with `thru` at an address, a rename, limits on two, one deleted, then `undo`;
     - the perf test's F3 case stays under its gate, or the change is measured against HEAD (perf
       has not been run on this host: the baseline comes first).
+
+    **Done** (2026-11-06). As planned, with these additions, which the user may veto:
+    - **The form starts with no profile:** `[choose…]`, `[add]` inert, and a `takes` line that reads
+      `choose a profile`. §3 draws one chosen, but a default puts a wrong fixture one click away.
+      From then on the form keeps the profile from one `[+ add]` to the next, and the picker starts
+      on it.
+    - **A click on a row leaves the form,** as §4 call 2 has a click always choose. `[+ add]` then
+      starts a new form, which keeps only the profile and the mode.
+    - **The form's `[done]` goes back to the panel,** whose own `[done]` leaves edit mode. So `[+ add]`
+      from the live table takes two `[done]`s to get back to it.
+    - `[+ add]` is inert while the form shows, so a stray click keeps what was set.
+    - **After `[add]` the count stays,** beside the next number, which is the one after the block,
+      stepping over what is taken, not the highest plus one.
+    - **The next address is the first run that fits, counted from channel 1,** not the channels after
+      the block added. So a block placed at 1.200 is followed by a proposal from the first room.
+    - `[address…]` and F8's place hold the address when the count or the mode changes. `[next free]` or
+      a universe chip hands it back to the room. The step asked this of F8's place only.
+    - **`[cancel]` sits beside `[change]`,** which the plan did not have. The fixture's own profile
+      and choosing another fixture also drop the change. The mode chips that send a line hide while a
+      change shows. `[change]` is inert when the prompt has made the same change.
+    - `widgets/fixture_form.py` holds the form. A taken number has its own row under `count`, so a long
+      list is not cut.
+    - The filter reads the maker and the name, each word in any order. PgUp and PgDn page the list. It
+      is a Textual `OptionList` that never takes the focus.
+
+    **Perf.** The baseline came first, and found that the gate already fails here: at `8003f96` the
+    `busk run` test stops on F1 A at +0.265, before it reaches F3. So F3 was measured alone,
+    alternating with `8003f96`, 18 runs each: +0.237 there, 6 runs over 0.25, and +0.247 here, 8 over.
+    By phase, 9 runs each, the steady loop takes 0.238 core there and 0.231 here, and start-up 0.295 s
+    and 0.323 s of CPU. So this group adds about 0.03 s at start-up, and nothing while it runs.
+
+    The gate's number follows how long a run lasted, more than what it did.
+    `tui_perf_frontend.py` starts its clock before the imports and divides by a fixed 8 s, and a run
+    lasts 8 to 12 s (800 to 1200 ticks). Over the 36 runs, the number and the ticks correlate at 0.84:
+    under 850 ticks it averages +0.210 with none over, and above 1050 it averages +0.268 with 6 of 7
+    over. That fits the flapping noted since Phase 3. The gate and the harness are left as they are.
+
+    Steps 11 and 12 were built in one working tree, so they share one run of the whole suite: 4891
+    passed, 1 skipped, 20 deselected, in 31:44 (group D left 4784, in 25:23). `ruff`, `ruff format`,
+    `mypy src` and `mypy --strict tests/api_consumer.py` are clean, and neither `src/busk/` nor the
+    engine's tests changed. The changed test files and the new end-to-end tests, 267 tests, pass on
+    Textual 8.2.0. F3 standalone keeps the engine's rate: 100.0 frames/s bare, 100.1 with the TUI. A
+    first run of the suite failed on `test_the_pane_cursor_moves_into_the_page_and_back`, which counts
+    F3's stops by position: `[+ add]` now comes first. A real-terminal check on the club show at 150
+    columns drove PATCH, `[patch]`, F8's place with its red overlap, `[add fixture here…]`, the picker
+    and `[add]` with a count, and at 99 columns the form under the table. The TupperDMX show waits
+    for step 14. Of 105 mutations, 92 were caught at once. Ten showed a missing test, and each test
+    now catches it. Three showed code with no use, which went: `OptionList` stops at its own ends, and
+    `set_editing` can run twice.
 
 **F. Routes**
 

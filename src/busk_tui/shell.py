@@ -538,6 +538,13 @@ class BuskApp(App[int]):
         message.stop()
         self.action_layout(message.layout)
 
+    def on_patch_page_add_here(self, message: PatchPage.AddHere) -> None:
+        """F8's ``[add fixture here…]``: F3, with the new fixture form at that place."""
+        message.stop()
+        page = self.query_one(FixturesPage)
+        self.action_page(page.number)
+        page.add_fixture((message.universe, message.address))
+
     def on_page_watches_changed(self, message: Page.WatchesChanged) -> None:
         """A page now watches other parts (F6's edit mode): the bridge reads
         them if it is the page shown."""

@@ -2,7 +2,8 @@
 fixture, by number, with its patch and its live output
 (:mod:`busk_tui.widgets.fixturetable`), and the FIXTURE panel of edit mode.
 
-A header gives the counts and has the ``[edit]`` toggle. A click on a row
+A header gives the counts and has ``[+ add]``, which opens the new fixture form
+in edit mode, and the ``[edit]`` toggle. A click on a row
 selects the fixture (``sel fixture 101``) and chooses it; a Shift-click adds
 it to the selection or takes it out (``sel + fixture 101``, ``sel - fixture
 101``) and chooses it. Selecting does not change the stage, so a click means
@@ -65,6 +66,7 @@ class FixturesPage(Page):
     DEFAULT_CSS = """
     FixturesPage #fixtures-head { height: 1; margin-bottom: 1; }
     FixturesPage #fixtures-header { width: 1fr; }
+    FixturesPage #fixtures-add { margin-right: 1; }
     FixturesPage #fixtures-body { height: auto; }
     FixturesPage #fixtures-panel { width: 1fr; }
     FixturesPage #fixtures-legend { margin-top: 1; }
@@ -73,6 +75,7 @@ class FixturesPage(Page):
     def __init__(self, number: int, title: str) -> None:
         super().__init__(number, title)
         self.header = Static("", id="fixtures-header")
+        self.add_button = ActionButton("+ add", self.add_fixture, id="fixtures-add")
         self.edit = ActionButton("edit", self.toggle_edit, id="fixtures-edit")
         empty = Text(NO_FIXTURES, style=colors.DIM)
         self.table = FixtureTable(empty, id="fixture-table")
@@ -80,7 +83,7 @@ class FixturesPage(Page):
         self.rig.display = False
         self.legend = Legend(legend(), id="fixtures-legend")
         self.sheet = Panel("fixtures", id="fixtures-panel")
-        self.panel = FixturePanel(self._draw, self.leave_edit)
+        self.panel = FixturePanel(self._panel_changed, self.leave_edit)
         self.panel.display = False
         self.editing = False
         self.shown: tuple[FixtureInfo, ...] = ()
@@ -92,6 +95,7 @@ class FixturesPage(Page):
     def compose(self) -> ComposeResult:
         with Horizontal(id="fixtures-head"):
             yield self.header
+            yield self.add_button
             yield self.edit
         with Horizontal(id="fixtures-body"):
             with self.sheet:
@@ -136,6 +140,7 @@ class FixturesPage(Page):
         text = Text(f"{len(self.shown)} fixtures · {count} selected · {how}", style=colors.DIM)
         if text != self.header.content:
             self.header.update(text)
+        self.add_button.change(inert=self.panel.adding)
         if self.editing:
             self.edit.change(label="edit ●", intent="record", reverse=True)
         else:
@@ -185,9 +190,26 @@ class FixturesPage(Page):
     def leave_edit(self) -> None:
         self.set_editing(False)
 
+    def _panel_changed(self) -> None:
+        self._draw()
+        self._draw_header()
+
+    def add_fixture(self, at: tuple[int, int] | None = None) -> None:
+        """``[+ add]``, or F8's ``[add fixture here…]``: edit mode with the new
+        fixture form, at ``at`` if given."""
+        self.set_editing(True)
+        self.panel.open_form(at)
+        self._reveal_panel()
+
+    def _reveal_panel(self) -> None:
+        if self._width < NARROW:
+            self.call_after_refresh(self.scroll_to_widget, self.panel, animate=False, top=True)
+
     def set_editing(self, on: bool) -> None:
         """Enter edit mode, with the panel on what is chosen, or leave it."""
         self.editing = on
+        if not on:
+            self.panel.adding = False
         self.table.display = self.legend.display = not on
         self.rig.display = self.panel.display = on
         self._draw()
@@ -210,14 +232,17 @@ class FixturesPage(Page):
         else:
             line = commands.sel_fixture(number)
         self.post_message(RunLine(line))
-        if self.editing and self._width < NARROW:
-            self.call_after_refresh(self.scroll_to_widget, self.panel, animate=False, top=True)
+        if self.editing:
+            self._reveal_panel()
 
     # ----------------------------------------------------- pane cursor
 
     def stops(self) -> list[Stop]:
-        """The edit toggle, each row, then the FIXTURE panel's controls."""
-        stops = [Stop(Item("edit", action=self.toggle_edit), self.edit)]
+        """``[+ add]``, the edit toggle, each row, then the FIXTURE panel's controls."""
+        stops: list[Stop] = []
+        if not self.add_button.inert:
+            stops.append(Stop(Item("+ add", action=self.add_fixture), self.add_button))
+        stops.append(Stop(Item("edit", action=self.toggle_edit), self.edit))
         table = self.rig if self.editing else self.table
         table.spots = [(row, None) for row in range(len(self.shown))]
         for row, fixture in enumerate(self.shown):

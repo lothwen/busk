@@ -2,13 +2,19 @@
 chosen in edit mode.
 
 * Nothing chosen: how to choose one.
+* ``[+ add]``: the new fixture form (:mod:`busk_tui.widgets.fixture_form`) in
+  the panel's place, until its ``[done]``, or a click chooses a fixture.
 * ``[rename…]`` and ``[number…]``, each a dialog and then one line
   (``rename fixture 102 "…"``, ``fixture 102 number 150``), and ``[delete]``:
   ``delete fixture 102 cascade``, after busk's question, which says what goes.
 * What it is: its profile, mode and channels, and where the profile has two
-  modes or more, a chip per mode (``fixture 102 mode "8ch"``).
+  modes or more, a chip per mode (``fixture 102 mode "8ch"``). ``[profile…]``
+  opens the picker, then shows that profile's modes and ``[change]``:
+  ``fixture 102 profile "RGB Par 3ch" mode "3ch"``.
 * Its profile's category, which every fixture of the profile shares: a chip
   per word (``profile "Generic Spot 16ch" category wash``).
+* PATCH (:mod:`busk_tui.widgets.patch_chooser`): where it is, a choice of where
+  to put it, and ``[patch]``: ``fixture 102 patch 1.85``, or ``… patch none``.
 * LIMITS: a row per limit the fixture can use (pan and tilt where the profile
   takes them, intensity always). ``[limit…]`` is a form that starts at the
   limit, else at the profile's range; ``[none]`` removes that limit, and
@@ -20,8 +26,8 @@ chosen in edit mode.
   ``[no place]``.
 * ``[done]`` leaves edit mode.
 
-Two reaches (the plan's §4 call 4). The header, the mode and the location act
-on the chosen fixture. LIMITS and ORIENTATION act on every selected fixture
+Two reaches (the plan's §4 call 4). The header, the mode, the profile, PATCH and
+the location act on the chosen fixture. LIMITS and ORIENTATION act on every selected fixture
 while the chosen one is selected, as their headings say: limits a ``thru``
 line per run of the show's numbers that are all selected, orientation a line
 per fixture, since busk has no ``thru`` there.
@@ -30,7 +36,7 @@ per fixture, since busk has no ``thru`` there.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
-from functools import partial
+from functools import cache, partial
 from typing import Final
 
 from rich.text import Text
@@ -41,7 +47,15 @@ from textual.widgets import Static
 from busk_tui import colors, commands
 from busk_tui.commands import Line
 from busk_tui.formats import numbers_text, runs
-from busk_tui.model import FixtureInfo, Limits, Location, ProfileInfo, ShowModel
+from busk_tui.model import (
+    FixtureInfo,
+    Limits,
+    Location,
+    ModeInfo,
+    ProfileChoice,
+    ProfileInfo,
+    ShowModel,
+)
 from busk_tui.nav import Item, Stop
 from busk_tui.widgets.controls import ActionButton, ButtonStrip, RunLine, StripButton
 from busk_tui.widgets.dialogs import (
@@ -51,9 +65,12 @@ from busk_tui.widgets.dialogs import (
     check_number,
     read_number,
 )
+from busk_tui.widgets.fixture_form import FixtureForm, find_choice, find_mode, mode_labels
 from busk_tui.widgets.fixturetable import profile_text
-from busk_tui.widgets.options import LIT
+from busk_tui.widgets.options import LIT, pick_chips
+from busk_tui.widgets.patch_chooser import PatchChooser, channels_text, span_text
 from busk_tui.widgets.preset_panel import PANEL_WIDTH
+from busk_tui.widgets.profile_picker import ProfileDialog
 from busk_tui.widgets.quick import strip_stops
 from busk_tui.widgets.rows import cell
 
@@ -106,9 +123,26 @@ def chips(words: Sequence[str], lit: str, line: Callable[[str], Line]) -> list[S
 
 def what_text(fixture: FixtureInfo) -> Text:
     """``Generic Spot 16ch · 16ch · 16 channels``."""
-    channels = f"{fixture.footprint} channel{'' if fixture.footprint == 1 else 's'}"
     text = Text(profile_text(fixture), style=colors.FG)
-    text.append(f" · {fixture.mode} · {channels}", style=colors.DIM)
+    text.append(f" · {fixture.mode} · {channels_text(fixture.footprint)}", style=colors.DIM)
+    return text
+
+
+def swap_text(choice: ProfileChoice, mode: ModeInfo) -> Text:
+    """What ``[change]`` would make of the fixture: ``to RGB Par 3ch · 3 channels``."""
+    text = Text("to ", style=colors.DIM)
+    text.append(choice.name, style=colors.FG)
+    text.append(f" · {channels_text(mode.footprint)}", style=colors.DIM)
+    return text
+
+
+def patch_heading(fixture: FixtureInfo) -> Text:
+    """``PATCH 1.17–1.32``, or ``PATCH none``."""
+    text = Text("PATCH ", style=colors.CYAN)
+    if fixture.patch is None:
+        text.append("none", style=colors.DIM)
+    else:
+        text.append(span_text(*fixture.patch, fixture.footprint), style=colors.FG)
     return text
 
 
@@ -222,14 +256,33 @@ class FixturePanel(VerticalScroll):
         self.chosen: int | None = None
         self.show: ShowModel | None = None
         self.selected: frozenset[int] = frozenset()
-        self.hint = Static(Text("click a fixture", style=colors.DIM), classes="fp-section")
+        self.adding = False  # the new fixture form shows
+        self.hint = Static(
+            Text("click a fixture, or [+ add]", style=colors.DIM), classes="fp-section"
+        )
         self.rename = ActionButton("rename…", self.ask_name)
         self.renumber = ActionButton("number…", self.ask_number)
         self.delete = ActionButton("delete", self.ask_delete, "danger")
         self.what = Static("", classes="fp-text")
+        self.ask_swap = ActionButton("profile…", self.ask_profile)
+        self.swap: tuple[str, str | None] | None = None  # the profile to change to, and its mode
+        self.swap_words = Static("", classes="fp-text fp-crop")
+        self.swap_modes = ButtonStrip()
+        self.swap_send = ActionButton("change", self.change_profile, "go")
+        self.swap_keep = ActionButton("cancel", self.keep_profile)
+        self.swapping = Vertical(
+            self.swap_words,
+            self.swap_modes,
+            Horizontal(self.swap_send, self.swap_keep, classes="fp-row"),
+            classes="fp-text",
+        )
+        self._swap_picks = cache(lambda mode: partial(self.pick_swap_mode, mode))
         self.modes = ButtonStrip()
         self.category = Static("", classes="fp-text")
         self.categories = ButtonStrip()
+        self.patch_words = Static("", classes="fp-text fp-crop")
+        self.patching = PatchChooser(self._draw_send)
+        self.send_patch = ActionButton("patch", self.patch, "go", inert=True)
         self.limits_heading = Static("", classes="fp-text fp-crop")
         self.limits = {
             name: Setting(
@@ -262,8 +315,20 @@ class FixturePanel(VerticalScroll):
         self.no_place = ActionButton("no place", self.drop_location)
         self.body = Vertical(
             Horizontal(self.rename, self.renumber, self.delete, classes="fp-row fp-section"),
-            Vertical(self.what, self.modes, classes="fp-section"),
+            Vertical(
+                self.what,
+                Horizontal(self.ask_swap, classes="fp-row"),
+                self.swapping,
+                self.modes,
+                classes="fp-section",
+            ),
             Vertical(self.category, self.categories, classes="fp-section"),
+            Vertical(
+                self.patch_words,
+                self.patching,
+                Horizontal(self.send_patch, classes="fp-row"),
+                classes="fp-section",
+            ),
             Vertical(
                 self.limits_heading,
                 *self.limits.values(),
@@ -278,11 +343,13 @@ class FixturePanel(VerticalScroll):
             ),
             classes="fp-text",
         )
+        self.form = FixtureForm(self.close_form)
         self.done = ActionButton("done", leave)
 
     def compose(self) -> ComposeResult:
         yield self.hint
         yield self.body
+        yield self.form
         yield self.done
 
     # ------------------------------------------------------------ drawing
@@ -304,14 +371,21 @@ class FixturePanel(VerticalScroll):
         return None if fixture is None or self.show is None else self.show.profile(fixture.profile)
 
     def draw(self) -> None:
-        fixture = self.fixture()
-        self.hint.display = fixture is None
+        fixture = None if self.adding else self.fixture()
+        self.form.display = self.adding
+        self.done.display = not self.adding
+        self.hint.display = fixture is None and not self.adding
         self.body.display = fixture is not None
+        if self.adding:
+            self.border_title = Text("FIXTURE · new")
+            self.form.view(self.show)
+            return
         if fixture is None:
             self.border_title = Text("FIXTURE")
             return
         self.border_title = Text(f"FIXTURE · {fixture.number} {fixture.name}".rstrip())
         self._draw_what(fixture)
+        self._draw_patch(fixture)
         self._draw_limits(fixture)
         self._draw_orientation(fixture)
         put(self.place, location_text(fixture.location))
@@ -319,9 +393,10 @@ class FixturePanel(VerticalScroll):
 
     def _draw_what(self, fixture: FixtureInfo) -> None:
         put(self.what, what_text(fixture))
+        self._draw_swap(fixture)
         profile = self.profile()
         modes = [] if profile is None else [mode.name for mode in profile.modes]
-        self.modes.display = len(modes) > 1
+        self.modes.display = len(modes) > 1 and self.swap is None
         if self.modes.display:
             self.modes.show(
                 chips(modes, fixture.mode, partial(commands.fixture_mode, fixture.number))
@@ -333,6 +408,36 @@ class FixturePanel(VerticalScroll):
             put(self.category, Text(words, style=colors.DIM))
             lit = profile.category or "none"
             self.categories.show(chips(CATEGORIES, lit, partial(commands.category, profile.name)))
+
+    def _swapped(self) -> tuple[ProfileChoice, ModeInfo] | None:
+        """The profile and mode ``[change]`` would send."""
+        if self.swap is None:
+            return None
+        choice = find_choice(self.show, self.swap[0])
+        mode = find_mode(choice, self.swap[1])
+        return None if choice is None or mode is None else (choice, mode)
+
+    def _draw_swap(self, fixture: FixtureInfo) -> None:
+        swapped = self._swapped()
+        self.swapping.display = swapped is not None
+        if swapped is None:
+            self.swap = None
+            return
+        choice, mode = swapped
+        put(self.swap_words, swap_text(choice, mode))
+        self.swap_modes.show(pick_chips(mode_labels(choice.modes), mode.name, self._swap_picks))
+        self.swap_send.change(inert=(choice.name, mode.name) == (fixture.profile, fixture.mode))
+
+    def _draw_patch(self, fixture: FixtureInfo) -> None:
+        put(self.patch_words, patch_heading(fixture))
+        self.patching.view(self.show, fixture.footprint, fixture)
+        self._draw_send()
+
+    def _draw_send(self) -> None:
+        """``[patch]`` is inert while the choice equals the patch, or does not fit."""
+        fixture = self.fixture()
+        same = fixture is None or self.patching.at == fixture.patch
+        self.send_patch.change(inert=same or not self.patching.ready())
 
     def _draw_limits(self, fixture: FixtureInfo) -> None:
         put(self.limits_heading, heading("LIMITS", self.spans(), len(self.reached())))
@@ -389,8 +494,27 @@ class FixturePanel(VerticalScroll):
     # ------------------------------------------------------------ actions
 
     def choose(self, chosen: int | None) -> None:
-        """The fixture the panel shows."""
+        """The fixture the panel shows, in the form's place if that shows.
+        What was chosen for another fixture goes."""
+        if chosen != self.chosen:
+            self.patching.held = False
+            self.swap = None
         self.chosen = chosen
+        self.adding = False
+        self.draw()
+        self.changed()
+
+    def open_form(self, at: tuple[int, int] | None = None) -> None:
+        """``[+ add]``, or F8's ``[add fixture here…]``: the new fixture form."""
+        self.form.open(self.show, at)
+        self.adding = True
+        self.draw()
+        self.changed()
+        self.scroll_home(animate=False)
+
+    def close_form(self) -> None:
+        """The form's ``[done]``: the panel again, on what is chosen."""
+        self.adding = False
         self.draw()
         self.changed()
 
@@ -453,6 +577,51 @@ class FixturePanel(VerticalScroll):
                 self.choose(None)
 
         self.post_message(RunLine(commands.delete_fixture(fixture.number), done=deleted))
+
+    def ask_profile(self) -> None:
+        """``[profile…]``: the picker, which sends nothing. The fixture's own
+        profile takes back what was picked."""
+        fixture = self.fixture()
+        if fixture is None or self.show is None:
+            return
+
+        def given(name: str | None) -> None:
+            if name is not None and self.chosen == fixture.number:
+                self.swap = None if name == fixture.profile else (name, None)
+                self.draw()
+
+        start = fixture.profile if self.swap is None else self.swap[0]
+        self.app.push_screen(ProfileDialog(self.show.choices, start), given)
+
+    def pick_swap_mode(self, mode: str) -> None:
+        if self.swap is not None:
+            self.swap = (self.swap[0], mode)
+            self.draw()
+
+    def keep_profile(self) -> None:
+        """``[cancel]``."""
+        self.swap = None
+        self.draw()
+
+    def change_profile(self) -> None:
+        """``[change]``: ``fixture 102 profile "RGB Par 3ch" mode "3ch"``. busk
+        does not ask: ``undo`` takes it back."""
+        fixture, swapped = self.fixture(), self._swapped()
+        if fixture is None or swapped is None:
+            return
+
+        def changed(ok: bool) -> None:
+            if ok:
+                self.keep_profile()
+
+        line = commands.fixture_profile(fixture.number, swapped[0].name, swapped[1].name)
+        self.post_message(RunLine(line, done=changed))
+
+    def patch(self) -> None:
+        """``[patch]``: ``fixture 102 patch 1.85``, or ``fixture 102 patch none``."""
+        fixture = self.fixture()
+        if fixture is not None:
+            self.post_message(RunLine(commands.patch_fixture(fixture.number, self.patching.at)))
 
     def ask_limit(self, name: str) -> None:
         """``[limit…]``: a line per span of the reach."""
@@ -568,14 +737,24 @@ class FixturePanel(VerticalScroll):
 
     def stops(self) -> list[Stop]:
         """The panel's controls, in reading order (an inert one is none)."""
+        if self.adding:
+            return self.form.stops()
         stops: list[Stop] = []
         if self.fixture() is not None:
-            for button in (self.rename, self.renumber, self.delete):
+            for button in (self.rename, self.renumber, self.delete, self.ask_swap):
                 stops.append(Stop(Item(button.label, action=button.action), button))
+            if self.swapping.display:
+                stops += strip_stops(self.swap_modes)
+                for button in (self.swap_send, self.swap_keep):
+                    if not button.inert:
+                        stops.append(Stop(Item(button.label, action=button.action), button))
             if self.modes.display:
                 stops += strip_stops(self.modes)
             if self.categories.display:
                 stops += strip_stops(self.categories)
+            stops += self.patching.stops()
+            if not self.send_patch.inert:
+                stops.append(Stop(Item("patch", action=self.patch), self.send_patch))
             for name, row in self.limits.items():
                 stops += row.stops(name)
             if not self.no_limits.inert:

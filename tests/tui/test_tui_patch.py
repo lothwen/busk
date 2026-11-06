@@ -1,8 +1,9 @@
 """F8 Patch (spec §8.8, plan Phase 4): footprints, overlaps (the TupperDMX
 show's double-patched heads give two) and the used count; the DMX map's
 glyphs and colours by category, or by profile without one; the hover text
-and the click lines; the route states, their lights and packet rates.
-Headless, with a fake bridge."""
+and the click lines; the route states, their lights and packet rates; the
+universes' strip, and the place a click on a free channel arms
+(``docs/plans/tui-rig-plan.md`` §6.3). Headless, with a fake bridge."""
 
 from __future__ import annotations
 
@@ -27,7 +28,15 @@ from busk_tui.model import (
     ShowModel,
     UniverseView,
 )
-from busk_tui.pages.patch import PatchPage, RoutesTable, UniverseTable, legend, route_cells
+from busk_tui.pages.fixtures import FixturesPage
+from busk_tui.pages.patch import (
+    NO_PLACE,
+    PatchPage,
+    RoutesTable,
+    UniverseTable,
+    legend,
+    route_cells,
+)
 from busk_tui.shell import BuskApp
 from busk_tui.widgets.controls import ButtonStrip
 from busk_tui.widgets.dialogs import ConfirmDialog, FormDialog, TextDialog
@@ -39,6 +48,7 @@ from busk_tui.widgets.dmxmap import (
     clashes,
     first_free,
     footprints,
+    free_from,
     overlaps,
     owners,
     used,
@@ -133,6 +143,16 @@ def test_the_first_run_of_free_channels_that_fits() -> None:
     assert first_free(block((2, 511)), 1) == 1
 
 
+def test_how_many_free_channels_start_at_a_channel() -> None:
+    gaps = block((10, 5), (20, 1))
+    assert free_from(gaps, 1) == 9
+    assert free_from(gaps, 15) == 5
+    assert free_from(gaps, 21) == 492
+    assert free_from(gaps, 512) == 1
+    assert free_from(gaps, 10) == 0
+    assert free_from((), 1) == 512
+
+
 def test_what_a_place_clashes_with_leaves_out_the_fixture_itself() -> None:
     prints = block((10, 4), (14, 4), (12, 4))  # 1: 10–13, 2: 14–17, 3: 12–15
     assert clashes(prints, 1, 9) == ()
@@ -223,7 +243,7 @@ def test_hover_tells_the_channel_and_a_click_selects() -> None:
         await pilot.click(dmx_map, offset=(5 + 9, 1), shift=True)
         await pilot.click(dmx_map, offset=(5 + 30, 1))  # 94: 501 and 502
         await pilot.click(dmx_map, offset=(5 + 30, 1), shift=True)
-        await pilot.click(dmx_map, offset=(5 + 50, 3))  # free: nothing
+        await pilot.click(dmx_map, offset=(5 + 50, 3))  # free: no line
         assert bridge.lines() == [
             "sel fixture 101",
             "sel - fixture 101",
@@ -636,6 +656,298 @@ def test_the_strip_wraps_inside_a_narrow_panel() -> None:
         assert any(line.plain.startswith("U1 A universe") and "…" in line.plain for line in lines)
         await tap(pilot, app, "delete")  # a line down, and it still reaches its button
         assert bridge.lines() == ["delete universe 1 cascade"]
+
+    drive(app, body)
+
+
+# --------------------------------------------------------------- the place
+
+
+def place_strip(app: BuskApp) -> ButtonStrip:
+    return app.query_one("#place-strip", ButtonStrip)
+
+
+def place_words(app: BuskApp) -> list[str]:
+    return [button.label.plain for button in place_strip(app).buttons]
+
+
+async def click_free(pilot: Pilot[int], app: BuskApp, channel: int = 10) -> DmxMap:
+    """A click on ``channel`` of the first universe's map."""
+    dmx_map = app.query(DmxMap).first()
+    await pilot.click(dmx_map, offset=(5 + (channel - 1) % 64, (channel - 1) // 64))
+    await settle(pilot, app)
+    return dmx_map
+
+
+async def tap_place(pilot: Pilot[int], app: BuskApp, label: str) -> None:
+    strip = place_strip(app)
+    for y, line in enumerate(strip.lines(strip.size.width)):
+        x = line.plain.find(f"[{label}]")
+        if x >= 0:
+            await pilot.click(strip, offset=(x + 1, y))
+            await settle(pilot, app)
+            return
+    raise AssertionError(f"no button [{label}]")
+
+
+def place_cells(dmx_map: DmxMap, first: int, last: int) -> list[tuple[str, str]]:
+    """Channels ``first`` to ``last`` of a map's first line: each glyph and style."""
+    line = dmx_map.lines(dmx_map.size.width)[0]
+    cells = []
+    for channel in range(first, last + 1):
+        column = 5 + channel - 1
+        styles = [str(s.style) for s in line.spans if s.start <= column < s.end]
+        cells.append((line.plain[column], styles[-1]))
+    return cells
+
+
+def test_a_place_draws_what_it_takes_and_red_where_it_would_overlap() -> None:
+    bridge = FakeBridge()
+    app = on_f8(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        dmx_map = app.query(DmxMap).first()
+        dmx_map.place(6, 4)  # 6 and 7 are 101's, 8 and 9 free
+        assert place_cells(dmx_map, 5, 10) == [
+            ("▓", colors.AMBER),
+            ("░", colors.RED),
+            ("░", colors.RED),
+            ("░", colors.CYAN),
+            ("░", colors.CYAN),
+            ("·", colors.TRACK),
+        ]
+        dmx_map.place(6, 4, 101)  # moving 101 itself, nothing to overlap
+        assert place_cells(dmx_map, 6, 7) == [("░", colors.CYAN), ("░", colors.CYAN)]
+        dmx_map.place(None)
+        assert place_cells(dmx_map, 6, 8) == [
+            ("▓", colors.AMBER),
+            ("▓", colors.AMBER),
+            ("·", colors.TRACK),
+        ]
+
+    drive(app, body)
+
+
+def test_a_click_on_a_free_channel_arms_a_place_and_sends_nothing() -> None:
+    bridge = FakeBridge()
+    app = on_f8(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        assert place_words(app) == [NO_PLACE]
+        dmx_map = await click_free(pilot, app)
+        assert bridge.lines() == []
+        assert app.query_one(PatchPage).place == (1, 10)
+        assert place_words(app) == [
+            "place 1.10 · 23 free from here ·",
+            "[patch 101 here]",
+            "[add fixture here…]",
+        ]
+        assert place_cells(dmx_map, 10, 16) == [("░", colors.CYAN)] * 7  # 101 takes seven
+        assert place_cells(dmx_map, 17, 17) == [("·", colors.TRACK)]
+
+    drive(app, body)
+
+
+def test_the_strip_holds_its_row_so_the_map_stays_under_the_mouse() -> None:
+    bridge = FakeBridge()
+    app = on_f8(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        before = app.query(DmxMap).first().region.y
+        dmx_map = await click_free(pilot, app)
+        assert dmx_map.region.y == before
+
+    drive(app, body)
+
+
+def test_a_second_free_channel_moves_the_place() -> None:
+    bridge = FakeBridge()
+    app = on_f8(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        await click_free(pilot, app, 10)
+        dmx_map = await click_free(pilot, app, 20)
+        assert place_words(app)[0] == "place 1.20 · 13 free from here ·"
+        assert place_cells(dmx_map, 10, 10) == [("·", colors.TRACK)]
+
+    drive(app, body)
+
+
+def test_patch_here_sends_one_line_and_the_map_changing_clears_the_place() -> None:
+    bridge = FakeBridge()
+    app = on_f8(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        dmx_map = await click_free(pilot, app)
+        await tap_place(pilot, app, "patch 101 here")
+        assert bridge.lines() == ["fixture 101 patch 1.10"]
+        assert app.query_one(PatchPage).place == (1, 10)  # until the show says so
+
+        moved = FixtureInfo(101, 1, "LED Bar 101", "LED Bar", "", 7, (1, 10))
+        bridge.events.append(ShowChanged(rig(fixtures=(moved, *FIXTURES[1:]))))
+        await settle(pilot, app)
+        assert app.query_one(PatchPage).place is None
+        assert place_words(app) == [NO_PLACE]
+        assert place_cells(dmx_map, 10, 11) == [("█", colors.AMBER), ("▓", colors.AMBER)]
+
+    drive(app, body)
+
+
+def test_the_map_of_another_universe_changing_leaves_the_place() -> None:
+    bridge = FakeBridge()
+    app = on_f8(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        await click_free(pilot, app)
+        added = FixtureInfo(601, 1, "Par 601", "Par", "", 6, (2, 1))
+        bridge.events.append(ShowChanged(rig(fixtures=(*FIXTURES, added))))
+        await settle(pilot, app)
+        assert app.query_one(PatchPage).place == (1, 10)
+
+    drive(app, body)
+
+
+def test_a_universe_that_leaves_the_show_takes_its_place_with_it() -> None:
+    bridge = FakeBridge()
+    app = on_f8(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        maps = list(app.query(DmxMap))
+        maps[1].scroll_visible(animate=False)
+        await pilot.pause()
+        await pilot.click(maps[1], offset=(5, 0))
+        await settle(pilot, app)
+        assert app.query_one(PatchPage).place == (2, 1)
+        bridge.events.append(ShowChanged(rig(universes=(UniverseView(1, "Stage"),))))
+        await settle(pilot, app)
+        assert app.query_one(PatchPage).place is None
+        assert place_words(app) == [NO_PLACE]
+
+    drive(app, body)
+
+
+def test_a_click_on_a_fixture_clears_the_place_and_selects_it() -> None:
+    bridge = FakeBridge()
+    app = on_f8(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        dmx_map = await click_free(pilot, app)
+        await pilot.click(dmx_map, offset=(5 + 2, 0))
+        await settle(pilot, app)
+        assert app.query_one(PatchPage).place is None
+        assert place_words(app) == [NO_PLACE]
+        assert place_cells(dmx_map, 10, 10) == [("·", colors.TRACK)]
+        assert bridge.lines() == ["sel fixture 101"]
+
+    drive(app, body)
+
+
+def test_no_selection_and_two_selected_say_so_and_the_offer_follows_the_selection() -> None:
+    bridge = FakeBridge()
+    app = on_f8(bridge)
+
+    async def select(pilot: Pilot[int], *selection: tuple[int, int]) -> None:
+        bridge.events.append(ProgrammerChanged(programmer(selection=selection)))
+        await settle(pilot, app)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        dmx_map = await click_free(pilot, app)
+        words = "select one fixture to patch it here ·"
+        await select(pilot)
+        assert place_words(app)[1:] == [words, "[add fixture here…]"]
+        assert place_cells(dmx_map, 10, 11) == [("░", colors.CYAN), ("·", colors.TRACK)]
+        await select(pilot, (101, 1), (201, 1))
+        assert place_words(app)[1:] == [words, "[add fixture here…]"]
+        await select(pilot, (201, 1), (201, 2), (201, 3))  # one fixture, three elements
+        assert place_words(app)[1] == "[patch 201 here]"
+        assert place_cells(dmx_map, 10, 18) == [*[("░", colors.CYAN)] * 8, ("·", colors.TRACK)]
+        assert bridge.lines() == []
+
+    drive(app, body)
+
+
+def test_a_fixture_that_would_go_past_512_says_so_instead() -> None:
+    bridge = FakeBridge()
+    app = on_f8(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        dmx_map = app.query(DmxMap).first()
+        await pilot.click(dmx_map, offset=(5 + 60, 7))  # 509: four are left, 101 takes seven
+        await settle(pilot, app)
+        assert place_words(app) == [
+            "place 1.509 · 4 free from here ·",
+            "101 would go past channel 512 ·",
+            "[add fixture here…]",
+        ]
+        await pilot.click(dmx_map, offset=(5 + 57, 7))  # 506: seven to 512, whole
+        await settle(pilot, app)
+        assert place_words(app)[1] == "[patch 101 here]"
+
+    drive(app, body)
+
+
+def test_add_fixture_here_opens_f3s_form_at_that_place_and_the_count_keeps_it() -> None:
+    bridge = FakeBridge()
+    app = on_f8(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        await click_free(pilot, app)
+        await tap_place(pilot, app, "add fixture here…")
+        assert app.page == 3
+        page = app.query_one(FixturesPage)
+        assert page.editing
+        assert page.panel.adding
+        form = page.panel.form
+        assert form.patching.at == (1, 10)
+        assert bridge.lines() == []
+        form.change_count(1)
+        await pilot.pause()
+        assert form.patching.at == (1, 10)
+        form.step(1)
+        await pilot.pause()
+        assert form.patching.at == (1, 10)
+
+    drive(app, body)
+
+
+def test_a_show_with_no_universe_has_no_strip_for_a_place() -> None:
+    bridge = FakeBridge()
+    bridge.events.append(ShowChanged(show_model()))
+    app = make_app(bridge, page=8)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        assert not place_strip(app).display
+
+    drive(app, body)
+
+
+def test_the_pane_cursor_stops_on_what_a_place_offers_and_takes_it() -> None:
+    bridge = FakeBridge()
+    app = on_f8(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        page = app.query_one(PatchPage)
+        before = [item.label for item in page.items()]
+        await click_free(pilot, app)
+        labels = [item.label for item in page.items()]
+        offered = ["fixture 101 patch 1.10", "[add fixture here…]"]
+        assert labels == [*before[:3], *offered, *before[3:]]
+        await pilot.press("tab", *["down"] * 3, "enter")
+        await settle(pilot, app)
+        assert bridge.lines() == ["fixture 101 patch 1.10"]
 
     drive(app, body)
 

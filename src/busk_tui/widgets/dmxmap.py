@@ -11,8 +11,10 @@ footprint, nothing decoded from DMX.
 
 Under the mouse, a fixture's channels light up and the hint row says what
 the channel is (``1.94 · fixture 501 · ch 3/12``); a click posts
-:class:`DmxMap.Clicked` with the fixtures on the channel. The pane cursor
-marks one footprint (:meth:`DmxMap.mark`).
+:class:`DmxMap.Clicked` with the fixtures on the channel, and a click on a free
+channel :class:`DmxMap.PlaceClicked`. The page may then draw what a fixture
+would take from there (:meth:`DmxMap.place`): ``░`` in cyan, red where it
+would overlap. The pane cursor marks one footprint (:meth:`DmxMap.mark`).
 """
 
 from __future__ import annotations
@@ -105,6 +107,16 @@ def first_free(prints: Sequence[Footprint], size: int) -> int | None:
     return None
 
 
+def free_from(prints: Sequence[Footprint], channel: int) -> int:
+    """How many free channels in a row start at ``channel``."""
+    free = 0
+    for found in owners(prints)[channel - 1 :]:
+        if found:
+            break
+        free += 1
+    return free
+
+
 def clashes(
     prints: Sequence[Footprint], start: int, size: int, own: int | None = None
 ) -> tuple[int, ...]:
@@ -145,6 +157,14 @@ class DmxMap(Widget):
             self.fixtures = fixtures
             self.shift = shift
 
+    class PlaceClicked(Message):
+        """A click on ``channel`` of ``universe``, which no fixture takes."""
+
+        def __init__(self, universe: int, channel: int) -> None:
+            super().__init__()
+            self.universe = universe
+            self.channel = channel
+
     def __init__(self, universe: int, *, classes: str | None = None) -> None:
         super().__init__(classes=classes)
         self.universe = universe
@@ -153,6 +173,7 @@ class DmxMap(Widget):
         self._hover: tuple[Footprint, ...] = ()  # the footprints under the mouse
         self._hint: str | None = None
         self._marked: Footprint | None = None
+        self._place: tuple[int, int, int | None] | None = None  # channel, size, own
 
     def show(self, prints: tuple[Footprint, ...]) -> None:
         if prints != self.prints:
@@ -165,6 +186,14 @@ class DmxMap(Widget):
         """The pane cursor on footprint ``index`` (``None``: nowhere)."""
         self._marked = None if index is None or index >= len(self.prints) else self.prints[index]
         self.refresh()
+
+    def place(self, channel: int | None, size: int = 1, own: int | None = None) -> None:
+        """Draw what ``size`` channels from ``channel`` would take, ``own``
+        being the fixture to place (``None``: nothing)."""
+        place = None if channel is None else (channel, size, own)
+        if place != self._place:
+            self._place = place
+            self.refresh()
 
     @staticmethod
     def per_row(width: int) -> int:
@@ -182,6 +211,11 @@ class DmxMap(Widget):
 
     def _glyph(self, channel: int) -> tuple[str, str]:
         found = self._owners[channel - 1]
+        if self._place is not None:
+            start, size, own = self._place
+            if start <= channel < start + size:
+                clash = any(print_.fixture != own for print_ in found)
+                return "░", colors.RED if clash else colors.CYAN
         if not found:
             return "·", colors.TRACK
         if self._marked in found:
@@ -231,8 +265,12 @@ class DmxMap(Widget):
 
     def on_click(self, event: events.Click) -> None:
         channel = self._channel(event)
-        found = () if channel is None else self._owners[channel - 1]
+        if channel is None:
+            return
+        event.stop()
+        found = self._owners[channel - 1]
         if found:
-            event.stop()
             fixtures = tuple(print_.fixture for print_ in found)
             self.post_message(self.Clicked(self, fixtures, event.shift))
+        else:
+            self.post_message(self.PlaceClicked(self.universe, channel))

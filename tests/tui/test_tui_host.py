@@ -111,6 +111,24 @@ def small_show(tmp_path: Path) -> Path:
     return path
 
 
+def test_a_patch_from_f3_and_f8_reaches_the_frame_under_busk_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "rig.show"
+    show = busk.OfflineShow(busk.new_show("Rig"), path=path)
+    for line in ('universe add 1 "Stage"', 'fixture add 1 "RGB Par 3ch" mode "3ch" at 1.1', "save"):
+        assert show.execute(line).ok, line
+    report = tmp_path / "report.json"
+    monkeypatch.setenv("BUSK_TUI_TEST_REPORT", str(report))
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join([str(HERE), os.environ.get("PYTHONPATH", "")]))
+    options = ["--frontend", "tui_rig_frontend:main", "--state-dir", str(tmp_path / "state")]
+    with BuskRun(path, *options, "--no-log") as run:
+        assert run.wait() == 0, run.err
+    seen = json.loads(report.read_text())
+    assert seen["timeout"] is None, seen
+    assert seen["frames"] == [[1, 2, 3], [101, 102, 103], [201, 202, 203]]
+
+
 @pytest.mark.parametrize("threads", [False, True], ids=["processes", "threads"])
 def test_the_bridge_on_busk_runs_show(
     small_show: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, threads: bool
