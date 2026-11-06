@@ -241,6 +241,23 @@ def test_the_show_only_on_a_new_document(running: tuple[Bridge, Events], stub: S
     assert [master.kind for master in event.show.masters] == ["grand"]
 
 
+def test_the_show_again_when_what_fixture_add_takes_changes(
+    running: tuple[Bridge, Events], stub: Stub
+) -> None:
+    """A ``--library`` file that changes gives a new tuple, on the same document."""
+    _, events = running
+    events.until(lambda e: isinstance(e, ShowChanged))
+    mode = busk.FixtureModeInfo(name="3ch", footprint=3, elements=1)
+    stub.fixture_profiles = (
+        busk.FixtureProfileInfo(
+            name="Par", id="p-1", source="library", manufacturer="Acme", modes=(mode,)
+        ),
+    )
+    event = events.until(lambda e: isinstance(e, ShowChanged) and bool(e.show.choices))
+    assert isinstance(event, ShowChanged)
+    assert [(c.name, c.source) for c in event.show.choices] == [("Par", "library")]
+
+
 def test_the_surfaces_on_a_new_status_and_a_new_document(
     running: tuple[Bridge, Events], stub: Stub
 ) -> None:

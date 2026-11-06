@@ -129,9 +129,7 @@ class EffectsPage(Page):
             elif message.cell == "remove" and row.remove is not None:
                 self.post_message(RunLine(row.remove))
         elif message.table is self.templates and message.row < len(self.shown_templates):
-            line = _add_line(self.shown_templates[message.row])
-            if line is not None:
-                self.post_message(RunLine(line))
+            self.post_message(RunLine(commands.effect_add(self.shown_templates[message.row].name)))
 
     def stops(self) -> list[Stop]:
         stops: list[Stop] = []
@@ -146,19 +144,9 @@ class EffectsPage(Page):
         self.effects.spots = spots
         template_spots: list[tuple[int, str | None]] = []
         for index, template in enumerate(self.shown_templates):
-            line = _add_line(template)
-            if line is not None:
-                item = Item(line.text, line=line.text)
-                stops.append(Stop(item, self.templates, len(template_spots)))
-                template_spots.append((index, None))
+            line = commands.effect_add(template.name)
+            item = Item(line.text, line=line.text)
+            stops.append(Stop(item, self.templates, len(template_spots)))
+            template_spots.append((index, None))
         self.templates.spots = template_spots
         return stops
-
-
-def _add_line(template: TemplateInfo) -> commands.Line | None:
-    """``effect add "<name>"``; ``None`` for a name busk cannot read (a
-    double quote in it)."""
-    try:
-        return commands.effect_add(template.name)
-    except ValueError:
-        return None

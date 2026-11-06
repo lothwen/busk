@@ -297,6 +297,7 @@ class RouteView:
     address: str = ""  # as route add takes it: the sACN universe, 0.0.1, enttecPro
     destination: str = ""  # multicast eth0, unicast 10.0.0.50, a DMX-USB port
     errors: int = 0  # the sends that failed since it opened
+    id: str = ""  # as list routes prints it: route <id> off, delete route <id>
 
 
 @dataclass(frozen=True, slots=True)
@@ -464,6 +465,27 @@ type Location = tuple[float, float, float, float, float, float]
 
 
 @dataclass(frozen=True, slots=True)
+class Limits:
+    """What a fixture's limits allow (``None``: no such limit): pan and tilt
+    from low to high, in degrees, and the highest intensity, 0..1."""
+
+    pan: tuple[float, float] | None = None
+    tilt: tuple[float, float] | None = None
+    intensity: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class Orientation:
+    """How a fixture hangs, under busk's own keys (``orientation.invertPan``)."""
+
+    invertPan: bool = False
+    invertTilt: bool = False
+    swapPanTilt: bool = False
+    panOffset: float = 0.0
+    tiltOffset: float = 0.0
+
+
+@dataclass(frozen=True, slots=True)
 class FixtureInfo:
     number: int
     elements: int
@@ -474,6 +496,29 @@ class FixtureInfo:
     patch: tuple[int, int] | None = None  # (universe number, start address); None: unpatched
     split: bool = False  # it has an element patch (busk does not run those yet)
     location: Location | None = None
+    limits: Limits = Limits()
+    orientation: Orientation = Orientation()
+
+
+@dataclass(frozen=True, slots=True)
+class ModeInfo:
+    """A profile's mode: its name, the DMX channels it takes, and how many
+    elements it has."""
+
+    name: str
+    footprint: int
+    elements: int
+
+
+@dataclass(frozen=True, slots=True)
+class ProfileChoice:
+    """A profile ``fixture add`` takes (busk's ``FixtureProfileInfo``): the
+    show's, or the library's that the show has no copy of."""
+
+    name: str
+    source: str  # show, library
+    manufacturer: str
+    modes: tuple[ModeInfo, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -486,6 +531,7 @@ class ProfileInfo:
     attributes: frozenset[str]
     ranges: tuple[tuple[str, float, float], ...]  # (attribute, low, high)
     category: str | None = None  # par, spot, wash, pixel, strobe …; None: not set
+    modes: tuple[ModeInfo, ...] = ()
 
     def range(self, attribute: str) -> tuple[float, float] | None:
         return next(((low, high) for name, low, high in self.ranges if name == attribute), None)
@@ -507,6 +553,7 @@ class ShowModel:
     profiles: tuple[ProfileInfo, ...] = ()
     templates: tuple[TemplateInfo, ...] = ()  # what effect add takes
     bindings: tuple[BindingInfo, ...] = ()  # in show order
+    choices: tuple[ProfileChoice, ...] = ()  # what fixture add takes
 
     def playback(self, number: int) -> PlaybackInfo | None:
         return next((info for info in self.playbacks if info.number == number), None)

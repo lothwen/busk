@@ -32,10 +32,14 @@ from busk_tui.model import (
     FixtureInfo,
     GroupInfo,
     HeldValue,
+    Limits,
     MasterView,
+    ModeInfo,
+    Orientation,
     PageInfo,
     PlaybackView,
     PresetEntry,
+    ProfileChoice,
     ProfileInfo,
     StoredValue,
     Targets,
@@ -100,12 +104,27 @@ def test_the_show_model_has_what_f1_and_f7_show(club: busk.OfflineShow) -> None:
     position = [p for p in model.presets if p.pool == "position"]
     assert [p.color for p in position] == [None, None]
     bar = FixtureInfo(
-        301, 12, "COLORband PiX 301", "Chauvet DJ COLORband PiX", "36-CH", 36, (1, 49)
+        301,
+        12,
+        "COLORband PiX 301",
+        "Chauvet DJ COLORband PiX",
+        "36-CH",
+        36,
+        (1, 49),
+        limits=Limits(intensity=0.5),
     )
     assert bar in model.fixtures
-    assert (
-        FixtureInfo(101, 1, "Spot 101", "Generic Spot 16ch", "16ch", 16, (1, 1)) in model.fixtures
+    spot = FixtureInfo(
+        101,
+        1,
+        "Spot 101",
+        "Generic Spot 16ch",
+        "16ch",
+        16,
+        (1, 1),
+        limits=Limits(tilt=(-90.0, 10.0)),
     )
+    assert spot in model.fixtures
 
 
 def test_a_chase_names_its_master_when_the_show_has_two(show: busk.OfflineShow) -> None:
@@ -224,7 +243,11 @@ def test_what_each_profile_takes_and_its_ranges(club: busk.OfflineShow) -> None:
     assert par.attributes == frozenset({"intensity", "color", "color.w"})
     bar = profiles["Chauvet DJ COLORband PiX"]  # maxStrobeHz, but nothing takes a strobe rate
     assert bar == ProfileInfo(
-        "Chauvet DJ COLORband PiX", frozenset({"intensity", "color"}), (), "pixel"
+        "Chauvet DJ COLORband PiX",
+        frozenset({"intensity", "color"}),
+        (),
+        "pixel",
+        (ModeInfo("36-CH", 36, 12),),
     )
     assert (spot.category, par.category) == ("spot", "par")
 
@@ -454,6 +477,62 @@ def test_a_programmer_effect_with_levels_and_a_named_speed_master(show: busk.Off
     assert wave.targets == Targets(elements=((201, 1), (202, 1), (203, 1), (204, 1)))
 
 
+def test_a_fixtures_limits_and_orientation(show: busk.OfflineShow) -> None:
+    fixtures = {info.number: info for info in show_model(show.show).fixtures}
+    assert fixtures[101].limits == Limits(tilt=(-90.0, 10.0))
+    assert fixtures[102].limits == Limits(tilt=(-90.0, 10.0))
+    assert fixtures[201].limits == Limits()
+    assert fixtures[301].limits == Limits(intensity=0.5)
+    assert fixtures[101].orientation == Orientation()
+    for line in ("fixture 101 limits pan -180 180", "fixture 101 limits intensity 25%",
+                 "fixture 101 orientation.invertPan true", "fixture 101 orientation.panOffset 30",
+                 "fixture 101 orientation.swapPanTilt true"):  # fmt: skip
+        assert show.execute(line).ok, line
+    head = next(info for info in show_model(show.show).fixtures if info.number == 101)
+    assert head.limits == Limits((-180.0, 180.0), (-90.0, 10.0), 0.25)
+    assert head.orientation == Orientation(invertPan=True, swapPanTilt=True, panOffset=30.0)
+
+
+def test_limits_survive_a_save(show: busk.OfflineShow, tmp_path: Path) -> None:
+    """A loaded document holds a limit as JSON's list, a new one as a tuple."""
+    assert show.execute("fixture 101 limits pan -180 180").ok
+    assert show.execute("save").ok
+    document, _ = busk.load_show(tmp_path / "club.show")
+    head = next(info for info in show_model(document).fixtures if info.number == 101)
+    assert head.limits == Limits((-180.0, 180.0), (-90.0, 10.0))
+
+
+def test_the_modes_of_each_profile(club: busk.OfflineShow, tupper: busk.OfflineShow) -> None:
+    assert [(p.name, p.modes) for p in show_model(club.show).profiles] == [
+        ("Generic Spot 16ch", (ModeInfo("16ch", 16, 1),)),
+        ("Eurolite LED ML-56 RGBW", (ModeInfo("4-channel", 4, 1),)),
+        ("Chauvet DJ COLORband PiX", (ModeInfo("36-CH", 36, 12),)),
+    ]
+    model = show_model(tupper.show)
+    assert all(profile.modes for profile in model.profiles)
+    for fixture in model.fixtures:
+        profile = model.profile(fixture.profile)
+        assert profile is not None
+        mode = next(mode for mode in profile.modes if mode.name == fixture.mode)
+        assert (mode.footprint, mode.elements) == (fixture.footprint, fixture.elements)
+
+
+def test_the_profiles_fixture_add_takes(club: busk.OfflineShow) -> None:
+    choices = show_model(club.show, (), club.fixture_profiles).choices
+    assert [(c.name, c.source) for c in choices] == [
+        ("Generic Spot 16ch", "show"),
+        ("Eurolite LED ML-56 RGBW", "show"),
+        ("Chauvet DJ COLORband PiX", "show"),
+        ("RGB Par 3ch", "library"),
+        ("Stairville MH-X25 LED Spot", "library"),
+    ]
+    assert choices[3] == ProfileChoice(
+        "RGB Par 3ch", "library", "Generic", (ModeInfo("3ch", 3, 1),)
+    )
+    assert choices[2].modes == (ModeInfo("36-CH", 36, 12),)
+    assert show_model(club.show).choices == ()
+
+
 def test_the_templates_effect_add_takes(club: busk.OfflineShow) -> None:
     templates = show_model(club.show, club.effect_templates).templates
     assert [(t.name, t.source) for t in templates] == [
@@ -525,6 +604,9 @@ def test_routes_in_the_words_of_route_add(show: busk.OfflineShow) -> None:
         "failed", "no route to host", 10, 3
     )  # fmt: skip
     assert views[0].state is None  # no status: nothing runs it
+    ids = [route["id"] for route in show.show["output"]["routes"]]
+    assert [view.id for view in views] == ids
+    assert all(view.id in show.execute("list routes").text for view in views)
 
 
 def test_surfaces_in_the_words_of_surface_add(show: busk.OfflineShow) -> None:

@@ -8,6 +8,7 @@ from collections.abc import Awaitable, Callable
 
 from rich.text import Text
 from textual.app import App, ComposeResult
+from textual.containers import Vertical
 from textual.pilot import Pilot
 
 from busk_tui import colors
@@ -22,8 +23,17 @@ from busk_tui.widgets.controls import (
     button_label,
     chip,
 )
+from busk_tui.widgets.dialogs import (
+    ConfirmDialog,
+    FormDialog,
+    check_name,
+    check_number,
+    free_step,
+    next_number,
+)
 from busk_tui.widgets.digits import BeatDots, BigDigits, beat_dots, big
 from busk_tui.widgets.legend import Legend
+from busk_tui.widgets.quick import strip_stops
 from busk_tui.widgets.swatch import Swatch, swatch_text
 
 
@@ -42,9 +52,13 @@ class Bench(App[None]):
         self.lines.append((message.line.text, message.origin, message.key))
 
 
-def bench(app: Bench, body: Callable[[Pilot[None]], Awaitable[None]]) -> None:
+def bench(
+    app: Bench,
+    body: Callable[[Pilot[None]], Awaitable[None]],
+    size: tuple[int, int] = (40, 10),
+) -> None:
     async def main() -> None:
-        async with app.run_test(size=(40, 10)) as pilot:
+        async with app.run_test(size=size) as pilot:
             await pilot.pause()
             await body(pilot)
 
@@ -53,6 +67,147 @@ def bench(app: Bench, body: Callable[[Pilot[None]], Awaitable[None]]) -> None:
 
 def gm(level: float) -> Line:
     return Line(f"gm {percent(level)}", performance=True)
+
+
+def form(app: Bench, closed: list[tuple[str, ...] | None]) -> FormDialog:
+    """A two-field form on ``app``: ``first`` must be ``ok``."""
+
+    def check(values: tuple[str, ...]) -> str | None:
+        return None if values[0] == "ok" else f"not {values[0]}"
+
+    dialog = FormDialog("FORM", (("first", "no"), ("second one", "b")), check, "a note")
+    app.push_screen(dialog, closed.append)
+    return dialog
+
+
+def test_a_form_moves_with_tab_and_closes_with_its_values_on_enter() -> None:
+    app = Bench()
+    closed: list[tuple[str, ...] | None] = []
+
+    async def body(pilot: Pilot[None]) -> None:
+        dialog = form(app, closed)
+        await pilot.pause()
+        first, second = dialog.inputs
+        assert first.has_focus
+        assert (first.value, second.value) == ("no", "b")
+        await pilot.press("tab")
+        assert second.has_focus
+        await pilot.press("c")  # a field's value starts selected: typing replaces it
+        await pilot.press("shift+tab")
+        assert first.has_focus
+        first.value = "ok"
+        await pilot.press("tab")
+        await pilot.press("enter")  # from any field
+        await pilot.pause()
+        assert closed == [("ok", "c")]
+        assert app.screen is not dialog
+
+    bench(app, body)
+
+
+def test_a_refused_value_stays_in_the_form_and_esc_cancels() -> None:
+    app = Bench()
+    closed: list[tuple[str, ...] | None] = []
+
+    async def body(pilot: Pilot[None]) -> None:
+        dialog = form(app, closed)
+        await pilot.pause()
+        await pilot.press("enter")
+        assert app.screen is dialog
+        assert str(dialog.error.render()) == "not no"
+        assert closed == []
+        await pilot.press("x")  # still typing
+        await pilot.press("enter")
+        assert str(dialog.error.render()) == "not x"
+        await pilot.press("escape")
+        await pilot.pause()
+        assert closed == [None]
+        assert app.screen is not dialog
+
+    bench(app, body)
+
+
+def test_a_forms_labels_line_up_and_its_note_shows() -> None:
+    app = Bench()
+
+    async def body(pilot: Pilot[None]) -> None:
+        dialog = form(app, [])
+        await pilot.pause()
+        first, second = dialog.inputs
+        assert first.region.x == second.region.x
+        assert second.region.y == first.region.y + 1
+        assert str(dialog.query(".note").first().render()) == "a note"
+
+    bench(app, body, (80, 24))
+
+
+def test_a_name_in_a_question_is_not_markup() -> None:
+    """busk's question names the universe: ``[/]`` in a name is only words."""
+    app = Bench()
+
+    async def body(pilot: Pilot[None]) -> None:
+        question = 'Delete universe 1 "x[/]y [red]z"?'
+        await app.push_screen(ConfirmDialog(question, "delete universe 1 cascade"))
+        await pilot.pause()
+        assert str(app.screen.query_one(".question").render()) == question
+
+    bench(app, body)
+
+
+def test_a_long_question_wraps_in_its_box() -> None:
+    """busk's question is what says what a delete takes: none of it is cut."""
+    app = Bench()
+
+    async def body(pilot: Pilot[None]) -> None:
+        question = "Delete fixture 101? It leaves " + ", ".join(f"group {n}" for n in range(1, 30))
+        await app.push_screen(ConfirmDialog(question, "delete fixture 101 cascade"))
+        await pilot.pause()
+        shown = app.screen.query_one(".question")
+        box = app.screen.query_one(Vertical)
+        assert shown.region.height > 1
+        assert box.region.contains_region(shown.region)
+        assert box.region.width <= 80
+
+    bench(app, body, (100, 30))
+
+
+def test_the_checks_of_names_and_numbers() -> None:
+    assert check_name(True)("  ") == "a name cannot be empty"
+    assert check_name(True)('Say "hi" \\') is None
+    assert check_name(False)("") is None
+    check = check_number({1, 2, 4}, 2)
+    assert check("3") is None
+    assert check(" 9 ") is None
+    assert check("2") is None  # its own number
+    assert check("4") == "4 is taken"
+    for refused in ("0", "-1", "x", "", "1.5", "²"):
+        assert check(refused) == "a whole number from 1"
+    assert check_number({1}, None)("1") == "1 is taken"
+    assert free_step(2, 1, {3, 4}) == 5
+    assert free_step(2, -1, {1}) == 2
+    assert next_number({1, 2, 7}) == 8
+    assert next_number(()) == 1
+
+
+def test_a_note_in_a_strip_is_no_button() -> None:
+    strip = ButtonStrip(
+        [
+            StripButton(Text("[a]"), Line("first")),
+            StripButton(Text("U1 Stage"), Line(""), note=True),
+            StripButton(Text("[b]"), Line("second")),
+        ]
+    )
+    app = Bench(strip)
+
+    async def body(pilot: Pilot[None]) -> None:
+        assert strip.lines(40)[0].plain == "[a] U1 Stage [b]"
+        await pilot.click(strip, offset=(6, 0))  # the words
+        assert app.lines == []
+        await pilot.click(strip, offset=(14, 0))
+        assert [line for line, _, _ in app.lines] == ["second"]
+        assert [stop.index for stop in strip_stops(strip)] == [0, 2]
+
+    bench(app, body)
 
 
 def test_bars_fill_in_eighths_of_a_cell() -> None:

@@ -63,12 +63,12 @@ from busk_tui.widgets.colorpicker import (
     marker,
 )
 from busk_tui.widgets.controls import ButtonStrip
-from busk_tui.widgets.dialogs import ConfirmDialog, TextDialog
+from busk_tui.widgets.dialogs import ConfirmDialog, TextDialog, free_step
 from busk_tui.widgets.encoders import EncoderRow
 from busk_tui.widgets.log import LogView
 from busk_tui.widgets.options import LIT, OptionRow
 from busk_tui.widgets.panel import Panel
-from busk_tui.widgets.preset_panel import HINTS, KEEPS, Chosen, PresetPanel, free_step
+from busk_tui.widgets.preset_panel import HINTS, KEEPS, Chosen, PresetPanel
 from busk_tui.widgets.prompt import HintRow
 from busk_tui.widgets.spread import SpreadLine, SpreadRow
 from busk_tui.widgets.tiles import PresetTile, preview
@@ -530,18 +530,14 @@ def test_rename_and_renumber_through_a_dialog(club: busk.OfflineShow) -> None:
         dialog = app.screen
         assert isinstance(dialog, TextDialog)
         assert dialog.query_one(Input).value == "Crimson"
-        dialog.query_one(Input).value = 'Say "hi"'
-        await pilot.press("enter")
-        assert app.screen is dialog  # refused: it stays
-        assert "double quote" in plain(dialog.error)
         dialog.query_one(Input).value = "  "
         await pilot.press("enter")
-        assert app.screen is dialog
+        assert app.screen is dialog  # refused: it stays
         assert plain(dialog.error) == "a name cannot be empty"
-        dialog.query_one(Input).value = "Scarlet"
+        dialog.query_one(Input).value = 'The "Scarlet"'
         await pilot.press("enter")
         assert not isinstance(app.screen, TextDialog)
-        assert bridge.lines() == ['rename preset color 5 "Scarlet"']
+        assert bridge.lines() == [r'''rename preset color 5 "The \"Scarlet\""''']
         await pilot.click(panel(app).renumber)
         dialog = app.screen
         assert isinstance(dialog, TextDialog)

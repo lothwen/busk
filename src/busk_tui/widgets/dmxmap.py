@@ -94,6 +94,30 @@ def overlaps(prints: Sequence[Footprint]) -> int:
     )
 
 
+def first_free(prints: Sequence[Footprint], size: int) -> int | None:
+    """The first address of the first ``size`` free channels in a row;
+    ``None`` when the universe has no such run."""
+    free = 0
+    for channel, found in enumerate(owners(prints), start=1):
+        free = 0 if found else free + 1
+        if free == size:
+            return channel - size + 1
+    return None
+
+
+def clashes(
+    prints: Sequence[Footprint], start: int, size: int, own: int | None = None
+) -> tuple[int, ...]:
+    """The fixtures on the ``size`` channels from ``start``, by address, but
+    ``own``, the fixture being placed."""
+    end = start + size - 1
+    return tuple(
+        print_.fixture
+        for print_ in prints
+        if print_.fixture != own and print_.start <= end and start <= print_.end
+    )
+
+
 def channel_text(universe: int, channel: int, found: Sequence[Footprint]) -> str:
     """What the hint row says of a channel: ``1.94 · fixture 501 · ch 3/12``,
     each fixture of an overlap, or ``free``."""

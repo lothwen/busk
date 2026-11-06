@@ -1,12 +1,14 @@
 """The dialogs: a question before a line (the engine's, or the TUI's own),
-quitting, and a line of text to type (a preset's name or number).
+quitting, a line of text to type (a name, a number), and a form of several
+(:class:`FormDialog`); and the checks and steps of the names and numbers
+typed in them.
 
 All are modal: while one is open, its keys are the only ones.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Collection, Sequence
 from typing import ClassVar, Literal
 
 from rich.text import Text
@@ -25,6 +27,46 @@ type QuitChoice = Literal["save", "quit", "cancel"]
 QUIT_CHOICES: dict[str, QuitChoice] = {"save": "save", "quit": "quit", "cancel": "cancel"}
 
 
+def check_name(renaming: bool) -> Callable[[str], str | None]:
+    """A name dialog's check: not empty when renaming."""
+
+    def check(text: str) -> str | None:
+        if renaming and not text.strip():
+            return "a name cannot be empty"
+        return None
+
+    return check
+
+
+def check_number(taken: Collection[int], own: int | None) -> Callable[[str], str | None]:
+    """A number dialog's check: a whole number from 1, not one of ``taken``
+    (``own``, the number it has now, may stay)."""
+
+    def check(text: str) -> str | None:
+        text = text.strip()
+        if not text.isdecimal() or int(text) < 1:  # isdigit takes ², which int refuses
+            return "a whole number from 1"
+        if int(text) != own and int(text) in taken:
+            return f"{int(text)} is taken"
+        return None
+
+    return check
+
+
+def free_step(number: int, by: int, taken: Collection[int]) -> int:
+    """The next free number from ``number`` in the direction of ``by``,
+    at least 1; ``number`` itself when there is none below."""
+    found = number + by
+    while found in taken:
+        found += by
+    return found if found >= 1 else number
+
+
+def next_number(taken: Collection[int]) -> int:
+    """What a new one starts at: the highest number plus one, else 1."""
+    return max(taken, default=0) + 1
+
+
 def _css(name: str) -> str:
     return f"""
     {name} {{ align: center middle; background: black 55%; }}
@@ -33,7 +75,7 @@ def _css(name: str) -> str:
         background: {colors.BG}; border: solid {colors.CYAN};
         border-title-color: {colors.CYAN}; border-title-align: left;
     }}
-    {name} .question {{ color: {colors.FG}; width: auto; }}
+    {name} .question {{ color: {colors.FG}; width: auto; max-width: 74; }}
     {name} .note {{ color: {colors.DIM}; width: auto; }}
     {name} Horizontal {{ height: 1; width: auto; margin-top: 1; }}
     {name} .choice {{ width: auto; margin-right: 2; }}
@@ -79,7 +121,7 @@ class ConfirmDialog(ModalScreen[bool]):
     def compose(self) -> ComposeResult:
         with Vertical() as box:
             box.border_title = "CONFIRM"
-            yield Static(self.question, classes="question")
+            yield Static(Text(self.question), classes="question")  # names in it are not markup
             yield Static(Text(f"busk> {self.line}"), classes="note")
             with Horizontal():
                 yield Choice("y", "Yes", "yes", colors.RED)
@@ -179,6 +221,72 @@ class TextDialog(ModalScreen[str | None]):
         problem = self.check(event.value)
         if problem is None:
             self.dismiss(event.value)
+        else:
+            self.error.update(problem)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+class FormDialog(ModalScreen[tuple[str, ...] | None]):
+    """Several lines of text to type, under ``title`` and a ``note``: each of
+    ``fields`` is a label and what its input starts at. Tab moves between
+    them. Enter, in any of them, runs ``check`` on all the values, which
+    returns what is wrong with them (shown, and the dialog stays) or ``None``
+    (the dialog closes with the values, in order); Esc cancels (``None``)."""
+
+    DEFAULT_CSS = (
+        _css("FormDialog")
+        + f"""
+    FormDialog > Vertical {{ width: 60; }}
+    FormDialog Horizontal {{ width: 100%; margin-top: 0; }}
+    FormDialog .lead {{ margin-bottom: 1; }}
+    FormDialog .label {{ color: {colors.MID}; width: auto; }}
+    FormDialog Input {{ width: 1fr; }}
+    FormDialog .error {{ color: {colors.RED}; width: 100%; height: auto; }}
+    """
+    )
+    BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("escape", "cancel", "Cancel", show=False),
+    ]
+
+    def __init__(
+        self,
+        title: str,
+        fields: Sequence[tuple[str, str]],
+        check: Callable[[tuple[str, ...]], str | None],
+        note: str = "",
+    ) -> None:
+        super().__init__()
+        self.title_text = title
+        self.labels = tuple(label for label, _ in fields)
+        self.inputs = tuple(Input(value, compact=True) for _, value in fields)
+        self.check = check
+        self.note = note
+        self.error = Static("", classes="error")
+
+    def compose(self) -> ComposeResult:
+        width = max(len(label) for label in self.labels) + 1
+        with Vertical() as box:
+            box.border_title = self.title_text
+            if self.note:
+                yield Static(self.note, classes="note lead")
+            for label, field in zip(self.labels, self.inputs, strict=True):
+                with Horizontal():
+                    yield Static(Text(f"{label:<{width}}"), classes="label")
+                    yield field
+            yield self.error
+            yield Static("Tab: next · Enter: OK · Esc: cancel", classes="note")
+
+    def on_mount(self) -> None:
+        self.inputs[0].focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        event.stop()
+        values = tuple(field.value for field in self.inputs)
+        problem = self.check(values)
+        if problem is None:
+            self.dismiss(values)
         else:
             self.error.update(problem)
 

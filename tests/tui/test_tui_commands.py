@@ -16,6 +16,9 @@ from busk_tui import attributes, commands, config
 from busk_tui.bridge import show_model
 from busk_tui.commands import Line
 
+ROUTE = "r-club"
+"""The id the show of the contract test gives its route."""
+
 BUILDERS: dict[str, tuple[Line, str, bool]] = {
     # name: (a line it builds, that line's text, whether busk runs it as a performance line)
     "help": (commands.help_(), "help", False),
@@ -125,6 +128,104 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
     ),
     "delete preset": (commands.delete_preset("color", 9), "delete preset color 9", False),
     "clear": (commands.clear(), "clear", False),
+    # A universe, a rig in it and its routes, built up, changed and taken away.
+    "universe add": (commands.universe_add(5, "Balcony"), 'universe add 5 "Balcony"', False),
+    "universe add unnamed": (commands.universe_add(6), "universe add 6", False),
+    "rename universe": (
+        commands.rename_universe(5, "Roof"),
+        'rename universe 5 "Roof"',
+        False,
+    ),
+    "renumber universe": (commands.renumber_universe(5, 7), "universe 5 number 7", False),
+    "fixture add": (
+        commands.fixture_add(901, 903, "RGB Par 3ch", "3ch", (7, 1)),
+        'fixture add 901 thru 903 "RGB Par 3ch" mode "3ch" at 7.1',
+        False,
+    ),
+    "fixture add one": (
+        commands.fixture_add(904, 904, "RGB Par 3ch", "3ch"),
+        'fixture add 904 "RGB Par 3ch" mode "3ch"',
+        False,
+    ),
+    "rename fixture": (commands.rename_fixture(904, "Spare"), 'rename fixture 904 "Spare"', False),
+    "renumber fixture": (commands.renumber_fixture(904, 950), "fixture 904 number 950", False),
+    "patch fixture": (commands.patch_fixture(950, (7, 100)), "fixture 950 patch 7.100", False),
+    "unpatch fixture": (commands.patch_fixture(950, None), "fixture 950 patch none", False),
+    "limit range": (
+        commands.limit_range(101, 102, "pan", -180.0, 180.5),
+        "fixture 101 thru 102 limits pan -180 180.5",
+        False,
+    ),
+    "limit one": (
+        commands.limit_range(201, 201, "tilt", -90.0, 10.0),
+        "fixture 201 limits tilt -90 10",
+        False,
+    ),
+    "limit intensity": (
+        commands.limit_intensity(101, 102, 0.5),
+        "fixture 101 thru 102 limits intensity 50%",
+        False,
+    ),
+    "no limit": (commands.no_limit(101, 102, "pan"), "fixture 101 thru 102 limits pan none", False),
+    "no limits": (commands.no_limits(101, 102), "fixture 101 thru 102 limits none", False),
+    "invert pan": (
+        commands.orientation(101, "invertPan", True),
+        "fixture 101 orientation.invertPan true",
+        False,
+    ),
+    "keep tilt": (
+        commands.orientation(101, "invertTilt", False),
+        "fixture 101 orientation.invertTilt false",
+        False,
+    ),
+    "pan offset": (
+        commands.orientation(101, "panOffset", 30.5),
+        "fixture 101 orientation.panOffset 30.5",
+        False,
+    ),
+    "location": (
+        commands.location(101, (1.5, -2.0, 4.25, 0.0, 0.0, 90.0)),
+        'fixture 101 location {"x": 1.5, "y": -2, "z": 4.25, "rx": 0, "ry": 0, "rz": 90}',
+        False,
+    ),
+    "no location": (commands.no_location(101), "fixture 101 location none", False),
+    "fixture mode": (commands.fixture_mode(101, "16ch"), 'fixture 101 mode "16ch"', False),
+    "fixture profile": (
+        commands.fixture_profile(903, "Stairville MH-X25 LED Spot", "12-channel"),
+        'fixture 903 profile "Stairville MH-X25 LED Spot" mode "12-channel"',
+        False,
+    ),
+    "category": (
+        commands.category("Generic Spot 16ch", "wash"),
+        'profile "Generic Spot 16ch" category wash',
+        False,
+    ),
+    "no category": (
+        commands.category("Generic Spot 16ch", "none"),
+        'profile "Generic Spot 16ch" category none',
+        False,
+    ),
+    "route add sacn": (commands.route_add(7, "sacn", "7"), "route add 7 sacn 7", False),
+    "route add sacn unicast": (
+        commands.route_add(7, "sacn", "8", "unicast 10.0.0.50"),
+        "route add 7 sacn 8 unicast 10.0.0.50",
+        False,
+    ),
+    "route add artnet": (
+        commands.route_add(7, "artnet", "0.0.1", "broadcast eth0"),
+        "route add 7 artnet 0.0.1 broadcast eth0",
+        False,
+    ),
+    "route add dmxusb": (
+        commands.route_add(7, "dmxusb", "enttecPro", "/dev/ttyUSB7", hz=30.0),
+        "route add 7 dmxusb enttecPro /dev/ttyUSB7 hz 30",
+        False,
+    ),
+    "route off": (commands.route_on(ROUTE, False), f"route {ROUTE} off", False),
+    "route on": (commands.route_on(ROUTE, True), f"route {ROUTE} on", False),
+    "delete route": (commands.delete_route(ROUTE), f"delete route {ROUTE}", False),
+    "delete fixture": (commands.delete_fixture(901), "delete fixture 901 cascade", False),
+    "delete universe": (commands.delete_universe(7), "delete universe 7 cascade", False),
 }
 
 PREFILLS = (
@@ -165,8 +266,11 @@ PERFORMANCE_WORDS = {
 
 @pytest.fixture
 def show(club_path: Path, tmp_path: Path) -> busk.OfflineShow:
-    """A club-night show of the test's own, saved to a file of its own."""
+    """A club-night show of the test's own, saved to a file of its own, its
+    route under the id the builders name."""
     document, _ = busk.load_show(club_path)
+    document = copy.deepcopy(document)
+    document["output"]["routes"][0]["id"] = ROUTE
     return busk.OfflineShow(document, path=tmp_path / "club.show")
 
 
@@ -178,10 +282,23 @@ def test_levels_are_whole_percent() -> None:
     assert commands.percent(-0.2) == "0%"
 
 
-def test_names_are_quoted_and_a_quote_in_one_is_refused() -> None:
+def test_names_are_quoted_with_jsons_escapes() -> None:
     assert commands.quoted("Grand Master") == '"Grand Master"'
-    with pytest.raises(ValueError, match="double quote"):
-        commands.quoted('Say "hi"')
+    assert commands.quoted('Say "hi"') == r'''"Say \"hi\""'''
+    assert commands.quoted("back\\slash") == r'''"back\\slash"'''
+    assert commands.quoted("Jardín ✨") == '"Jardín ✨"'
+
+
+@pytest.mark.parametrize(
+    "name",
+    ['say "hi"', "back\\slash", r"C:\new", "tab\there", "Jardín", "✨ Foyer", "\\", '"'],
+)
+def test_a_name_comes_back_from_busk_as_it_was_typed(show: busk.OfflineShow, name: str) -> None:
+    """``\\n`` as typed is a backslash and an ``n``, not a new line."""
+    assert show.expected(commands.rename_universe(1, name).text).error is None
+    reply = show.execute(commands.rename_universe(1, name).text)
+    assert reply.ok, reply.text
+    assert show.show["universes"][0]["name"] == name
 
 
 def test_numbers_have_two_decimals_at_most() -> None:
@@ -203,13 +320,42 @@ def test_busk_accepts_every_builders_line(show: busk.OfflineShow) -> None:
     """With the heads selected, holding a colour (for its components and
     ``by``), and an effect to stop; in the table's order (a preset is
     recorded, merged into, replaced, removed from, renamed, renumbered and
-    deleted), ``sel none`` last."""
+    deleted, and a universe and its rig likewise), ``sel none`` last."""
     assert show.execute("sel group 1").ok  # something to undo and redo, an effect to stop
     assert show.execute('effect add "Circle" id fx5').ok
     assert show.execute("preset color 2").ok
     for name, (line, _, _) in sorted(BUILDERS.items(), key=lambda item: item[0] == "sel none"):
         reply = show.execute(line.text)
         assert reply.ok, (name, reply.text)
+    assert 7 not in [universe["number"] for universe in show.show["universes"]]
+    assert show.show["output"]["routes"] == []  # the club's, and the ones on universe 7
+    assert 901 not in [fixture["number"] for fixture in show.show["fixtures"]]
+
+
+def test_the_rig_lines_do_what_they_say(show: busk.OfflineShow) -> None:
+    """What the lines leave in the document: the show's own keys, by name."""
+    for line in (
+        commands.limit_range(101, 101, "pan", -180.0, 180.0),
+        commands.limit_intensity(101, 101, 0.5),
+        commands.no_limit(101, 101, "tilt"),
+        commands.orientation(101, "invertPan", True),
+        commands.orientation(101, "tiltOffset", 15.0),
+        commands.location(101, (1.5, -2.0, 4.25, 0.0, 0.0, 90.0)),
+        commands.category("Generic Spot 16ch", "wash"),
+    ):
+        reply = show.execute(line.text)
+        assert reply.ok, (line, reply.text)
+    fixture = next(f for f in show.show["fixtures"] if f["number"] == 101)
+    assert fixture["limits"] == {"pan": (-180.0, 180.0), "intensityMax": 0.5}
+    assert fixture["orientation"]["invertPan"] is True
+    assert fixture["orientation"]["tiltOffset"] == 15.0
+    assert fixture["location"] == {"x": 1.5, "y": -2, "z": 4.25, "rx": 0, "ry": 0, "rz": 90}
+    assert show.show["profiles"][0]["category"] == "wash"
+    assert show.execute(commands.no_location(101).text).ok
+    assert show.execute(commands.no_limits(101, 101).text).ok
+    fixture = next(f for f in show.show["fixtures"] if f["number"] == 101)
+    assert "location" not in fixture
+    assert "limits" not in fixture
 
 
 def test_the_prefills_are_lines_busk_takes_so_far(show: busk.OfflineShow) -> None:

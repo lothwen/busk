@@ -197,13 +197,15 @@ class StripButton:
     and the line a Shift-click runs instead (``None``: the same). With a
     ``prefill``, a click puts that in the prompt instead of running a line;
     with an ``action``, a click calls it instead (a toggle of the page's own;
-    keep one callable per button, so that equal buttons compare equal)."""
+    keep one callable per button, so that equal buttons compare equal). A
+    ``note`` is only words among the buttons: no click, no pane cursor."""
 
     label: Text
     line: Line
     shift: Line | None = None
     prefill: str | None = None
     action: Callable[[], None] | None = None
+    note: bool = False
 
 
 class ButtonStrip(Widget):
@@ -244,7 +246,10 @@ class ButtonStrip(Widget):
                 label.stylize(MARKED)
             elif index == self._hover:
                 label.stylize(f"on {colors.SEL}")
-            label.apply_meta({"button": index})
+            if button.note:
+                label.truncate(width, overflow="ellipsis")  # wrapped, it would part lines and rows
+            else:
+                label.apply_meta({"button": index})
             line = lines[-1]
             if line.cell_len and line.cell_len + 1 + label.cell_len > width:
                 lines.append(Text())

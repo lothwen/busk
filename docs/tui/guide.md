@@ -603,8 +603,7 @@ while blind is on.
 **A preset of the show** (a tile clicked in edit mode) has, instead of the number and name:
 
 - `[rename…]` and `[number…]`, each a dialog, then one line (`rename preset color 2 "…"`,
-  `preset color 2 number 9`). The number dialog lists the numbers taken and refuses them; a
-  name cannot hold a double quote;
+  `preset color 2 number 9`). The number dialog lists the numbers taken and refuses them;
 - `[delete]`, after a question (busk asks none). It is grey while cues or effect palettes use
   the preset: the panel names them (`used by cue 4/1, 10/1–10/4`), and they must stop using
   it first;

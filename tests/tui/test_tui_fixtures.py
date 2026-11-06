@@ -221,7 +221,7 @@ def test_the_edits_act_on_the_fixture_clicked_last() -> None:
     drive(app, body)
 
 
-def test_a_profile_name_busk_cannot_read_has_no_category_edit() -> None:
+def test_a_quote_in_a_profile_name_is_escaped_in_its_category_edit() -> None:
     bridge = FakeBridge()
     quoted = FixtureInfo(501, 1, "Par 501", 'Par "LED"', "4ch", 4, (1, 1))
     bridge.events.append(ShowChanged(rig(fixtures=(quoted,))))
@@ -230,7 +230,26 @@ def test_a_profile_name_busk_cannot_read_has_no_category_edit() -> None:
     async def body(pilot: Pilot[int]) -> None:
         await settle(pilot, app)
         page = app.query_one(FixturesPage)
-        assert all("category" not in (b.prefill or "") for b in page.edits.buttons)
+        assert r"""profile "Par \"LED\"" category """ in [b.prefill for b in page.edits.buttons]
+
+    drive(app, body)
+
+
+def test_the_rows_go_by_number_as_list_fixtures_has_them() -> None:
+    bridge = FakeBridge()
+    fixtures = tuple(FixtureInfo(n, 1, f"Par {n}", "Par", "4ch", 4, (1, n)) for n in (901, 150, 3))
+    bridge.events.append(ShowChanged(rig(fixtures=fixtures)))
+    app = make_app(bridge, page=3)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        page = app.query_one(FixturesPage)
+        assert column(page.table, "number") == ["3", "150", "901"]
+        await pilot.click(page.table, offset=(20, 2))
+        assert bridge.lines() == ["sel fixture 150"]
+        assert [item.line for item in page.items()[:3]] == [
+            "sel fixture 3", "sel fixture 150", "sel fixture 901",
+        ]  # fmt: skip
 
     drive(app, body)
 

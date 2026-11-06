@@ -49,8 +49,8 @@ does:
   and ``[done]``, which leaves edit mode.
 
 A name or a number is typed in a :class:`~busk_tui.widgets.dialogs.TextDialog`,
-which refuses a double quote in a name (busk has no escape for one), an
-empty name for a preset of the show, and a number that is taken.
+which refuses an empty name for a preset of the show, and a number that is
+taken.
 """
 
 from __future__ import annotations
@@ -89,7 +89,7 @@ from busk_tui.widgets.controls import (
     StripButton,
     button_label,
 )
-from busk_tui.widgets.dialogs import TextDialog
+from busk_tui.widgets.dialogs import TextDialog, check_name, check_number, free_step
 from busk_tui.widgets.encoders import EncoderRow
 from busk_tui.widgets.options import OptionRow
 from busk_tui.widgets.quick import group_buttons, strip_stops
@@ -137,43 +137,6 @@ class Chosen:
 def default_name(pool: str, number: int) -> str:
     """The name busk gives a preset recorded without one: ``Color 5``."""
     return f"{pool.capitalize()} {number}"
-
-
-def check_name(renaming: bool) -> Callable[[str], str | None]:
-    """A name dialog's check: no double quote; not empty when renaming."""
-
-    def check(text: str) -> str | None:
-        if '"' in text:
-            return "a name cannot hold a double quote: busk has no escape for one"
-        if renaming and not text.strip():
-            return "a name cannot be empty"
-        return None
-
-    return check
-
-
-def check_number(taken: frozenset[int], own: int | None) -> Callable[[str], str | None]:
-    """A number dialog's check: a whole number from 1, not one of ``taken``
-    (``own``, the preset's own number, may stay)."""
-
-    def check(text: str) -> str | None:
-        text = text.strip()
-        if not text.isdigit() or int(text) < 1:
-            return "a whole number from 1"
-        if int(text) != own and int(text) in taken:
-            return f"{int(text)} is taken"
-        return None
-
-    return check
-
-
-def free_step(number: int, by: int, taken: frozenset[int]) -> int:
-    """The next free number from ``number`` in the direction of ``by``,
-    at least 1; ``number`` itself when there is none below."""
-    found = number + by
-    while found in taken:
-        found += by
-    return found if found >= 1 else number
 
 
 def default_scope(pool: str, preset: PresetInfo | None) -> str:

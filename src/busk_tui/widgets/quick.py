@@ -46,7 +46,11 @@ def color_chips(presets: Sequence[PresetInfo], mode: ColorMode) -> list[StripBut
 
 def strip_stops(strip: ButtonStrip) -> list[Stop]:
     """The pane cursor's stops on each button of ``strip``."""
-    return [Stop(_item(button), strip, index) for index, button in enumerate(strip.buttons)]
+    return [
+        Stop(_item(button), strip, index)
+        for index, button in enumerate(strip.buttons)
+        if not button.note
+    ]
 
 
 def _item(button: StripButton) -> Item:

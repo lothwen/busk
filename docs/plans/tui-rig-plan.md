@@ -639,6 +639,26 @@ one conversation, which ends with a status memory and a stop. The engine's tests
    - every new builder in the contract test, in order, on a copy of the club show;
    - `first_free` with gaps, a full universe and a block; `clashes` leaving out the fixture itself;
      `runs` with a gap, one number, and a fixture between that is not selected.
+
+   **Done** (2026-11-06). As planned, with these additions, which the user may veto:
+   - `Limits` and `Orientation` are small dataclasses of their own, and `Orientation` keeps busk's
+     keys, so a panel can hand a key straight to `commands.orientation`. `ModeInfo` is shared by
+     `ProfileInfo.modes` and the new `ProfileChoice`. `choices` carries no id: the TUI keys by what
+     the operator types.
+   - `route_add(universe, protocol, address, destination=None, hz=None)` takes the words
+     `RouteView.address` and `.destination` already hold, so step 13's dialog has no new format.
+   - The builders take `first` and `last` always, and `fixture_add(301, 301, …)` writes no `thru`.
+   - F3 sorts in the page, not in `show_model`, so F1 C's plot and the other pages keep document
+     order.
+   - `_category_prefill` lost its `except ValueError` here, one step before step 9 removes it,
+     because `quoted` no longer raises. A profile name with a double quote now has a category edit,
+     escaped. `_add_line` in `pages/effects.py` and `_prefills` in `pages/surfaces.py` went with
+     their `except`.
+   - `location_prefill` is now `location(…).text`, and its parameter is `place`, since the builder
+     has the old name.
+   - The guide's "a name cannot hold a double quote" went, as it was no longer true. The rest of
+     the guide waits for step 14. §4.6 of `docs/dev/tui/implementation-plan.md` still lists that
+     refusal among the tests it asked for. It is left as a record of that plan.
 8. **Dialogs and F8's universes** (§6.3 except the place, §6.8, §4 calls 9, 18). Verify:
    - `FormDialog`: Tab, Enter, Esc, and a refused value staying in the dialog;
    - a row click chooses and lights a universe, and the strip follows it;
@@ -648,6 +668,37 @@ one conversation, which ends with a status memory and a stop. The engine's tests
    - the pane cursor's stops at 150 and 99 columns;
    - end to end on the real engine, from controls only: add a universe, rename it, renumber it,
      delete it.
+
+   **Done** (2026-11-06). As planned, with these additions, which the user may veto:
+   - **F8 sorts its universes by number,** as `list universes` does. The plan asked this of F3 only
+     (§4 call 17), but `[number…]` is what makes it show: a universe renumbered to 7 stayed above a
+     new 2. The maps follow the same order.
+   - `StripButton.note`: words among a strip's buttons, with no click and no pane cursor stop, for
+     `U2 Balcony`. A note wider than the strip ends in `…`: wrapped, it put the rows `lines()`
+     counted and the rows drawn out of step, so a click missed `[delete]`. Steps 11 and 13 can use
+     it for their strips.
+   - The table has a `▸` column, as in §3, beside the lit row. `next_number` is new in `dialogs.py`
+     (§4 call 9). §6.3 says "next free" and §4 call 9 "highest plus one": this is the second.
+   - `FormDialog` uses compact `Input`s, one line each, so step 10's six-field location stays short.
+     Each field starts with its value selected, as `TextDialog`'s does, so typing replaces it.
+   - The form's note lists the numbers taken, as F6's number dialog does.
+   - Beyond the list, the end-to-end test also deletes universe 1 with the rig and its route on it,
+     and `undo` brings all of it back.
+
+   **Three bugs of `dialogs.py`, fixed here** (all older than this plan):
+   - A name in busk's question was read as markup: a universe named `x[/]y` raised `MarkupError` and
+     ended the TUI, and `[left]` vanished from the question. F6's own question had the same bug.
+   - A long question was cut at the box instead of wrapping (`.question` was `width: auto`). This
+     matters from here on, since §4 call 11 leaves the question as the only place that says what a
+     delete takes.
+   - `check_number` took `²`, which `isdigit` accepts and `int` refuses, so the dialog raised. It
+     uses `isdecimal` now.
+
+   Steps 7 and 8 were built in one working tree, so they share one run of the whole suite: 4716
+   passed, 1 skipped, 20 deselected, in 19:35 (group B left 4643). The changed TUI test files and
+   the new end-to-end test, 345 tests, pass on Textual 8.2.0. A real-terminal check on the club show,
+   at 150 and 99 columns, drove the form, a universe named `x[/]y`, the strip and the delete
+   question. 34 mutations of the lines of both steps were all caught.
 
 **D. The FIXTURE panel**
 

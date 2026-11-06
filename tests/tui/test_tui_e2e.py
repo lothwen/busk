@@ -7,7 +7,8 @@
   on the TupperDMX show records a colour from its picker and a beam preset
   from its option chips and bars; F4
   goes to a cue, and F5 adds, stops and removes an effect; F3 and F1's
-  layouts A and C show the output, and select from it.
+  layouts A and C show the output, and select from it; F8 adds, renames,
+  renumbers and deletes universes.
 * On a stub show whose ``save`` is held (plan §4.3): keys, page switching,
   the beat dot and a bar's drag keep working, the drag's lines run, and the
   prompt context shows the held line.
@@ -33,6 +34,7 @@ from busk_tui.commands import Line, percent
 from busk_tui.pages.busk_console import OutputGrid
 from busk_tui.pages.busk_stack import StackLayout
 from busk_tui.pages.busk_stage import StagePlot
+from busk_tui.pages.patch import PatchPage, UniverseTable
 from busk_tui.pages.presets import PresetsPage
 from busk_tui.pages.program import EncoderPanel
 from busk_tui.shell import BuskApp
@@ -40,6 +42,7 @@ from busk_tui.widgets.bars import HBar
 from busk_tui.widgets.colorpicker import cell_color, rgb_of
 from busk_tui.widgets.controls import ButtonStrip
 from busk_tui.widgets.cuetable import CueTable
+from busk_tui.widgets.dialogs import ConfirmDialog, FormDialog, TextDialog
 from busk_tui.widgets.dmxmap import DmxMap
 from busk_tui.widgets.effects import EffectTable, TemplateTable
 from busk_tui.widgets.encoders import EncoderBar, EncoderRow
@@ -169,6 +172,88 @@ async def tap_button(pilot: Pilot[int], strip: ButtonStrip, label: str) -> None:
             await pilot.click(strip, offset=(x + 1, y))
             return
     raise AssertionError(f"no button [{label}]")
+
+
+def test_f8_builds_and_deletes_a_universe_from_controls_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=8), standalone=True)
+
+    def universes() -> list[tuple[int, str]]:
+        show = app.view.show
+        return [] if show is None else [(u.number, u.name) for u in show.universes]
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: universes() == [(1, "Stage")])
+        page = app.query_one(PatchPage)
+        table = app.query_one(UniverseTable)
+        await until(pilot, lambda: len(table.rows) == 1)
+        strip = page.universe_edits
+
+        await tap_button(pilot, strip, "+ universe…")
+        await until(pilot, lambda: isinstance(app.screen, FormDialog))
+        assert isinstance(app.screen, FormDialog)
+        assert app.screen.inputs[0].value == "2"
+        await pilot.press("tab", *"Balcony", "enter")
+        await until(pilot, lambda: universes() == [(1, "Stage"), (2, "Balcony")])
+        await until(pilot, lambda: column(table, "name") == ["Stage", "Balcony"])
+        assert len(app.query(DmxMap)) == 2
+
+        await click_cell(pilot, table, 1, "name")
+        await until(pilot, lambda: page.chosen == 2)
+        await tap_button(pilot, strip, "rename…")
+        await until(pilot, lambda: isinstance(app.screen, TextDialog))
+        await pilot.press(*'The "Roof"', "enter")
+        await until(pilot, lambda: universes()[1] == (2, 'The "Roof"'))
+
+        await tap_button(pilot, strip, "number…")
+        await until(pilot, lambda: isinstance(app.screen, TextDialog))
+        await pilot.press("7", "enter")
+        await until(pilot, lambda: universes()[1] == (7, 'The "Roof"'))
+        await until(pilot, lambda: [m.universe for m in app.query(DmxMap)] == [1, 7])
+        await until(pilot, lambda: column(table, "number") == ["1", "7"])
+        assert page.chosen == 7  # the choice followed
+        assert table.chosen == 1
+
+        await tap_button(pilot, strip, "delete")
+        await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+        assert isinstance(app.screen, ConfirmDialog)
+        assert app.screen.question == r"""Delete universe 7 "The \"Roof\""?"""
+        await pilot.press("y")
+        await until(pilot, lambda: universes() == [(1, "Stage")])
+        await until(pilot, lambda: len(app.query(DmxMap)) == 1)
+        assert page.chosen is None
+        assert [button.label.plain for button in strip.buttons] == ["[+ universe…]"]
+
+        await click_cell(pilot, table, 0, "name")  # the one the rig and the route are on
+        await until(pilot, lambda: page.chosen == 1)
+        await tap_button(pilot, strip, "delete")
+        await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+        assert isinstance(app.screen, ConfirmDialog)
+        assert "7 fixtures lose their patch and 1 route goes" in app.screen.question
+        await pilot.press("y")
+        await until(pilot, lambda: universes() == [])
+        await until(pilot, lambda: len(app.query(DmxMap)) == 0)
+        show = app.view.show
+        assert show is not None
+        assert all(fixture.patch is None for fixture in show.fixtures)
+        await until(pilot, lambda: app.view.routes == ())
+        await pilot.press(*"undo", "enter")  # one step takes it all back
+        await until(pilot, lambda: universes() == [(1, "Stage")])
+        await until(pilot, lambda: len(app.view.routes) == 1)
+        show = app.view.show
+        assert show is not None
+        assert all(fixture.patch is not None for fixture in show.fixtures)
+        await until(pilot, lambda: len(app.query(DmxMap)) == 1)
+        assert app.query_one(DmxMap).prints
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
 
 
 def test_f6_records_and_changes_presets_from_controls_on_the_real_engine(

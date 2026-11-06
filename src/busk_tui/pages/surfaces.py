@@ -22,7 +22,6 @@ in the prompt to finish.
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from functools import partial
 from typing import Final
 
@@ -231,12 +230,14 @@ class SurfacesPage(Page):
 
     def _draw_surface_edits(self) -> None:
         surface = self.chosen_surface()
-        prefills = [] if surface is None else _prefills(
-            ("bind", commands.bind_prefill, (surface.name,)),
-            ("pickup", commands.pickup_prefill, (surface.name,)),
-        )  # fmt: skip
+        prefills: list[tuple[str, str]] = []
+        if surface is not None:
+            prefills = [
+                ("bind", commands.bind_prefill(surface.name)),
+                ("pickup", commands.pickup_prefill(surface.name)),
+            ]
         label = Text()
-        if surface is not None and prefills:
+        if surface is not None:
             label = Text.assemble(("edit ", colors.DIM), (f'"{surface.name}"', colors.CYAN))
         _update(self.surface_label, label)
         self.surface_edits.show(_buttons(prefills))
@@ -245,10 +246,10 @@ class SurfacesPage(Page):
         binding = None if self.binding is None else self.shown_bindings[self.binding]
         prefills: list[tuple[str, str]] = []
         if binding is not None and binding.kind in ("cc", "note", "osc"):
-            prefills = _prefills(
-                ("unbind", commands.unbind_prefill, (binding.surface, binding.input)),
-                ("feedback", commands.feedback_prefill, (binding.surface, binding.input)),
-            )
+            prefills = [
+                ("unbind", commands.unbind_prefill(binding.surface, binding.input)),
+                ("feedback", commands.feedback_prefill(binding.surface, binding.input)),
+            ]
         label = Text()
         if binding is not None:
             label = Text.assemble(
@@ -294,18 +295,6 @@ class SurfacesPage(Page):
                 Stop(Item(label, action=partial(self.choose_binding, row)), self.bindings, row)
             )
         return stops + strip_stops(self.binding_edits)
-
-
-def _prefills(*wanted: tuple[str, Callable[..., str], tuple[str, ...]]) -> list[tuple[str, str]]:
-    """Each ``(name, builder, arguments)`` as ``(name, pre-fill)``, leaving
-    out those busk cannot read (a name with a double quote)."""
-    found = []
-    for name, builder, arguments in wanted:
-        try:
-            found.append((name, builder(*arguments)))
-        except ValueError:
-            continue
-    return found
 
 
 def _buttons(prefills: list[tuple[str, str]]) -> list[StripButton]:

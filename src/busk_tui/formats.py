@@ -7,7 +7,7 @@ phases and stored values are written as busk's lines take them.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Iterable, Sequence
 
 from busk_tui import attributes
 from busk_tui.model import CueInfo, CueListInfo, FixtureInfo, StoredValue, Targets
@@ -145,6 +145,24 @@ def cues_text(cues: Sequence[tuple[int, str]], lists: Sequence[CueListInfo]) -> 
         f"{run[0][0]}/{run[0][1]}" + ("" if len(run) == 1 else f"–{run[-1][0]}/{run[-1][1]}")
         for run in runs
     )
+
+
+def runs(selected: Collection[int], numbers: Iterable[int]) -> list[tuple[int, int]]:
+    """The first and last of each run of the show's fixture ``numbers`` that
+    are all ``selected``: busk's ``thru`` covers every fixture between its
+    ends, so a fixture that is not selected parts two runs, and a gap in the
+    numbers does not."""
+    found: list[tuple[int, int]] = []
+    open_run = False
+    for number in sorted(numbers):
+        if number not in selected:
+            open_run = False
+        elif open_run:
+            found[-1] = (found[-1][0], number)
+        else:
+            found.append((number, number))
+            open_run = True
+    return found
 
 
 def numbers_text(numbers: Sequence[int]) -> str:

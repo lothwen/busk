@@ -9,10 +9,15 @@ from __future__ import annotations
 from typing import Any
 
 from textual.pilot import Pilot
-from tui_fakes import FakeBridge, column, drive, make_app, programmer, settle, show_model
+from textual.widgets import Input
+from tui_fakes import FakeBridge, Reply, column, drive, make_app, programmer, settle, show_model
 
+import busk
+from busk_tui import bridge as bridge_module
 from busk_tui import colors
+from busk_tui.formats import runs
 from busk_tui.model import (
+    CommandDone,
     FixtureInfo,
     ProfileInfo,
     ProgrammerChanged,
@@ -24,15 +29,21 @@ from busk_tui.model import (
 )
 from busk_tui.pages.patch import PatchPage, RoutesTable, UniverseTable, legend, route_cells
 from busk_tui.shell import BuskApp
+from busk_tui.widgets.controls import ButtonStrip
+from busk_tui.widgets.dialogs import ConfirmDialog, FormDialog, TextDialog
 from busk_tui.widgets.dmxmap import (
     OVERLAP,
     DmxMap,
+    Footprint,
     channel_text,
+    clashes,
+    first_free,
     footprints,
     overlaps,
     owners,
     used,
 )
+from busk_tui.widgets.log import LogView
 from busk_tui.widgets.prompt import HintRow
 
 TUPPER = (  # the TupperDMX show's patch: (number, profile, footprint, address)
@@ -99,6 +110,50 @@ def test_footprints_overlaps_and_the_used_count() -> None:
     channels = owners(prints)
     assert [p.fixture for p in channels[93]] == [501, 502]
     assert channels[7] == ()  # channel 8: free
+
+
+def block(*spans: tuple[int, int]) -> tuple[Footprint, ...]:
+    """Footprints from ``(start, size)``: fixture 1, 2 … in order."""
+    return tuple(Footprint(n, start, size, "") for n, (start, size) in enumerate(spans, 1))
+
+
+def test_the_first_run_of_free_channels_that_fits() -> None:
+    assert first_free((), 1) == 1
+    assert first_free((), 512) == 1
+    assert first_free((), 513) is None
+    gaps = block((1, 8), (12, 4), (30, 2))  # free: 9–11, 16–29, 32–512
+    assert first_free(gaps, 3) == 9
+    assert first_free(gaps, 4) == 16
+    assert first_free(gaps, 14) == 16
+    assert first_free(gaps, 15) == 32
+    assert first_free(gaps, 481) == 32  # to channel 512, whole
+    assert first_free(gaps, 482) is None
+    assert first_free(block((1, 512)), 1) is None  # a full universe
+    assert first_free(block((1, 511)), 1) == 512
+    assert first_free(block((2, 511)), 1) == 1
+
+
+def test_what_a_place_clashes_with_leaves_out_the_fixture_itself() -> None:
+    prints = block((10, 4), (14, 4), (12, 4))  # 1: 10–13, 2: 14–17, 3: 12–15
+    assert clashes(prints, 1, 9) == ()
+    assert clashes(prints, 1, 10) == (1,)
+    assert clashes(prints, 13, 1) == (1, 3)
+    assert clashes(prints, 13, 2) == (1, 2, 3)
+    assert clashes(prints, 13, 2, own=3) == (1, 2)
+    assert clashes(prints, 18, 4) == ()
+    assert clashes(prints, 10, 4, own=1) == (3,)
+
+
+def test_the_thru_runs_of_a_selection() -> None:
+    numbers = (101, 102, 201, 202, 203, 301)
+    assert runs({101, 102}, numbers) == [(101, 102)]
+    assert runs({201}, numbers) == [(201, 201)]  # one number
+    assert runs({102, 201}, numbers) == [(102, 201)]  # a gap in the numbers holds no fixture
+    assert runs({201, 203}, numbers) == [(201, 201), (203, 203)]  # 202 is between, not selected
+    assert runs({101, 102, 203, 301}, numbers) == [(101, 102), (203, 301)]
+    assert runs(set(), numbers) == []
+    assert runs({999}, numbers) == []  # not in the show
+    assert runs({203, 201, 202}, reversed(numbers)) == [(201, 203)]  # a show in any order
 
 
 def test_colours_by_category_else_by_profile_in_show_order() -> None:
@@ -233,14 +288,354 @@ def test_the_pane_cursor_stops_on_each_footprint() -> None:
     async def body(pilot: Pilot[int]) -> None:
         await settle(pilot, app)
         items = app.current_page.items()
-        assert [item.label for item in items[:2]] == [
+        assert [item.label for item in items[3:5]] == [
             "1.1 fixture 101 LED Bar 101",
             "1.33 fixture 201 Blinder 201",
         ]
-        assert len(items) == 11
-        await pilot.press("tab", "down", "enter")
+        assert len(items) == 3 + 11  # two universes, [+ universe…], the footprints
+        await pilot.press("tab", "down", "down", "down", "down", "enter")
         assert bridge.lines() == ["sel fixture 201"]
         assert app.query(DmxMap).first()._marked is not None
+
+    drive(app, body)
+
+
+# ------------------------------------------------------------- the universes
+
+
+def strip_of(app: BuskApp) -> ButtonStrip:
+    return app.query_one("#universe-edits", ButtonStrip)
+
+
+def strip_words(app: BuskApp) -> list[str]:
+    return [button.label.plain for button in strip_of(app).buttons]
+
+
+async def tap(pilot: Pilot[int], app: BuskApp, label: str) -> None:
+    """A click on ``[label]`` in the universes' strip."""
+    strip = strip_of(app)
+    for y, line in enumerate(strip.lines(strip.size.width)):
+        x = line.plain.find(f"[{label}]")
+        if x >= 0:
+            await pilot.click(strip, offset=(x + 1, y))
+            await pilot.pause()
+            return
+    raise AssertionError(f"no button [{label}]")
+
+
+async def choose(pilot: Pilot[int], app: BuskApp, row: int) -> None:
+    await pilot.click(app.query_one(UniverseTable), offset=(8, row + 1))
+    await pilot.pause()
+
+
+async def answer(pilot: Pilot[int], app: BuskApp, text: str) -> None:
+    """Type ``text`` over what the open dialog's input holds, then Enter."""
+    app.screen.query_one(Input).value = text
+    await pilot.press("enter")
+    await pilot.pause()
+
+
+def test_a_click_chooses_a_universe_and_the_strip_follows_it() -> None:
+    bridge = FakeBridge()
+    app = on_f8(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        table = app.query_one(UniverseTable)
+        assert strip_words(app) == ["[+ universe…]"]  # nothing chosen: [delete] is not armed
+        assert table.chosen is None
+        assert column(table, "marker") == ["", ""]
+        await choose(pilot, app, 1)
+        assert table.chosen == 1
+        assert column(table, "marker") == ["", "▸"]
+        assert strip_words(app) == [
+            "[+ universe…]", "U2 Pixels", "[rename…]", "[number…]", "[delete]",
+        ]  # fmt: skip
+        await choose(pilot, app, 0)
+        assert table.chosen == 0
+        assert strip_words(app)[1] == "U1 Stage"
+        assert bridge.lines() == []  # a stray click sends nothing
+
+    drive(app, body)
+
+
+def test_the_universes_go_by_number_as_list_universes_has_them() -> None:
+    bridge = FakeBridge()
+    universes = (UniverseView(7, "Roof"), UniverseView(1, "Stage"), UniverseView(2, "Pixels"))
+    bridge.events.append(ShowChanged(rig(universes=universes)))
+    app = make_app(bridge, page=8)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        assert column(app.query_one(UniverseTable), "number") == ["1", "2", "7"]
+        await choose(pilot, app, 2)
+        assert strip_words(app)[1] == "U7 Roof"
+        panels = [str(p.border_title) for p in app.query(".dmx-panel")]
+        assert [title.split(" · ")[1] for title in panels] == ["U1 Stage", "U2 Pixels", "U7 Roof"]
+
+    drive(app, body)
+
+
+def test_add_a_universe_through_its_form() -> None:
+    bridge = FakeBridge()
+    app = on_f8(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        await tap(pilot, app, "+ universe…")
+        dialog = app.screen
+        assert isinstance(dialog, FormDialog)
+        assert [field.value for field in dialog.inputs] == ["3", ""]  # the highest plus one
+        assert "taken: 1–2" in str(dialog.query(".note").first().render())
+        dialog.inputs[0].value = "2"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.screen is dialog  # refused: it stays
+        assert str(dialog.error.render()) == "2 is taken"
+        assert bridge.lines() == []
+        dialog.inputs[0].value = "5"
+        dialog.inputs[1].value = ' The "Roof" '
+        await pilot.press("enter")
+        await pilot.pause()
+        assert not isinstance(app.screen, FormDialog)
+        assert bridge.lines() == [r'''universe add 5 "The \"Roof\""''']
+        await tap(pilot, app, "+ universe…")
+        await pilot.press("enter")  # as it opens: the next number, and busk names it
+        await pilot.pause()
+        assert bridge.lines()[-1] == "universe add 3"
+        await tap(pilot, app, "+ universe…")
+        await pilot.press("escape")
+        await pilot.pause()
+        assert len(bridge.lines()) == 2
+
+    drive(app, body)
+
+
+def test_the_first_universe_of_a_show_is_number_one() -> None:
+    bridge = FakeBridge()
+    bridge.events.append(ShowChanged(show_model()))
+    app = make_app(bridge, page=8)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        await tap(pilot, app, "+ universe…")
+        dialog = app.screen
+        assert isinstance(dialog, FormDialog)
+        assert dialog.inputs[0].value == "1"
+        assert "taken" not in str(dialog.query(".note").first().render())
+
+    drive(app, body)
+
+
+def test_rename_a_universe_through_a_dialog() -> None:
+    bridge = FakeBridge()
+    app = on_f8(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        await choose(pilot, app, 1)
+        await tap(pilot, app, "rename…")
+        dialog = app.screen
+        assert isinstance(dialog, TextDialog)
+        assert dialog.query_one(Input).value == "Pixels"
+        await answer(pilot, app, "  ")
+        assert app.screen is dialog
+        assert str(dialog.error.render()) == "a name cannot be empty"
+        await answer(pilot, app, "Pixels")  # the same: nothing to send
+        assert bridge.lines() == []
+        await tap(pilot, app, "rename…")
+        await answer(pilot, app, "Roof")
+        assert bridge.lines() == ['rename universe 2 "Roof"']
+
+    drive(app, body)
+
+
+def test_renumber_a_universe_and_the_choice_and_the_maps_follow() -> None:
+    bridge = FakeBridge()
+    app = on_f8(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        before = list(app.query(DmxMap))
+        await choose(pilot, app, 1)
+        await tap(pilot, app, "number…")
+        dialog = app.screen
+        assert isinstance(dialog, TextDialog)
+        assert dialog.query_one(Input).value == "2"
+        assert "taken: 1" in str(dialog.query_one(".note").render())
+        await answer(pilot, app, "1")
+        assert app.screen is dialog
+        assert str(dialog.error.render()) == "1 is taken"
+        await answer(pilot, app, "2")  # its own: nothing to send
+        assert bridge.lines() == []
+        await tap(pilot, app, "number…")
+        await answer(pilot, app, "7")
+        assert bridge.lines() == ["universe 2 number 7"]
+        await settle(pilot, app)  # the line's done, before the show has it
+        assert app.current_page.chosen == 7  # type: ignore[attr-defined]
+        assert strip_words(app) == ["[+ universe…]"]
+        universes = (UniverseView(1, "Stage"), UniverseView(7, "Pixels"))
+        bridge.events.append(ShowChanged(rig(universes=universes)))
+        await settle(pilot, app)
+        assert strip_words(app)[1] == "U7 Pixels"
+        assert app.query_one(UniverseTable).chosen == 1
+        panels = [str(p.border_title) for p in app.query(".dmx-panel")]
+        assert panels == ["DMX MAP · U1 Stage · 66/512 · 2 overlaps", "DMX MAP · U7 Pixels · 0/512"]
+        after = list(app.query(DmxMap))
+        assert [m.universe for m in after] == [1, 7]
+        assert not set(after) & set(before)
+
+    drive(app, body)
+
+
+def test_the_choice_survives_the_show_moving_first_and_a_refused_number_keeps_it() -> None:
+    bridge = FakeBridge(replies={"universe 2 number 7": Reply(False, "no")})
+    app = on_f8(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        await choose(pilot, app, 1)
+        await tap(pilot, app, "number…")
+        await answer(pilot, app, "7")
+        await settle(pilot, app)
+        assert app.current_page.chosen == 2  # type: ignore[attr-defined]
+        bridge.replies.clear()
+        bridge.auto_reply = False  # the show reads the new number before the line is done
+        await tap(pilot, app, "number…")
+        await answer(pilot, app, "8")
+        universes = (UniverseView(1, "Stage"), UniverseView(8, "Pixels"))
+        bridge.events.append(ShowChanged(rig(universes=universes)))
+        await settle(pilot, app)
+        assert app.current_page.chosen is None  # type: ignore[attr-defined]
+        sent = bridge.sent[-1]
+        bridge.events.append(CommandDone(sent.ticket, sent.line, "ui", True, (), 0.0, False))
+        await settle(pilot, app)
+        assert strip_words(app)[1] == "U8 Pixels"
+
+    drive(app, body)
+
+
+def test_a_universe_that_leaves_the_show_takes_the_choice_with_it() -> None:
+    bridge = FakeBridge()
+    app = on_f8(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        await choose(pilot, app, 1)
+        await tap(pilot, app, "rename…")
+        bridge.events.append(ShowChanged(rig(universes=(UniverseView(1, "Stage"),))))
+        await settle(pilot, app)
+        await answer(pilot, app, "Roof")  # the dialog was open: nothing to rename now
+        assert bridge.lines() == []
+        assert strip_words(app) == ["[+ universe…]"]
+        assert app.query_one(UniverseTable).chosen is None
+
+    drive(app, body)
+
+
+def test_delete_asks_busks_question_and_sends_on_yes(club: busk.OfflineShow) -> None:
+    bridge = FakeBridge(show=club)
+    bridge.events.append(ShowChanged(bridge_module.show_model(club.show)))
+    app = make_app(bridge, page=8)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        await choose(pilot, app, 0)
+        await tap(pilot, app, "delete")
+        dialog = app.screen
+        assert isinstance(dialog, ConfirmDialog)
+        assert str(dialog.query_one(".question").render()) == (
+            'Delete universe 1 "Stage"? 7 fixtures lose their patch and 1 route goes.'
+        )
+        await pilot.press("n")
+        await pilot.pause()
+        assert bridge.lines() == []
+        log = app.query_one(LogView).entries
+        assert ("info", "cancelled: delete universe 1 cascade") in log
+        await tap(pilot, app, "delete")
+        await pilot.press("y")
+        await pilot.pause()
+        assert bridge.lines() == ["delete universe 1 cascade"]
+
+    drive(app, body)
+
+
+def test_the_pane_cursor_stops_on_the_universes_and_their_strip_at_any_width() -> None:
+    bridge = FakeBridge()
+    app = on_f8(bridge)
+
+    async def stops(pilot: Pilot[int], columns: int) -> None:
+        await pilot.resize_terminal(columns, 48)
+        await settle(pilot, app)
+        labels = [item.label for item in app.current_page.items()]
+        assert labels[:3] == ["universe 1 Stage", "universe 2 Pixels", "[+ universe…]"]
+        await pilot.press("tab", "down", "enter")  # universe 2, chosen from the keys
+        await pilot.pause()
+        labels = [item.label for item in app.current_page.items()]
+        assert labels[:7] == [
+            "universe 1 Stage", "universe 2 Pixels", "[+ universe…]", "[rename…]", "[number…]",
+            "delete universe 2 cascade", "1.1 fixture 101 LED Bar 101",
+        ]  # fmt: skip
+        assert app.cursor.current is not None
+        assert app.cursor.current.label == "universe 2 Pixels"  # it stays on the row
+        assert app.query_one(UniverseTable).chosen == 1
+        strip = strip_of(app)
+        assert strip.region.y > app.query_one(UniverseTable).region.y
+        await pilot.press("down", "down")  # past [+ universe…], which the note does not stop
+        assert strip._marked == 2
+        await pilot.press("enter")
+        await pilot.pause()
+        assert isinstance(app.screen, TextDialog)
+        await pilot.press("escape")
+        await pilot.pause()
+        await pilot.press("escape")  # out of the cursor
+        assert not app.cursor.active
+
+    async def body(pilot: Pilot[int]) -> None:
+        await stops(pilot, 150)
+        await stops(pilot, 99)
+        assert bridge.lines() == []
+
+    drive(app, body)
+
+
+def test_a_name_with_markup_in_it_is_only_words() -> None:
+    bridge = FakeBridge()
+    name = "x[/]y [red]z"
+    bridge.events.append(ShowChanged(rig(universes=(UniverseView(1, name),))))
+    app = make_app(bridge, page=8)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        await choose(pilot, app, 0)
+        assert strip_words(app)[1] == f"U1 {name}"
+        assert column(app.query_one(UniverseTable), "name") == [name]
+        title = str(app.query_one(".dmx-panel").border_title)  # as markup: its brackets escaped
+        assert r"x\[/]y \[red]z" in title
+        await tap(pilot, app, "rename…")
+        assert app.screen.query_one(Input).value == name
+
+    drive(app, body)
+
+
+def test_the_strip_wraps_inside_a_narrow_panel() -> None:
+    bridge = FakeBridge()
+    universes = (UniverseView(1, "A universe with a very long name for a strip to hold"),)
+    bridge.events.append(ShowChanged(rig(universes=universes)))
+    app = make_app(bridge, page=8)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await pilot.resize_terminal(100, 40)
+        await settle(pilot, app)
+        await choose(pilot, app, 0)
+        strip = strip_of(app)
+        lines = strip.lines(strip.size.width)
+        assert len(lines) > 1
+        assert strip.size.height == len(lines)
+        assert all(line.cell_len <= strip.size.width for line in lines)
+        assert any(line.plain.startswith("U1 A universe") and "…" in line.plain for line in lines)
+        await tap(pilot, app, "delete")  # a line down, and it still reaches its button
+        assert bridge.lines() == ["delete universe 1 cascade"]
 
     drive(app, body)
 

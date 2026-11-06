@@ -301,6 +301,7 @@ class Stub:
     effects: Any = None
     output: Any = None
     effect_templates: tuple[busk.EffectTemplateInfo, ...] = ()
+    fixture_profiles: tuple[busk.FixtureProfileInfo, ...] = ()
     warnings: tuple[Any, ...] = ()
     gates: dict[str, threading.Event] = field(default_factory=dict)  # line → held until set
     raises: set[str] = field(default_factory=set)

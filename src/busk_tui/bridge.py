@@ -50,6 +50,7 @@ from busk import (
     EngineSnapshot,
     Expected,
     FixtureProfile,
+    FixtureProfileInfo,
     LiveShow,
     OutputSnapshot,
     ProfileLibrary,
@@ -86,11 +87,14 @@ from busk_tui.model import (
     GroupInfo,
     HealthChanged,
     HeldValue,
+    Limits,
     LiveChanged,
     LiveState,
     Location,
     MasterLevel,
     MasterView,
+    ModeInfo,
+    Orientation,
     Origin,
     OutputChanged,
     OutputModel,
@@ -100,6 +104,7 @@ from busk_tui.model import (
     PlaybackView,
     PresetEntry,
     PresetInfo,
+    ProfileChoice,
     ProfileInfo,
     ProgrammerChanged,
     ProgrammerModel,
@@ -211,6 +216,7 @@ class _Seen:
 
     doc: Show | None = None
     templates: tuple[EffectTemplateInfo, ...] | None = None
+    choices: tuple[FixtureProfileInfo, ...] | None = None
     show: ShowModel | None = None
     masters: dict[str, MasterView] = field(default_factory=dict)  # master id → its view
     seq: int | None = None
@@ -584,16 +590,17 @@ class Bridge:
         put = self._events.put
         doc = show.show  # one read: replaced, never changed, by an edit
         templates = show.effect_templates  # the same tuple until one changes
+        choices = show.fixture_profiles  # so too
         # Each part is marked seen only once converted: a conversion that
         # raises is tried again at the next look.
         new_doc = doc is not seen.doc
-        if new_doc or templates is not seen.templates:
-            model = show_model(doc, templates)
+        if new_doc or templates is not seen.templates or choices is not seen.choices:
+            model = show_model(doc, templates, choices)
             masters: dict[str, MasterView] = {
                 master["id"]: view
                 for master, view in zip(doc["masters"], model.masters, strict=True)
             }
-            seen.doc, seen.templates, seen.masters = doc, templates, masters
+            seen.doc, seen.templates, seen.choices, seen.masters = doc, templates, choices, masters
             if model != seen.show:
                 seen.show = model
                 put(ShowChanged(model))
@@ -716,9 +723,14 @@ def _names(doc: Show) -> _Names:
     return names
 
 
-def show_model(doc: Show, templates: Sequence[EffectTemplateInfo] = ()) -> ShowModel:
+def show_model(
+    doc: Show,
+    templates: Sequence[EffectTemplateInfo] = (),
+    choices: Sequence[FixtureProfileInfo] = (),
+) -> ShowModel:
     """The document as the pages use it; ``templates``: what ``effect add``
-    takes (``LiveShow.effect_templates``)."""
+    takes (``LiveShow.effect_templates``); ``choices``: what ``fixture add``
+    takes (``LiveShow.fixture_profiles``)."""
     names = _names(doc)
     groups = names.groups
     playbacks = {playback["id"]: playback["number"] for playback in doc["playbacks"]}
@@ -797,6 +809,17 @@ def show_model(doc: Show, templates: Sequence[EffectTemplateInfo] = ()) -> ShowM
             for template in templates
         ),
         bindings=tuple(binding_info(binding, doc, names) for binding in doc["bindings"]),
+        choices=tuple(
+            ProfileChoice(
+                name=profile.name,
+                source=profile.source,
+                manufacturer=profile.manufacturer,
+                modes=tuple(
+                    ModeInfo(mode.name, mode.footprint, mode.elements) for mode in profile.modes
+                ),
+            )
+            for profile in choices
+        ),
     )
 
 
@@ -815,9 +838,9 @@ def fixture_info(
     profiles: Mapping[Any, str],
     universes: Mapping[Any, int],
 ) -> FixtureInfo:
-    """A fixture with its profile and mode by name, its footprint, and its
-    patch by universe number (``modes``, ``profiles``, ``universes``: the
-    document's, by id)."""
+    """A fixture with its profile and mode by name, its footprint, its patch
+    by universe number, its limits and how it hangs (``modes``, ``profiles``,
+    ``universes``: the document's, by id)."""
     mode = modes.get((fixture["profileId"], fixture["modeId"]))
     patch = fixture["patch"]
     place = fixture.get("location")
@@ -837,6 +860,17 @@ def fixture_info(
         else (universes[patch["universeId"]], patch["address"]),
         split=bool(fixture.get("elementPatch")),
         location=location,
+        limits=_limits(fixture.get("limits", {})),
+        orientation=Orientation(**fixture["orientation"]),
+    )
+
+
+def _limits(limits: Mapping[str, Any]) -> Limits:
+    pan, tilt = limits.get("pan"), limits.get("tilt")
+    return Limits(
+        pan=None if pan is None else (float(pan[0]), float(pan[1])),
+        tilt=None if tilt is None else (float(tilt[0]), float(tilt[1])),
+        intensity=limits.get("intensityMax"),
     )
 
 
@@ -907,7 +941,14 @@ def profile_info(profile: FixtureProfile) -> ProfileInfo:
         )
         ranges.append((attribute, low, high))
     return ProfileInfo(
-        profile["name"], frozenset(attributes), tuple(ranges), profile.get("category")
+        profile["name"],
+        frozenset(attributes),
+        tuple(ranges),
+        profile.get("category"),
+        tuple(
+            ModeInfo(mode["name"], mode["footprint"], len(mode["elements"]))
+            for mode in profile["modes"]
+        ),
     )
 
 
@@ -1144,6 +1185,7 @@ def route_views(doc: Show, status: tuple[RouteStatus, ...] | None) -> tuple[Rout
                 address=address,
                 destination=destination,
                 errors=0 if found is None else found.errors,
+                id=route["id"],
             )
         )
     return tuple(views)

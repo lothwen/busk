@@ -13,6 +13,7 @@ there, not on stage. Each phase adds its builders here and to that test.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
@@ -30,11 +31,8 @@ def percent(level: float) -> str:
 
 
 def quoted(name: str) -> str:
-    """A name as busk reads it, in double quotes. busk has no escape for a
-    quote inside a name, so such a name is refused (:class:`ValueError`)."""
-    if '"' in name:
-        raise ValueError(f"a name with a double quote cannot be typed: {name!r}")
-    return f'"{name}"'
+    """A name as busk reads it: in double quotes, with JSON's escapes."""
+    return json.dumps(name, ensure_ascii=False)
 
 
 def help_() -> Line:
@@ -262,6 +260,150 @@ def renumber_preset(pool: str, preset_number: int, new_number: int) -> Line:
     return Line(f"preset {pool} {preset_number} number {new_number}")
 
 
+# -------------------------------------------------------------------- rig
+
+
+def _span(first: int, last: int) -> str:
+    """``101``, or ``101 thru 104``."""
+    return str(first) if first == last else f"{first} thru {last}"
+
+
+def _address(at: tuple[int, int]) -> str:
+    """A universe and an address as busk reads them: ``1.85``."""
+    return f"{at[0]}.{at[1]}"
+
+
+def fixture_add(
+    first: int, last: int, profile: str, mode: str, at: tuple[int, int] | None = None
+) -> Line:
+    """``fixture add 302 thru 305 "Generic Spot 16ch" mode "16ch" at 1.85``;
+    busk patches each fixture after the one before it."""
+    where = "" if at is None else f" at {_address(at)}"
+    return Line(f"fixture add {_span(first, last)} {quoted(profile)} mode {quoted(mode)}{where}")
+
+
+def delete_fixture(fixture: int) -> Line:
+    """``delete fixture 101 cascade``: busk asks, naming what it leaves."""
+    return Line(f"delete fixture {fixture} cascade")
+
+
+def rename_fixture(fixture: int, name: str) -> Line:
+    return Line(f"rename fixture {fixture} {quoted(name)}")
+
+
+def renumber_fixture(fixture: int, new_number: int) -> Line:
+    """``fixture 101 number 150``."""
+    return Line(f"fixture {fixture} number {new_number}")
+
+
+def patch_fixture(fixture: int, at: tuple[int, int] | None) -> Line:
+    """``fixture 101 patch 1.85``; ``at`` ``None``: ``fixture 101 patch none``."""
+    return Line(f"fixture {fixture} patch {'none' if at is None else _address(at)}")
+
+
+def limit_range(first: int, last: int, attribute: str, low: float, high: float) -> Line:
+    """``fixture 101 thru 102 limits tilt -90 10`` (``thru`` covers every
+    fixture between its ends)."""
+    return Line(f"fixture {_span(first, last)} limits {attribute} {number(low)} {number(high)}")
+
+
+def limit_intensity(first: int, last: int, level: float) -> Line:
+    """``fixture 301 limits intensity 50%``."""
+    return Line(f"fixture {_span(first, last)} limits intensity {percent(level)}")
+
+
+def no_limit(first: int, last: int, attribute: str) -> Line:
+    """``fixture 101 limits tilt none``: that limit goes, the others stay."""
+    return Line(f"fixture {_span(first, last)} limits {attribute} none")
+
+
+def no_limits(first: int, last: int) -> Line:
+    """``fixture 101 limits none``: all of them go."""
+    return Line(f"fixture {_span(first, last)} limits none")
+
+
+def orientation(fixture: int, key: str, value: bool | float) -> Line:
+    """``fixture 101 orientation.invertPan true``, ``fixture 101
+    orientation.panOffset 30``."""
+    text = str(value).lower() if isinstance(value, bool) else number(value)
+    return Line(f"fixture {fixture} orientation.{key} {text}")
+
+
+def location(fixture: int, values: Sequence[float]) -> Line:
+    """``fixture 101 location {"x": 0, "y": 0, "z": 0, "rx": 0, "ry": 0, "rz": 0}``."""
+    pairs = ", ".join(
+        f'"{key}": {number(value)}'
+        for key, value in zip(("x", "y", "z", "rx", "ry", "rz"), values, strict=True)
+    )
+    return Line(f"fixture {fixture} location {{{pairs}}}")
+
+
+def no_location(fixture: int) -> Line:
+    return Line(f"fixture {fixture} location none")
+
+
+def fixture_mode(fixture: int, mode: str) -> Line:
+    """``fixture 101 mode "16ch"``."""
+    return Line(f"fixture {fixture} mode {quoted(mode)}")
+
+
+def fixture_profile(fixture: int, profile: str, mode: str) -> Line:
+    """``fixture 101 profile "RGB Par 3ch" mode "3ch"``."""
+    return Line(f"fixture {fixture} profile {quoted(profile)} mode {quoted(mode)}")
+
+
+def category(profile: str, word: str) -> Line:
+    """``profile "Generic Spot 16ch" category spot``, or ``… category none``."""
+    return Line(f"profile {quoted(profile)} category {word}")
+
+
+def universe_add(universe: int, name: str | None = None) -> Line:
+    """``universe add 2 "Balcony"``; without a name, busk names it (``Universe 2``)."""
+    return Line(f"universe add {universe}" + ("" if name is None else f" {quoted(name)}"))
+
+
+def delete_universe(universe: int) -> Line:
+    """``delete universe 2 cascade``: busk asks, naming what goes."""
+    return Line(f"delete universe {universe} cascade")
+
+
+def rename_universe(universe: int, name: str) -> Line:
+    return Line(f"rename universe {universe} {quoted(name)}")
+
+
+def renumber_universe(universe: int, new_number: int) -> Line:
+    """``universe 2 number 7``."""
+    return Line(f"universe {universe} number {new_number}")
+
+
+def route_add(
+    universe: int,
+    protocol: Literal["sacn", "artnet", "dmxusb"],
+    address: str,
+    destination: str | None = None,
+    hz: float | None = None,
+) -> Line:
+    """``route add 2 sacn 2``, with the address and destination as
+    :class:`~busk_tui.model.RouteView` has them: ``route add 2 artnet 0.0.1
+    unicast 10.0.0.50``, ``route add 2 dmxusb enttecPro /dev/ttyUSB0 hz 30``."""
+    words = ["route", "add", str(universe), protocol, address]
+    if destination is not None:
+        words.append(destination)
+    if hz is not None:
+        words += ["hz", number(hz)]
+    return Line(" ".join(words))
+
+
+def delete_route(route: str) -> Line:
+    """``delete route r-1``: busk asks."""
+    return Line(f"delete route {route}")
+
+
+def route_on(route: str, on: bool) -> Line:
+    """``route r-1 on``; busk asks before ``off``."""
+    return Line(f"route {route} {'on' if on else 'off'}")
+
+
 # ------------------------------------------------------------------- cues
 
 
@@ -316,15 +458,10 @@ def patch_prefill(fixture: int) -> str:
     return f"fixture {fixture} patch "
 
 
-def location_prefill(fixture: int, location: Sequence[float] | None) -> str:
-    """``fixture 101 location {"x": 0, "y": 0, "z": 0, "rx": 0, "ry": 0, "rz": 0}``,
-    with the fixture's own place when it has one, to change."""
-    values = tuple(location) if location is not None else (0.0,) * 6
-    pairs = ", ".join(
-        f'"{key}": {number(value)}'
-        for key, value in zip(("x", "y", "z", "rx", "ry", "rz"), values, strict=True)
-    )
-    return f"fixture {fixture} location {{{pairs}}}"
+def location_prefill(fixture: int, place: Sequence[float] | None) -> str:
+    """:func:`location`, whole, at the fixture's own place when it has one,
+    to change."""
+    return location(fixture, (0.0,) * 6 if place is None else place).text
 
 
 def rename_fixture_prefill(fixture: int) -> str:

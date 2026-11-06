@@ -1,9 +1,13 @@
 """F8 Patch (spec §8.8, plan Phase 4): the universes, the output routes and
 their state, and a DMX map per universe.
 
-UNIVERSES: number, name, how many fixtures are patched in it, how many of
-its channels they take (``188/512``) and how many pairs of them overlap
-(red).
+UNIVERSES, by number: its number, name, how many fixtures are patched in it,
+how many of its channels they take (``188/512``) and how many pairs of them
+overlap (red). A click chooses a universe (``▸``); nothing is chosen at
+first. The strip under the table holds ``[+ universe…]``, a form for ``universe
+add``, and for the chosen universe ``[rename…]`` and ``[number…]``, each a
+dialog and then one line, and ``[delete]``: ``delete universe 2 cascade``,
+after busk's question, which says what goes.
 
 ROUTES: the universe, protocol, address and destination as ``route add``
 takes them, the light (green while open, blinking while it sends, red when
@@ -14,12 +18,15 @@ packets sent per second, and the state with busk's word for why (``failed:
 A DMX MAP per universe (:mod:`busk_tui.widgets.dmxmap`), and a legend of
 the fixture types it shows. A click on a fixture's channels selects it
 (``sel fixture 101``; both fixtures of an overlap); a Shift-click adds it
-to the selection or takes it out. The pane cursor stops on each footprint.
+to the selection or takes it out. The pane cursor stops on each universe and
+its strip, then on each footprint.
 """
 
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
+from functools import partial
 from typing import Final
 
 from rich.text import Text
@@ -28,14 +35,24 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 
 from busk_tui import colors, commands
-from busk_tui.model import FixtureInfo, ProfileInfo, RouteView, ShowModel
+from busk_tui.commands import Line
+from busk_tui.formats import numbers_text
+from busk_tui.model import FixtureInfo, ProfileInfo, RouteView, ShowModel, UniverseView
 from busk_tui.nav import Item, Stop
 from busk_tui.pages.base import Page, Part, View
-from busk_tui.widgets.controls import RunLine
+from busk_tui.widgets.controls import ButtonStrip, RunLine, StripButton, button_label
+from busk_tui.widgets.dialogs import (
+    FormDialog,
+    TextDialog,
+    check_name,
+    check_number,
+    next_number,
+)
 from busk_tui.widgets.dmxmap import OVERLAP, DmxMap, Footprint, footprints, overlaps, used
 from busk_tui.widgets.frame import RouteLights, route_light
 from busk_tui.widgets.legend import Legend
 from busk_tui.widgets.panel import Panel
+from busk_tui.widgets.quick import strip_stops
 from busk_tui.widgets.rows import Cells, Column, RowTable, cell
 
 NARROW: Final = 100
@@ -50,6 +67,7 @@ NO_ROUTES: Final = "no routes · route add 1 sacn 1"
 
 class UniverseTable(RowTable):
     COLUMNS = (
+        Column("marker", "", 1),
         Column("number", "U", 3, right=True),
         Column("name", "name", 8, flex=True),
         Column("fixtures", "fixtures", 8, right=True),
@@ -96,9 +114,12 @@ def legend(show: ShowModel, profile_colors: dict[str, str]) -> list[Text]:
     return keys
 
 
-def universe_cells(number: int, name: str, fixtures: int, prints: tuple[Footprint, ...]) -> Cells:
+def universe_cells(
+    number: int, name: str, fixtures: int, prints: tuple[Footprint, ...], chosen: bool
+) -> Cells:
     pairs = overlaps(prints)
     return {
+        "marker": cell("▸" if chosen else "", colors.CYAN),
         "number": cell(str(number), colors.CYAN),
         "name": cell(name, colors.FG),
         "fixtures": cell(str(fixtures), colors.MID),
@@ -150,10 +171,13 @@ class PatchPage(Page):
     def __init__(self, number: int, title: str) -> None:
         super().__init__(number, title)
         self.universes = UniverseTable(Text(NO_UNIVERSES, style=colors.DIM), id="universe-table")
+        self.universe_edits = ButtonStrip(id="universe-edits")
         self.routes = RoutesTable(Text(NO_ROUTES, style=colors.DIM), id="route-table")
         self.maps_box = Vertical(id="dmx-maps")
         self.legend = Legend(id="patch-legend")
         self.maps: dict[int, tuple[Panel, DmxMap]] = {}
+        self.shown_universes: tuple[UniverseView, ...] = ()  # by number
+        self.chosen: int | None = None  # the universe clicked last, by number
         self.shown_routes: tuple[RouteView, ...] = ()
         self._view = View()
         self._lights = RouteLights()
@@ -163,7 +187,7 @@ class PatchPage(Page):
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="patch-row"):
-            yield Panel("universes", self.universes, id="universes-panel")
+            yield Panel("universes", self.universes, self.universe_edits, id="universes-panel")
             yield Panel("routes", self.routes, id="routes-panel")
         yield self.maps_box
         yield self.legend
@@ -177,6 +201,10 @@ class PatchPage(Page):
     def update_view(self, view: View, changed: frozenset[Part]) -> None:
         self._view = view
         if "show" in changed:
+            universes = () if view.show is None else view.show.universes
+            self.shown_universes = tuple(sorted(universes, key=lambda u: u.number))
+            if self.chosen_universe() is None:
+                self.chosen = None
             self._draw_patch()
         if changed & {"show", "routes"}:
             self.shown_routes = view.routes
@@ -231,13 +259,18 @@ class PatchPage(Page):
             )
             for universe in show.universes
         }
+        shown = self.shown_universes
         self.universes.show(
             [
-                universe_cells(u.number, u.name, counts[u.number], prints[u.number])
-                for u in show.universes
-            ]
+                universe_cells(
+                    u.number, u.name, counts[u.number], prints[u.number], u.number == self.chosen
+                )
+                for u in shown
+            ],
+            chosen=next((row for row, u in enumerate(shown) if u.number == self.chosen), None),
         )
-        numbers = tuple(universe.number for universe in show.universes)
+        self._draw_universe_edits()
+        numbers = tuple(universe.number for universe in shown)
         if numbers != tuple(self.maps):
             self.maps_box.remove_children()
             self.maps = {}
@@ -245,7 +278,7 @@ class PatchPage(Page):
                 dmx_map = DmxMap(number)
                 self.maps[number] = (Panel("dmx map", dmx_map, classes="dmx-panel"), dmx_map)
             self.maps_box.mount_all([panel for panel, _ in self.maps.values()])
-        for universe in show.universes:
+        for universe in shown:
             panel, dmx_map = self.maps[universe.number]
             these = prints[universe.number]
             meta = f"U{universe.number} {universe.name} · {used(these)}/512"
@@ -256,7 +289,104 @@ class PatchPage(Page):
             dmx_map.show(these)
         self.legend.show(legend(show, profile_colors))
 
+    def _draw_universe_edits(self) -> None:
+        def ask(label: str, action: Callable[[], None]) -> StripButton:
+            return StripButton(button_label(label, colors.MID), Line(""), action=action)
+
+        buttons = [ask("+ universe…", self.ask_add)]
+        universe = self.chosen_universe()
+        if universe is not None:
+            name = Text(f"U{universe.number} {universe.name}", style=colors.FG)
+            delete = commands.delete_universe(universe.number)
+            buttons += [
+                StripButton(name, Line(""), note=True),
+                ask("rename…", self.ask_name),
+                ask("number…", self.ask_number),
+                StripButton(button_label("delete", colors.RED), delete),
+            ]
+        self.universe_edits.show(buttons)
+
+    # ------------------------------------------------------- the universes
+
+    def chosen_universe(self) -> UniverseView | None:
+        return next((u for u in self.shown_universes if u.number == self.chosen), None)
+
+    def choose(self, number: int) -> None:
+        """The universe the strip acts on."""
+        self.chosen = number
+        self._draw_patch()
+
+    def _taken(self) -> frozenset[int]:
+        return frozenset(universe.number for universe in self.shown_universes)
+
+    def ask_add(self) -> None:
+        """``[+ universe…]``: ``universe add 2 "Balcony"``. An empty name
+        leaves naming it to busk."""
+        taken = self._taken()
+        check = check_number(taken, None)
+
+        def given(values: tuple[str, ...] | None) -> None:
+            if values is not None:
+                number, name = values
+                line = commands.universe_add(int(number.strip()), name.strip() or None)
+                self.post_message(RunLine(line))
+
+        note = "no name: busk names it Universe <number>"
+        if taken:
+            note = f"taken: {numbers_text(sorted(taken))}\n{note}"
+        fields = (("number", str(next_number(taken))), ("name", ""))
+        dialog = FormDialog("NEW UNIVERSE", fields, lambda values: check(values[0]), note)
+        self.app.push_screen(dialog, given)
+
+    def ask_name(self) -> None:
+        """``[rename…]``: ``rename universe 2 "Roof"``."""
+        universe = self.chosen_universe()
+        if universe is None:
+            return
+
+        def given(text: str | None) -> None:
+            if text is None or self.chosen != universe.number:
+                return
+            name = text.strip()
+            if name != universe.name:
+                self.post_message(RunLine(commands.rename_universe(universe.number, name)))
+
+        title = f"RENAME · universe {universe.number}"
+        self.app.push_screen(TextDialog(title, universe.name, check_name(True)), given)
+
+    def ask_number(self) -> None:
+        """``[number…]``: ``universe 2 number 7``. The choice follows it."""
+        universe = self.chosen_universe()
+        if universe is None:
+            return
+        taken = self._taken()
+        others = sorted(taken - {universe.number})
+
+        def given(text: str | None) -> None:
+            if text is None or self.chosen != universe.number:
+                return
+            number = int(text.strip())
+            if number == universe.number:
+                return
+
+            def renumbered(ok: bool) -> None:
+                if ok and self.chosen in (universe.number, None):
+                    self.choose(number)
+
+            line = commands.renumber_universe(universe.number, number)
+            self.post_message(RunLine(line, done=renumbered))
+
+        title = f"NUMBER · universe {universe.number}"
+        note = f"taken: {numbers_text(others)}" if others else ""
+        check = check_number(taken, universe.number)
+        self.app.push_screen(TextDialog(title, str(universe.number), check, note), given)
+
     # ----------------------------------------------------------- clicks
+
+    def on_row_table_clicked(self, message: RowTable.Clicked) -> None:
+        message.stop()
+        if message.table is self.universes and message.row < len(self.shown_universes):
+            self.choose(self.shown_universes[message.row].number)
 
     def on_dmx_map_clicked(self, message: DmxMap.Clicked) -> None:
         message.stop()
@@ -278,6 +408,12 @@ class PatchPage(Page):
         show = self._view.show
         names = {} if show is None else {f.number: f for f in show.fixtures}
         stops: list[Stop] = []
+        self.universes.spots = [(row, None) for row in range(len(self.shown_universes))]
+        for row, shown in enumerate(self.shown_universes):
+            label = f"universe {shown.number} {shown.name}".rstrip()
+            item = Item(label, action=partial(self.choose, shown.number))
+            stops.append(Stop(item, self.universes, row))
+        stops += strip_stops(self.universe_edits)
         for universe, (_, dmx_map) in self.maps.items():
             for index, print_ in enumerate(dmx_map.prints):
                 fixture: FixtureInfo | None = names.get(print_.fixture)

@@ -1,5 +1,5 @@
-"""F3 Fixtures (spec §8.3, plan Phase 4): every fixture with its patch and
-its live output (:mod:`busk_tui.widgets.fixturetable`).
+"""F3 Fixtures (spec §8.3, plan Phase 4): every fixture, by number, with its
+patch and its live output (:mod:`busk_tui.widgets.fixturetable`).
 
 A click on a row selects the fixture (``sel fixture 101``); a Shift-click
 adds it to the selection or takes it out (``sel + fixture 101``, ``sel -
@@ -71,6 +71,9 @@ class FixturesPage(Page):
 
     def update_view(self, view: View, changed: frozenset[Part]) -> None:
         self._view = view
+        if "show" in changed:
+            fixtures = () if view.show is None else view.show.fixtures
+            self.shown = tuple(sorted(fixtures, key=lambda fixture: fixture.number))
         if changed & {"show", "programmer", "output"}:
             self._draw()
         if changed & {"show", "programmer"}:
@@ -96,7 +99,6 @@ class FixturesPage(Page):
 
     def _draw(self) -> None:
         view, show = self._view, self._view.show
-        self.shown = () if show is None else show.fixtures
         categories = {} if show is None else {p.name: p.category for p in show.profiles}
         if self._outputs[0] is not view.output:
             self._outputs = (view.output, by_fixture(view.output))
@@ -180,11 +182,5 @@ class FixturesPage(Page):
 
 
 def _category_prefill(profile: str) -> str | None:
-    """``profile "<name>" category ``; ``None`` for a name busk cannot read
-    (a double quote in it), or no profile."""
-    if not profile:
-        return None
-    try:
-        return commands.category_prefill(profile)
-    except ValueError:
-        return None
+    """``profile "<name>" category ``; ``None`` without a profile."""
+    return commands.category_prefill(profile) if profile else None

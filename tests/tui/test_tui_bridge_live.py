@@ -144,6 +144,39 @@ def test_a_selection_and_its_undo_step(live: tuple[Bridge, Drained]) -> None:
     drained.until(lambda e: isinstance(e, SessionChanged) and e.session.undo == 1)
 
 
+def test_a_profile_moves_from_the_library_to_the_show_once_a_fixture_takes_it(
+    live: tuple[Bridge, Drained],
+) -> None:
+    bridge, drained = live
+
+    def source(event: BridgeEvent, wanted: str) -> bool:
+        if not isinstance(event, ShowChanged):
+            return False
+        par = next(c for c in event.show.choices if c.name == "RGB Par 3ch")
+        return par.source == wanted
+
+    drained.until(lambda e: source(e, "library"))
+    bridge.send('fixture add 901 "RGB Par 3ch" mode "3ch"', "typed")
+    event = drained.until(lambda e: source(e, "show"))
+    assert isinstance(event, ShowChanged)
+    fixture = event.show.fixture(901)
+    assert fixture is not None
+    assert fixture.footprint == 3
+
+
+def test_the_routes_carry_the_id_their_lines_name(live: tuple[Bridge, Drained]) -> None:
+    bridge, drained = live
+    event = drained.until(lambda e: isinstance(e, RoutesChanged) and bool(e.routes))
+    assert isinstance(event, RoutesChanged)
+    route = event.routes[0].id
+    assert route.startswith("r-")
+    bridge.send(f"route {route} off", "typed")
+    done = drained.until(lambda e: isinstance(e, CommandDone) and e.line == f"route {route} off")
+    assert isinstance(done, CommandDone)
+    assert done.ok
+    drained.until(lambda e: isinstance(e, RoutesChanged) and not e.routes[0].enabled)
+
+
 def test_the_options_follow_the_selection(live: tuple[Bridge, Drained]) -> None:
     """The reader asks busk's completion for the options on its own thread."""
     bridge, drained = live
