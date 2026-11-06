@@ -12,6 +12,10 @@ tilt and zoom (on fixtures that have them), and what drives its intensity
 Source colouring: intensity and the source by what drives the intensity,
 pan and tilt by what drives the position, zoom by what drives the beam
 (magenta programmer, foreground playback, green effect, dim nothing).
+
+In edit mode :class:`RigTable` takes its place: the same row up to the patch,
+then what the FIXTURE panel sets, the limits (``pan tilt int``) and the place
+(``●``), and the chosen fixture's number lit. It reads no output.
 """
 
 from __future__ import annotations
@@ -23,7 +27,8 @@ from rich.text import Text
 
 from busk_tui import colors
 from busk_tui.colors import ColorMode
-from busk_tui.model import ElementOutput, FixtureInfo, OutputModel, Source
+from busk_tui.model import ElementOutput, FixtureInfo, Limits, OutputModel, Source
+from busk_tui.widgets.options import LIT
 from busk_tui.widgets.rows import Cells, Column, RowTable, cell
 
 COLOR_CELLS: Final = 12
@@ -31,7 +36,7 @@ COLOR_CELLS: Final = 12
 when it has more."""
 
 NONE: Final = "—"
-UNKNOWN: Final = "·"  # no output read yet
+UNKNOWN: Final = "·"  # no output read yet; no place
 
 _RANK: Final[dict[Source, int]] = {"programmer": 3, "effect": 2, "playback": 1, "none": 0}
 
@@ -51,6 +56,20 @@ class FixtureTable(RowTable):
         Column("tilt", "tilt", 5, right=True),
         Column("zoom", "zoom", 4, right=True, drop=4),
         Column("source", "src", 7),
+    )
+
+
+class RigTable(RowTable):
+    COLUMNS = (
+        Column("marker", "", 1),
+        Column("number", "#", 4, right=True),
+        Column("name", "name", 10, flex=True),
+        Column("profile", "profile", 12, drop=3, flex=True),
+        Column("category", "type", 6, drop=6),
+        Column("mode", "mode", 9, drop=5),
+        Column("patch", "patch", 7),
+        Column("limits", "limits", 12),
+        Column("place", "place", 5, drop=4),
     )
 
 
@@ -74,6 +93,40 @@ def patch_text(fixture: FixtureInfo) -> Text:
     return text
 
 
+def profile_text(fixture: FixtureInfo) -> str:
+    """Its profile's name, with ``×12`` for a fixture of twelve elements."""
+    return fixture.profile + (f" ×{fixture.elements}" if fixture.elements > 1 else "")
+
+
+def identity_cells(fixture: FixtureInfo, selected: bool, category: str | None) -> dict[str, Text]:
+    """What a row of either table starts with: the fixture, up to its patch."""
+    return {
+        "marker": cell("▸" if selected else "", colors.CYAN),
+        "number": cell(str(fixture.number), colors.CYAN if selected else colors.MID),
+        "name": cell(fixture.name, colors.FG) if fixture.name else cell(NONE, colors.BORDER),
+        "profile": cell(profile_text(fixture), colors.MID),
+        "category": cell(category, colors.DIM) if category else cell(NONE, colors.BORDER),
+        "mode": cell(fixture.mode, colors.DIM),
+        "patch": patch_text(fixture),
+    }
+
+
+def limits_text(limits: Limits) -> str:
+    """The limits a fixture has: ``tilt``, ``pan tilt int``."""
+    named = (("pan", limits.pan), ("tilt", limits.tilt), ("int", limits.intensity))
+    return " ".join(name for name, limit in named if limit is not None)
+
+
+def rig_cells(fixture: FixtureInfo, selected: bool, chosen: bool, category: str | None) -> Cells:
+    cells = identity_cells(fixture, selected, category)
+    if chosen:
+        cells["number"] = cell(str(fixture.number), LIT)
+    cells["limits"] = cell(limits_text(fixture.limits), colors.AMBER)
+    placed = fixture.location is not None
+    cells["place"] = cell("●", colors.MID) if placed else cell(UNKNOWN, colors.BORDER)
+    return cells
+
+
 def fixture_cells(
     fixture: FixtureInfo,
     outputs: Sequence[ElementOutput],
@@ -81,16 +134,7 @@ def fixture_cells(
     category: str | None,
     mode: ColorMode,
 ) -> Cells:
-    profile = fixture.profile + (f" ×{fixture.elements}" if fixture.elements > 1 else "")
-    cells: dict[str, Text] = {
-        "marker": cell("▸" if selected else "", colors.CYAN),
-        "number": cell(str(fixture.number), colors.CYAN if selected else colors.MID),
-        "name": cell(fixture.name, colors.FG) if fixture.name else cell(NONE, colors.BORDER),
-        "profile": cell(profile, colors.MID),
-        "category": cell(category, colors.DIM) if category else cell(NONE, colors.BORDER),
-        "mode": cell(fixture.mode, colors.DIM),
-        "patch": patch_text(fixture),
-    }
+    cells = identity_cells(fixture, selected, category)
     if not outputs:
         unknown = cell(UNKNOWN, colors.BORDER)
         cells.update(intensity=unknown, color=unknown, source=unknown)

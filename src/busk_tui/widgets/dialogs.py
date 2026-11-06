@@ -8,6 +8,7 @@ All are modal: while one is open, its keys are the only ones.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Collection, Sequence
 from typing import ClassVar, Literal
 
@@ -51,6 +52,16 @@ def check_number(taken: Collection[int], own: int | None) -> Callable[[str], str
         return None
 
     return check
+
+
+def read_number(text: str) -> float | None:
+    """A number as typed, of any sign, with decimals; ``None`` if it is not
+    one (``float`` also reads ``nan`` and ``inf``, which busk has no use for)."""
+    try:
+        value = float(text)
+    except ValueError:
+        return None
+    return value if math.isfinite(value) else None
 
 
 def free_step(number: int, by: int, taken: Collection[int]) -> int:

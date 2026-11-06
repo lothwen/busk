@@ -7,7 +7,9 @@
   on the TupperDMX show records a colour from its picker and a beam preset
   from its option chips and bars; F4
   goes to a cue, and F5 adds, stops and removes an effect; F3 and F1's
-  layouts A and C show the output, and select from it; F8 adds, renames,
+  layouts A and C show the output, and select from it; F3's FIXTURE panel
+  renames, renumbers and deletes a fixture, sets a profile's category, a
+  fixture's mode, its limits, orientation and location; F8 adds, renames,
   renumbers and deletes universes.
 * On a stub show whose ``save`` is held (plan §4.3): keys, page switching,
   the beat dot and a bar's drag keep working, the drag's lines run, and the
@@ -28,12 +30,16 @@ from textual.widget import Widget
 from tui_fakes import Stub, click_cell, column, drive
 
 import busk
+from builders import channel, fixture, mode, profile, show_of
+from builders import show as show_doc
 from busk_tui import attributes, colors, commands, config
 from busk_tui.bridge import Bridge
 from busk_tui.commands import Line, percent
+from busk_tui.model import FixtureInfo, Orientation
 from busk_tui.pages.busk_console import OutputGrid
 from busk_tui.pages.busk_stack import StackLayout
 from busk_tui.pages.busk_stage import StagePlot
+from busk_tui.pages.fixtures import FixturesPage
 from busk_tui.pages.patch import PatchPage, UniverseTable
 from busk_tui.pages.presets import PresetsPage
 from busk_tui.pages.program import EncoderPanel
@@ -249,6 +255,238 @@ def test_f8_builds_and_deletes_a_universe_from_controls_on_the_real_engine(
         assert all(fixture.patch is not None for fixture in show.fixtures)
         await until(pilot, lambda: len(app.query(DmxMap)) == 1)
         assert app.query_one(DmxMap).prints
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_f3_renames_renumbers_recategorises_and_deletes_from_controls_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=3), standalone=True)
+
+    def numbers() -> list[int]:
+        show = app.view.show
+        return [] if show is None else [f.number for f in show.fixtures]
+
+    def stored(number: int) -> FixtureInfo | None:
+        return None if app.view.show is None else app.view.show.fixture(number)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: 101 in numbers())
+        page = app.query_one(FixturesPage)
+        panel = page.panel
+        await tap(pilot, page.edit)
+        await until(pilot, lambda: page.editing and len(page.rig.rows) == 7)
+        await click_cell(pilot, page.rig, 0, "name")
+        await until(pilot, lambda: panel.fixture() is not None and panel.selected == {101})
+        assert ("ui", "sel fixture 101") in app.query_one(LogView).entries
+
+        await tap(pilot, panel.rename)
+        await until(pilot, lambda: isinstance(app.screen, TextDialog))
+        await pilot.press(*'The "Left" one', "enter")
+        await until(pilot, lambda: stored(101).name == 'The "Left" one')  # type: ignore[union-attr]
+        await until(pilot, lambda: column(page.rig, "name")[0] == 'The "Left" one')
+
+        await tap(pilot, panel.renumber)
+        await until(pilot, lambda: isinstance(app.screen, TextDialog))
+        await pilot.press(*"150", "enter")
+        await until(pilot, lambda: 150 in numbers())
+        await until(pilot, lambda: column(page.rig, "number")[1] == "150")  # by number: after 102
+        await until(pilot, lambda: panel.chosen == 150)  # the choice followed
+        await until(pilot, lambda: "150" in str(panel.border_title))
+
+        await tap_button(pilot, panel.categories, "wash")
+        await until(pilot, lambda: column(page.rig, "category")[:2] == ["wash", "wash"])
+        assert str(panel.categories.buttons[2].label.spans[0].style) == LIT
+
+        await tap(pilot, panel.delete)
+        await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+        assert isinstance(app.screen, ConfirmDialog)
+        assert "Delete fixture 150?" in app.screen.question
+        assert "groups 1, 4" in app.screen.question
+        await pilot.press("n")
+        await until(pilot, lambda: not isinstance(app.screen, ConfirmDialog))
+        await pilot.pause(0.2)
+        assert 150 in numbers()
+        await tap(pilot, panel.delete)
+        await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+        await pilot.press("y")
+        await until(pilot, lambda: 150 not in numbers())
+        await until(pilot, lambda: panel.chosen is None)
+        assert panel.hint.display
+        await until(pilot, lambda: len(page.rig.rows) == 6)
+
+        await pilot.press(*"undo", "enter")  # one step takes it all back
+        await until(pilot, lambda: 150 in numbers())
+        await until(pilot, lambda: len(page.rig.rows) == 7)
+        assert panel.chosen is None
+        await tap(pilot, panel.done)
+        await until(pilot, lambda: page.table.display and len(page.table.rows) == 7)
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_f3_changes_a_mode_and_shows_busks_refusal_on_the_real_engine(tmp_path: Path) -> None:
+    """No shipped profile has two modes, so this rig has its own: fixture 2
+    sits near the end of the universe, where the wide mode does not fit."""
+    small = {**mode([channel(0, "intensity")], mode_id="mode-1"), "name": "One Channel"}
+    wide = {**mode([channel(0, "intensity")], mode_id="mode-20", footprint=20), "name": "20ch"}
+    doc = show_doc(
+        [{**profile("prof-two", small, wide), "name": "Two Mode Par"}],
+        [
+            fixture("fx-1", 1, "prof-two", 1, mode_id="mode-1"),
+            fixture("fx-2", 2, "prof-two", 505, mode_id="mode-1"),
+        ],
+    )
+    path = tmp_path / "two.show"
+    assert busk.OfflineShow(show_of(doc), path=path).execute("save").ok
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=3), standalone=True)
+
+    def mode_of(number: int) -> str:
+        show = app.view.show
+        found = None if show is None else show.fixture(number)
+        return "" if found is None else found.mode
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: mode_of(1) == "One Channel")
+        page = app.query_one(FixturesPage)
+        panel = page.panel
+        await tap(pilot, page.edit)
+        await until(pilot, lambda: page.editing and len(page.rig.rows) == 2)
+        await click_cell(pilot, page.rig, 1, "name")
+        await until(pilot, lambda: panel.modes.display)
+        await tap_button(pilot, panel.modes, "20ch")
+        log = app.query_one(LogView)
+        await until(pilot, lambda: any(kind == "error" for kind, _ in log.entries))
+        assert any(kind == "error" and "512" in text for kind, text in log.entries)
+        assert mode_of(2) == "One Channel"
+        await click_cell(pilot, page.rig, 0, "name")
+        await until(pilot, lambda: panel.chosen == 1)
+        await tap_button(pilot, panel.modes, "20ch")
+        await until(pilot, lambda: mode_of(1) == "20ch")
+        await until(pilot, lambda: "20 channels" in str(panel.what.content))
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_f3_sets_limits_orientation_and_location_from_controls_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """Heads 101 and 102 selected: one limit line, a line per fixture for
+    orientation; then each stored value, and the place on F1 C's plot."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=3), standalone=True)
+
+    def stored(number: int) -> FixtureInfo:
+        show = app.view.show
+        found = None if show is None else show.fixture(number)
+        assert found is not None
+        return found
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.view.show is not None)
+        page = app.query_one(FixturesPage)
+        panel = page.panel
+        log = app.query_one(LogView)
+        await tap(pilot, page.edit)
+        await until(pilot, lambda: page.editing and len(page.rig.rows) == 7)
+        await click_cell(pilot, page.rig, 0, "name")
+        await until(pilot, lambda: panel.selected == {101})
+        await pilot.click(page.rig, offset=(10, 2), shift=True)
+        await until(pilot, lambda: panel.selected == {101, 102})
+        assert panel.chosen == 102
+        assert str(panel.limits_heading.content) == "LIMITS · 101 thru 102 (2)"
+
+        ask, drop = panel.limits["pan"].buttons
+        await tap(pilot, ask)
+        await until(pilot, lambda: isinstance(app.screen, FormDialog))
+        assert isinstance(app.screen, FormDialog)
+        low, high = (float(field.value) for field in app.screen.inputs)
+        assert (low, high) == (-270.0, 270.0)  # the profile's: none set here yet
+        await pilot.press(*"-100", "tab", *"100", "enter")
+        await until(pilot, lambda: stored(102).limits.pan == (-100.0, 100.0))
+        assert stored(101).limits.pan == (-100.0, 100.0)
+        assert stored(101).limits.tilt == (-90.0, 10.0)  # the others stay
+        assert ("ui", "fixture 101 thru 102 limits pan -100 100") in log.entries
+
+        await tap(pilot, panel.limits["intensity"].buttons[0])
+        await until(pilot, lambda: isinstance(app.screen, FormDialog))
+        await pilot.press(*"60", "enter")
+        await until(pilot, lambda: stored(101).limits.intensity == 0.6)
+        await until(pilot, lambda: column(page.rig, "limits")[:2] == ["pan tilt int"] * 2)
+
+        await until(pilot, lambda: drop.display)
+        await tap(pilot, drop)
+        await until(pilot, lambda: stored(102).limits.pan is None)
+        assert stored(101).limits.tilt == (-90.0, 10.0)
+        assert stored(101).limits.intensity == 0.6
+        await tap(pilot, panel.no_limits)
+        await until(pilot, lambda: column(page.rig, "limits")[:2] == ["", ""])
+
+        await tap(pilot, panel.toggles["invertPan"])
+        await until(pilot, lambda: stored(102).orientation.invertPan)
+        await until(pilot, lambda: stored(101).orientation.invertPan)
+        await until(pilot, lambda: panel.toggles["invertPan"].reverse)
+        await tap(pilot, panel.toggles["swapPanTilt"])
+        await until(pilot, lambda: stored(101).orientation.swapPanTilt)
+        await tap(pilot, panel.offsets["tiltOffset"].buttons[0])
+        await until(pilot, lambda: isinstance(app.screen, TextDialog))
+        await pilot.press(*"15.5", "enter")
+        await until(pilot, lambda: stored(101).orientation.tiltOffset == 15.5)
+        assert stored(102).orientation.tiltOffset == 15.5
+        assert stored(201).orientation == Orientation()
+
+        await tap(pilot, panel.locate)
+        await until(pilot, lambda: isinstance(app.screen, FormDialog))
+        await pilot.press(*"1", "tab", *"2", "tab", *"5", "enter")
+        await until(pilot, lambda: stored(102).location == (1.0, 2.0, 5.0, 0.0, 0.0, 0.0))
+        assert stored(101).location is None  # the chosen one only
+        await until(pilot, lambda: panel.no_place.display)
+        await until(pilot, lambda: column(page.rig, "place")[:2] == ["·", "●"])
+
+        app.action_layout("C")
+        await pilot.press("f1")
+        plot = app.query_one(StagePlot)
+        await until(pilot, lambda: [row.y for row in plot.rows] == [2.0])
+        await pilot.press("f3")
+        await tap(pilot, panel.locate)
+        await until(pilot, lambda: isinstance(app.screen, FormDialog))
+        await pilot.press("tab", "ctrl+u", *"-3", "enter")
+        await until(pilot, lambda: stored(102).location == (1.0, -3.0, 5.0, 0.0, 0.0, 0.0))
+        await pilot.press("f1")
+        await until(pilot, lambda: [row.y for row in plot.rows] == [-3.0])  # the plot follows
+        await pilot.press("f3")
+        await tap(pilot, panel.no_place)
+        await until(pilot, lambda: stored(102).location is None)
+        await pilot.press("f1")
+        await until(pilot, lambda: plot.rows == [])
+
+        await pilot.press("f3")
+        await click_cell(pilot, page.rig, 2, "name")  # 201
+        await until(pilot, lambda: panel.selected == {201})
+        await pilot.click(page.rig, offset=(10, 5), shift=True)  # 203, with 202 between
+        await until(pilot, lambda: panel.selected == {201, 203})
+        await tap(pilot, panel.limits["intensity"].buttons[0])
+        await until(pilot, lambda: isinstance(app.screen, FormDialog))
+        await pilot.press(*"70", "enter")
+        await until(pilot, lambda: stored(203).limits.intensity == 0.7)
+        assert stored(201).limits.intensity == 0.7
+        assert stored(202).limits.intensity is None  # thru would have covered it
 
     try:
         drive(app, body)

@@ -62,6 +62,16 @@ ModalScreen {
     margin-left: 0;
 }
 
+/* F3: the FIXTURE panel goes under the table. */
+.narrow #fixtures-body {
+    layout: vertical;
+}
+
+.narrow #fixtures-body > #fixture-panel {
+    width: 100%;
+    margin-left: 0;
+}
+
 #hint {
     padding: 0 0;
 }

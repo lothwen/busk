@@ -714,6 +714,30 @@ one conversation, which ends with a status memory and a stop. The engine's tests
      512 in the log;
    - the layout at 150, 100 and 99 columns;
    - that no pre-fill builder is left unused.
+
+   **Done** (2026-11-06). As planned, with these additions, which the user may veto:
+   - **`[+ add]` is not there yet.** It comes with its form in step 12, as `[profile…]` does: a
+     button with nothing behind it would mislead. So the header row holds the counts and `[edit]`,
+     and the panel's hint reads "click a fixture". §4 calls 1 and 23 and §6.4 wait for step 12.
+   - **F3 has no control for the patch until step 11.** §4 call 3 takes the pre-fill now, and PATCH
+     comes later. The prompt takes the line meanwhile.
+   - **A lit chip sends nothing** and is no pane cursor stop, through `StripButton.note`. busk spends
+     an undo step on a line that changes nothing, and refuses `category none` on a profile with
+     none, which §2 did not list.
+   - The choice is the fixture clicked last, in or out of edit mode, and it stays through `[done]`.
+     Only a click or the pane cursor chooses, so `[edit]` on a selection alone shows "click a
+     fixture". The chosen fixture's number is lit in `RigTable`, beside the selection's `▸`, since
+     the selected rows look alike and the panel may act on one of them.
+   - The counts moved from the table's title to the header row, in both modes. A click reads
+     `click selects, Shift-click adds`, and in edit mode as §3 has it.
+   - `limits` is 12 cells wide, for `pan tilt int`. The columns go in the order type, mode, place,
+     profile, so at 100 columns `RigTable` holds the number, name, patch and limits.
+   - The chips are in `CATEGORY_COLORS`' order, so `beam` comes after `strobe`, unlike §3's picture
+     and `expected()`. The contract test compares them as sets.
+   - `FixtureTable` and `RigTable` share `identity_cells`, up to the patch.
+   - Beyond the list: a click beside the table leaves the page where it is, and chips hidden for
+     the next fixture are no stops. A strip keeps its buttons while it is hidden, so a two-mode
+     fixture's chips would have stayed in the cursor's way.
 10. **Limits, orientation, location** (§6.5, §4 calls 4, 12–14). Verify:
     - each limit through its dialog, `[none]`, `[no limits]`, and the dialog's refusals (low above
       high, an intensity over 100 %);
@@ -724,6 +748,45 @@ one conversation, which ends with a status memory and a stop. The engine's tests
     - `[swap pan/tilt]` absent where a profile lacks pan or tilt;
     - location: a first location, a change with the F1 C plot following it, and `[no place]`;
     - end to end on the real engine: the stored limits, orientation and location of each.
+
+    **Done** (2026-11-06). As planned, with these additions, which the user may veto:
+    - **`[none]` shows when any fixture of the reach has that limit,** not only the chosen one, as
+      `[no limits]` does. The row's value stays the chosen fixture's, so a row can read `none` beside
+      a `[none]`.
+    - **A removal leaves out a run with nothing to remove,** since busk refuses a span where no
+      fixture has it (`fixture 101 thru 301 has no tilt limit`). A span with one that has it is
+      fine: busk takes it from those.
+    - **Orientation skips a fixture already at the value,** which would cost an undo step for
+      nothing. A toggle sets the reach to the opposite of the chosen fixture's, so it also brings
+      fixtures that differ into line.
+    - `[invert pan]`, `[invert tilt]` and the offsets show per axis, which §4 call 14 left open. A
+      scanner with pan alone shows `[invert pan]` and `pan offset`.
+    - A fixture of the reach without the axis still gets the line, as §4 call 4 says: a limit on a
+      par brings busk's warning to the log, and a swap on a fixture with pan alone is refused there.
+    - `[limit…]` always sends, even with the values unchanged: with two fixtures selected, that is
+      how the chosen one's limit reaches the other. An unchanged place sends nothing, since it
+      acts on one fixture.
+    - The form takes `from` equal to `to`, as busk does, and refuses only `from` above `to`. A limit
+      past the profile's range is busk's warning, in the log. Its note gives the range.
+    - `at most` takes `50` or `50%`. A decimal goes out in whole percent, as every level does.
+    - `read_number` is new in `dialogs.py`, for a number of any sign: `float` also reads `nan` and
+      `inf`, which it refuses. `Setting` is a row of the panel, for limits and offsets.
+    - A stop's label says which row it is on (`tilt limit…`, `pan offset…`), since the pane cursor
+      finds its place again by the label.
+
+    Steps 9 and 10 were built in one working tree, so they share one run of the whole suite: 4784
+    passed, 1 skipped, 20 deselected, in 25:23 (group C left 4716, in 19:35). The three new
+    end-to-end tests take most of the added time, the limits one over two minutes. `ruff`, `ruff
+    format`, `mypy src` and `mypy --strict tests/api_consumer.py` are clean. The changed fast test
+    files, 233 tests, and the F3 end-to-end tests pass on Textual 8.2.0. A first run of the suite
+    failed on `test_the_pane_cursor_moves_into_the_page_and_back`, which used F3's rows and
+    `[patch…]`: its rows now start after `[edit]`, and its pre-fill half moved to F7's grand master.
+    A real-terminal check on the club show at 150 and 99 columns drove the rig table, the limit
+    form and its refusal, a `thru` line, and busk's delete question. At 100 columns it checked the
+    layout, and at 150 by 26 rows, reached from F1, a name `x[/]y [left]` and the panel scrolling on
+    its own. Of 69 mutations, 61 were caught at once. Seven showed a missing test, and each test now
+    catches it: among them the pane cursor marking the hidden table, and an intensity limit of 0
+    losing its `[none]`. The other showed a redundant guard in `stops()`, which went.
 
 **E. Patch and add**
 

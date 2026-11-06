@@ -1,109 +1,168 @@
-"""F3 Fixtures (spec §8.3, plan Phase 4): every fixture, by number, with its
-patch and its live output (:mod:`busk_tui.widgets.fixturetable`).
+"""F3 Fixtures (spec §8.3, plan Phase 4, ``docs/plans/tui-rig-plan.md``): every
+fixture, by number, with its patch and its live output
+(:mod:`busk_tui.widgets.fixturetable`), and the FIXTURE panel of edit mode.
 
-A click on a row selects the fixture (``sel fixture 101``); a Shift-click
-adds it to the selection or takes it out (``sel + fixture 101``, ``sel -
-fixture 101``). The row clicked last is the one the edits under the table
-act on (else the first selected fixture, else the first): its patch, its
-place on stage (``location``), its profile's category and its name, each
-put in the prompt to finish.
+A header gives the counts and has the ``[edit]`` toggle. A click on a row
+selects the fixture (``sel fixture 101``) and chooses it; a Shift-click adds
+it to the selection or takes it out (``sel + fixture 101``, ``sel - fixture
+101``) and chooses it. Selecting does not change the stage, so a click means
+the same in edit mode.
 
-The page reads the output while it shows. Rows are drawn again only when
-their fixture's output, patch or selection changes.
+In edit mode the FIXTURE panel (:mod:`busk_tui.widgets.fixture_panel`) shows
+the chosen fixture, to the right of the table at 100 columns or more, else
+under it. The rig's columns take the place of the live ones, the legend goes,
+and the page stops reading the output; ``[done]`` leaves edit mode.
+
+Out of it the page reads the output while it shows, and rows are drawn again
+only when their fixture's output, patch or selection changes.
 """
 
 from __future__ import annotations
 
 from functools import partial
-from typing import ClassVar, Final
+from typing import Final
 
 from rich.text import Text
+from textual import events
 from textual.app import ComposeResult
 from textual.containers import Horizontal
 from textual.widgets import Static
 
 from busk_tui import colors, commands
-from busk_tui.commands import Line
 from busk_tui.model import ElementOutput, FixtureInfo, OutputModel
 from busk_tui.nav import Item, Stop
 from busk_tui.pages.base import Page, Part, View
-from busk_tui.widgets.controls import ButtonStrip, RunLine, StripButton, button_label
-from busk_tui.widgets.fixturetable import FixtureTable, by_fixture, fixture_cells, legend
+from busk_tui.widgets.controls import ActionButton, RunLine
+from busk_tui.widgets.fixture_panel import FixturePanel
+from busk_tui.widgets.fixturetable import (
+    FixtureTable,
+    RigTable,
+    by_fixture,
+    fixture_cells,
+    legend,
+    rig_cells,
+)
 from busk_tui.widgets.legend import Legend
 from busk_tui.widgets.panel import Panel
-from busk_tui.widgets.quick import strip_stops
 from busk_tui.widgets.rows import Cells, RowTable
 
 NO_FIXTURES: Final = 'no fixtures · fixture add 101 "<profile>" mode <mode> at 1.1'
+
+CLICK_SELECTS: Final = "click selects, Shift-click adds"
+CLICK_EDITS: Final = "click chooses, Shift-click adds to the selection"
+
+NARROW: Final = 100
+"""Below this many columns the FIXTURE panel goes under the table (spec §3)."""
+
+ABOVE: Final = 3
+"""The page's rows above the FIXTURE panel: its padding, the header and the
+gap after it."""
 
 
 class FixturesPage(Page):
     """F3 (see the module docs)."""
 
-    WATCH_OUTPUT: ClassVar[bool] = True
-
     DEFAULT_CSS = """
+    FixturesPage #fixtures-head { height: 1; margin-bottom: 1; }
+    FixturesPage #fixtures-header { width: 1fr; }
+    FixturesPage #fixtures-body { height: auto; }
+    FixturesPage #fixtures-panel { width: 1fr; }
     FixturesPage #fixtures-legend { margin-top: 1; }
-    FixturesPage #fixture-edit-row { height: auto; margin-top: 1; }
-    FixturesPage #fixture-edit-label { width: auto; padding-right: 1; }
-    FixturesPage #fixture-edits { width: 1fr; }
     """
 
     def __init__(self, number: int, title: str) -> None:
         super().__init__(number, title)
-        self.table = FixtureTable(Text(NO_FIXTURES, style=colors.DIM), id="fixture-table")
-        self.panel = Panel("fixtures", id="fixtures-panel")
-        self.edit_label = Static("", id="fixture-edit-label")
-        self.edits = ButtonStrip(id="fixture-edits")
-        self.chosen: int | None = None  # the fixture clicked last
+        self.header = Static("", id="fixtures-header")
+        self.edit = ActionButton("edit", self.toggle_edit, id="fixtures-edit")
+        empty = Text(NO_FIXTURES, style=colors.DIM)
+        self.table = FixtureTable(empty, id="fixture-table")
+        self.rig = RigTable(empty, id="rig-table")
+        self.rig.display = False
+        self.legend = Legend(legend(), id="fixtures-legend")
+        self.sheet = Panel("fixtures", id="fixtures-panel")
+        self.panel = FixturePanel(self._draw, self.leave_edit)
+        self.panel.display = False
+        self.editing = False
         self.shown: tuple[FixtureInfo, ...] = ()
         self._view = View()
+        self._width = 0
         self._outputs: tuple[OutputModel | None, dict[int, tuple[ElementOutput, ...]]] = (None, {})
         self._cells: dict[int, tuple[object, Cells]] = {}  # fixture → (what it shows, its cells)
 
     def compose(self) -> ComposeResult:
-        with self.panel:
-            yield self.table
-            yield Legend(legend(), id="fixtures-legend")
-            with Horizontal(id="fixture-edit-row"):
-                yield self.edit_label
-                yield self.edits
+        with Horizontal(id="fixtures-head"):
+            yield self.header
+            yield self.edit
+        with Horizontal(id="fixtures-body"):
+            with self.sheet:
+                yield self.table
+                yield self.rig
+                yield self.legend
+            yield self.panel
+
+    def on_resize(self, event: events.Resize) -> None:
+        self._width = event.size.width
+        beside = self._width >= NARROW
+        self.panel.styles.max_height = max(8, event.size.height - ABOVE) if beside else None
+
+    def watches(self, view: View) -> tuple[bool, bool]:
+        """The output, for the live columns: not in edit mode, which has none."""
+        return not self.editing, False
 
     def update_view(self, view: View, changed: frozenset[Part]) -> None:
         self._view = view
         if "show" in changed:
             fixtures = () if view.show is None else view.show.fixtures
             self.shown = tuple(sorted(fixtures, key=lambda fixture: fixture.number))
-        if changed & {"show", "programmer", "output"}:
+            if all(fixture.number != self.panel.chosen for fixture in self.shown):
+                self.panel.chosen = None  # only here: a renumber's done may come before the show
+        if changed & {"show", "programmer"} or (not self.editing and "output" in changed):
             self._draw()
         if changed & {"show", "programmer"}:
-            meta = f"{len(self.shown)} fixtures · {len(self.table.lit)} selected"
-            self.panel.set_title("fixtures", f"{meta} · click selects, Shift-click adds")
-            self._draw_edits()
+            self._draw_header()
+            if self.editing:
+                self.panel.show_view(view.show, self.selected())
 
-    def selected(self) -> set[int]:
+    def selected(self) -> frozenset[int]:
         programmer = self._view.programmer
-        return set() if programmer is None else {number for number, _ in programmer.selection}
-
-    def edited(self) -> FixtureInfo | None:
-        """The fixture the edits act on: the one clicked last, else the
-        first selected, else the first."""
-        selected = self.selected()
-        for wanted in (self.chosen, *(f.number for f in self.shown if f.number in selected)):
-            found = next((f for f in self.shown if f.number == wanted), None)
-            if found is not None:
-                return found
-        return self.shown[0] if self.shown else None
+        return frozenset(() if programmer is None else (n for n, _ in programmer.selection))
 
     # ------------------------------------------------------------- draw
 
+    def _draw_header(self) -> None:
+        selected = self.selected()
+        count = sum(1 for fixture in self.shown if fixture.number in selected)
+        how = CLICK_EDITS if self.editing else CLICK_SELECTS
+        text = Text(f"{len(self.shown)} fixtures · {count} selected · {how}", style=colors.DIM)
+        if text != self.header.content:
+            self.header.update(text)
+        if self.editing:
+            self.edit.change(label="edit ●", intent="record", reverse=True)
+        else:
+            self.edit.change(label="edit", intent="neutral", reverse=False)
+
     def _draw(self) -> None:
-        view, show = self._view, self._view.show
+        show = self._view.show
         categories = {} if show is None else {p.name: p.category for p in show.profiles}
+        selected = self.selected()
+        lit = frozenset(i for i, fixture in enumerate(self.shown) if fixture.number in selected)
+        if self.editing:
+            rows = [
+                rig_cells(f, f.number in selected, f.number == self.panel.chosen,
+                          categories.get(f.profile))
+                for f in self.shown
+            ]  # fmt: skip
+            self.rig.show(rows, lit=lit)
+        else:
+            self.table.show(self._live_rows(categories, selected), lit=lit)
+
+    def _live_rows(
+        self, categories: dict[str, str | None], selected: frozenset[int]
+    ) -> list[Cells]:
+        view = self._view
         if self._outputs[0] is not view.output:
             self._outputs = (view.output, by_fixture(view.output))
         outputs = self._outputs[1]
-        selected = self.selected()
         rows: list[Cells] = []
         kept: dict[int, tuple[object, Cells]] = {}
         for fixture in self.shown:
@@ -116,71 +175,56 @@ class FixturesPage(Page):
             kept[fixture.number] = cached
             rows.append(cached[1])
         self._cells = kept
-        lit = frozenset(i for i, fixture in enumerate(self.shown) if fixture.number in selected)
-        self.table.show(rows, lit=lit)
+        return rows
 
-    def _draw_edits(self) -> None:
-        fixture = self.edited()
-        if fixture is None:
-            self._update(self.edit_label, Text())
-            self.edits.show([])
-            return
-        label = Text("edit ", style=colors.DIM)
-        label.append(f"fixture {fixture.number}", style=colors.CYAN)
-        if fixture.name:
-            label.append(f" {fixture.name}", style=colors.FG)
-        self._update(self.edit_label, label)
-        prefills = [
-            ("patch", commands.patch_prefill(fixture.number)),
-            ("location", commands.location_prefill(fixture.number, fixture.location)),
-            ("category", _category_prefill(fixture.profile)),
-            ("rename", commands.rename_fixture_prefill(fixture.number)),
-        ]
-        self.edits.show(
-            [
-                StripButton(button_label(f"{name}…", colors.MID), Line(text), prefill=text)
-                for name, text in prefills
-                if text is not None
-            ]
-        )
+    # -------------------------------------------------------- edit mode
 
-    @staticmethod
-    def _update(widget: Static, text: Text) -> None:
-        if text != widget.content:
-            widget.update(text)
+    def toggle_edit(self) -> None:
+        self.set_editing(not self.editing)
+
+    def leave_edit(self) -> None:
+        self.set_editing(False)
+
+    def set_editing(self, on: bool) -> None:
+        """Enter edit mode, with the panel on what is chosen, or leave it."""
+        self.editing = on
+        self.table.display = self.legend.display = not on
+        self.rig.display = self.panel.display = on
+        self._draw()
+        self._draw_header()
+        if on:
+            self.panel.show_view(self._view.show, self.selected())
+        self.post_message(Page.WatchesChanged(self))
 
     # ----------------------------------------------------------- clicks
 
     def on_row_table_clicked(self, message: RowTable.Clicked) -> None:
         message.stop()
-        if message.table is self.table and message.row < len(self.shown):
-            number = self.shown[message.row].number
-            self.choose(number)
-            if message.shift:
-                selected = number in self.selected()
-                line = commands.sel_fixture(number, add=not selected, remove=selected)
-            else:
-                line = commands.sel_fixture(number)
-            self.post_message(RunLine(line))
-
-    def choose(self, number: int) -> None:
-        """The fixture the edits act on."""
-        self.chosen = number
-        self._draw_edits()
+        if message.row >= len(self.shown):
+            return
+        number = self.shown[message.row].number
+        self.panel.choose(number)
+        if message.shift:
+            selected = number in self.selected()
+            line = commands.sel_fixture(number, add=not selected, remove=selected)
+        else:
+            line = commands.sel_fixture(number)
+        self.post_message(RunLine(line))
+        if self.editing and self._width < NARROW:
+            self.call_after_refresh(self.scroll_to_widget, self.panel, animate=False, top=True)
 
     # ----------------------------------------------------- pane cursor
 
     def stops(self) -> list[Stop]:
-        stops: list[Stop] = []
-        self.table.spots = [(row, None) for row in range(len(self.shown))]
+        """The edit toggle, each row, then the FIXTURE panel's controls."""
+        stops = [Stop(Item("edit", action=self.toggle_edit), self.edit)]
+        table = self.rig if self.editing else self.table
+        table.spots = [(row, None) for row in range(len(self.shown))]
         for row, fixture in enumerate(self.shown):
             line = commands.sel_fixture(fixture.number).text
             label = f"fixture {fixture.number} {fixture.name}".rstrip()
-            item = Item(label, line=line, action=partial(self.choose, fixture.number))
-            stops.append(Stop(item, self.table, row))
-        return stops + strip_stops(self.edits)
-
-
-def _category_prefill(profile: str) -> str | None:
-    """``profile "<name>" category ``; ``None`` without a profile."""
-    return commands.category_prefill(profile) if profile else None
+            item = Item(label, line=line, action=partial(self.panel.choose, fixture.number))
+            stops.append(Stop(item, table, row))
+        if self.editing:
+            stops += self.panel.stops()
+        return stops

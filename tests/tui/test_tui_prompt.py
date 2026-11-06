@@ -386,13 +386,14 @@ def test_the_pane_cursor_moves_into_the_page_and_back() -> None:
         await pilot.press("f3")
         prompt = app.query_one(Prompt)
         await pilot.press("tab")
-        assert app.cursor.index == 0
+        assert app.cursor.index == 0  # [edit]
+        await pilot.press("down")
         assert app.query_one(FixtureTable)._marked == (0, None)
         await pilot.press("down", "down")
-        assert app.cursor.index == 2  # past the rows: the first edit
+        assert app.cursor.index == 2  # the last row: it stops at the end
         await pilot.press("up")
         assert app.cursor.index == 1
-        await pilot.press("enter")  # a row's line runs, and the cursor stays
+        await pilot.press("down", "enter")  # a row's line runs, and the cursor stays
         assert app.cursor.active
         assert bridge.lines() == ["sel fixture 102"]
         await pilot.press("escape", "tab", "escape")
@@ -401,12 +402,14 @@ def test_the_pane_cursor_moves_into_the_page_and_back() -> None:
         await pilot.press("tab", "g")  # typing gives the keyboard back
         assert not app.cursor.active
         assert prompt.value == "g"
-        await pilot.press("escape", "tab", "down", "down", "enter")
-        assert prompt.value == "fixture 102 patch "  # a line to finish, for the row chosen
+        await pilot.press("escape", "tab")
+        assert app.cursor.active
+        await pilot.press("f7")  # another page: the cursor leaves
+        assert not app.cursor.active
+        await pilot.press("tab", "enter")  # the grand master: a line to finish
+        assert prompt.value == "gm "
         assert not app.cursor.active
         assert bridge.lines() == ["sel fixture 102"]
-        await pilot.press("tab", "f2")  # another page: the cursor leaves
-        assert not app.cursor.active
 
     drive(app, body)
 

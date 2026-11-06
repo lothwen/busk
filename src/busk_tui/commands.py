@@ -453,25 +453,10 @@ def rename_cue_prefill(cue_list: int, cue: str) -> str:
     return f'rename cue {cue_list}/{cue} "'
 
 
-def patch_prefill(fixture: int) -> str:
-    """``fixture 101 patch ``: an address (``1.101``) or ``none`` next."""
-    return f"fixture {fixture} patch "
-
-
 def location_prefill(fixture: int, place: Sequence[float] | None) -> str:
     """:func:`location`, whole, at the fixture's own place when it has one,
     to change."""
     return location(fixture, (0.0,) * 6 if place is None else place).text
-
-
-def rename_fixture_prefill(fixture: int) -> str:
-    """``rename fixture 101 "``: the name comes next."""
-    return f'rename fixture {fixture} "'
-
-
-def category_prefill(profile: str) -> str:
-    """``profile "Generic Spot" category ``: a category or ``none`` next."""
-    return f"profile {quoted(profile)} category "
 
 
 def bind_prefill(surface: str) -> str:

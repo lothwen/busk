@@ -15,6 +15,7 @@ from busk.model.attributes import ATTRIBUTES
 from busk_tui import attributes, commands, config
 from busk_tui.bridge import show_model
 from busk_tui.commands import Line
+from busk_tui.widgets.fixture_panel import CATEGORIES
 
 ROUTE = "r-club"
 """The id the show of the contract test gives its route."""
@@ -240,9 +241,6 @@ PREFILLS = (
     commands.cue_time_prefill(9, "3", "1/3", "delay"),
     commands.cue_time_prefill(9, "3", "1/3"),
     commands.rename_cue_prefill(9, "3"),
-    commands.patch_prefill(101),
-    commands.rename_fixture_prefill(101),
-    commands.category_prefill("Generic Spot 16ch"),
     commands.bind_prefill("nanoKONTROL2"),
     commands.feedback_prefill("nanoKONTROL2", "cc 1 0"),
     commands.pickup_prefill("nanoKONTROL2"),
@@ -330,6 +328,22 @@ def test_busk_accepts_every_builders_line(show: busk.OfflineShow) -> None:
     assert 7 not in [universe["number"] for universe in show.show["universes"]]
     assert show.show["output"]["routes"] == []  # the club's, and the ones on universe 7
     assert 901 not in [fixture["number"] for fixture in show.show["fixtures"]]
+
+
+def test_the_category_chips_are_what_busk_takes(club: busk.OfflineShow) -> None:
+    words = club.expected('profile "Generic Spot 16ch" category ').words
+    assert sorted(CATEGORIES) == sorted(words)
+
+
+def test_no_prefill_builder_is_left_unused() -> None:
+    """A control that went takes its pre-fill with it (F3's did)."""
+    package = Path(commands.__file__).parent
+    source = "".join(
+        path.read_text() for path in package.rglob("*.py") if path.name != "commands.py"
+    )
+    names = [name for name in vars(commands) if name.endswith("_prefill")]
+    assert "location_prefill" in names  # F1 C keeps its own
+    assert [name for name in names if f"commands.{name}(" not in source] == []
 
 
 def test_the_rig_lines_do_what_they_say(show: busk.OfflineShow) -> None:
