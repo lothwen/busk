@@ -68,6 +68,13 @@ TEMPLATES = tuple(
     )
 )
 CURVES = ("linear", "easeIn", "easeOut", "easeInOut", "snapStart", "snapEnd", "bezier")
+ORIENTATION = (
+    "orientation.invertPan",
+    "orientation.invertTilt",
+    "orientation.swapPanTilt",
+    "orientation.panOffset",
+    "orientation.tiltOffset",
+)
 
 # (line, words, values, runnable): the line ends where the next word starts
 EXPECTED: list[tuple[str, tuple[str, ...], tuple[str, ...], bool]] = [
@@ -77,11 +84,16 @@ EXPECTED: list[tuple[str, tuple[str, ...], tuple[str, ...], bool]] = [
     ("sel fixture ", (), ("a fixture number",), False),
     ("sel fixture 101 ", ("thru", ","), (), True),
     ("fixture ", ("add",), ("a fixture number",), False),
-    ("fixture 101 ", ("patch", "thru", "limits", "mode", "profile", "location"),
+    ("fixture 101 ", ("patch", "thru", "limits", "mode", "profile", "location", *ORIENTATION),
      ("a property, e.g. name or timing.fadeIn",),
      False),
     ("fixture 101 thru ", (), ("a fixture number after thru",), False),
-    ("fixture 101 thru 102 ", ("limits",), (), False),
+    ("fixture 101 thru 102 ", ("limits", *ORIENTATION), (), False),
+    ("fixture 101 orientation.invertPan ", ("true", "false"), (), False),
+    ("fixture 101 thru 102 orientation.swapPanTilt ", ("true", "false"), (), False),
+    ("fixture 101 orientation.panOffset ", (), ("an offset in degrees",), False),
+    ("fixture 101 orientation.invertPan true ", (), (), True),
+    ("fixture 101 thru 102 orientation.tiltOffset 30 ", (), (), True),
     ("fixture 101 limits tilt ", ("none",), ("the lowest tilt in degrees",), False),
     ("fixture 101 limits intensity ", ("none",), ("a maximum intensity, e.g. 0.5 or 50%",), False),
     ("fixture 101 limits tilt none ", (), (), True),
@@ -166,6 +178,7 @@ def test_what_may_follow_a_line(
         ("sel fixture 99 ", "no fixture 99"),
         ("fixture 101 limits pan none ", "fixture 101 has no pan limit"),
         ("fixture 101 location none ", "fixture 101 has no location"),
+        ("fixture 101 orientation.invertPan yes ", "expected true or false, got 'yes'"),
         ("fixture 101 mode nope ", "profile 'Generic Spot 16ch' has no mode 'nope' (modes: 16ch)"),
         ('rename group 1 "back\\slash" ', "bad escape in a quote at column 21"),
         ("xyz ", "unknown command 'xyz' (try 'help')"),
@@ -201,8 +214,8 @@ def test_expected_changes_nothing() -> None:
     assert json.dumps(ctx.show, sort_keys=True) == before
 
 
-def test_only_limits_follows_a_fixture_range() -> None:
-    with pytest.raises(ParseError, match=r"^expected limits$"):
+def test_only_limits_and_orientation_follow_a_fixture_range() -> None:
+    with pytest.raises(ParseError, match=r"^expected limits or orientation\.<key>$"):
         parse("fixture 101 thru 102", context())
 
 

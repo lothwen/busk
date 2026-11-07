@@ -328,11 +328,11 @@ def no_limits(first: int, last: int) -> Line:
     return Line(f"fixture {_span(first, last)} limits none")
 
 
-def orientation(fixture: int, key: str, value: bool | float) -> Line:
-    """``fixture 101 orientation.invertPan true``, ``fixture 101
-    orientation.panOffset 30``."""
+def orientation(first: int, last: int, key: str, value: bool | float) -> Line:
+    """``fixture 101 thru 102 orientation.invertPan true``, ``fixture 101
+    orientation.panOffset 30`` (``thru`` covers every fixture between its ends)."""
     text = str(value).lower() if isinstance(value, bool) else number(value)
-    return Line(f"fixture {fixture} orientation.{key} {text}")
+    return Line(f"fixture {_span(first, last)} orientation.{key} {text}")
 
 
 def location(fixture: int, values: Sequence[float]) -> Line:

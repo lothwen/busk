@@ -1016,7 +1016,8 @@ number in `docs/dev/tui/engine-gaps.md`, or not:
    the messages stay unclear.
 2. **`thru` where it is not taken.** `fixture 900 thru 901 patch 2.1` replies `set fixtures[7].thru
    to "901 patch 2.1"`. The line reads as a generic property. `orientation` does the same. A `thru`
-   on `orientation` would also make four heads one undo step (§4 call 4).
+   on `orientation` would also make four heads one undo step (§4 call 4). That half is done
+   (GAP-28, 2026-11-07), and F3 sends a `thru` line per run. `patch` still reads as a property.
 3. **Fixture numbers are not checked:** `fixture add 0` and `fixture add -5` work, while a universe
    starts at 1.
 4. **`programmer` prints `fx-… (gone)`** for a deleted fixture, selected or in an effect, while
@@ -1039,7 +1040,8 @@ number in `docs/dev/tui/engine-gaps.md`, or not:
 7. **`hz` takes any number** (found at step 13). `route add 1 dmxusb enttecPro /dev/ttyUSB0 hz 0`,
    `hz -1` and `hz 1000` are stored, and `output_rate` then keeps the widget to 1–40 Hz without a
    word. The model's comment says 44. F8's form takes 1 to 40.
-8. **A number past 4,300 digits raises** (found fixing item 6, not fixed). `int` refuses it, so
+8. **A number past 4,300 digits raised** (found fixing item 6, fixed 2026-11-07 as GAP-30, by one
+   check in `tokenize` and a cap on cue numbers, at the user's choice). `int` refuses it, so
    `ValueError` leaves `execute()`, as in item 6, for an Art-Net address, a surface's port, `bind …
    page`, `goto`, `cue` and `record slot`. `integer()` already catches it, so `route add 1 sacn` does
    not. It takes a bad paste, not a slip. Nothing between a line and the prompt catches what a line

@@ -11,8 +11,10 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from textual import events
 from textual.pilot import Pilot
 from textual.widget import Widget
+from textual.widgets import Input
 from tui_fakes import (
     FakeBridge,
     Reply,
@@ -1149,10 +1151,31 @@ def test_the_selection_changing_moves_the_reach() -> None:
     drive(app, body)
 
 
+def test_a_paste_too_long_for_a_number_stays_in_the_dialog() -> None:
+    """``int`` raises past 4,300 digits, which would end the TUI."""
+    bridge = FakeBridge()
+    app = on_the_rig(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app, 102)
+        await tap(pilot, page.panel.renumber, app)
+        dialog = app.screen
+        assert isinstance(dialog, TextDialog)
+        dialog.query_one(Input).post_message(events.Paste("7" * 5000))
+        await pilot.pause()
+        await pilot.press("enter")
+        await settle(pilot, app)
+        assert app.screen is dialog
+        assert "a whole number" in str(dialog.error.content)
+        assert bridge.lines() == []
+
+    drive(app, body)
+
+
 # ----------------------------------------------------------- orientation
 
 
-def test_the_toggles_follow_the_document_and_a_line_goes_per_fixture() -> None:
+def test_the_toggles_follow_the_document_and_a_line_goes_per_run() -> None:
     bridge = FakeBridge()
     turned = Orientation(invertPan=True, panOffset=30.0)
     fixtures = (
@@ -1170,11 +1193,7 @@ def test_the_toggles_follow_the_document_and_a_line_goes_per_fixture() -> None:
         panel = page.panel
         assert not panel.toggles["invertPan"].reverse  # lit from the chosen fixture
         await tap(pilot, panel.toggles["invertPan"], app)
-        # 101 is there already: busk would spend an undo step on it
-        assert bridge.lines() == [
-            "fixture 102 orientation.invertPan true",
-            "fixture 103 orientation.invertPan true",
-        ]
+        assert bridge.lines() == ["fixture 101 thru 103 orientation.invertPan true"]
         panel.choose(101)
         await pilot.pause()
         assert panel.toggles["invertPan"].reverse
@@ -1183,7 +1202,36 @@ def test_the_toggles_follow_the_document_and_a_line_goes_per_fixture() -> None:
         assert panel.offsets["panOffset"].value.content.plain == "30°"
         bridge.sent.clear()
         await tap(pilot, panel.toggles["invertPan"], app)
-        assert bridge.lines() == ["fixture 101 orientation.invertPan false"]
+        assert bridge.lines() == ["fixture 101 thru 103 orientation.invertPan false"]
+
+    drive(app, body)
+
+
+def test_orientation_leaves_out_what_is_not_selected_and_a_run_with_nothing_to_change() -> None:
+    bridge = FakeBridge()
+    turned = Orientation(invertPan=True)
+    fixtures = (
+        FixtureInfo(101, 1, "Head 1", "Head", "16ch", 16, (1, 1), orientation=turned),
+        *FIXTURES[1:],
+    )
+    bridge.events += [
+        ShowChanged(editing_rig(*fixtures)),
+        ProgrammerChanged(programmer(selection=((101, 1), (103, 1), (201, 1)))),
+    ]
+    app = make_app(bridge, page=3)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app, 103)
+        panel = page.panel
+        await tap(pilot, panel.toggles["invertPan"], app)
+        # 102 parts the runs, and 101 is there already: busk would spend an undo step on it
+        assert bridge.lines() == ["fixture 103 thru 201 orientation.invertPan true"]
+        bridge.sent.clear()
+        await tap(pilot, panel.toggles["invertTilt"], app)
+        assert bridge.lines() == [
+            "fixture 101 orientation.invertTilt true",
+            "fixture 103 thru 201 orientation.invertTilt true",
+        ]
 
     drive(app, body)
 
@@ -1229,10 +1277,7 @@ def test_an_offset_through_its_dialog() -> None:
         assert "a number" in str(app.screen.error.content)
         await pilot.press("ctrl+u", *"-12.5", "enter")
         await settle(pilot, app)
-        assert bridge.lines() == [
-            "fixture 101 orientation.tiltOffset -12.5",
-            "fixture 102 orientation.tiltOffset -12.5",
-        ]
+        assert bridge.lines() == ["fixture 101 thru 102 orientation.tiltOffset -12.5"]
 
     drive(app, body)
 

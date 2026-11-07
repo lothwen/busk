@@ -29,7 +29,7 @@ from busk_tui.commands import Line
 from busk_tui.model import FixtureInfo, ShowModel
 from busk_tui.nav import Item, Stop
 from busk_tui.widgets.controls import ActionButton, ButtonStrip, StripButton
-from busk_tui.widgets.dialogs import TextDialog
+from busk_tui.widgets.dialogs import TextDialog, read_whole
 from busk_tui.widgets.dmxmap import CHANNELS, Footprint, clashes, first_free, footprints
 from busk_tui.widgets.options import pick_chips
 from busk_tui.widgets.quick import strip_stops
@@ -72,8 +72,8 @@ def takes_text(
 
 
 def check_address(text: str) -> str | None:
-    text = text.strip()
-    if text.isdecimal() and 1 <= int(text) <= CHANNELS:
+    number = read_whole(text.strip())
+    if number is not None and 1 <= number <= CHANNELS:
         return None
     return f"a whole number from 1 to {CHANNELS}"
 

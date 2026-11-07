@@ -649,6 +649,56 @@ def test_thru_takes_a_limit_from_those_that_have_it_in_one_undo_step(console: Co
     assert limits() == before
 
 
+def test_orientation_over_a_span_is_one_undo_step(console: Console) -> None:
+    def orientations() -> list[dict[str, Any]]:
+        return [dict(f["orientation"]) for f in console.session.show["fixtures"]]
+
+    before = orientations()
+    assert run(console, "fixture 101 thru 201 orientation.panOffset 30") == [
+        "oriented fixture 101 thru 201: panOffset 30°"
+    ]
+    assert orientations() == [{**o, "panOffset": 30} for o in before]  # the other keys stay
+    assert run(console, "undo") == ["undid: oriented fixture 101 thru 201: panOffset 30°"]
+    assert orientations() == before
+    assert not console.execute("undo").ok
+
+
+def test_thru_covers_what_is_between_its_ends_and_no_more(console: Console) -> None:
+    run(console, "fixture 102 thru 101 orientation.tiltOffset 5")
+    fixtures = console.session.show["fixtures"]
+    assert [f["orientation"]["tiltOffset"] for f in fixtures] == [5, 5, 0]
+
+
+def test_orientation_over_a_span_reaches_the_output(console: Console, live: Live) -> None:
+    """MH 2 hangs inverted, so with the same pan its channel differs from MH 1's."""
+    run(console, "sel group 1", "set pan 22.5")
+    live.tick()
+    assert live.universe()[0] != live.universe()[16]
+    run(console, "fixture 101 thru 102 orientation.invertPan true")
+    live.tick()
+    assert live.universe()[0] == live.universe()[16]
+
+
+def test_a_fixture_that_cannot_take_it_refuses_the_whole_line() -> None:
+    """A swap needs pan and tilt, so a scanner with pan alone stops the span."""
+    doc = load_doc(APPENDIX_A)
+    scanner = json.loads(json.dumps(doc["profiles"][0]))
+    scanner["id"], scanner["name"] = "p-scanner", "Scanner"
+    tilt = next(c for c in scanner["modes"][0]["channels"] if c["attribute"] == "tilt")
+    tilt["attribute"] = "frost"
+    doc["profiles"].append(scanner)
+    doc["fixtures"][1]["profileId"] = "p-scanner"
+    del doc["fixtures"][0]["limits"]
+    console = Console(Live(doc).session, LIBRARY, status=lambda: "")
+
+    reply = console.execute("fixture 101 thru 102 orientation.swapPanTilt true")
+
+    assert not reply.ok
+    assert "Swapping pan and tilt needs both" in reply.text
+    assert not any(f["orientation"]["swapPanTilt"] for f in console.session.show["fixtures"])
+    assert not console.execute("undo").ok
+
+
 def test_a_limit_removed_leaves_the_engine_too(console: Console, live: Live) -> None:
     run(console, "fixture 101 limits tilt -90 10", "sel fixture 101", "set tilt 45")
     live.tick()
@@ -674,9 +724,40 @@ def test_a_location_goes_and_undo_brings_it_back(console: Console, live: Live) -
     assert (reply.ok, reply.text) == (False, "error: fixture 102 has no location")
 
 
+LONG = "7" * 5000  # past what int reads
+TOO_LONG = (
+    "route add 1 artnet 0.0.{n}",
+    "route add 1 sacn {n}",
+    'surface add osc "Lemur" port {n}',
+    'surface add osc "Lemur" feedback pad:{n}',
+    'bind "nanoKONTROL2" cc 1 1 page {n}',
+    'bind "nanoKONTROL2" cc 1 1 page +{n}',
+    'bind "nanoKONTROL2" cc 1 1 page -{n}',
+    "cue {n}",
+    "cue 10/{n}",
+    "delete cue 10/{n}",
+    "playback 1 goto {n}",
+    "goto 1 {n}",
+    'goto 1 "{n}"',
+    "record slot {n}",
+    "record slot {n}.1",
+    "record slot 2.{n}",
+    "fade {n}",
+    "fixture 101 orientation.panOffset {n}",
+)
+
+
+def too_long(template: str) -> Any:
+    """A row of the test below: the error names the column of the word."""
+    column = template.rindex(" ", 0, template.index("{n}")) + 2
+    error = f"number too long at column {column}: at most 300 digits"
+    return pytest.param(template.format(n=LONG), error, id=template)
+
+
 @pytest.mark.parametrize(
     ("line", "error"),
     [
+        *(too_long(template) for template in TOO_LONG),
         ('rename fixture 101 "back\\slash"', "bad escape in a quote at column 25"),
         ('set "\\q"', "bad escape in a quote at column 6"),
         ('rename fixture 101 "tab\there"', "control character in a quote at column 24"),
@@ -703,6 +784,23 @@ def test_a_line_busk_cannot_read_is_refused_wherever_it_goes(
         offline.run_script(script)
     assert (raised.value.line, raised.value.text) == (2, line)
     assert raised.value.output[-1] == f"error: {error}"
+    assert offline.show == before
+
+
+def test_a_cue_number_too_long_is_refused_through_submit() -> None:
+    doc = load_doc(APPENDIX_A)
+    offline = OfflineShow(show_of(doc))
+    before = offline.show
+    cue = {**doc["cueLists"][0]["cues"][-1], "id": "cue-long", "number": LONG}
+
+    goto = offline.submit({"type": "GOTO", "playbackId": "pb-song", "cueNumber": LONG})
+    added = offline.submit({"type": "ADD", "path": ["cueLists", {"id": "cl-song"}, "cues"],
+                            "value": cue})  # fmt: skip
+
+    assert not goto.ok
+    assert goto.message.startswith("no cue 777")
+    assert not added.ok
+    assert [issue.path for issue in added.issues] == ["cueLists[0].cues[2].number"]
     assert offline.show == before
 
 

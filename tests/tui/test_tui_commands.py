@@ -18,6 +18,7 @@ from busk_tui import attributes, commands, config
 from busk_tui.bridge import show_model
 from busk_tui.commands import Line
 from busk_tui.widgets import route_dialog
+from busk_tui.widgets.dialogs import check_number
 from busk_tui.widgets.fixture_panel import CATEGORIES
 from busk_tui.widgets.route_dialog import network_line, usb_line
 
@@ -176,18 +177,18 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
     "no limit": (commands.no_limit(101, 102, "pan"), "fixture 101 thru 102 limits pan none", False),
     "no limits": (commands.no_limits(101, 102), "fixture 101 thru 102 limits none", False),
     "invert pan": (
-        commands.orientation(101, "invertPan", True),
+        commands.orientation(101, 101, "invertPan", True),
         "fixture 101 orientation.invertPan true",
         False,
     ),
     "keep tilt": (
-        commands.orientation(101, "invertTilt", False),
-        "fixture 101 orientation.invertTilt false",
+        commands.orientation(101, 102, "invertTilt", False),
+        "fixture 101 thru 102 orientation.invertTilt false",
         False,
     ),
     "pan offset": (
-        commands.orientation(101, "panOffset", 30.5),
-        "fixture 101 orientation.panOffset 30.5",
+        commands.orientation(101, 102, "panOffset", 30.5),
+        "fixture 101 thru 102 orientation.panOffset 30.5",
         False,
     ),
     "location": (
@@ -436,8 +437,12 @@ def test_busk_stores_what_the_route_form_says(show: busk.OfflineShow, name: str)
 
 
 @pytest.mark.parametrize(
-    "text", ["1", "63999", " 7 ", "\u0663", "0", "64000", "-1", "1.5", "", "x", "²"]
-)
+    "text",
+    [
+        "1", "63999", " 7 ", "\u0663", "0", "64000", "-1", "1.5", "", "x", "²",
+        pytest.param("7" * 5000, id="past-int"),
+    ],
+)  # fmt: skip
 def test_the_route_form_and_busk_agree_on_an_sacn_universe(
     show: busk.OfflineShow, text: str
 ) -> None:
@@ -452,11 +457,22 @@ def test_the_route_form_and_busk_agree_on_an_sacn_universe(
     [
         "0.0.0", "127.15.15", " 0.1.2 ", "\u0660.\u0660.\u0660", "128.0.0", "0.16.0", "0.0.16",
         "0.0", "0.0.0.0", "a.b.c", "0.0.", "0.0.-1", "0.0.²", "",
+        pytest.param("0.0." + "7" * 5000, id="past-int"),
     ],
 )  # fmt: skip
 def test_the_route_form_and_busk_agree_on_a_port_address(show: busk.OfflineShow, text: str) -> None:
     passes = route_dialog.check_artnet(text) is None
     assert passes is show.execute(f"route add 1 artnet {text.strip()}").ok
+
+
+@pytest.mark.parametrize("digits", [300, 301])
+def test_a_number_dialog_and_busk_agree_on_how_long_a_number_runs(
+    show: busk.OfflineShow, digits: int
+) -> None:
+    """The TUI has its own copy of busk's limit: busk's is not public."""
+    number = "7" * digits
+    passes = check_number((), None)(number) is None
+    assert passes is show.execute(f"fixture 101 number {number}").ok
 
 
 @pytest.mark.parametrize(
@@ -524,8 +540,8 @@ def test_the_rig_lines_do_what_they_say(show: busk.OfflineShow) -> None:
         commands.limit_range(101, 101, "pan", -180.0, 180.0),
         commands.limit_intensity(101, 101, 0.5),
         commands.no_limit(101, 101, "tilt"),
-        commands.orientation(101, "invertPan", True),
-        commands.orientation(101, "tiltOffset", 15.0),
+        commands.orientation(101, 101, "invertPan", True),
+        commands.orientation(101, 102, "tiltOffset", 15.0),
         commands.location(101, (1.5, -2.0, 4.25, 0.0, 0.0, 90.0)),
         commands.category("Generic Spot 16ch", "wash"),
     ):
@@ -535,6 +551,7 @@ def test_the_rig_lines_do_what_they_say(show: busk.OfflineShow) -> None:
     assert fixture["limits"] == {"pan": (-180.0, 180.0), "intensityMax": 0.5}
     assert fixture["orientation"]["invertPan"] is True
     assert fixture["orientation"]["tiltOffset"] == 15.0
+    assert show.show["fixtures"][1]["orientation"]["tiltOffset"] == 15.0
     assert fixture["location"] == {"x": 1.5, "y": -2, "z": 4.25, "rx": 0, "ry": 0, "rz": 90}
     assert show.show["profiles"][0]["category"] == "wash"
     assert show.execute(commands.no_location(101).text).ok

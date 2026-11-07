@@ -79,7 +79,7 @@ In short:
 | Renumber | `fixture N number M` (generic property) | yes | control: `[number…]`, a dialog that refuses a taken number |
 | Limits | `fixture N [thru M] limits …`, `… limits pan\|tilt\|intensity none` (GAP-25), `… limits none` | yes | control: `[limit…]`, `[none]`, `[no limits]`, on the selection |
 | Location | `fixture N location {…}`, `… location none` (GAP-25) | yes | control: `[location…]`, `[no place]` on F3; pre-fill on F1 C |
-| Orientation | `fixture N orientation.<key> <value>` (generic property, no `thru`) | yes | control: toggles and `[offset…]`, a line per selected fixture |
+| Orientation | `fixture N [thru M] orientation.<key> <value>` (GAP-28) | yes | control: toggles and `[offset…]`, on the selection |
 | Category | `profile "<name>" category …` | yes | control: chips |
 | Change mode | `fixture N mode <mode>` (GAP-26) | yes | control: chips |
 | Change profile | `fixture N profile "<profile>" mode <mode>` (GAP-26) | yes | control: `[profile…]`, the picker, `[change]` |

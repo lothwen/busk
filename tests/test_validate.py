@@ -803,6 +803,21 @@ CUES = [
         put("cueLists[0].cues[1].number", "2a"),
         expect={E("cueLists[0].cues[1].number")},
     ),
+    case(
+        "cue number of 300 digits",
+        put("cueLists[0].cues[1].number", "7" * 300),
+        expect=set(),
+    ),
+    case(
+        "cue number past 300 digits",
+        put("cueLists[0].cues[1].number", "7" * 301),
+        expect={E("cueLists[0].cues[1].number")},
+    ),
+    case(
+        "cue number too long for int",
+        put("cueLists[0].cues[1].number", "1." + "7" * 5000),
+        expect={E("cueLists[0].cues[1].number")},
+    ),
     *[
         case(
             f"cue number {bad!r}",

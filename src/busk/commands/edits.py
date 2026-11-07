@@ -32,7 +32,6 @@ compiles and commits it (or rejects it, changing nothing).
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
@@ -47,6 +46,7 @@ from busk.commands.types import (
     PatchFixtureCmd,
     SetCmd,
 )
+from busk.model.cue import CUE_NUMBER
 from busk.model.show import Show
 from busk.model.validate import Issue
 
@@ -176,12 +176,10 @@ _SINGULAR: Final = {
 }
 """How ``ADD`` messages name what they added, by the list's key."""
 
-_CUE_NUMBER: Final = re.compile(r"[0-9]+(?:\.[0-9]+)?")
-
 
 def cue_number_key(number: object) -> tuple[int, ...] | None:
     """A cue number as an integer tuple (``"1.10"`` → ``(1, 10)``), or ``None``."""
-    if not isinstance(number, str) or _CUE_NUMBER.fullmatch(number) is None:
+    if not isinstance(number, str) or CUE_NUMBER.fullmatch(number) is None:
         return None
     return tuple(int(part) for part in number.split("."))
 

@@ -121,6 +121,16 @@ def test_bad_files_are_refused(tmp_path: Path, name: str, content: bytes, messag
     assert [issue.message for issue in raised.value.issues] == [message]
 
 
+def test_a_cue_number_too_long_for_int_is_refused(tmp_path: Path) -> None:
+    doc = load_doc(APPENDIX_A)
+    doc["cueLists"][0]["cues"][1]["number"] = "7" * 5000
+    path = tmp_path / "club.json"
+    path.write_text(json.dumps(doc), encoding="utf-8")
+    with pytest.raises(ShowLoadError) as raised:
+        load_show(path)
+    assert [issue.path for issue in raised.value.issues] == ["cueLists[0].cues[1].number"]
+
+
 def test_save_refuses_an_unknown_extension(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match=r"use \.show or \.json"):
         save_show(show_of(load_doc(APPENDIX_A)), tmp_path / "club.xml", now=NOW)

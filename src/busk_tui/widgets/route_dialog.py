@@ -33,7 +33,7 @@ from textual.widgets import Input, Static
 from busk_tui import colors, commands
 from busk_tui.commands import Line
 from busk_tui.widgets.controls import ButtonStrip
-from busk_tui.widgets.dialogs import dialog_css, read_number
+from busk_tui.widgets.dialogs import dialog_css, read_number, read_whole
 from busk_tui.widgets.options import pick_chips
 
 PROTOCOLS: Final = {"sacn": "sACN", "artnet": "Art-Net", "dmxusb": "DMX-USB"}
@@ -61,17 +61,17 @@ def artnet_address(universe: int) -> str:
 
 def check_sacn(text: str) -> str | None:
     """An sACN universe's check."""
-    text = text.strip()
-    if text.isdecimal() and 1 <= int(text) <= SACN_TOP:  # isdigit takes ², which int refuses
+    number = read_whole(text.strip())
+    if number is not None and 1 <= number <= SACN_TOP:
         return None
     return f"an sACN universe from 1 to {SACN_TOP}"
 
 
 def check_artnet(text: str) -> str | None:
     """A port address's check."""
-    parts = text.strip().split(".")
+    parts = [read_whole(part) for part in text.strip().split(".")]
     if len(parts) == len(ARTNET_TOPS) and all(
-        part.isdecimal() and int(part) <= top for part, top in zip(parts, ARTNET_TOPS, strict=True)
+        part is not None and part <= top for part, top in zip(parts, ARTNET_TOPS, strict=True)
     ):
         return None
     net, sub, universe = ARTNET_TOPS

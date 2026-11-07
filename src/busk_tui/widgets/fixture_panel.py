@@ -28,9 +28,8 @@ chosen in edit mode.
 
 Two reaches (the plan's §4 call 4). The header, the mode, the profile, PATCH and
 the location act on the chosen fixture. LIMITS and ORIENTATION act on every selected fixture
-while the chosen one is selected, as their headings say: limits a ``thru``
-line per run of the show's numbers that are all selected, orientation a line
-per fixture, since busk has no ``thru`` there.
+while the chosen one is selected, as their headings say: a ``thru`` line per run
+of the show's numbers that are all selected.
 """
 
 from __future__ import annotations
@@ -487,7 +486,8 @@ class FixturePanel(VerticalScroll):
 
     def spans_with(self, has: Callable[[FixtureInfo], bool]) -> list[tuple[int, int]]:
         """The spans with a fixture that ``has`` it: busk refuses to remove
-        what none of a span's fixtures have."""
+        what none of a span's fixtures have, and spends an undo step on a line
+        that changes nothing."""
         found = [fixture.number for fixture in self.reached() if has(fixture)]
         return [(a, b) for a, b in self.spans() if any(a <= number <= b for number in found)]
 
@@ -679,13 +679,9 @@ class FixturePanel(VerticalScroll):
         self._run(commands.no_limits(a, b) for a, b in self.spans_with(_has_limits))
 
     def _orient(self, key: str, value: bool | float) -> None:
-        """A line per fixture of the reach that is not at ``value`` yet: busk
-        would spend an undo step on the others."""
-        self._run(
-            commands.orientation(fixture.number, key, value)
-            for fixture in self.reached()
-            if getattr(fixture.orientation, key) != value
-        )
+        """A ``thru`` line per span with a fixture not at ``value`` yet."""
+        spans = self.spans_with(partial(_differs, key, value))
+        self._run(commands.orientation(a, b, key, value) for a, b in spans)
 
     def toggle(self, key: str) -> None:
         """A toggle: the reach at the opposite of the chosen fixture's."""
@@ -694,7 +690,7 @@ class FixturePanel(VerticalScroll):
             self._orient(key, not getattr(fixture.orientation, key))
 
     def ask_offset(self, key: str, axis: str) -> None:
-        """``[offset…]``: ``fixture 101 orientation.panOffset 30``, a line per fixture."""
+        """``[offset…]``: ``fixture 101 thru 102 orientation.panOffset 30``."""
         fixture = self.fixture()
         if fixture is None:
             return
@@ -777,3 +773,7 @@ def _has_limit(name: str, fixture: FixtureInfo) -> bool:
 
 def _has_limits(fixture: FixtureInfo) -> bool:
     return fixture.limits != Limits()
+
+
+def _differs(key: str, value: bool | float, fixture: FixtureInfo) -> bool:
+    return bool(getattr(fixture.orientation, key) != value)

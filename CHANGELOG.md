@@ -32,6 +32,9 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   refused while anything uses what it deletes.
 - `fixture N [thru M] limits pan|tilt|intensity none` removes one limit and keeps the others,
   and `fixture N location none` removes a location.
+- `fixture N [thru M] orientation.<key> <value>` sets one orientation key on every fixture of a
+  span, in one undo step, and Tab offers the keys. F3 sends it, so four heads are one `undo`. The
+  line reads its numbers as `limits` does, so `orientation.panOffset 1e2` is no longer taken.
 - `fixture N mode <mode>` and `fixture N profile "<profile>" mode <mode>` change what a fixture
   runs, by name, each in one undo step. The profile is found as `fixture add` finds it, and a
   library profile is embedded with the line. Tab offers the profiles and their modes.
@@ -48,6 +51,11 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   page raised `ValueError` out of the same calls. At the prompt it ended `busk run --threads`, and
   restarted the console with processes. It is now a refused line. `busk import` raised the same on
   an OFL pixel key such as `1²2`, sorted for `eachPixelABC`.
+- A number past 4,300 digits raised `ValueError` the same way, from a line and from `submit` with
+  a `GOTO`, and a show file holding such a cue number raised it out of `load_show`. A line with more
+  than 300 digits in a row is now refused, and a cue number takes at most 300 on each side of its
+  point, so such a file fails with `ShowLoadError`. `fade` no longer takes a number that long as an
+  endless fade, which kept the programmer's values from reaching the output.
 - A TUI button whose look alone changed was not redrawn: a lit scope or curve, `[−]` `[+]`
   turning active, F5's `RUN` dimming.
 - A name the TUI sent to busk was written bare between quotes, so `C:\new` reached busk with a
@@ -55,7 +63,8 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   busk reads them.
 - A TUI question read the name in it as markup: `x[/]y` ended the TUI, and `[left]` vanished. A
   long question was cut at the box. Both are fixed, and a question now wraps.
-- A TUI number dialog raised on a digit such as `²`. It is refused there now.
+- A TUI number dialog raised on a digit such as `²`, and on a paste past 4,300 digits, which ended
+  the TUI. Both are refused there now, and so is any number past the 300 digits busk reads.
 
 ## [0.1.1] - 2026-10-27
 

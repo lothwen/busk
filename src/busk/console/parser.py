@@ -66,6 +66,8 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
     fixture N [thru M] limits pan|tilt <min> <max>
     fixture N [thru M] limits intensity <max> | fixture N [thru M] limits none
     fixture N [thru M] limits pan|tilt|intensity none
+    fixture N [thru M] orientation.invertPan|invertTilt|swapPanTilt true|false
+    fixture N [thru M] orientation.panOffset|tiltOffset <degrees>
     fixture N location <location> | fixture N location none
         <location> = {"x": 0, "y": 0, "z": 0, "rx": 0, "ry": 0, "rz": 0}
     safety strobe <hz> | safety strobe off
@@ -206,6 +208,16 @@ takes ``limits`` with it. Like ``limits none``, it is refused when no fixture
 named has it. ``fixture N location none`` removes the location, ``fixture N
 location {…}`` being the generic edit.
 
+Orientation for several fixtures (GAP-28). ``fixture N [thru M]
+orientation.<key> <value>`` sets that key on every fixture of the span and keeps
+the others, in one undo step. The line is refused whole if the show would not be
+valid with it: a swap on a fixture with pan alone stops the span. ``fixture N
+orientation {…}``, the whole of it, stays the generic edit.
+
+A number too long (GAP-30). :func:`tokenize` refuses a word or a quote with more
+than ``MAX_DIGITS`` digits in a row, so nothing after it meets a number ``int``
+cannot read, or one a ``float`` holds only as ``inf``.
+
 Changing a fixture's mode and profile (GAP-26). ``fixture N mode <mode>`` takes
 a mode of the fixture's profile, by name or id, in any case, as ``fixture add``
 does. ``fixture N profile "<profile>" mode <mode>`` finds the profile as
@@ -238,7 +250,7 @@ from busk.commands.types import Command, EditPath
 from busk.console.cascade import fixture_cascade, universe_cascade
 from busk.model.attributes import ATTRIBUTES, AttributeDefinition
 from busk.model.common import TargetRef
-from busk.model.cue import CUE_NUMBER
+from busk.model.cue import CUE_NUMBER, MAX_DIGITS
 from busk.model.effect import EffectTemplate
 from busk.model.profile import PROFILE_CATEGORIES, FixtureProfile, option_capabilities
 from busk.model.show import Show
@@ -444,6 +456,7 @@ def find_profile(
 # ---------------------------------------------------------------- tokenizer
 
 _TOKEN: Final = re.compile(r'\s*(?:(?P<quoted>"(?:[^"\\]|\\.)*")|(?P<comma>,)|(?P<word>[^\s",]+))')
+_LONG_NUMBER: Final = re.compile(rf"\d{{{MAX_DIGITS + 1}}}")
 
 
 @dataclass(frozen=True)
@@ -486,6 +499,8 @@ def tokenize(line: str) -> tuple[list[Token], int]:
             if match["word"].startswith("#"):
                 return tokens, start
             tokens.append(Token(match["word"], start))
+        if _LONG_NUMBER.search(tokens[-1].text) is not None:
+            raise ParseError(f"number too long at column {start + 1}: at most {MAX_DIGITS} digits")
         position = match.end()
     return tokens, len(line)
 
@@ -506,6 +521,9 @@ _DEFAULT_SCOPE: Final = {
 }
 _ATTRIBUTE_NAMES: Final = {attribute.lower(): attribute for attribute in ATTRIBUTES}
 _COMPONENT_WORDS: Final = tuple(f"color.{component}" for component in COLOR_COMPONENTS)
+_ORIENTATION_KEYS: Final = ("invertPan", "invertTilt", "swapPanTilt", "panOffset", "tiltOffset")
+_ORIENTATION_WORDS: Final = tuple(f"orientation.{key}" for key in _ORIENTATION_KEYS)
+_ORIENTATION_NAMES: Final = {f"orientation.{key.lower()}": key for key in _ORIENTATION_KEYS}
 _NUMBER: Final = re.compile(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)%?")
 _CUE: Final = re.compile(r"(\d+)(?:/(\d+(?:\.\d+)?))?")
 _SLOT: Final = re.compile(r"(?:(\d+)\.)?(\d+)")
@@ -1795,10 +1813,13 @@ class _Parser:
                     return self._no_location()
             thru = word == "thru"
             after = self.peek(3) if thru else following
+            if after is not None and after.lower.startswith("orientation."):
+                return self._orientation()
             if (after is not None and after.lower == "limits") or (thru and after is None):
-                return self._limits()  # N thru M comes only before limits
+                return self._limits()  # N thru M comes only before limits and orientation
             if following is None and self.peek() is not None:  # fixture N: Tab offers these
-                self.offers += ("patch", "thru", "limits", "mode", "profile", "location")
+                self.offers += ("patch", "thru", "limits", "mode", "profile", "location",
+                                *_ORIENTATION_WORDS)  # fmt: skip
         if head == "universe" and self.keyword("add"):
             return self._universe_add()
         if head == "page":
@@ -2260,6 +2281,8 @@ class _Parser:
         start = self.k
         fixtures = self.fixture_range()
         span = f"fixture {self.typed(start)}"
+        if self.ending("limits", *_ORIENTATION_WORDS):  # fixture N thru M: Tab offers these
+            raise _Unfinished("expected limits or orientation.<key>")
         self.expect("limits")
         what = self.expect("pan", "tilt", "intensity", "none")
         if what == "none":
@@ -2305,6 +2328,32 @@ class _Parser:
                 {"type": "DELETE", "path": path if len(fixture["limits"]) == 1 else [*path, key]}
             )
         return Submit(_labelled(f"removed the {what} limit of {span}", *deletes))
+
+    def _orientation(self) -> Action:
+        """``fixture N [thru M] orientation.<key> <value>`` (GAP-28), as one
+        undo step: that key of each fixture's ``orientation``."""
+        start = self.k
+        fixtures = self.fixture_range()
+        span = f"fixture {self.typed(start)}"
+        prop = self.take("an orientation key")
+        key = _ORIENTATION_NAMES.get(prop.lower)
+        if key is None:
+            keys = ", ".join(_ORIENTATION_KEYS)
+            raise ParseError(f"expected an orientation key ({keys}), got {prop.text!r}")
+        value: bool | float
+        if key.endswith("Offset"):
+            value = self.number("an offset in degrees")
+            text = f"{key} {value:g}°"
+        else:
+            word = self.expect("true", "false")
+            value, text = word == "true", f"{key} {word}"
+        self.done()
+        sets = [
+            {"type": "SET", "path": ["fixtures", {"id": f["id"]}, "orientation", key],
+             "value": value}
+            for f in fixtures
+        ]  # fmt: skip
+        return Submit(_labelled(f"oriented {span}: {text}", *sets))
 
     def _no_location(self) -> Action:
         """``fixture N location none`` (GAP-25)."""

@@ -183,6 +183,7 @@ def test_what_an_address_means(
         ("513", "a whole number from 1 to 512"),
         ("x", "a whole number from 1 to 512"),
         ("²", "a whole number from 1 to 512"),
+        pytest.param("7" * 5000, "a whole number from 1 to 512", id="past-int"),
     ],
 )
 def test_an_address_goes_from_1_to_512(text: str, problem: str | None) -> None:

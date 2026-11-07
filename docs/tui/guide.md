@@ -497,11 +497,12 @@ nothing. From the top:
 
 LIMITS and ORIENTATION act on every selected fixture while the fixture shown is selected, as
 their headings say (`LIMITS · 101 thru 102 (2)`); the rest of the panel acts on the fixture shown
-alone. A limit goes out as one line per run of the numbers selected: 101 and 102 give `fixture
-101 thru 102 limits tilt -90 10`, and a fixture left out between two selected ones gives two
-lines, so it stays as it is. Orientation goes out as a line per fixture, each its own `undo` step.
-A toggle sets them all to the opposite of the fixture shown, so it also brings those that differ
-into line.
+alone. Each goes out as one line per run of the numbers selected, and each line is one `undo`
+step: 101 and 102 give `fixture 101 thru 102 limits tilt -90 10`, and a fixture left out between
+two selected ones gives two lines, so it stays as it is. A toggle sets them all to the opposite of
+the fixture shown, so it also brings those that differ into line. If a fixture of a run cannot take
+a line, busk refuses the line, in the log, and the run stays as it was: `[swap pan/tilt]` does this
+with a fixture that has pan alone.
 
 **A new fixture.** `[+ add]`, in or out of edit mode, shows the form in the panel.
 [F8's map](#f8-patch) can open it too, at a free channel.

@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 
+import pytest
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.containers import Vertical
@@ -30,6 +31,7 @@ from busk_tui.widgets.dialogs import (
     check_number,
     free_step,
     next_number,
+    read_whole,
 )
 from busk_tui.widgets.digits import BeatDots, BigDigits, beat_dots, big
 from busk_tui.widgets.legend import Legend
@@ -180,13 +182,36 @@ def test_the_checks_of_names_and_numbers() -> None:
     assert check(" 9 ") is None
     assert check("2") is None  # its own number
     assert check("4") == "4 is taken"
-    for refused in ("0", "-1", "x", "", "1.5", "²"):
+    for refused in ("0", "-1", "x", "", "1.5", "²", "7" * 301, "7" * 5000):
         assert check(refused) == "a whole number from 1"
     assert check_number({1}, None)("1") == "1 is taken"
     assert free_step(2, 1, {3, 4}) == 5
     assert free_step(2, -1, {1}) == 2
     assert next_number({1, 2, 7}) == 8
     assert next_number(()) == 1
+
+
+@pytest.mark.parametrize(
+    ("text", "number"),
+    [
+        ("0", 0),
+        ("12", 12),
+        ("\u0663", 3),
+        ("7" * 300, int("7" * 300)),
+        ("7" * 301, None),
+        ("7" * 5000, None),  # past what int reads
+        ("", None),
+        ("-1", None),
+        ("+1", None),
+        ("1.5", None),
+        (" 1", None),
+        ("1_000", None),
+        ("²", None),
+    ],
+    ids=lambda value: str(value)[:12],
+)
+def test_a_whole_number_as_typed(text: str, number: int | None) -> None:
+    assert read_whole(text) == number
 
 
 def test_a_note_in_a_strip_is_no_button() -> None:

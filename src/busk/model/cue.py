@@ -5,8 +5,9 @@ Every playback runs a cue list. A look is a one-cue list, a song stack is a
 by its rate, and an effect playback is a one-cue list holding only an effect.
 
 Cue numbers are decimal strings (``"1"``, ``"1.5"``, ``"12.25"``) to avoid
-floating-point surprises. Validation requires ``\\d+(\\.\\d+)?`` and compares
-numbers as integer tuples, so ``"1.10"`` sorts after ``"1.9"``.
+floating-point surprises. Validation requires ``\\d+(\\.\\d+)?``, each part at
+most :data:`MAX_DIGITS` long, and compares numbers as integer tuples, so
+``"1.10"`` sorts after ``"1.9"``.
 """
 
 from __future__ import annotations
@@ -21,13 +22,18 @@ from busk.model.common import STRICT, AttributeId, CueId, CueListId, EntityBase,
 from busk.model.effect import EffectInstance, Rate
 from busk.model.entry import FadeCurve, TargetSpec, ValueEntry
 
-CUE_NUMBER: Final = re.compile(r"[0-9]+(?:\.[0-9]+)?")
+MAX_DIGITS: Final = 300
+"""The most digits a number has in a row. A ``float`` holds that many without
+turning to ``inf``, which takes 309, and ``int`` reads them on any Python: past
+4,300 digits it raises, and a Python can be set to raise from 640."""
+
+CUE_NUMBER: Final = re.compile(rf"[0-9]{{1,{MAX_DIGITS}}}(?:\.[0-9]{{1,{MAX_DIGITS}}})?")
 """A valid cue number: digits with an optional decimal part."""
 
 
 def cue_number_key(number: str) -> tuple[int, ...] | None:
     """A cue number as comparable integer parts (``"1.10"`` > ``"1.9"``), or
-    ``None`` when it is not ``digits[.digits]``."""
+    ``None`` when it is not a :data:`CUE_NUMBER`."""
     if CUE_NUMBER.fullmatch(number) is None:
         return None
     return tuple(int(part) for part in number.split("."))

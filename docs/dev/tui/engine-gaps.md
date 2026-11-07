@@ -86,9 +86,9 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-25](#gap-25-removing-one-limit-and-a-location) Removing one limit, and a location | action | nice-to-have | F3 | **done** 2026-11-05 |
 | [GAP-26](#gap-26-changing-a-fixtures-mode-and-profile) Changing a fixture's mode and profile | action | important | F3 | **done** 2026-11-05 |
 | [GAP-27](#gap-27-what-fixture-add-takes) What `fixture add` takes | read | important | F3 | **done** 2026-11-05 |
-| [GAP-28](#gap-28-orientation-for-several-fixtures) Orientation for several fixtures | action | nice-to-have | F3 | open (found 2026-11-05) |
+| [GAP-28](#gap-28-orientation-for-several-fixtures) Orientation for several fixtures | action | nice-to-have | F3 | **done** 2026-11-07 |
 | [GAP-29](#gap-29-a-digit-int-cannot-read) A digit `int` cannot read | contract | important | prompt | **done** 2026-11-07 |
-| [GAP-30](#gap-30-a-number-too-long-for-int) A number too long for `int` | contract | important | prompt | open (found 2026-11-07) |
+| [GAP-30](#gap-30-a-number-too-long-for-int) A number too long for `int` | contract | important | prompt | **done** 2026-11-07 |
 
 ---
 
@@ -2002,6 +2002,8 @@ as F5 reads `effect_templates`.
 
 ## GAP-28: Orientation for several fixtures
 
+**Status:** done 2026-11-07 (see **Done** at the end of this section).
+
 Found while planning the TUI's rig controls (`docs/plans/tui-rig-plan.md`, §8 item 2,
 2026-11-05).
 
@@ -2021,7 +2023,36 @@ too, but not the one line.
 
 **Priority:** nice-to-have.
 
-**TUI until then:** F3 sends a line per fixture, each its own undo step, and the guide says so.
+**TUI until then:** F3 sent a line per fixture, each its own undo step, and the guide said so.
+
+**Done** (2026-11-07). The line, for one fixture or a span. No public name was added. Documented
+in `docs/console.md` (the Edit row and a note), `busk help`, the parser's module docs and
+`CHANGELOG.md`. What it settles:
+
+- **One line, one undo step.** Each fixture of the span gets its key set in one labelled batch.
+  `thru` covers every fixture between its ends, either way round, and the other keys stay.
+- **A fixture that cannot take the value refuses the whole line,** and nothing changes. That
+  takes a swap on a fixture with pan alone. A par takes a swap, as it did.
+- **The line replaces the generic edit for the five keys, with one fixture too.** The replies
+  name the span: `oriented fixture 101 thru 102: invertPan true`, `oriented fixture 101:
+  panOffset 30°`, and `undid: …` the same. A mistake is the line's own: `expected true or false,
+  got 'banana'`, `expected an orientation key (invertPan, invertTilt, swapPanTilt, panOffset,
+  tiltOffset), got 'orientation.nope'`. The keys take any case, as the console's other words do.
+- **`fixture N orientation {…}` stays the generic edit,** and takes no `thru`.
+- **An offset reads as a limit's degrees do,** through `number()`, where the generic edit read
+  JSON. So `1e2`, taken before, is refused, and `50%`, refused before, reads as 0.5°, as it does
+  in `limits pan`. The reply shows the 0.5°.
+- **A line that changes nothing still costs an undo step,** as it did.
+- **Tab** offers the five keys after `fixture N` and `fixture N thru M`, then `true` and `false`.
+  `fixture N thru M` alone says `expected limits or orientation.<key>`.
+- Tests: the rows of `tests/test_console_parser.py`, completion in
+  `tests/test_console_prompt.py`, and undo, the output and a refused span in
+  `tests/test_console.py`.
+
+F3 now sends a `thru` line per run of the selection, leaving out a run with nothing to change,
+so four heads are one `undo`. A fixture of a run already at the value is set again inside that
+step. `[swap pan/tilt]` over a run with a fixture that has pan alone is now refused for the run,
+where before only that fixture's line was.
 
 ## GAP-29: A digit `int` cannot read
 
@@ -2059,10 +2090,12 @@ name was added. Documented in `CHANGELOG.md`. What it settles:
 - Tests: the rows of `tests/test_console_parser.py` and `tests/test_console.py`, and the sort
   in `tests/test_ofl.py`.
 
-A number too long for `int` reaches the same failure another way:
-[GAP-30](#gap-30-a-number-too-long-for-int) is still open.
+A number too long for `int` reached the same failure another way:
+[GAP-30](#gap-30-a-number-too-long-for-int) closed that.
 
 ## GAP-30: A number too long for `int`
+
+**Status:** done 2026-11-07 (see **Done** at the end of this section).
 
 Found while fixing [GAP-29](#gap-29-a-digit-int-cannot-read) (`docs/plans/tui-rig-plan.md`,
 §8 item 8, 2026-11-07).
@@ -2099,5 +2132,49 @@ not parse. How is a design call for the user:
 
 **Priority:** important. It is rare, but on stage it ends a `--threads` run, as GAP-29 did.
 
-**TUI until then:** the bridge catches it. The line fails with `internal error: ValueError: …`,
-and `confirmation()` and `expected()` answer nothing.
+**TUI until then:** the bridge caught it. The line failed with `internal error: ValueError: …`,
+and `confirmation()` and `expected()` answered nothing.
+
+**Done** (2026-11-07). Neither of the two ways above, at the user's choice: one check where a line
+is read, and a cap on cue numbers for what does not come through a line. No public name was added.
+Documented in `docs/console.md` (a note), the parser's module docs and `CHANGELOG.md`. What it
+settles:
+
+- **`tokenize` refuses a word or a quote with more than 300 digits in a row:** `number too long
+  at column 13: at most 300 digits`. So `execute()`, `confirmation()`, `expected()` and
+  `run_script()` answer as for any line that does not parse, and an `int()` added to the parser
+  later is covered. It refuses only this input, so a real bug still shows as one.
+- **Why 300:** `MAX_DIGITS` in `busk.model.cue`. `int` reads that many on any Python, which raises
+  past 4,300 by default and can be set to raise from 640, and a `float` holds them without turning
+  to `inf`, which takes 309.
+- **So `fade <n>` is refused too.** It raised nothing: `number()` read `inf`, the reply was
+  `programmer fade inf s`, and what the programmer set then never reached the output.
+- **Digits in a row, anywhere in the word:** `0.0.<n>`, `pad:<n>`, `10/<n>`, and any digit `int`
+  reads, such as `٣`. A comment is not read. The cost is that a name of 301 digits in a row is
+  refused too. One with spaces between them is not.
+- **A cue number takes at most 300 digits on each side of its point.** `CUE_NUMBER` says so, so
+  `cue_number_key` answers `None` past it, as for any bad number. `edits.py` had its own copy of the
+  pattern and now uses `CUE_NUMBER`. Through `submit()`, `GOTO` is refused with `no cue …`, and `ADD`
+  of a cue, `SET` of its number and `RECORD_CUE` are refused, where they came back as `internal
+  error`. `SET` of `gotoCue` came back the same way and is now taken with a warning, as for any cue
+  the list does not have, and using it finds no cue.
+- **A show file** with such a cue number raised `ValueError` out of `load_show`, which this section
+  did not list. It is now `ShowLoadError`, naming the cue. A cue number of 301 to 4,300 digits
+  loaded before and no longer does.
+- **A sweep** of about 3,300 lines from the tests, the examples and `docs/console.md`, with each
+  number swapped for 5,000 digits, raised 1,281 times before and never after, through `execute()`,
+  `confirmation()` and `expected()`. On `busk run`, with `--threads` and with processes, `record
+  slot <n>` and `goto 1 <n>` are refused lines and the run goes on.
+- Tests: the rows of `tests/test_console.py`, the limit in `tests/test_console_parser.py`, and
+  `submit()`, `tests/test_validate.py` and `tests/test_show_file.py` for the cap.
+
+**The TUI's number dialogs** had the same mistake, in text that never reaches `tokenize`, so a
+paste of 5,000 digits ended the TUI with exit 1. `check_number`, `check_sacn`, `check_artnet` and
+`check_address` now read through `read_whole` in `widgets/dialogs.py`, and the dialog says what it
+wants. Catching `ValueError` was not enough: a number just under `int`'s limit would pass the check,
+and a step of `[+]` in the new fixture form could take it past, for `str` to raise while drawing. So
+it stops at 300 digits, with a copy of the limit, since `MAX_DIGITS` is not in `busk.__all__`.
+`test_a_number_dialog_and_busk_agree_on_how_long_a_number_runs` keeps the two together.
+
+**Left as found:** `parse_target_key` in `model/common.py` raises for a target key with such an
+element. A show file could hold one, and `submit()` answers `internal error`.

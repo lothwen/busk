@@ -245,7 +245,7 @@ rig's 8 192 elements (GAP-01).
 | *(rig plan)* category chips | `profile "<name>" category …` | S | `doc` | |
 | *(rig plan)* PATCH, `[patch]` | `fixture N patch U.A`, `fixture N patch none`; the free runs from patches and footprints | S | `doc` | |
 | *(rig plan)* LIMITS | `fixture N [thru M] limits …`, `… limits pan\|tilt\|intensity none` (GAP-25), `… limits none` | S | `doc`, `prog` | |
-| *(rig plan)* ORIENTATION | `fixture N orientation.<key> <value>`, a line per selected fixture | S | `doc`, `prog` | |
+| *(rig plan)* ORIENTATION | `fixture N [thru M] orientation.<key> <value>` (GAP-28) | S | `doc`, `prog` | |
 | *(rig plan)* LOCATION | `fixture N location {…}`, `fixture N location none` (GAP-25) | S | `doc` | |
 | *(rig plan)* `[+ add]`, the new fixture form, the profile picker | `fixture add N [thru M] "<profile>" mode <mode> [at U.A]`; what it takes from `fixture_profiles` (GAP-27) | S | `doc` | |
 

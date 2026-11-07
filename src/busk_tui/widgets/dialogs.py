@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Collection, Sequence
-from typing import ClassVar, Literal
+from typing import ClassVar, Final, Literal
 
 from rich.text import Text
 from textual import events
@@ -26,6 +26,9 @@ from busk_tui import colors
 type QuitChoice = Literal["save", "quit", "cancel"]
 
 QUIT_CHOICES: dict[str, QuitChoice] = {"save": "save", "quit": "quit", "cancel": "cancel"}
+
+MAX_DIGITS: Final = 300
+"""The most digits busk reads in a row, past which it refuses a line."""
 
 
 def check_name(renaming: bool) -> Callable[[str], str | None]:
@@ -44,14 +47,21 @@ def check_number(taken: Collection[int], own: int | None) -> Callable[[str], str
     (``own``, the number it has now, may stay)."""
 
     def check(text: str) -> str | None:
-        text = text.strip()
-        if not text.isdecimal() or int(text) < 1:  # isdigit takes ², which int refuses
+        number = read_whole(text.strip())
+        if number is None or number < 1:
             return "a whole number from 1"
-        if int(text) != own and int(text) in taken:
-            return f"{int(text)} is taken"
+        if number != own and number in taken:
+            return f"{number} is taken"
         return None
 
     return check
+
+
+def read_whole(text: str) -> int | None:
+    """A whole number as typed, with no sign; ``None`` if it is not one. It
+    keeps from ``int`` what would raise there: ``²``, which ``isdigit`` takes,
+    and a paste past 4,300 digits."""
+    return int(text) if text.isdecimal() and len(text) <= MAX_DIGITS else None
 
 
 def read_number(text: str) -> float | None:

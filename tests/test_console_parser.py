@@ -711,6 +711,28 @@ def test_errors_say_what_the_operator_typed(line: str, error: str) -> None:
     assert raised.value.message == error
 
 
+def test_a_number_runs_to_300_digits() -> None:
+    assert tokenize("fader 1 " + "7" * 300)[0][2].text == "7" * 300
+    for digit in ("7", "٣"):  # int reads these digits too
+        with pytest.raises(ParseError) as raised:
+            tokenize("fader 1 " + digit * 301)
+        assert raised.value.message == "number too long at column 9: at most 300 digits"
+
+
+def test_a_number_past_what_a_float_holds_is_refused() -> None:
+    """Under int's limit, but ``fade`` would take it as ``inf``."""
+    with pytest.raises(ParseError, match=r"^number too long at column 6\b"):
+        parse("fade " + "7" * 400, context())
+
+
+def test_only_digits_in_a_row_count_as_a_long_number() -> None:
+    long = "7" * 5000
+    assert tokenize(f"go 1 # {long}")[0][-1].text == "1"  # in a comment
+    assert len(tokenize(f'rename group 1 "{"12 " * 400}"')[0]) == 4  # parted by spaces
+    with pytest.raises(ParseError, match=r"^number too long at column 16\b"):
+        tokenize(f'rename group 1 "{long}"')  # a quote is read like any word
+
+
 @pytest.mark.parametrize(
     ("line", "error"),
     [
@@ -1723,6 +1745,11 @@ def limits(fixture: str, value: dict[str, Any]) -> dict[str, Any]:
     return {"type": "SET", "path": ["fixtures", {"id": fixture}, "limits"], "value": value}
 
 
+def orient(fixture: str, key: str, value: bool | float) -> dict[str, Any]:
+    return {"type": "SET", "path": ["fixtures", {"id": fixture}, "orientation", key],
+            "value": value}  # fmt: skip
+
+
 def command_binding(note: int, command: dict[str, Any], **extra: Any) -> dict[str, Any]:
     address = {"kind": "midiNote", "channel": 1, "note": note}
     return add_binding(binding(B, "s-midi", address, {"kind": "command", "command": command},
@@ -1768,6 +1795,25 @@ PHASE7_COMMANDS: list[tuple[str, dict[str, Any]]] = [
     ("fixture 201 thru 101 limits tilt none",  # only MH 1 has it
      labelled("removed the tilt limit of fixture 201 thru 101",
               {"type": "DELETE", "path": ["fixtures", {"id": "fx-mh1"}, "limits"]})),
+    # orientation: one key of each fixture, in number order
+    ("fixture 101 orientation.invertPan true",
+     labelled("oriented fixture 101: invertPan true", orient("fx-mh1", "invertPan", True))),
+    ("fixture 101 thru 102 orientation.swapPanTilt false",
+     labelled("oriented fixture 101 thru 102: swapPanTilt false",
+              orient("fx-mh1", "swapPanTilt", False), orient("fx-mh2", "swapPanTilt", False))),
+    ("fixture 201 thru 101 orientation.panOffset -12.5",
+     labelled("oriented fixture 201 thru 101: panOffset -12.5°",
+              orient("fx-mh1", "panOffset", -12.5), orient("fx-mh2", "panOffset", -12.5),
+              orient("fx-par1", "panOffset", -12.5))),
+    ("fixture 101 orientation.tiltOffset 30",
+     labelled("oriented fixture 101: tiltOffset 30°", orient("fx-mh1", "tiltOffset", 30))),
+    ("FIXTURE 101 THRU 102 ORIENTATION.INVERTTILT TRUE",
+     labelled("oriented fixture 101 THRU 102: invertTilt true",
+              orient("fx-mh1", "invertTilt", True), orient("fx-mh2", "invertTilt", True))),
+    # the whole orientation is the generic edit
+    ('fixture 101 orientation {"invertPan": true}',
+     {"type": "SET", "path": ["fixtures", {"id": "fx-mh1"}, "orientation"],
+      "value": {"invertPan": True}}),
     # the strobe cap
     ("safety strobe 2.5",
      labelled("strobe cap 2.5 Hz",
@@ -1795,6 +1841,39 @@ PHASE7_COMMANDS: list[tuple[str, dict[str, Any]]] = [
 @pytest.mark.parametrize(("line", "expected"), PHASE7_COMMANDS, ids=[c[0] for c in PHASE7_COMMANDS])
 def test_phase_7_commands(line: str, expected: dict[str, Any]) -> None:
     assert p7_command(line) == expected
+
+
+ORIENTATION_KEYS = "invertPan, invertTilt, swapPanTilt, panOffset, tiltOffset"
+
+
+@pytest.mark.parametrize(
+    ("line", "message"),
+    [
+        ("fixture 101 orientation.nope true",
+         f"expected an orientation key ({ORIENTATION_KEYS}), got 'orientation.nope'"),
+        ("fixture 101 orientation. true",
+         f"expected an orientation key ({ORIENTATION_KEYS}), got 'orientation.'"),
+        ("fixture 101 orientation.invertPan.x true",
+         f"expected an orientation key ({ORIENTATION_KEYS}), got 'orientation.invertPan.x'"),
+        ("fixture 101 orientation.invertPan", "expected true or false"),
+        ("fixture 101 orientation.invertPan banana", "expected true or false, got 'banana'"),
+        ("fixture 101 orientation.invertPan 1", "expected true or false, got '1'"),
+        ("fixture 101 orientation.invertPan true false", "unexpected 'false'"),
+        ("fixture 101 orientation.panOffset", "expected an offset in degrees"),
+        ("fixture 101 orientation.panOffset left", "expected an offset in degrees, got 'left'"),
+        ("fixture 101 orientation.panOffset true", "expected an offset in degrees, got 'true'"),
+        ('fixture 101 orientation.panOffset "30"', "expected an offset in degrees, got '30'"),
+        ("fixture 101 orientation.panOffset 1e2", "expected an offset in degrees, got '1e2'"),
+        ("fixture 101 orientation.panOffset 30 40", "unexpected '40'"),
+        ("fixture 999 orientation.invertPan true", "no fixture 999"),
+        ("fixture 901 thru 902 orientation.invertPan true", "no fixture from 901 to 902"),
+        ("fixture 101.1 orientation.invertPan true", "expected a fixture number, got '101.1'"),
+    ],
+)  # fmt: skip
+def test_orientation_refuses(line: str, message: str) -> None:
+    with pytest.raises(ParseError) as refused:
+        parse(line, p7_context())
+    assert refused.value.message == message
 
 
 def test_park_and_limits_on_a_show_without_any() -> None:
