@@ -1493,7 +1493,7 @@ class _Parser:
         else:
             token = self.take("an Art-Net port address as net.sub.universe")
             parts = token.text.split(".")
-            if len(parts) != 3 or not all(part.isdigit() for part in parts):
+            if len(parts) != 3 or not all(part.isdecimal() for part in parts):
                 raise ParseError(
                     f"expected an Art-Net port address as net.sub.universe, got {token.text!r}"
                 )
@@ -1697,7 +1697,7 @@ class _Parser:
         token = self.take("+N, -N or a page number")
         if re.fullmatch(r"[+-]\d+", token.text) and not token.quoted:
             return {"kind": "page", "delta": int(token.text)}
-        if not token.text.isdigit() or token.quoted:
+        if not token.text.isdecimal() or token.quoted:
             raise ParseError(f"expected +N, -N or a page number, got {token.text!r}")
         page = self.by_number("pages", int(token.text), "page")
         return {"kind": "pageAbs", "number": page["number"]}
@@ -2551,7 +2551,7 @@ def _mode(profile: Mapping[str, Any], name: str) -> Mapping[str, Any]:
 
 def _port(text: str) -> int | None:
     """A UDP or TCP port, 1–65535, else ``None``."""
-    return int(text) if text.isdigit() and 1 <= int(text) <= 65535 else None
+    return int(text) if text.isdecimal() and 1 <= int(text) <= 65535 else None
 
 
 def _address_text(address: Mapping[str, Any]) -> str:

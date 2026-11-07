@@ -14,6 +14,7 @@ there, not on stage. Each phase adds its builders here and to that test.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
@@ -33,6 +34,11 @@ def percent(level: float) -> str:
 def quoted(name: str) -> str:
     """A name as busk reads it: in double quotes, with JSON's escapes."""
     return json.dumps(name, ensure_ascii=False)
+
+
+def word(text: str) -> str:
+    """One word as busk reads it: bare if it can be, else :func:`quoted`."""
+    return text if re.fullmatch(r'[^\s",#][^\s",]*', text) else quoted(text)
 
 
 def help_() -> Line:
@@ -396,12 +402,12 @@ def route_add(
 
 def delete_route(route: str) -> Line:
     """``delete route r-1``: busk asks."""
-    return Line(f"delete route {route}")
+    return Line(f"delete route {word(route)}")
 
 
 def route_on(route: str, on: bool) -> Line:
     """``route r-1 on``; busk asks before ``off``."""
-    return Line(f"route {route} {'on' if on else 'off'}")
+    return Line(f"route {word(route)} {'on' if on else 'off'}")
 
 
 # ------------------------------------------------------------------- cues

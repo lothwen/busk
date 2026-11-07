@@ -650,6 +650,19 @@ def test_queries_and_session_actions(line: str, action: object) -> None:
         ("universe add 1", "universe 1 exists"),
         ('bind "Nope" cc 1 1 fader 1', "no surface 'Nope'"),
         ('bind "nanoKONTROL2" cc 1 1 fader 0', "slots are counted from 1"),
+        (  # ² and ① pass isdigit, and int refuses them
+            "route add 1 artnet 0.0.²",
+            "expected an Art-Net port address as net.sub.universe, got '0.0.²'",
+        ),
+        (
+            "route add 1 artnet ①.0.0",
+            "expected an Art-Net port address as net.sub.universe, got '①.0.0'",
+        ),
+        ('bind "nanoKONTROL2" cc 1 1 page ²', "expected +N, -N or a page number, got '²'"),
+        ('bind "nanoKONTROL2" cc 1 1 page ①', "expected +N, -N or a page number, got '①'"),
+        ('surface add osc "Lemur" port ²', "expected a port (1–65535), got '²'"),
+        ('surface add osc "Lemur" port ①', "expected a port (1–65535), got '①'"),
+        ('surface add osc "Lemur" feedback pad:²', "expected <host>[:<port>], got 'pad:²'"),
         ("route add 1 dmx 1", "expected sacn or artnet or dmxusb, got 'dmx'"),
         (
             "route add 1 dmxusb enttecOpen /dev/ttyUSB0",

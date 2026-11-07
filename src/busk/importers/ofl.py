@@ -1576,7 +1576,7 @@ def _unique(ident: str, taken: set[str]) -> str:
 
 
 def _natural(key: str) -> list[Any]:
-    return [int(part) if part.isdigit() else part for part in re.split(r"(\d+)", key)]
+    return [int(part) if part.isdecimal() else part for part in re.split(r"(\d+)", key)]
 
 
 def _fmt(value: float) -> str:

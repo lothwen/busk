@@ -897,6 +897,60 @@ one conversation, which ends with a status memory and a stop. The engine's tests
     - end to end from controls only: a new universe, a route, a fixture patched in it and seen in
       the frame, then the universe deleted.
 
+    **Done** (2026-11-07). As planned, with these additions, which the user may veto:
+    - **An interface left empty is left to busk,** and the line then has no destination, because the
+      TUI cannot know `--iface`. `unicast` needs its host.
+    - **Art-Net starts where it counts the show universe, from 0:** universe 1 is `0.0.0`, as on the
+      TupperDMX show. §6.7 named only sACN's start. `docs/console.md`'s example has `0.0.1`.
+    - **The port starts empty,** with `/dev/ttyUSB0` as a placeholder, since a default puts a wrong
+      port one Enter away.
+    - **The rate takes 1 to 40 Hz,** which is stricter than busk (§8 item 7). The prompt takes any.
+    - **`commands.word` is new:** a typed interface, host or port goes in quotes when busk needs them,
+      so `Ethernet 2` works. Route ids go through it too, as a show written by hand may hold any id.
+    - The form is `widgets/route_dialog.py`. Its chips are `PickRow`, a `ButtonStrip` that takes the
+      focus: Tab reaches it, ← → move it, and Enter runs the checks from there too. The focus starts
+      on the protocol.
+    - What was typed stays from one protocol to the next, and so does `unicast`. What was wrong goes
+      with a change of chip.
+    - The route added is not chosen (§4 call 18). The choice is held by id, as two routes may read the
+      same, and the pane cursor's label has the id too.
+    - With no universe, `[+ route…]` gives way to `a route sends a universe: add one first`.
+    - `[off]` is amber and `[on]` green.
+    - **The strip marks itself again when `[off]` becomes `[on]`.** `ButtonStrip.show` clears the mark,
+      so the pane cursor went from sight just after busk's question. Only this strip does so.
+    - **`address` is 9 cells, not 8,** for `enttecPro` and `127.15.15`. `destination` still goes first
+      when narrow, as it did.
+    - Beyond the list: the test under `busk run` drives the route too, through
+      `tests/tui/tui_rig_frontend.py`, and the end-to-end test reads real sACN packets from a receiver,
+      not only the frame. The refusal has a test of its own, on the club show with no output.
+
+    The whole suite: 4971 passed, 1 skipped, 20 deselected, in 35:27 (group E left 4891, in 31:44).
+    `ruff`, `ruff format`, `mypy src` and `mypy --strict tests/api_consumer.py` are clean, and neither
+    `src/busk/` nor the engine's tests changed. The changed test files and the new end-to-end tests,
+    279 tests, pass on Textual 8.2.0. A real-terminal check on the club show drove the form by mouse at
+    150 columns (each protocol, a refusal, a route to 127.0.0.1 opening, `[off]`, `[on]` and `[delete]`
+    with busk's questions) and by keyboard at 99, which is how the `address` column was found. The
+    TupperDMX show waits for step 14.
+
+    Of 82 mutations, 70 were caught at once. Three did not apply, by a mistake in the script. Two
+    survived only because the run left their tests out. One showed a line with no use, which went: the
+    screen focuses the protocol by itself. Six showed a missing test, and each test now catches it. So
+    did one counted as caught, whose failure came from elsewhere. A second run recorded what caught
+    each: 81 of 81, each by a test that fits.
+
+    The new end-to-end test takes 130 s. On `Bridge.standalone` a step of a test takes about 3 s, at
+    around a fifth of a core, and under `busk run` about 0.3 s. That holds with no output too, so it
+    is not this step's, and the cause was not looked into.
+
+    Afterwards, at the user's word, §8 item 6 was fixed. The next run of the suite failed on
+    `test_the_packet_rate_and_a_steady_light_once_sending_stops`, older than this plan: alone, it
+    failed 8 of 20 cold runs at `31074cd` and 10 of 20 here. It mixed a `now` of its own with the real
+    clock of `update_view`, so a blink, which needs 0.25 s between two updates, never came back on. Of
+    24 runs it failed exactly when it blinked, and a warm run of the file was too quick to blink. So
+    it passed only where it did not reach what its name says. It now has a clock of its own and blinks
+    every time: 30 of 30 cold runs pass, and it fails with the steady branch removed. The whole suite
+    then: 4982 passed, 1 skipped, 20 deselected, in 35:49.
+
 **G. Docs**
 
 14. **Docs.**
@@ -932,6 +986,25 @@ number in `docs/dev/tui/engine-gaps.md`, or not:
    - the mode could already be changed with `modeId`;
    - orientation has no row;
    - `expected()` gives a picker its names but no footprint.
+6. **A digit `int` cannot read ended a line, and with it `busk run --threads`** (found at step 13,
+   fixed 2026-11-07 at the user's word, so this one change to `src/busk/` comes after step 7).
+   `isdigit` takes `²` and `①`, and `int` refuses them, so `route add 1 artnet 0.0.²`, `bind … page ²`
+   and `surface add osc "L" port ²` raised `ValueError` out of `execute()` and `confirmation()`, and
+   out of `expected()` once a word followed. At the prompt of `busk run --threads` that ended the run,
+   with a traceback and exit 1. With processes the console restarted (exit 70) and the engine ran on.
+   Under the TUI the bridge caught it. All three now use `isdecimal`, and each is a refused line. The
+   OFL importer's `eachPixelABC` sort had the same mistake, on a pixel key such as `1²2`, and it is
+   fixed the same way. A sweep of 55,117 lines from the tests and examples, with their numbers swapped
+   for such digits, raised 276 times before and never after.
+7. **`hz` takes any number** (found at step 13). `route add 1 dmxusb enttecPro /dev/ttyUSB0 hz 0`,
+   `hz -1` and `hz 1000` are stored, and `output_rate` then keeps the widget to 1–40 Hz without a
+   word. The model's comment says 44. F8's form takes 1 to 40.
+8. **A number past 4,300 digits raises** (found fixing item 6, not fixed). `int` refuses it, so
+   `ValueError` leaves `execute()`, as in item 6, for an Art-Net address, a surface's port, `bind …
+   page`, `goto`, `cue` and `record slot`. `integer()` already catches it, so `route add 1 sacn` does
+   not. It takes a bad paste, not a slip. Nothing between a line and the prompt catches what a line
+   raises, so one guard there would cover this and whatever comes next, at the cost of showing a
+   real bug as a refused line. That is a design call for the user.
 
 ## 9. Not in this plan
 

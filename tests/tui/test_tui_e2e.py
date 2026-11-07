@@ -13,6 +13,9 @@
   its profile and adds new ones from the library; F8 adds, renames, renumbers
   and deletes universes, and patches and adds at a place on its map; a new show
   gets a rig from controls alone.
+* On a running show with its output open (``--standalone``): F8 adds a route to
+  a new universe, a fixture patched in it reaches a real receiver, and the route
+  goes off, on and away.
 * On a stub show whose ``save`` is held (plan §4.3): keys, page switching,
   the beat dot and a bar's drag keep working, the drag's lines run, and the
   prompt context shows the held line.
@@ -42,7 +45,7 @@ from busk_tui.pages.busk_console import OutputGrid
 from busk_tui.pages.busk_stack import StackLayout
 from busk_tui.pages.busk_stage import StagePlot
 from busk_tui.pages.fixtures import FixturesPage
-from busk_tui.pages.patch import PatchPage, UniverseTable
+from busk_tui.pages.patch import PatchPage, RoutesTable, UniverseTable
 from busk_tui.pages.presets import PresetsPage
 from busk_tui.pages.program import EncoderPanel
 from busk_tui.shell import BuskApp
@@ -62,7 +65,9 @@ from busk_tui.widgets.playbacks import PlaybackRow
 from busk_tui.widgets.preset_panel import Chosen
 from busk_tui.widgets.profile_picker import ProfileDialog
 from busk_tui.widgets.programmer import ProgrammerTable
+from busk_tui.widgets.route_dialog import RouteDialog
 from busk_tui.widgets.tiles import PresetTile
+from sacn_receiver import Receiver
 
 WAIT_S = 15.0
 
@@ -667,6 +672,172 @@ def test_a_new_show_gets_its_rig_from_controls_on_the_real_engine(tmp_path: Path
         await until(pilot, lambda: [f.number for f in rig()] == [1, 2, 4])
         await pilot.press(*"undo", "enter")
         await until(pilot, lambda: [f.number for f in rig()] == [1, 2, 3, 4])
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_f8_sends_a_new_universe_through_a_new_route_from_controls(
+    tmp_path: Path, receiver: Receiver
+) -> None:
+    """On a running show: a universe, a route that opens, a spot patched in it
+    and seen in the frame and on the wire. Off greys the light, on brings it
+    back, and delete takes the row away; ``undo``, then the universe, deleted
+    with both."""
+    path = tmp_path / "new.show"
+    busk.save_show(busk.new_show("New"), path, backups=False)
+    bridge = Bridge.standalone(path, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=8), standalone=True)
+
+    def universes() -> list[int]:
+        show = app.view.show
+        return [] if show is None else [universe.number for universe in show.universes]
+
+    def frames() -> dict[int, bytes]:
+        frame = bridge._show.frame  # type: ignore[union-attr]
+        return {} if frame is None else frame.universes
+
+    def lit(universe: int) -> list[int]:
+        """The slots of ``universe`` that are up in the engine's newest frame."""
+        return [slot for slot, value in enumerate(frames().get(universe, b""), 1) if value]
+
+    def wire() -> list[int] | None:
+        """The slots that are up in the newest packet, if one came. The app
+        shares this thread, so it does not wait."""
+        packets = receiver.drain(quiet=0.001)
+        if not packets:
+            return None
+        assert {packet.universe for packet in packets} == {1}
+        return [slot for slot, value in enumerate(packets[-1].data, 1) if value]
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.view.show is not None)
+        page = app.query_one(PatchPage)
+        table = app.query_one(RoutesTable)
+        strip = page.route_edits
+        await tap_button(pilot, page.universe_edits, "+ universe…")
+        await until(pilot, lambda: isinstance(app.screen, FormDialog))
+        await pilot.press("tab", *"Stage", "enter")
+        await until(pilot, lambda: universes() == [1])
+
+        await until(pilot, lambda: "[+ route…]" in [b.label.plain for b in strip.buttons])
+        await tap_button(pilot, strip, "+ route…")
+        await until(pilot, lambda: isinstance(app.screen, RouteDialog))
+        assert isinstance(app.screen, RouteDialog)
+        app.screen.where.value = "127.0.0.1"
+        await pilot.press("tab", "tab", "right", "enter")
+        await until(pilot, lambda: column(table, "state") == ["open"])
+        (route,) = app.view.routes
+        assert route.id.startswith("r-")
+        assert (route.protocol, route.address) == ("sACN", "1")
+        assert route.destination == "unicast 127.0.0.1"
+        assert table.rows[0]["tx"].style == colors.GREEN
+        await until(pilot, lambda: wire() == [])  # it sends the universe, dark
+
+        await pilot.press("f3")
+        await until(pilot, lambda: app.page == 3)
+        fixtures = app.query_one(FixturesPage)
+        form = fixtures.panel.form
+        await tap(pilot, fixtures.add_button)
+        await until(pilot, lambda: fixtures.panel.adding)
+        await tap(pilot, form.choose)
+        await until(pilot, lambda: isinstance(app.screen, ProfileDialog))
+        await pilot.press(*"generic spot", "enter")
+        await until(pilot, lambda: form.profile == "Generic Spot 16ch")
+        await tap(pilot, form.patching.ask)
+        await until(pilot, lambda: isinstance(app.screen, TextDialog))
+        await pilot.press(*"101", "enter")
+        await until(pilot, lambda: form.patching.at == (1, 101))
+        await tap(pilot, form.send)
+        await until(pilot, lambda: app.view.show is not None and len(app.view.show.fixtures) == 1)
+        await tap(pilot, form.done)
+        await tap(pilot, fixtures.panel.done)
+
+        await pilot.press("f8")
+        await until(pilot, lambda: app.page == 8)
+        dmx_map = app.query_one(DmxMap)
+        await until(pilot, lambda: bool(dmx_map.prints))
+        await pilot.click(dmx_map, offset=(5 + 100 % 64, 100 // 64))  # 1.101, the spot
+        await until(pilot, lambda: app.programmer is not None and bool(app.programmer.selection))
+        await pilot.press("f2")
+        await until(pilot, lambda: app.page == 2 and bool(app.query(EncoderRow)))
+        row = next(r for r in app.query(EncoderRow) if r.encoder.attribute == "intensity")
+        await pilot.click(row.bar, offset=(row.bar.size.width // 2, 0))
+        await until(pilot, lambda: bool(lit(1)))
+        assert all(101 <= slot <= 116 for slot in lit(1))
+        await until(pilot, lambda: wire() == lit(1))
+
+        await pilot.press("f8")
+        await until(pilot, lambda: app.page == 8)
+        await click_cell(pilot, table, 0, "protocol")
+        await until(pilot, lambda: page.route_id == route.id)
+        await tap_button(pilot, strip, "off")
+        await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+        await pilot.press("y")
+        await until(pilot, lambda: column(table, "state") == ["disabled"])
+        assert table.rows[0]["tx"].style == colors.BORDER
+
+        await tap_button(pilot, strip, "on")
+        await until(pilot, lambda: column(table, "state") == ["open"])
+        assert table.rows[0]["tx"].style == colors.GREEN
+        await until(pilot, lambda: wire() == lit(1))
+
+        await tap_button(pilot, strip, "delete")
+        await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+        await pilot.press("y")
+        await until(pilot, lambda: table.rows == ())
+        assert page.route_id is None
+        assert [b.label.plain for b in strip.buttons] == ["[+ route…]"]
+        await pilot.press(*"undo", "enter")
+        await until(pilot, lambda: column(table, "state") == ["open"])
+
+        await click_cell(pilot, app.query_one(UniverseTable), 0, "name")
+        await until(pilot, lambda: page.chosen == 1)
+        await tap_button(pilot, page.universe_edits, "delete")
+        await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+        assert isinstance(app.screen, ConfirmDialog)
+        assert "1 fixture loses its patch and 1 route goes" in app.screen.question
+        await pilot.press("y")
+        await until(pilot, lambda: universes() == [])
+        await until(pilot, lambda: table.rows == ())
+        await until(pilot, lambda: 1 not in frames())
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_busk_refuses_a_route_in_the_log_and_the_table_stays(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """The form cannot tell which sACN universes are taken: busk can."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=8), standalone=True)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: len(app.view.routes) == 1)
+        page = app.query_one(PatchPage)
+        await tap_button(pilot, page.universe_edits, "+ universe…")
+        await until(pilot, lambda: isinstance(app.screen, FormDialog))
+        await pilot.press("enter")
+        table = app.query_one(UniverseTable)
+        await until(pilot, lambda: len(table.rows) == 2)
+        await click_cell(pilot, table, 1, "name")
+        await until(pilot, lambda: page.chosen == 2)
+        await tap_button(pilot, page.route_edits, "+ route…")
+        await until(pilot, lambda: isinstance(app.screen, RouteDialog))
+        await pilot.press("tab", "1", "enter")  # the sACN universe universe 1 sends
+        log = app.query_one(LogView)
+        await until(pilot, lambda: ("ui", "route add 2 sacn 1") in log.entries)
+        await until(pilot, lambda: any("is already sent by route" in e[1] for e in log.entries))
+        assert any(kind == "error" and "sACN universe 1" in text for kind, text in log.entries)
+        assert len(app.view.routes) == 1
+        assert len(app.query_one(RoutesTable).rows) == 1
 
     try:
         drive(app, body)

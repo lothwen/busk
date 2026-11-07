@@ -997,6 +997,21 @@ MATRIX = {
 }
 
 
+def test_each_pixel_abc_sorts_pixel_keys_by_their_numbers() -> None:
+    """``B9`` before ``B10``. ² passes isdigit and is no number, so it sorts as a word."""
+    matrix = copy.deepcopy(MATRIX)
+    matrix["matrix"] = {"pixelKeys": [[["B10", "B9", "A²", "1²2"]]]}
+    insert = {
+        "insert": "matrixChannels",
+        "repeatFor": "eachPixelABC",
+        "channelOrder": "perPixel",
+        "templateChannels": ["Red $pixelKey", "Green $pixelKey", "Blue $pixelKey"],
+    }
+    report = imported({}, [{"name": "Pixels", "channels": [insert]}], **matrix)
+    names = [element["name"] for element in report.profile["modes"][0]["elements"]]
+    assert names == ["Pixel 1²2", "Pixel A²", "Pixel B9", "Pixel B10"]
+
+
 @pytest.mark.parametrize("order", ["perPixel", "perChannel"])
 def test_matrix_inserts_make_one_element_per_pixel(order: str) -> None:
     insert = {

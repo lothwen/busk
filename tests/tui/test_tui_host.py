@@ -111,7 +111,7 @@ def small_show(tmp_path: Path) -> Path:
     return path
 
 
-def test_a_patch_from_f3_and_f8_reaches_the_frame_under_busk_run(
+def test_a_patch_and_a_route_from_f3_and_f8_reach_the_engine_under_busk_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = tmp_path / "rig.show"
@@ -127,6 +127,7 @@ def test_a_patch_from_f3_and_f8_reaches_the_frame_under_busk_run(
     seen = json.loads(report.read_text())
     assert seen["timeout"] is None, seen
     assert seen["frames"] == [[1, 2, 3], [101, 102, 103], [201, 202, 203]]
+    assert seen["routes"] == ["ok", "disabled", "ok", None]
 
 
 @pytest.mark.parametrize("threads", [False, True], ids=["processes", "threads"])

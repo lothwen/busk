@@ -6,16 +6,22 @@ from __future__ import annotations
 
 import copy
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 import busk
 from busk.commands.record import POOL_FAMILIES
 from busk.model.attributes import ATTRIBUTES
+from busk.output import dmxusb
 from busk_tui import attributes, commands, config
 from busk_tui.bridge import show_model
 from busk_tui.commands import Line
+from busk_tui.widgets import route_dialog
 from busk_tui.widgets.fixture_panel import CATEGORIES
+from busk_tui.widgets.route_dialog import network_line, usb_line
+
+TUPPER = Path(__file__).resolve().parents[2] / "examples" / "tupperdmx" / "tupper-demo.show"
 
 ROUTE = "r-club"
 """The id the show of the contract test gives its route."""
@@ -299,6 +305,39 @@ def test_a_name_comes_back_from_busk_as_it_was_typed(show: busk.OfflineShow, nam
     assert show.show["universes"][0]["name"] == name
 
 
+def test_a_word_is_bare_when_it_can_be() -> None:
+    assert commands.word("eth0") == "eth0"
+    assert commands.word("/dev/ttyUSB0") == "/dev/ttyUSB0"
+    assert commands.word("a#b") == "a#b"
+    assert commands.word("Ethernet 2") == '"Ethernet 2"'
+    assert commands.word("#b") == '"#b"'
+    assert commands.word("a,b") == '"a,b"'
+    assert commands.word('a"b') == r'''"a\"b"'''
+    assert commands.word("") == '""'
+
+
+@pytest.mark.parametrize(
+    "word",
+    ["eth0", "10.0.0.50", "fe80::1%eth0", "a#b", "Ethernet 2", "#b", "a,b", 'a"b', "back\\slash"],
+)
+def test_a_word_comes_back_from_busk_as_it_was_typed(show: busk.OfflineShow, word: str) -> None:
+    reply = show.execute(f"route add 1 sacn 3 unicast {commands.word(word)}")
+    assert reply.ok, reply.text
+    assert show.show["output"]["routes"][-1]["destination"]["host"] == word
+
+
+def test_a_route_id_that_is_more_than_a_word_reaches_busk(club_path: Path) -> None:
+    """A show written by hand may hold any id."""
+    document, _ = busk.load_show(club_path)
+    document = copy.deepcopy(document)
+    document["output"]["routes"][0]["id"] = "main out"
+    show = busk.OfflineShow(document)
+    assert show.execute(commands.route_on("main out", False).text).ok
+    assert not show.show["output"]["routes"][0]["enabled"]
+    assert show.execute(commands.delete_route("main out").text).ok
+    assert show.show["output"]["routes"] == []
+
+
 def test_numbers_have_two_decimals_at_most() -> None:
     assert commands.number(120.0) == "120"
     assert commands.number(120.456) == "120.46"
@@ -328,6 +367,139 @@ def test_busk_accepts_every_builders_line(show: busk.OfflineShow) -> None:
     assert 7 not in [universe["number"] for universe in show.show["universes"]]
     assert show.show["output"]["routes"] == []  # the club's, and the ones on universe 7
     assert 901 not in [fixture["number"] for fixture in show.show["fixtures"]]
+
+
+ROUTE_FORM: dict[str, tuple[Line, str, dict[str, Any]]] = {
+    # name: (the form's line, its text, what busk stores of it)
+    "sacn": (
+        network_line(2, "sacn", "20", "multicast", ""),
+        "route add 2 sacn 20",
+        {"universe": 20, "destination": {"kind": "multicast", "iface": "eth0"}},
+    ),
+    "sacn multicast": (
+        network_line(2, "sacn", "20", "multicast", "eth1"),
+        "route add 2 sacn 20 multicast eth1",
+        {"universe": 20, "destination": {"kind": "multicast", "iface": "eth1"}},
+    ),
+    "sacn multicast, an interface of two words": (
+        network_line(2, "sacn", "20", "multicast", "Ethernet 2"),
+        'route add 2 sacn 20 multicast "Ethernet 2"',
+        {"universe": 20, "destination": {"kind": "multicast", "iface": "Ethernet 2"}},
+    ),
+    "sacn unicast": (
+        network_line(2, "sacn", "20", "unicast", "10.0.0.50"),
+        "route add 2 sacn 20 unicast 10.0.0.50",
+        {"universe": 20, "destination": {"kind": "unicast", "host": "10.0.0.50"}},
+    ),
+    "artnet": (
+        network_line(2, "artnet", "0.1.2", "broadcast", ""),
+        "route add 2 artnet 0.1.2",
+        {
+            "portAddress": {"net": 0, "subNet": 1, "universe": 2},
+            "destination": {"kind": "broadcast", "iface": "eth0"},
+        },
+    ),
+    "artnet broadcast": (
+        network_line(2, "artnet", "0.1.2", "broadcast", "eth1"),
+        "route add 2 artnet 0.1.2 broadcast eth1",
+        {"destination": {"kind": "broadcast", "iface": "eth1"}},
+    ),
+    "artnet unicast": (
+        network_line(2, "artnet", "0.1.2", "unicast", "10.0.0.50"),
+        "route add 2 artnet 0.1.2 unicast 10.0.0.50",
+        {"destination": {"kind": "unicast", "host": "10.0.0.50"}},
+    ),
+    "enttecPro": (
+        usb_line(2, "enttecPro", "/dev/ttyUSB3", 40.0),
+        "route add 2 dmxusb enttecPro /dev/ttyUSB3 hz 40",
+        {"device": {"driver": "enttecPro", "port": "/dev/ttyUSB3"}, "refreshHz": 40.0},
+    ),
+    "dmxking, a port of two words": (
+        usb_line(2, "dmxking", "USB port", 30.5),
+        'route add 2 dmxusb dmxking "USB port" hz 30.5',
+        {"device": {"driver": "dmxking", "port": "USB port"}, "refreshHz": 30.5},
+    ),
+}
+
+
+@pytest.mark.parametrize("name", sorted(ROUTE_FORM))
+def test_busk_stores_what_the_route_form_says(show: busk.OfflineShow, name: str) -> None:
+    line, text, stored = ROUTE_FORM[name]
+    assert line.text == text
+    assert not line.performance
+    assert show.execute("universe add 2").ok
+    reply = show.execute(line.text)
+    assert reply.ok, reply.text
+    route = show.show["output"]["routes"][-1]
+    assert {key: route[key] for key in stored} == stored
+    assert route["enabled"]
+
+
+@pytest.mark.parametrize(
+    "text", ["1", "63999", " 7 ", "\u0663", "0", "64000", "-1", "1.5", "", "x", "²"]
+)
+def test_the_route_form_and_busk_agree_on_an_sacn_universe(
+    show: busk.OfflineShow, text: str
+) -> None:
+    """On universe 1, whose own route is the only one: no sACN universe is
+    taken by another."""
+    passes = route_dialog.check_sacn(text) is None
+    assert passes is show.execute(f"route add 1 sacn {text.strip()}").ok
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "0.0.0", "127.15.15", " 0.1.2 ", "\u0660.\u0660.\u0660", "128.0.0", "0.16.0", "0.0.16",
+        "0.0", "0.0.0.0", "a.b.c", "0.0.", "0.0.-1", "0.0.²", "",
+    ],
+)  # fmt: skip
+def test_the_route_form_and_busk_agree_on_a_port_address(show: busk.OfflineShow, text: str) -> None:
+    passes = route_dialog.check_artnet(text) is None
+    assert passes is show.execute(f"route add 1 artnet {text.strip()}").ok
+
+
+@pytest.mark.parametrize(
+    ("universe", "address"),
+    [
+        (1, "0.0.0"), (2, "0.0.1"), (16, "0.0.15"), (17, "0.1.0"), (256, "0.15.15"),
+        (257, "1.0.0"), (32768, "127.15.15"), (32769, "0.0.0"),
+    ],
+)  # fmt: skip
+def test_art_net_counts_a_show_universe_from_0(universe: int, address: str) -> None:
+    assert route_dialog.artnet_address(universe) == address
+    assert route_dialog.check_artnet(address) is None
+
+
+def test_the_route_form_starts_the_tupperdmx_show_where_its_route_is() -> None:
+    document, _ = busk.load_show(TUPPER)
+    (route,) = document["output"]["routes"]
+    port = route["portAddress"]
+    address = f"{port['net']}.{port['subNet']}.{port['universe']}"
+    assert route_dialog.artnet_address(document["universes"][0]["number"]) == address
+
+
+def test_the_route_forms_rates_are_what_a_widget_runs_at(show: busk.OfflineShow) -> None:
+    """busk takes any number, and keeps it to these without a word, so the
+    form refuses what would not run as typed."""
+    low, high = route_dialog.MIN_RATE, route_dialog.MAX_RATE
+    assert dmxusb.output_rate(low) == low
+    assert dmxusb.output_rate(high) == high
+    assert dmxusb.output_rate(low - 1) == low
+    assert dmxusb.output_rate(high + 1) == high
+    assert route_dialog.check_rate(route_dialog.RATE) is None
+    for text in ("1", "40", "30.5", " 25 "):
+        assert route_dialog.check_rate(text) is None, text
+    for text in ("0", "0.5", "40.5", "41", "-1", "", "x", "nan", "inf"):
+        assert route_dialog.check_rate(text) is not None, text
+
+
+def test_the_route_forms_host_and_port_are_only_not_empty() -> None:
+    assert route_dialog.check_host("10.0.0.50") is None
+    assert route_dialog.check_port("/dev/ttyUSB0") is None
+    for text in ("", "  "):
+        assert route_dialog.check_host(text) is not None
+        assert route_dialog.check_port(text) is not None
 
 
 def test_the_category_chips_are_what_busk_takes(club: busk.OfflineShow) -> None:

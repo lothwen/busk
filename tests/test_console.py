@@ -680,9 +680,15 @@ def test_a_location_goes_and_undo_brings_it_back(console: Console, live: Live) -
         ('rename fixture 101 "back\\slash"', "bad escape in a quote at column 25"),
         ('set "\\q"', "bad escape in a quote at column 6"),
         ('rename fixture 101 "tab\there"', "control character in a quote at column 24"),
+        (
+            "route add 1 artnet 0.0.²",
+            "expected an Art-Net port address as net.sub.universe, got '0.0.²'",
+        ),
+        ('bind "nanoKONTROL2" cc 1 1 page ²', "expected +N, -N or a page number, got '²'"),
+        ('surface add osc "Lemur" port ²', "expected a port (1–65535), got '²'"),
     ],
 )
-def test_a_bad_escape_is_a_refused_line_wherever_it_goes(
+def test_a_line_busk_cannot_read_is_refused_wherever_it_goes(
     line: str, error: str, tmp_path: Path
 ) -> None:
     offline = OfflineShow(show_of(load_doc(APPENDIX_A)))

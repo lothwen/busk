@@ -38,6 +38,10 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 - A name in quotes with a bad escape (`"back\slash"`) or a control character raised
   `JSONDecodeError` out of `execute`, `expected`, `confirmation` and `run_script`. It is now a
   refused line that names the column.
+- A digit that `int` cannot read (`²`, `①`) in an Art-Net address, a surface's port or a `bind`'s
+  page raised `ValueError` out of the same calls. At the prompt it ended `busk run --threads`, and
+  restarted the console with processes. It is now a refused line. `busk import` raised the same on
+  an OFL pixel key such as `1²2`, sorted for `eachPixelABC`.
 - A TUI button whose look alone changed was not redrawn: a lit scope or curve, `[−]` `[+]`
   turning active, F5's `RUN` dimming.
 

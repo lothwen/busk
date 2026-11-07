@@ -13,7 +13,12 @@ ROUTES: the universe, protocol, address and destination as ``route add``
 takes them, the light (green while open, blinking while it sends, red when
 it fails, grey when disabled or while nothing runs the output) with the
 packets sent per second, and the state with busk's word for why (``failed:
-…``, the send errors).
+…``, the send errors). A click chooses a route (``▸``); nothing is chosen at
+first. The strip under the table holds ``[+ route…]``, a form for ``route add``
+for the chosen universe, else the first, and for the chosen route ``[off]`` or
+``[on]`` and ``[delete]``. busk asks before ``off`` and ``delete``. To change a
+route, the operator deletes it and adds another: busk has no line that edits
+one.
 
 A DMX MAP per universe (:mod:`busk_tui.widgets.dmxmap`), and a legend of
 the fixture types it shows. A click on a fixture's channels selects it
@@ -26,8 +31,8 @@ maps then offers ``[patch 102 here]``, for exactly one selected fixture, and
 draws what the fixture would take. A click on a fixture, or that universe's
 map changing, clears the place.
 
-The pane cursor stops on each universe and its strip, on what the place offers,
-then on each footprint.
+The pane cursor stops on each universe and its strip, each route and its strip,
+on what the place offers, then on each footprint.
 """
 
 from __future__ import annotations
@@ -71,6 +76,7 @@ from busk_tui.widgets.frame import RouteLights, route_light
 from busk_tui.widgets.legend import Legend
 from busk_tui.widgets.panel import Panel
 from busk_tui.widgets.quick import strip_stops
+from busk_tui.widgets.route_dialog import RouteDialog
 from busk_tui.widgets.rows import Cells, Column, RowTable, cell
 
 NARROW: Final = 100
@@ -81,6 +87,7 @@ RATE_S: Final = 1.0
 
 NO_UNIVERSES: Final = 'no universes · universe add 1 "Stage"'
 NO_ROUTES: Final = "no routes · route add 1 sacn 1"
+NO_UNIVERSE_TO_SEND: Final = "a route sends a universe: add one first"
 NO_PLACE: Final = "click a free channel to place a fixture there"
 
 
@@ -97,9 +104,10 @@ class UniverseTable(RowTable):
 
 class RoutesTable(RowTable):
     COLUMNS = (
+        Column("marker", "", 1),
         Column("universe", "U", 3, right=True),
         Column("protocol", "proto", 7),
-        Column("address", "address", 8),
+        Column("address", "address", 9),
         Column("destination", "destination", 12, flex=True, drop=2),
         Column("tx", "tx", 8),
         Column("state", "state", 10, flex=True, drop=1),
@@ -147,9 +155,10 @@ def universe_cells(
     }
 
 
-def route_cells(route: RouteView, on: bool, rate: float | None) -> Cells:
+def route_cells(route: RouteView, on: bool, rate: float | None, chosen: bool) -> Cells:
     shown = "" if not rate else f"{round(rate)}/s"
     return {
+        "marker": cell("▸" if chosen else "", colors.CYAN),
         "universe": cell(str(route.universe), colors.CYAN),
         "protocol": cell(route.protocol, colors.FG),
         "address": cell(route.address, colors.FG),
@@ -201,6 +210,7 @@ class PatchPage(Page):
         self.universes = UniverseTable(Text(NO_UNIVERSES, style=colors.DIM), id="universe-table")
         self.universe_edits = ButtonStrip(id="universe-edits")
         self.routes = RoutesTable(Text(NO_ROUTES, style=colors.DIM), id="route-table")
+        self.route_edits = ButtonStrip(id="route-edits")
         self.place_strip = ButtonStrip(id="place-strip")
         self.place_strip.display = False
         self.maps_box = Vertical(id="dmx-maps")
@@ -210,6 +220,7 @@ class PatchPage(Page):
         self.chosen: int | None = None  # the universe clicked last, by number
         self.place: tuple[int, int] | None = None  # the free channel clicked last
         self.shown_routes: tuple[RouteView, ...] = ()
+        self.route_id: str | None = None  # the route clicked last
         self._view = View()
         self._lights = RouteLights()
         self._on: tuple[bool, ...] = ()
@@ -219,7 +230,7 @@ class PatchPage(Page):
     def compose(self) -> ComposeResult:
         with Horizontal(id="patch-row"):
             yield Panel("universes", self.universes, self.universe_edits, id="universes-panel")
-            yield Panel("routes", self.routes, id="routes-panel")
+            yield Panel("routes", self.routes, self.route_edits, id="routes-panel")
         yield self.place_strip
         yield self.maps_box
         yield self.legend
@@ -240,6 +251,8 @@ class PatchPage(Page):
             self._draw_patch()
         if changed & {"show", "routes"}:
             self.shown_routes = view.routes
+            if self.chosen_route() is None:
+                self.route_id = None
             self._on = self._lights.update(view.routes, time.monotonic())
             self._draw_routes()
         if "programmer" in changed:
@@ -269,12 +282,57 @@ class PatchPage(Page):
 
     def _draw_routes(self) -> None:
         rates = self._rates if len(self._rates) == len(self.shown_routes) else ()
+        shown = self.shown_routes
         self.routes.show(
             [
-                route_cells(route, on, rates[index] if rates else None)
-                for index, (route, on) in enumerate(zip(self.shown_routes, self._on, strict=False))
-            ]
+                route_cells(route, on, rates[index] if rates else None, route.id == self.route_id)
+                for index, (route, on) in enumerate(zip(shown, self._on, strict=False))
+            ],
+            chosen=next((row for row, r in enumerate(shown) if r.id == self.route_id), None),
         )
+        self._draw_route_edits()
+
+    def _draw_route_edits(self) -> None:
+        if not self.shown_universes:
+            words = Text(NO_UNIVERSE_TO_SEND, style=colors.DIM)
+            self.route_edits.show([StripButton(words, Line(""), note=True)])
+            return
+        add = button_label("+ route…", colors.MID)
+        buttons = [StripButton(add, Line(""), action=self.ask_route)]
+        route = self.chosen_route()
+        if route is not None:
+            name = Text(f"U{route.universe} {route.protocol} {route.address}", style=colors.FG)
+            word, color = ("off", colors.AMBER) if route.enabled else ("on", colors.GREEN)
+            buttons += [
+                StripButton(name, Line(""), note=True),
+                StripButton(
+                    button_label(word, color), commands.route_on(route.id, not route.enabled)
+                ),
+                StripButton(button_label("delete", colors.RED), commands.delete_route(route.id)),
+            ]
+        self.route_edits.show(buttons)
+        if self._marked is not None and self._marked.widget is self.route_edits:
+            self.route_edits.mark(self._marked.index)  # [off] became [on] under the pane cursor
+
+    def chosen_route(self) -> RouteView | None:
+        return next((route for route in self.shown_routes if route.id == self.route_id), None)
+
+    def choose_route(self, route: str) -> None:
+        """The route the strip acts on."""
+        self.route_id = route
+        self._draw_routes()
+
+    def ask_route(self) -> None:
+        """``[+ route…]``: ``route add …``, for the chosen universe, else the first."""
+        universe = self.chosen_universe() or next(iter(self.shown_universes), None)
+        if universe is None:
+            return
+
+        def given(line: Line | None) -> None:
+            if line is not None:
+                self.post_message(RunLine(line))
+
+        self.app.push_screen(RouteDialog(universe.number, universe.name), given)
 
     # ----------------------------------------------------------- patch
 
@@ -474,6 +532,8 @@ class PatchPage(Page):
         message.stop()
         if message.table is self.universes and message.row < len(self.shown_universes):
             self.choose(self.shown_universes[message.row].number)
+        elif message.table is self.routes and message.row < len(self.shown_routes):
+            self.choose_route(self.shown_routes[message.row].id)
 
     def on_dmx_map_place_clicked(self, message: DmxMap.PlaceClicked) -> None:
         message.stop()
@@ -507,6 +567,13 @@ class PatchPage(Page):
             item = Item(label, action=partial(self.choose, shown.number))
             stops.append(Stop(item, self.universes, row))
         stops += strip_stops(self.universe_edits)
+        self.routes.spots = [(row, None) for row in range(len(self.shown_routes))]
+        for row, route in enumerate(self.shown_routes):  # two routes may read the same: the id
+            label = f"route {route.id} U{route.universe} {route.protocol} {route.address}"
+            stops.append(
+                Stop(Item(label, action=partial(self.choose_route, route.id)), self.routes, row)
+            )
+        stops += strip_stops(self.route_edits)
         stops += strip_stops(self.place_strip)
         for universe, (_, dmx_map) in self.maps.items():
             for index, print_ in enumerate(dmx_map.prints):
