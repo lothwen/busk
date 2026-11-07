@@ -86,6 +86,9 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-25](#gap-25-removing-one-limit-and-a-location) Removing one limit, and a location | action | nice-to-have | F3 | **done** 2026-11-05 |
 | [GAP-26](#gap-26-changing-a-fixtures-mode-and-profile) Changing a fixture's mode and profile | action | important | F3 | **done** 2026-11-05 |
 | [GAP-27](#gap-27-what-fixture-add-takes) What `fixture add` takes | read | important | F3 | **done** 2026-11-05 |
+| [GAP-28](#gap-28-orientation-for-several-fixtures) Orientation for several fixtures | action | nice-to-have | F3 | open (found 2026-11-05) |
+| [GAP-29](#gap-29-a-digit-int-cannot-read) A digit `int` cannot read | contract | important | prompt | **done** 2026-11-07 |
+| [GAP-30](#gap-30-a-number-too-long-for-int) A number too long for `int` | contract | important | prompt | open (found 2026-11-07) |
 
 ---
 
@@ -1996,3 +1999,105 @@ reference) and `docs/dev/internals.md`. What it settles:
 
 F3's picker can now be `LiveShow.fixture_profiles` as it is, read by the bridge with the show,
 as F5 reads `effect_templates`.
+
+## GAP-28: Orientation for several fixtures
+
+Found while planning the TUI's rig controls (`docs/plans/tui-rig-plan.md`, §8 item 2,
+2026-11-05).
+
+**Needed by:** F3's ORIENTATION, which acts on every selected fixture while the fixture shown
+is selected (the plan's §4 call 4).
+
+**Today:** `fixture N orientation.<key> <value>` is the generic edit, so it takes one fixture,
+and `thru` comes only before `limits`. `fixture 101 thru 102 orientation.invertPan true` reads
+as a property called `thru` and is refused: `set fixtures[0].thru to "102
+orientation.invertPan true": rejected, the show would not be valid`. Four heads take four
+lines and four `undo`s.
+
+**Engine should provide:** `fixture N [thru M] orientation.<key> <value>`, one undo step, on
+the model of `limits`: `thru` covers every fixture between its ends, and the reply names the
+span. `undo group` ([GAP-06](#gap-06-one-undo-step-for-a-gesture)) would give the one step
+too, but not the one line.
+
+**Priority:** nice-to-have.
+
+**TUI until then:** F3 sends a line per fixture, each its own undo step, and the guide says so.
+
+## GAP-29: A digit `int` cannot read
+
+**Status:** done 2026-11-07 (see **Done** at the end of this section).
+
+Found while building F8's routes (`docs/plans/tui-rig-plan.md`, step 13 and §8 item 6).
+
+**Needed by:** `busk run`'s prompt. `execute()` is documented never to raise.
+
+**Today:** `isdigit` takes `²` and `①`, and `int` refuses them. So `route add 1 artnet
+0.0.²`, `bind … page ²` and `surface add osc "L" port ²` raised `ValueError` out of
+`execute()` and `confirmation()`, and out of `expected()` once a word followed. At the prompt
+of `busk run --threads` that ended the run, with a traceback and exit 1. With processes the
+console restarted (exit 70) and the engine ran on.
+
+**Engine should provide:** a refused line, as for any other bad number.
+
+**Priority:** important.
+
+**TUI until then:** the bridge caught it, and the line failed with `internal error:
+ValueError: …`.
+
+**Done** (2026-11-07). All three sites use `isdecimal`, so each is a refused line. No public
+name was added. Documented in `CHANGELOG.md`. What it settles:
+
+- **The replies are those of any bad number:** `expected an Art-Net port address as
+  net.sub.universe, got '0.0.²'`, `expected +N, -N or a page number, got '²'`, `expected a
+  port (1–65535), got '²'`. A surface's `feedback pad:²` shares the port's check: `expected
+  <host>[:<port>], got 'pad:²'`.
+- **The OFL importer had the same mistake,** in the `eachPixelABC` sort, so `busk import`
+  raised on a pixel key such as `1²2`. Such a key now sorts as a word.
+- **`isdigit` is gone from the code in `src/`.**
+- **A sweep** of 55,117 lines from the tests and examples, with their numbers swapped for such
+  digits, raised 276 times before and never after.
+- Tests: the rows of `tests/test_console_parser.py` and `tests/test_console.py`, and the sort
+  in `tests/test_ofl.py`.
+
+A number too long for `int` reaches the same failure another way:
+[GAP-30](#gap-30-a-number-too-long-for-int) is still open.
+
+## GAP-30: A number too long for `int`
+
+Found while fixing [GAP-29](#gap-29-a-digit-int-cannot-read) (`docs/plans/tui-rig-plan.md`,
+§8 item 8, 2026-11-07).
+
+**Needed by:** `busk run`'s prompt. `execute()` and `submit()` are documented never to raise.
+
+**Today:** `int` refuses a number past 4,300 digits, so `ValueError` leaves the call, as in
+GAP-29. With `<n>` such a number, these raise out of `execute()`, `confirmation()` and
+`expected()`:
+
+- `route add 1 artnet 0.0.<n>`
+- `surface add osc "L" port <n>` and `… feedback pad:<n>`
+- `bind "…" cc 1 1 page <n>` and `… page +<n>`
+- `cue <n>`, `cue 10/<n>`, `delete cue 10/<n>` and `playback 1 goto <n>`
+- `record slot <n>` and `record slot <n>.1`
+
+`goto 1 <n>` parses, so it raises later, in the command bus's check (`cue_number_key`): out of
+`execute()` only, and out of `submit()` for the same `GOTO`. `integer()` already catches it, so
+`route add 1 sacn <n>` is a refused line.
+
+At the prompt of `busk run --threads`, `record slot <n>` and `goto 1 <n>` end the run, with a
+traceback and exit 1. With processes the console restarts (exit 70) and the engine runs on. It
+takes a bad paste, not a slip.
+
+**Engine should provide:** a refused line, and from `submit()` a result with `ok=False`, as
+`docs/library.md` promises. `confirmation()` and `expected()` answer as for any line that does
+not parse. How is a design call for the user:
+
+- **At each site.** Every number is read through one check, as `integer()` does, and
+  `cue_number_key` and `_same_cue` refuse it. The next such mistake would raise again.
+- **One guard between a line and the prompt.** It covers this and whatever comes next, at the
+  cost of showing a real bug as a refused line. A guard on lines leaves `goto` through
+  `submit()` as it is.
+
+**Priority:** important. It is rare, but on stage it ends a `--threads` run, as GAP-29 did.
+
+**TUI until then:** the bridge catches it. The line fails with `internal error: ValueError: …`,
+and `confirmation()` and `expected()` answer nothing.

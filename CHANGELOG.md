@@ -17,6 +17,12 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   shutters and fixture effects, and spreads. Every pool the rig can record into now shows.
   Under SELECTION, a hint says what the scope lit keeps, and a row no profile of the show takes
   shows dimmed.
+- F3 and F8 edit the rig from controls. F3's `[edit]` opens the FIXTURE panel: rename, renumber,
+  delete after busk's question, the mode, the profile and its category, the patch, limits,
+  orientation and location. `[+ add]` adds fixtures, one or a block, with a picker of the show's
+  and the library's profiles. F8 adds, renames, renumbers and deletes universes, and adds, switches
+  and deletes routes. A click on a free channel of its maps arms a place, to patch the selected
+  fixture there or add a new one.
 - `route <id> on|off` and `delete route <id>`. A route is named by its id, as `list routes`
   prints it, and Tab offers the ids. `route <id> off` and `delete route <id>` ask first at
   the prompt, as `output off` does.
@@ -44,6 +50,12 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   an OFL pixel key such as `1²2`, sorted for `eachPixelABC`.
 - A TUI button whose look alone changed was not redrawn: a lit scope or curve, `[−]` `[+]`
   turning active, F5's `RUN` dimming.
+- A name the TUI sent to busk was written bare between quotes, so `C:\new` reached busk with a
+  newline in it, `back\slash` raised, and a double quote was refused. Names now go out escaped, as
+  busk reads them.
+- A TUI question read the name in it as markup: `x[/]y` ended the TUI, and `[left]` vanished. A
+  long question was cut at the box. Both are fixed, and a question now wraps.
+- A TUI number dialog raised on a digit such as `²`. It is refused there now.
 
 ## [0.1.1] - 2026-10-27
 

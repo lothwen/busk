@@ -962,6 +962,46 @@ one conversation, which ends with a status memory and a stop. The engine's tests
     - the changelog's `[Unreleased]`;
     - a real-terminal check (pty and pyte) on both shows at 150 and 99 columns. The driver can be
       recovered from transcript 188008bc.
+
+    **Done** (2026-11-07). As planned, with these additions, which the user may veto:
+    - **The report's item 6 is not closed, only narrowed.** The step says closed, but §9 leaves
+      cascades for presets, cue lists and playbacks out, so it now reads that deletes cascade only
+      for fixtures and universes. Item 4 is marked closed, and the numbers stay, since §9 cites item 6.
+    - **The report had no routes item to close.** So item 8 records GAP-23 as closed, and item 9 is new:
+      a route cannot be edited. Universes and routes have a table of their own, with the rows of §1,
+      and a row in the summary. §8 item 5's corrections are a list under that table.
+    - **No key or hint changed.** `help.py`, `frame.py` and `hints.py` are as they were at `ab05ea3`,
+      so the help screen and the hint row have no edit. The empty tables' words (`no fixtures · fixture
+      add 101 …`, `no universes · …`, `no routes · …`) still name the typed line beside the new
+      controls. They are true, so they stay.
+    - The guide's "Questions and quitting" is now "Questions, dialogs and quitting", and holds the
+      forms and the picker. No link pointed at the old heading.
+    - **The changelog also lists the three TUI fixes of steps 7 and 8** under `Fixed` (names sent
+      escaped, a question read as markup and cut, the number dialog on `²`), which had no entry. They
+      are user-visible, and §8 item 6 and §5.6 already had theirs.
+    - The TUI plan's `doc` row now names `fixture_profiles`, beyond the two tables, since the new rows
+      cite it. Those rows read `*(rig plan)*`, as F6's read `*(presets plan)*`.
+    - **The mockups are captures, pasted by script at 132 columns.** F3 comes from the club show and
+      F8 from TupperDMX, as before, because the club's route cannot open on this host (no `eth0`). One
+      glyph was changed: F8's light shows `●`, the other half of its blink from the `○` captured. F8's
+      empty rows are cut to `…`, as they were.
+
+    The real-terminal check found no bug. TupperDMX, for the first time in this plan: at 150 columns by
+    mouse, the panel on a moving head, busk's question and No, the limit, location and profile dialogs,
+    `[invert pan]`, the form, a universe, the place, `[patch 101 here]` and `[add fixture here…]`, with
+    `[add]`. At 99 by keyboard, edit mode, a real cascade on 501 and `undo`, then on F8 the route's
+    `[off]`, `[on]`, both questions, and `delete universe 1 cascade`. The club show: at 150 a `thru`
+    limit on two heads and the form with a count, at 99 the picker's filter, the form under the table,
+    each protocol of the route form with a refusal, and a place with and without a selection. Every
+    line the guide quotes was also run on `OfflineShow`.
+
+    One thing seen, older than this plan and left alone: the log does not wrap (`wrap=False`), so at 99
+    columns a long answer is cut at the edge, behind a horizontal scrollbar. TupperDMX's overlap warning
+    shows it at start.
+
+    The step changed no code and no test, so nothing new runs on Textual 8.2.0. The whole suite: 4982
+    passed, 1 skipped, 20 deselected, in 34:20, as group F left it. `ruff`, `ruff format` and `mypy src`
+    are clean.
 15. **The user's:** on the rig, add a fixture from the library, patch it from F8's map, set a limit
     and an orientation on the heads, set a location, then rename, renumber and delete it; add a
     universe with a route, switch the route off and on, then delete both.

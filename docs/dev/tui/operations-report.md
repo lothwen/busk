@@ -1,15 +1,17 @@
 # TUI status: show, add, delete and update
 
-What the TUI lets an operator show, add, delete and update for fixtures and the patch, cues,
-cue lists, presets, effects and playbacks (buttons and faders). For each operation it says
-whether the TUI offers it, and if not, whether the TUI or busk is missing it.
+What the TUI lets an operator show, add, delete and update for fixtures and the patch, universes
+and routes, cues, cue lists, presets, effects and playbacks (buttons and faders). For each
+operation it says whether the TUI offers it, and if not, whether the TUI or busk is missing it.
 
 Written 2026-11-01 at `f19c4ec` (after TUI Phase 5). Every busk line below was run on
 `OfflineShow` with `examples/club-night.busk`. The TUI side comes from `src/busk_tui/`:
 `commands.py` builds every line the UI sends, and the pages hold the controls and pre-fills.
 The Presets rows were updated on 2026-11-02, once
 [the presets plan](../../plans/tui-presets-plan.md) gave every one a control (F6's edit mode
-and its PRESET panel).
+and its PRESET panel). The fixture, universe and route rows were updated on 2026-11-07, once
+[the rig plan](../../plans/tui-rig-plan.md) gave every one a control (F3's edit mode, FIXTURE
+panel and new fixture form, F8's strips and place) and closed what busk lacked (GAP-23 to GAP-27).
 
 ## How to read it
 
@@ -38,7 +40,8 @@ do can already be typed in the TUI. The tables below show how much the screens h
 
 | | SHOW | ADD | DELETE | UPDATE |
 |---|---|---|---|---|
-| Fixtures, patch | control (F3, F8, F1 A/C) | prompt | prompt; engine partial | pre-fill (patch, location, category, name); prompt for the rest; mode change: engine no |
+| Fixtures, patch | control (F3, F8, F1 A/C) | control (F3's form, F8's place) | control (cascades) | control (F3's FIXTURE panel, F8's place) |
+| Universes, routes | control (F8) | control (F8) | control (a universe cascades) | control; a route cannot be edited: engine no |
 | Cues | control (F4) | control (append); prompt (at a number) | prompt | pre-fill (timing, trigger, name); prompt (values) |
 | Cue lists | control (F4) | prompt; engine partial | prompt; engine partial | control (sequence/chase); prompt for the rest |
 | Presets | control (F6, colour chips) | control (F6's PRESET panel) | control; engine partial | control (values, name, number) |
@@ -52,36 +55,60 @@ In short:
 
 - **SHOW is covered** for all of them except a playback's configuration: its buttons, fader
   function, band, exclusivity, flash, LTP mode and release time are on no screen.
-- **The TUI is a performance and programming frontend, not a show editor yet.** Presets are
-  the exception: F6 shows, adds, deletes and updates them from controls alone. Beyond them,
-  nothing can be deleted from a screen except a programmer effect (`✕`), and ADD has
-  controls only for cues (append) and programmer effects. UPDATE has pre-fills for a
-  fixture's patch, location, category and name, and for a cue's timing, trigger and name. The
-  rest is typed at the prompt.
+- **The TUI is a performance and programming frontend, and it edits the rig and the presets,
+  but not the rest of a show yet.** F3, F8 and F6 show, add, delete and update fixtures,
+  universes, routes and presets from controls alone. Beyond them, nothing can be deleted from
+  a screen except a programmer effect (`✕`), and ADD has controls only for cues (append) and
+  programmer effects. UPDATE has pre-fills for a cue's timing, trigger and name, and F1 C's for
+  a fixture's location. The rest is typed at the prompt.
 - **busk itself is missing a few lines.** It cannot delete, change or rename an effect
   template. It cannot add a playback for an existing cue list, or remove one effect from a
-  cue. It cannot change a fixture's mode, or create an empty cue list. Deletes never
-  cascade: a fixture, preset, cue list, playback or universe that something uses must first
+  cue. It cannot edit a route, or create an empty cue list. Only a fixture and a universe
+  delete with what uses them: a preset, cue list or playback that something uses must first
   be freed by hand (see [What busk is missing](#what-busk-is-missing)).
 
 ## Fixtures and patch
 
 | Operation | busk line | Engine | TUI |
 |---|---|---|---|
-| Show | typed `LiveShow.show` and `.output`; `list fixtures`, `list universes` | yes | control: F3 table (profile, mode, patch, live values, source); F8 universes, routes and DMX map; F1 A and C |
-| Add a fixture | `fixture add N [thru M] "<profile>" mode <mode> [at U.A]` | yes | prompt (the empty-state text shows the syntax) |
-| Add a universe | `universe add N ["name"]` | yes | prompt |
-| Delete a fixture | `delete fixture N` | partial: one fixture per line (`thru` is refused); refused while a group, preset or cue names it | prompt |
-| Delete a universe | `delete universe N` | partial: refused while a fixture is patched in it | prompt |
-| Patch, unpatch | `fixture N patch U.A`, `fixture N patch none` | yes | pre-fill on F3 (`patch…`) |
-| Rename | `rename fixture N "…"`, `rename universe N "…"` | yes | pre-fill on F3 for a fixture; prompt for a universe |
-| Location | `fixture N location {…}` | yes | pre-fill on F3 and F1 C |
-| Category | `profile "<name>" category …` | yes | pre-fill on F3 |
-| Renumber | `fixture N number M` (generic property) | yes | prompt |
-| Limits | `fixture N [thru M] limits …` | yes | prompt |
-| Change mode or profile | none (`fixture N modeId "<id>"` takes busk's internal mode id) | no: delete it and add it again | none |
+| Show | typed `LiveShow.show` and `.output`; `list fixtures` | yes | control: F3 table (profile, mode, patch, live values, source); its edit mode (limits, place) and FIXTURE panel (limits, orientation, location); F8's DMX map; F1 A and C |
+| Add | `fixture add N [thru M] "<profile>" mode <mode> [at U.A]` | yes | control: F3's new fixture form, with a picker from `fixture_profiles` (GAP-27); F8's `[add fixture here…]` opens it at a free channel |
+| Delete | `delete fixture N cascade` (GAP-24), `delete fixture N` | yes: one fixture per line (`thru` is refused). A plain `delete` stays refused while a group, preset or cue names it | control: `[delete]`, always `cascade`, after busk's question |
+| Patch, unpatch | `fixture N patch U.A`, `fixture N patch none` | yes | control: F3's PATCH; F8's `[patch N here]` on a free channel |
+| Rename | `rename fixture N "…"` | yes | control: `[rename…]`, a name dialog |
+| Renumber | `fixture N number M` (generic property) | yes | control: `[number…]`, a dialog that refuses a taken number |
+| Limits | `fixture N [thru M] limits …`, `… limits pan\|tilt\|intensity none` (GAP-25), `… limits none` | yes | control: `[limit…]`, `[none]`, `[no limits]`, on the selection |
+| Location | `fixture N location {…}`, `… location none` (GAP-25) | yes | control: `[location…]`, `[no place]` on F3; pre-fill on F1 C |
+| Orientation | `fixture N orientation.<key> <value>` (generic property, no `thru`) | yes | control: toggles and `[offset…]`, a line per selected fixture |
+| Category | `profile "<name>" category …` | yes | control: chips |
+| Change mode | `fixture N mode <mode>` (GAP-26) | yes | control: chips |
+| Change profile | `fixture N profile "<profile>" mode <mode>` (GAP-26) | yes | control: `[profile…]`, the picker, `[change]` |
 
 GAP-22 is still open: a parked value reads as "none" in F3's source column.
+
+## Universes and routes
+
+| Operation | busk line | Engine | TUI |
+|---|---|---|---|
+| Show | typed `LiveShow.show` and `.routes`; `list universes`, `list routes` | yes | control: F8 UNIVERSES, ROUTES with each route's state and packet rate, and a DMX map per universe |
+| Add a universe | `universe add N ["name"]` | yes | control: `[+ universe…]`, a form |
+| Delete a universe | `delete universe N cascade` (GAP-24), `delete universe N` | yes. A plain `delete` stays refused while a fixture is patched in it or a route sends it | control: `[delete]`, always `cascade`, after busk's question |
+| Rename | `rename universe N "…"` | yes | control: `[rename…]`, a name dialog |
+| Renumber | `universe N number M` (generic property) | yes | control: `[number…]`, a dialog that refuses a taken number |
+| Add a route | `route add …` | yes | control: `[+ route…]`, a form per protocol |
+| Delete a route | `delete route <id>` (GAP-23) | yes | control: `[delete]`, after busk's question |
+| Disable, enable | `route <id> on\|off` (GAP-23) | yes | control: `[off]`, after busk's question, and `[on]` |
+| Change a route | none: delete it and add another | no | none |
+
+**Corrections to the first version of this report,** found while planning the rig (2026-11-05):
+
+- `delete universe` is refused by routes too, not only by a fixture patched in it. No console
+  line removed a route, so a universe with one could not be deleted from the console at all.
+- A fixture's mode could already be changed: `fixture N modeId` took busk's internal id. So
+  "engine no" was too strong for the mode. It held for a mode by name and for the profile.
+- Orientation had no row.
+- `expected()` gives a picker the profiles' and modes' names but no footprint, so a picker could
+  not be built from it alone, as the report said. GAP-27 added `fixture_profiles`.
 
 ## Cues
 
@@ -170,17 +197,20 @@ Candidates for [engine-gaps.md](engine-gaps.md), if the TUI is to cover these:
    line adds a playback for an existing list, or points a playback at another list by number.
 3. **A cue's effect** cannot be removed by its id. `record cue L/C remove` needs the effect in
    the programmer first.
-4. **A fixture's mode** (or profile) cannot be changed. The only way is to delete the fixture
-   and add it again, which its groups, presets and cues prevent (item 6).
+4. **Closed: a fixture's mode and profile** (GAP-26). `fixture N mode <mode>` and `fixture N
+   profile "<profile>" mode <mode>` change them by name, each in one undo step.
 5. **An empty cue list** cannot be created. This is minor: recording cue 1 creates the list.
-6. **Deletes do not cascade** and take one entity per line. To delete a fixture used by groups
-   and presets, a preset used by cues, a cue list a playback runs, a playback on a page, or a
-   universe with fixtures in it, every reference must be removed first. The error lists them.
-   A TUI delete button would mostly show that error.
+6. **Deletes cascade only for fixtures and universes** (GAP-24 closed those), and take one
+   entity per line. To delete a preset used by cues, a cue list a playback runs or a playback
+   on a page, every reference must be removed first. The error lists them. A TUI delete button
+   for those would mostly show that error, as F6's stays grey and names what uses the preset.
 7. **Playback and cue list settings** are only reachable as generic property lines with JSON
    values. They work, but `help` and `expected()` name no properties (`playback 3 ` gives "a
    property, e.g. name or timing.fadeIn"). A TUI form would have to hard-code busk's schema
    names.
+8. **Closed: removing and switching a route** (GAP-23). This list first left it out: `route add`
+   was the only route line, so none removed a route or switched one off.
+9. **A route** cannot be edited. To change one, delete it and add another.
 
 ## What the TUI is missing
 
@@ -189,9 +219,6 @@ host it:
 
 - **F1**: the playback's own buttons (`button N B on|off`) instead of the fixed GO, ◂ and
   FLASH; `record slot` on an empty slot.
-- **F3, F8**: add a fixture, add a universe, delete either, limits, renumber, rename a
-  universe. A profile and mode picker for `fixture add` can be built from `expected()`, which
-  lists the library's profiles and a profile's modes, so it needs no new gap.
 - **F4**: delete a cue; re-record a cue (`merge`, `replace`, `remove`); record at a number;
   a new cue list; delete, rename, tracking and chase settings of a list; release targets.
 - **F5**: edit an effect's settings (programmer: `effect add … id <id>`; cue: `cue L/C
@@ -203,6 +230,8 @@ host it:
 
 - **busk bug:** `record cue L/C remove` removes the cue's effect but replies `… 0 effects`.
   Seen on cue 11/1; `undo` brings the effect back.
-- `LiveShow.confirmation()` asks nothing before a `delete`, a `record … replace` or `effect
-  clear`. They are undo steps. A TUI delete button would rely on `undo`, unless the TUI asks
-  first itself. F6's `[delete]` asks first (`RunLine.ask`).
+- `LiveShow.confirmation()` asks before `delete fixture|universe N cascade`, `delete route <id>`
+  and `route <id> off`, so F3's and F8's controls show busk's question. It asks nothing before
+  any other `delete`, a `record … replace` or `effect clear`. They are undo steps. A TUI delete
+  button there would rely on `undo`, unless the TUI asks first itself. F6's `[delete]` asks first
+  (`RunLine.ask`).

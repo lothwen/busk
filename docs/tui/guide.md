@@ -368,18 +368,24 @@ panels go one under the other.
 
 ## F3 Fixtures
 
-Every fixture, with its patch and what it outputs now.
+Every fixture, with its patch and what it outputs now. `[edit]` opens the FIXTURE panel, which
+changes any of them, and `[+ add]` adds new ones.
 
 ```
- ┌─ FIXTURES · 7 fixtures · 4 selected · click selects, Shift-click adds ─────────────────────────────────────────┐
- │      # name                  profile                        type   mode      patch   intensity colour       pan  tilt zoom src     │
- │    101 Spot 101              Generic Spot 16ch              spot   16ch      1.1           64% ██           12°   10°  21° P1      │
- │ ▸  201 LED ML-56 RGBW 201    Eurolite LED ML-56 RGBW        par    4-channel 1.33          40% ██                          prog    │
- │ ▸  204 LED ML-56 RGBW 204    Eurolite LED ML-56 RGBW        par    4-channel 1.45           0% ██                          —       │
- │    301 COLORband PiX 301     Chauvet DJ COLORband PiX ×12   pixel  36-CH     1.49        8–50% ████████████                fx P13  │
- │                                                                                                                                    │
- │ ■ programmer   ■ playback   ■ effect   ■ nothing   — unpatched   ▸ selected                                                        │
- │ edit fixture 201 LED ML-56 RGBW 201 [patch…] [location…] [category…] [rename…]                                                     │
+ 7 fixtures · 2 selected · click selects, Shift-click adds                                                           [+ add] [edit]
+
+ ┌─ FIXTURES ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+ │      # name                   profile                 type   mode      patch   intensity colour         pan  tilt zoom src     │
+ │    101 Spot 101               Generic Spot 16ch       spot   16ch      1.1           64% ██              0°    0°  21° P1      │
+ │    102 Spot 102               Generic Spot 16ch       spot   16ch      1.17          64% ██              0°    0°  21° P1      │
+ │ ▸  201 LED ML-56 RGBW 36x3W … Eurolite LED ML-56 RGBW par    4-channel 1.33          40% ██                            prog    │
+ │ ▸  202 LED ML-56 RGBW 36x3W … Eurolite LED ML-56 RGBW par    4-channel 1.37          40% ██                            prog    │
+ │    203 LED ML-56 RGBW 36x3W … Eurolite LED ML-56 RGBW par    4-channel 1.41          64% ██                            P1      │
+ │    204 LED ML-56 RGBW 36x3W … Eurolite LED ML-56 RGBW par    4-channel 1.45           0% ██                            —       │
+ │    301 COLORband PiX 301      Chauvet DJ COLORband P… pixel  36-CH     1.49          50% ████████████                  P1      │
+ │                                                                                                                                │
+ │ ■ programmer   ■ playback   ■ effect   ■ nothing   — unpatched   ▸ selected                                                    │
+ └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 **A row** is a fixture: `▸` while it is selected (its row lighter), its number, name,
@@ -401,11 +407,139 @@ by what drives the position, zoom by the beam's). A parked value counts as nothi
 does not say which values park holds.
 
 A click on a row selects the fixture (`sel fixture 101`); Shift-click adds it to the
-selection, or takes it out when it is in (`sel + fixture 101`, `sel - fixture 101`). The
-edits under the table act on the fixture clicked last (else the first selected): they put
-`fixture 101 patch `, `fixture 101 location {"x": 0, …}` (with its place when it has one),
-`profile "Generic Spot 16ch" category ` or `rename fixture 101 "` in the prompt to finish.
-The pane cursor stops on each row (Enter selects it, and the cursor stays), then the edits.
+selection, or takes it out when it is in (`sel + fixture 101`, `sel - fixture 101`). The pane
+cursor stops on `[+ add]`, `[edit]` and each row (Enter selects it, and the cursor stays).
+
+### Edit mode and the FIXTURE panel
+
+`[edit]`, at the right of the header, turns edit mode on (`[edit ●]`), and `[done]`, at the end
+of the panel, turns it off. The live columns give way to the rig's, and the page stops reading
+the output: `limits` says what the fixture limits (`tilt`, `pan tilt`, `int`), and `place`
+whether it has a location (`●`, else `·`). A click still selects, and the panel shows the
+fixture clicked last, whose number is lit: several selected rows look alike.
+
+```
+ 7 fixtures · 1 selected · click chooses, Shift-click adds to the selection                                        [+ add] [edit ●]
+
+ ┌─ FIXTURES ────────────────────────────────────────────────────────────────┐ ┌─ FIXTURE · 102 Spot 102 ─────────────────────────┐
+ │      # name          profile         mode      patch   limits       place │ │ [rename…] [number…] [delete]                     │
+ │    101 Spot 101      Generic Spot 1… 16ch      1.1     tilt         ·     │ │                                                  │
+ │ ▸  102 Spot 102      Generic Spot 1… 16ch      1.17    tilt         ·     │ │ Generic Spot 16ch · 16ch · 16 channels           │
+ │    201 LED ML-56 RG… Eurolite LED M… 4-channel 1.33                 ·     │ │ [profile…]                                       │
+ │    202 LED ML-56 RG… Eurolite LED M… 4-channel 1.37                 ·     │ │                                                  │
+ │    203 LED ML-56 RG… Eurolite LED M… 4-channel 1.41                 ·     │ │ category of 2 fixtures                           │
+ │    204 LED ML-56 RG… Eurolite LED M… 4-channel 1.45                 ·     │ │ [par] [spot] [wash] [pixel] [strobe] [beam]      │
+ │    301 COLORband Pi… Chauvet DJ COL… 36-CH     1.49    int          ·     │ │ [blinder] [dimmer] [effect] [fog] [other] [none] │
+ └───────────────────────────────────────────────────────────────────────────┘ │                                                  │
+                                                                               │ PATCH 1.17–1.32                                  │
+                                                                               │ universe [none] [1 Stage]                        │
+                                                                               │ address  85 [address…] [next free]               │
+                                                                               │ takes 1.85–1.100 · free                          │
+                                                                               │ [patch]                                          │
+                                                                               │                                                  │
+                                                                               │ LIMITS · 102                                     │
+                                                                               │ pan         none               [limit…]          │
+                                                                               │ tilt        -90° to 10°        [limit…] [none]   │
+                                                                               │ intensity   none               [limit…]          │
+                                                                               │ [no limits]                                      │
+                                                                               │                                                  │
+                                                                               │ ORIENTATION · 102                                │
+                                                                               │ [invert pan] [invert tilt] [swap pan/tilt]       │
+                                                                               │ pan offset  0°                 [offset…]         │
+                                                                               │ tilt offset 0°                 [offset…]         │
+                                                                               │                                                  │
+                                                                               │ LOCATION no place                                │
+                                                                               │ [location…]                                      │
+                                                                               │                                                  │
+                                                                               │ [done]                                           │
+                                                                               └──────────────────────────────────────────────────┘
+```
+
+What a control sends is echoed `ui>` in the log with busk's answer. A chip already lit sends
+nothing. From the top:
+
+- `[rename…]` and `[number…]`, each a dialog, then one line (`rename fixture 102 "…"`, `fixture
+  102 number 150`). The number dialog lists the numbers taken and refuses them, and the panel
+  follows the fixture to its new number.
+- `[delete]` sends `delete fixture 102 cascade`, after busk's question, which says what goes:
+  `Delete fixture 501? It leaves groups 4, 5. The programmer holds it.` The fixture leaves every
+  group, preset, cue, park entry and binding that names it. A cue entry, a cue effect, a release
+  or a binding left with no target goes with it. A group, preset or cue left empty stays, for you
+  to keep or delete. One `undo` brings it all back.
+- **What it is:** its profile, mode and channels. With several modes, a chip per mode sends
+  `fixture 102 mode "8ch"`. `[profile…]` opens the [picker](#questions-dialogs-and-quitting). The
+  panel then shows what the fixture would become (`to RGB Par 3ch · 3 channels`), that profile's
+  mode chips, `[change]` and `[cancel]`. `[change]` sends `fixture 102 profile "RGB Par 3ch" mode
+  "3ch"`, and a library profile comes into the show with it. busk refuses a mode that would run
+  past channel 512, or that loses elements a group, preset or cue uses, and an overlap is a
+  warning in the log.
+- **category:** a chip per word, the profile's lit (`profile "Generic Spot 16ch" category wash`).
+  It belongs to the profile: `category of 2 fixtures` says how many it changes.
+- **PATCH**, where the fixture is, then where to put it. Nothing goes until `[patch]`, which sends
+  `fixture 102 patch 1.85`, or `fixture 102 patch none` with `[none]` lit. A universe chip
+  proposes its first free run of channels that fits. The chip of the fixture's own universe gives
+  back its patch. `[next free]` proposes the first free run outside the fixture's own channels,
+  and `[address…]` takes any address. The `takes` line reads the choice: `free`, `overlaps fixture
+  301` (amber: busk allows it), or `past channel 512` (red: `[patch]` is grey). With no universe,
+  the chips say that F8 adds one.
+- **LIMITS:** a row per limit the fixture can use: `pan` and `tilt` where the profile takes them,
+  `intensity` always. `[limit…]` is a form: `from` and `to` in degrees, starting at the limit or
+  the profile's range, or for intensity `at most` a level (`50` or `50%`). A limit past the
+  profile's range is busk's warning, in the log. `[none]` removes that limit and keeps the others,
+  and `[no limits]` removes them all.
+- **ORIENTATION**, on a fixture with pan or tilt: `[invert pan]`, `[invert tilt]` and, with both,
+  `[swap pan/tilt]`, lit from the fixture, send at once (`fixture 102 orientation.invertPan
+  true`). `[offset…]` is a dialog, in degrees.
+- **LOCATION:** the six values of its place on stage, or `no place`. `[location…]` is a form of
+  the six: `x`, `y`, `z` in metres and `rx`, `ry`, `rz` in degrees, starting at its own.
+  `[no place]`, on a fixture with a place, sends `fixture 102 location none`. F1 C draws what
+  has a place.
+
+LIMITS and ORIENTATION act on every selected fixture while the fixture shown is selected, as
+their headings say (`LIMITS · 101 thru 102 (2)`); the rest of the panel acts on the fixture shown
+alone. A limit goes out as one line per run of the numbers selected: 101 and 102 give `fixture
+101 thru 102 limits tilt -90 10`, and a fixture left out between two selected ones gives two
+lines, so it stays as it is. Orientation goes out as a line per fixture, each its own `undo` step.
+A toggle sets them all to the opposite of the fixture shown, so it also brings those that differ
+into line.
+
+**A new fixture.** `[+ add]`, in or out of edit mode, shows the form in the panel.
+[F8's map](#f8-patch) can open it too, at a free channel.
+
+```
+┌─ FIXTURE · new ──────────────────────────────────┐
+│ profile  [Generic Spot 16ch…]                    │
+│ mode     [16ch]                                  │
+│ number   [−] 302 [+] [number…]                   │
+│ count    [−] 4 [+]  302 thru 305                 │
+│                                                  │
+│ PATCH                                            │
+│ universe [none] [1 Stage]                        │
+│ address  85 [address…] [next free]               │
+│ takes 1.85–1.148 · free                          │
+│                                                  │
+│ [add] [done]                                     │
+└──────────────────────────────────────────────────┘
+```
+
+- `[choose…]` opens the [picker](#questions-dialogs-and-quitting), and the form has no profile
+  until you choose one. It keeps that profile from one `[+ add]` to the next.
+- With several modes, each chip shows what it takes (`8ch · 8`), and the first is lit.
+- `number` starts after the show's highest. `[−]` `[+]` step over what is taken, and `[number…]`
+  takes any free number.
+- `count` is how many, one after the other. The range shows beside it (`302 thru 305`). A number
+  of the range that is taken shows in red, and `[add]` is grey.
+- PATCH works as in the panel, for the whole block, and starts at the first free run that fits.
+  `[none]` adds the fixtures unpatched.
+
+`[add]` sends `fixture add 302 thru 305 "Generic Spot 16ch" mode "16ch" at 1.85`, and a library
+profile comes into the show with it. The form stays, with the next number and the next free
+address, since a rig goes in type by type. `[done]` goes back to the panel, and so does a click
+on a row.
+
+The pane cursor stops on every control of the panel in reading order, and a row's Enter chooses
+it as well as selecting it. The panel is beside the table from 100 columns, and under it below
+that; there, a click scrolls down to it.
 
 ## F4 Cues
 
@@ -645,28 +779,76 @@ Every master, one panel per kind, three across on a wide terminal:
 ## F8 Patch
 
 The universes, the output routes and their state, and a map of each universe's channels.
+Universes and routes are added, changed and deleted here, and a free channel of a map takes a
+fixture.
 
 ```
- ┌─ UNIVERSES ──────────────────────────────────────────────┐┌─ ROUTES ──────────────────────────────────────────────────────┐
- │   U name                        fixtures    used overlaps ││   U proto   address  destination        tx       state         │
- │   1 Stage                             11  66/512        2 ││   1 ArtNet  0.0.0    unicast 127.0.0.1  ● 1/s    open          │
- └──────────────────────────────────────────────────────────┘└───────────────────────────────────────────────────────────────┘
- ┌─ DMX MAP · U1 Stage · 66/512 · 2 overlaps ───────────────────────────────────────────────────────────────────────────────┐
- │    1 █▓▓▓▓▓▓·························█▓▓▓▓▓▓▓························                                                    │
- │   65 █▓▓▓▓▓▓▓██▓▓▓▓▓█▓▓▓▓▓█▓▓▓▓▓╳╳╳╳╳╳╳╳╳╳╳╳············╳╳╳╳╳╳╳╳╳╳╳╳·                                                    │
- │  129 ································································                                                    │
- │  …                                                                                                                       │
- █ LED Bar   █ Blinder   █ fog   █ par   █ spot   █ start   ▓ footprint   ╳ overlap   · free
+ ┌─ UNIVERSES ───────────────────────────────────────────────────┐┌─ ROUTES ──────────────────────────────────────────────────────┐
+ │     U name                          fixtures    used overlaps ││     U proto   address   destination     tx       state        │
+ │     1 Stage                               11  66/512        2 ││ ▸   1 ArtNet  0.0.0     unicast 127.0.… ● 1/s    open         │
+ │ ▸   2 Balcony                              0   0/512        0 ││ [+ route…] U1 ArtNet 0.0.0 [off] [delete]                     │
+ │ [+ universe…] U2 Balcony [rename…] [number…] [delete]         │└───────────────────────────────────────────────────────────────┘
+ └───────────────────────────────────────────────────────────────┘
+  place 1.9 · 24 free from here · [patch 101 here] [add fixture here…]
+ ┌─ DMX MAP · U1 Stage · 66/512 · 2 overlaps ─────────────────────────────────────────────────────────────────────────────────────┐
+ │    1 █▓▓▓▓▓▓·░░░░░░░·················█▓▓▓▓▓▓▓························                                                          │
+ │   65 █▓▓▓▓▓▓▓██▓▓▓▓▓█▓▓▓▓▓█▓▓▓▓▓╳╳╳╳╳╳╳╳╳╳╳╳············╳╳╳╳╳╳╳╳╳╳╳╳·                                                          │
+ │  129 ································································                                                          │
+ │  …
+ █ TupperDMX LED Bar   █ TupperDMX Blinder   █ TupperDMX Smoke Machine   █ TupperDMX PAR RGBW   █ TupperDMX Moving Head   █ start
+ ▓ footprint   ╳ overlap   · free   hover a channel for its fixture; a click selects it
 ```
 
 **UNIVERSES**: each universe, how many fixtures are patched in it, how many of its 512
-channels they take, and how many pairs of fixtures overlap (in red). **ROUTES**: each route,
-its protocol, address and destination as `route add` takes them, its light (green while it
-is open, blinking while it sends, red when it fails, grey when it is disabled or nothing
-runs the output, as with `--no-output`) with the packets it sends per second, and its state:
-`open` (with the send errors, if any), `failed:` and busk's reason, `disabled`, `ignored:`
-and why. busk keeps opening a failed route again. An Art-Net or sACN route sends an unchanged
-universe once a second, so an idle look shows `1/s`.
+channels they take, and how many pairs of fixtures overlap (in red). A click chooses a row
+(`▸`), and the strip under the table acts on it:
+
+- `[+ universe…]` is a form of its number, starting after the highest, and its name. Without one,
+  busk names it. It sends `universe add 2 "Balcony"`;
+- `[rename…]` and `[number…]`, each a dialog, then one line (`rename universe 2 "Roof"`, `universe
+  2 number 7`). The number dialog lists the numbers taken and refuses them;
+- `[delete]` sends `delete universe 1 cascade`, after busk's question, which says what goes:
+  `Delete universe 1 "Stage"? 11 fixtures lose their patch and 1 route goes.` The fixtures stay,
+  unpatched, and F3 shows them with a red `—`. One `undo` brings it all back.
+
+**ROUTES**: each route, its protocol, address and destination as `route add` takes them, its
+light (green while it is open, blinking while it sends, red when it fails, grey when it is
+disabled or nothing runs the output, as with `--no-output`) with the packets it sends per
+second, and its state: `open` (with the send errors, if any), `failed:` and busk's reason,
+`disabled`, `ignored:` and why. busk keeps opening a failed route again. An Art-Net or sACN
+route sends an unchanged universe once a second, so an idle look shows `1/s`.
+
+A click chooses a route (`▸`). The strip under the table then has `[off]` or `[on]` (`route
+r-c948753c3bac off`) and `[delete]` (`delete route r-c948753c3bac`), and busk asks before `off`
+and `delete`, since they stop what the universe sends. A route that is off stays in the show. To
+change a route, delete it and add another: busk has no line that edits one.
+
+`[+ route…]` is a form for the chosen universe, else the first:
+
+```
+┌─ NEW ROUTE · U1 Stage ───────────────────────────────────┐
+│                                                          │
+│  protocol   [sACN] [Art-Net] [DMX-USB]                   │
+│  universe   1                                            │
+│  send by    [multicast] [unicast]                        │
+│  interface  empty: busk's own (--iface)                  │
+│                                                          │
+│  Tab: next · ← →: chips · Enter: OK · Esc: cancel        │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+```
+
+The protocol's chips choose the fields:
+
+- **sACN:** the sACN universe, starting at the show universe's number, then `multicast` with an
+  interface or `unicast` with a host. An interface left empty is left to busk (`--iface`);
+- **Art-Net:** the port address as `net.sub.universe`, starting where Art-Net counts the show
+  universe, from 0 (universe 1 is `0.0.0`), then `broadcast` or `unicast`, as for sACN;
+- **DMX-USB:** the driver, `enttecPro` or `dmxking`, the port (`/dev/ttyUSB0`) and the rate, from
+  1 to 40 Hz.
+
+It sends `route add 2 sacn 2 multicast eth0`. What only busk can tell, such as an sACN universe
+another universe sends, is refused in the log.
 
 **DMX MAP**, one per universe: 64 channels to a row (32 on a narrow screen), the first one's
 address on the left. A fixture's start address is `█` and the rest of its footprint `▓`, in
@@ -677,10 +859,24 @@ split patch (one address per element) shows its main patch only: busk does not r
 patches yet, and F3 marks them `split`.
 
 Hover over a channel and the hint row says what it is (`1.94 · overlap · fixture 501 · ch
-3/12 · fixture 502 · ch 3/12`). A click selects the fixture (`sel fixture 101`), both on an
-overlap (`sel fixture 501, fixture 502`); Shift-click adds it, or takes it out. The pane
-cursor stops on each fixture of the maps, in address order, and Enter selects it. Below 100
-columns ROUTES goes under UNIVERSES.
+3/12 · fixture 502 · ch 3/12`). A click on a fixture selects it (`sel fixture 101`), both on an
+overlap (`sel fixture 501, fixture 502`); Shift-click adds it, or takes it out.
+
+**A place.** A click on a free channel sends nothing: it arms a place, and the strip above the
+maps reads `place 1.9 · 24 free from here`. It offers:
+
+- `[patch 101 here]`, with exactly one fixture selected: `fixture 101 patch 1.9`. The map draws
+  what the fixture would take as `░`, cyan, red where it would overlap, and an overlap is yours
+  to make. With no fixture, or several, the strip says to select one. A fixture that would go past
+  channel 512 is not offered;
+- `[add fixture here…]`, which opens F3's
+  [new fixture form](#edit-mode-and-the-fixture-panel) at that address.
+
+A click on a fixture clears the place, and so does that universe's map changing.
+
+The pane cursor stops on each universe and its strip, each route and its strip, what the place
+offers, then each fixture of the maps, in address order, where Enter selects it. Only the mouse
+arms a place. Below 100 columns ROUTES goes under UNIVERSES.
 
 ## F9 Surfaces
 
@@ -719,14 +915,24 @@ runs it) and `feedback "nanoKONTROL2" cc 1 32 ` for a binding. The pane cursor s
 surfaces, their edits, the bindings and their edits; Enter on a row chooses it. Below 132
 columns BINDINGS goes under SURFACES.
 
-## Questions and quitting
+## Questions, dialogs and quitting
 
 A line busk asks about first, such as `output off`, opens a dialog with busk's question.
-The line runs only on **y**; **n**, Enter or Esc cancel it (`cancelled` in the log). F6's
-`[delete]` asks the TUI's own question the same way.
+The line runs only on **y**; **n**, Enter or Esc cancel it (`cancelled` in the log). F3's and
+F8's `[delete]` and F8's `[off]` are such lines. F6's `[delete]` asks the TUI's own question the
+same way.
 
-A name or a number (F6's `[rename…]`, `[number…]`, `[name…]`) is typed in a small dialog:
-Enter takes it, Esc cancels. What it refuses shows in red, and the dialog stays open.
+A name or a number (`[rename…]`, `[number…]`, `[address…]`, `[offset…]`) is typed in a small
+dialog: Enter takes it, Esc cancels. What it refuses shows in red, and the dialog stays open.
+A form of several fields (`[limit…]`, `[location…]`, `[+ universe…]`, `[+ route…]`) works the same
+way: Tab moves between the fields, and Enter, in any of them, takes the form. In `[+ route…]`,
+Tab also reaches the chips, and ← → move them.
+
+**The profile picker** (F3's `[profile…]` and `[choose…]`) lists what `fixture add` takes: the
+show's own profiles first, marked `●`, then the library's, with the maker, the name, and the modes
+with what each takes (`3ch (3), 8ch (8)`). Type to filter by maker and name, in any order. ↑ ↓ and
+PgUp PgDn move, Enter or a click chooses, Esc cancels. It sends nothing: the form or the panel
+that opened it does.
 
 `quit`, `exit` (also from a script you `source`), Ctrl+C twice and Ctrl+Q open the quit
 dialog. With unsaved edits it offers **s** Save and quit, **q** Quit without saving and **c**

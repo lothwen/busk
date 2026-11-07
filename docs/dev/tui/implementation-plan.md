@@ -126,7 +126,7 @@ Gap column lists only open gaps.
 | `route` | `LiveShow.routes` (typed); `None` without output | 20 Hz | identity; `packets` for the blink |
 | `surf` | `LiveShow.surfaces` (typed); `None` without surfaces | 20 Hz | identity |
 | `health` | `LiveShow.health` (typed) | 20 Hz | `state`; counts compared over ≥ 1 s |
-| `doc` | `LiveShow.show` (typed document), and `LiveShow.effect_templates` with it | identity check at 20 Hz, and after every successful line | identity |
+| `doc` | `LiveShow.show` (typed document), and `LiveShow.effect_templates` and `LiveShow.fixture_profiles` with it | identity check at 20 Hz, and after every successful line | identity |
 | `ask` | `LiveShow.confirmation(line)`, before a line is sent | per line | n/a |
 | `exp` | `LiveShow.expected(line)`, with the line up to the cursor | on Tab and as the line changes | n/a |
 | `reply` | the `Reply` of a line the TUI sent | per line | n/a |
@@ -239,6 +239,18 @@ rig's 8 192 elements (GAP-01).
 | Source colouring, legend | `FixtureOutput.source` by family (GAP-01): programmer, playback, effect, none; a parked value reads none | S | `out` | GAP-22 |
 | `▸` selected marker | `ProgrammerStatus.selection` (GAP-02) | S | `prog` | |
 | Row click, Shift-click | `sel fixture N`; Shift: `sel + fixture N` or `sel - fixture N` | S | `prog` | |
+| *(rig plan)* edit mode: the rig's columns, the FIXTURE panel | `fixtures[].limits`, `.orientation`, `.location`; the page stops reading `out` | S | `doc` | |
+| *(rig plan)* `[rename…]`, `[number…]`, `[delete]` | `rename fixture`, `fixture N number M`, `delete fixture N cascade` (GAP-24), after busk's question | S | `doc`, `ask` | |
+| *(rig plan)* mode chips, `[profile…]`, `[change]` | `fixture N mode <mode>`, `fixture N profile "<profile>" mode <mode>` (GAP-26) | S | `doc` | |
+| *(rig plan)* category chips | `profile "<name>" category …` | S | `doc` | |
+| *(rig plan)* PATCH, `[patch]` | `fixture N patch U.A`, `fixture N patch none`; the free runs from patches and footprints | S | `doc` | |
+| *(rig plan)* LIMITS | `fixture N [thru M] limits …`, `… limits pan\|tilt\|intensity none` (GAP-25), `… limits none` | S | `doc`, `prog` | |
+| *(rig plan)* ORIENTATION | `fixture N orientation.<key> <value>`, a line per selected fixture | S | `doc`, `prog` | |
+| *(rig plan)* LOCATION | `fixture N location {…}`, `fixture N location none` (GAP-25) | S | `doc` | |
+| *(rig plan)* `[+ add]`, the new fixture form, the profile picker | `fixture add N [thru M] "<profile>" mode <mode> [at U.A]`; what it takes from `fixture_profiles` (GAP-27) | S | `doc` | |
+
+F3's edit mode, FIXTURE panel and new fixture form, which give every fixture operation a control,
+are planned and recorded in [the rig plan](../../plans/tui-rig-plan.md).
 
 ### 2.5 F4 Cues (spec §8.4)
 
@@ -312,6 +324,13 @@ recorded in [the presets plan](../../plans/tui-presets-plan.md).
 | DMX MAP 8 × 64, start `█`, rest `▓`, overlap `╳` | patches and footprints | S | `doc` | |
 | Colour by fixture type | the profile's `category` (GAP-16) | S | `doc` | |
 | Hover `fixture N · ch k/fp`, click selects | `sel fixture N` | S | | |
+| *(rig plan)* `[+ universe…]`, `[rename…]`, `[number…]`, `[delete]` | `universe add N ["name"]`, `rename universe`, `universe N number M`, `delete universe N cascade` (GAP-24), after busk's question | S | `doc`, `ask` | |
+| *(rig plan)* `[+ route…]` | `route add …`, a form per protocol | S | `doc` | |
+| *(rig plan)* `[off]`, `[on]`, `[delete]` of a route | `route <id> on\|off`, `delete route <id>` (GAP-23), busk's question before `off` and `delete` | S | `doc`, `route`, `ask` | |
+| *(rig plan)* a free channel: the place, `[patch N here]`, `[add fixture here…]` | `fixture N patch U.A`; F3's new fixture form at that address | S | `doc`, `prog` | |
+
+F8's universes, routes and place, which give every universe and route operation a control, are
+planned and recorded in [the rig plan](../../plans/tui-rig-plan.md).
 
 ### 2.10 F9 MIDI (spec §8.9)
 
