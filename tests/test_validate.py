@@ -125,6 +125,7 @@ CMD = "bindings[3].action.command"
 # -------------------------------------------------------------------- cases
 
 IDENTITY = [
+    case("fixture number 1", put("fixtures[0].number", 1), expect=set()),
     case("dup profile id", clone("profiles", 1), expect={E("profiles[2].id")}),
     case(
         "dup universe id",
@@ -1574,6 +1575,7 @@ PHASE7 = [
          push("park", PARK_DIM2), expect=set()),
     # DMX-USB ports
     case("one DMX-USB route", push("output.routes", USB), expect=set()),
+    case("a DMX-USB route at 1 Hz", push("output.routes", {**USB, "refreshHz": 1}), expect=set()),
     case("two DMX-USB routes on one port", push("output.routes", USB),
          push("output.routes", {**USB, "id": "r-usb2"}),
          expect={E("output.routes[2].device.port")}),

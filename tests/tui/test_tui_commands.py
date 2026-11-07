@@ -496,8 +496,7 @@ def test_the_route_form_starts_the_tupperdmx_show_where_its_route_is() -> None:
 
 
 def test_the_route_forms_rates_are_what_a_widget_runs_at(show: busk.OfflineShow) -> None:
-    """busk takes any number, and keeps it to these without a word, so the
-    form refuses what would not run as typed."""
+    """The form and busk take the same rates: those a widget runs at."""
     low, high = route_dialog.MIN_RATE, route_dialog.MAX_RATE
     assert dmxusb.output_rate(low) == low
     assert dmxusb.output_rate(high) == high
@@ -508,6 +507,12 @@ def test_the_route_forms_rates_are_what_a_widget_runs_at(show: busk.OfflineShow)
         assert route_dialog.check_rate(text) is None, text
     for text in ("0", "0.5", "40.5", "41", "-1", "", "x", "nan", "inf"):
         assert route_dialog.check_rate(text) is not None, text
+    route = "route add 1 dmxusb enttecPro /dev/ttyUSB7 hz"
+    for text in ("1", "40", "30.5"):
+        assert show.execute(f"{route} {text}").ok, text
+        assert show.execute("undo").ok
+    for text in ("0", "0.5", "40.5", "41", "-1"):
+        assert not show.execute(f"{route} {text}").ok, text
 
 
 def test_the_route_forms_host_and_port_are_only_not_empty() -> None:

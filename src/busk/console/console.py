@@ -83,8 +83,8 @@ from busk.model.entry import TargetSpec
 from busk.model.show import Show
 from busk.session.ids import RandomIds
 from busk.session.library import EffectDefaults, EffectLibrary, ProfileLibrary, builtin_effects
-from busk.session.programmer import split_slot_key
 from busk.session.session import CommandResult, Session
+from busk.session.status import programmer_status
 
 MAX_DEPTH: Final = 8
 """How deeply ``source`` may nest (a script sourcing itself stops here)."""
@@ -472,26 +472,31 @@ class Console:
         return str(fixture["number"])
 
     def _programmer(self) -> str:
-        programmer = self.session.programmer
-        selection = ", ".join(self.target(t) for t in programmer.selection) or "nothing"
+        """The programmer as :attr:`LiveShow.programmer` has it: what is
+        dormant is left out, and comes back with an undo."""
+        snapshot = self.session.snapshot  # one read: the show and the programmer of one moment
+        status = programmer_status(snapshot.state, snapshot.programmer)
+        ids = {fixture["number"]: fixture["id"] for fixture in snapshot.show["fixtures"]}
+
+        def shown(number: int, element: int) -> str:
+            return self.target({"fixtureId": ids[number], "element": element - 1})
+
+        selection = ", ".join(shown(*pair) for pair in status.selection) or "nothing"
         lines = [
             f"selection: {selection}",
-            f"blind: {'on' if programmer.blind else 'off'}",
-            f"highlight: {'on' if programmer.highlight else 'off'}",
-            f"fade: {programmer.fadeTime:g} s",
+            f"blind: {'on' if status.blind else 'off'}",
+            f"highlight: {'on' if status.highlight else 'off'}",
+            f"fade: {status.fadeTime:g} s",
         ]
-        for key, source in programmer.values.items():
-            split = split_slot_key(key)
-            if split is None:
-                continue
-            target, attribute = split
-            if source["kind"] == "preset":
-                shown = self._preset_name(source["presetId"])
+        for value in status.values:
+            if value.preset is None:
+                text = format_value(value.value)
             else:
-                shown = format_value(source["value"])
-            lines.append(f"  {self.target(target)} {attribute} = {shown}")
-        for effect in programmer.effects:
-            stopped = " (stopped)" if effect["id"] in programmer.stopped else ""
+                pool, number, name = value.preset
+                text = f"preset {pool} {number} {name!r}"
+            lines.append(f"  {shown(value.number, value.element)} {value.attribute} = {text}")
+        for effect in status.effects:
+            stopped = " (stopped)" if effect["id"] in status.stopped else ""
             lines.append(f"  effect {self._effect(effect)}{stopped}")
         return "\n".join(lines)
 
@@ -519,12 +524,6 @@ class Console:
             )
             return f"group {group['number']}" if group is not None else f"{spec['groupId']} (gone)"
         return ", ".join(self.target(target) for target in spec["refs"]) or "nothing"
-
-    def _preset_name(self, ident: str) -> str:
-        preset = next((p for p in self.session.show["presets"] if p["id"] == ident), None)
-        if preset is None:
-            return f"preset {ident} (gone)"
-        return f"preset {preset['pool']} {preset['number']} {preset['name']!r}"
 
     def _list(self, kind: str) -> str:
         lines = getattr(self, f"_list_{kind}")(self.session.show)

@@ -767,6 +767,55 @@ def too_long(template: str) -> Any:
         ),
         ('bind "nanoKONTROL2" cc 1 1 page ²', "expected +N, -N or a page number, got '²'"),
         ('surface add osc "Lemur" port ²', "expected a port (1–65535), got '²'"),
+        ("fixture 101 thru 102 patch 1.200", "expected limits or orientation.<key>, got 'patch'"),
+        ('fixture 101 thru 102 name "x"', "expected limits or orientation.<key>, got 'name'"),
+        (
+            'fixture add 300 "RGB Par 3ch" mode 3ch at 1.511',
+            "fixture 300 would end at channel 513, past channel 512",
+        ),
+        (
+            'fixture add 300 thru 303 "RGB Par 3ch" mode 3ch at 1.503',
+            "fixture 300–303 would end at channel 514, past channel 512",
+        ),
+        (
+            'fixture add 300 thru 303 "RGB Par 3ch" mode 3ch at 1.513',
+            "expected a channel from 1 to 512, got 513",
+        ),
+        (
+            'fixture add 300 "RGB Par 3ch" mode 3ch at 1.0',
+            "expected a channel from 1 to 512, got 0",
+        ),
+        ("fixture 201 patch 1.511", "fixture 201 would end at channel 513, past channel 512"),
+        ("fixture 201 patch 1.512", "fixture 201 would end at channel 514, past channel 512"),
+        ("fixture 201 patch 1.513", "expected a channel from 1 to 512, got 513"),
+        ("fixture 201 number 101", "fixture 101 exists"),
+        ("fixture 201 number 0", "fixtures are numbered from 1"),
+        ("fixture 201 number -5", "fixtures are numbered from 1"),
+        ("fixture 201 number x", "expected a fixture number, got 'x'"),
+        ("fixture 201 number 300 now", "unexpected 'now'"),
+        ("universe 1 number 0", "universes are numbered from 1"),
+        ("universe 1 number x", "expected a universe number, got 'x'"),
+        ('fixture add 0 "RGB Par 3ch" mode 3ch', "fixtures are numbered from 1"),
+        ('fixture add -5 "RGB Par 3ch" mode 3ch', "fixtures are numbered from 1"),
+        ('fixture add -5 thru 5 "RGB Par 3ch" mode 3ch', "fixtures are numbered from 1"),
+        ("universe add 0", "universes are numbered from 1"),
+        ("universe add -1", "universes are numbered from 1"),
+        (
+            "route add 1 dmxusb enttecPro /dev/ttyUSB0 hz 0",
+            "expected a refresh rate from 1 to 40 Hz, got 0",
+        ),
+        (
+            "route add 1 dmxusb enttecPro /dev/ttyUSB0 hz -1",
+            "expected a refresh rate from 1 to 40 Hz, got -1",
+        ),
+        (
+            "route add 1 dmxusb enttecPro /dev/ttyUSB0 hz 40.5",
+            "expected a refresh rate from 1 to 40 Hz, got 40.5",
+        ),
+        (
+            "route add 1 dmxusb enttecPro /dev/ttyUSB0 hz 1000",
+            "expected a refresh rate from 1 to 40 Hz, got 1000",
+        ),
     ],
 )
 def test_a_line_busk_cannot_read_is_refused_wherever_it_goes(
@@ -785,6 +834,67 @@ def test_a_line_busk_cannot_read_is_refused_wherever_it_goes(
     assert (raised.value.line, raised.value.text) == (2, line)
     assert raised.value.output[-1] == f"error: {error}"
     assert offline.show == before
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "fixture 201 number 201",  # its own number: nothing to refuse
+        "fixture 201 number 1",
+        "universe 1 number 1",
+        "universe 1 number 7",
+        'fixture add 1 "RGB Par 3ch" mode 3ch',
+        'fixture add 300 "RGB Par 3ch" mode 3ch at 1.510',  # ends on channel 512
+        'fixture add 300 thru 301 "RGB Par 3ch" mode 3ch at 1.507',
+        "fixture 201 patch 1.510",
+        "fixture 201 patch 1.1",
+        "route add 1 dmxusb enttecPro /dev/ttyUSB0 hz 1",
+        "route add 1 dmxusb enttecPro /dev/ttyUSB0 hz 40",
+    ],
+)
+def test_the_edge_of_each_refusal_still_runs(line: str) -> None:
+    offline = OfflineShow(show_of(load_doc(APPENDIX_A)))
+    assert offline.execute(line).ok
+
+
+def test_a_universe_number_in_use_is_named() -> None:
+    offline = OfflineShow(show_of(load_doc(APPENDIX_A)))
+    assert offline.execute("universe add 2").ok
+    reply = offline.execute("universe 1 number 2")
+    assert (reply.ok, reply.text) == (False, "error: universe 2 exists")
+
+
+def test_programmer_leaves_out_a_deleted_fixture_and_undo_brings_it_back() -> None:
+    offline = OfflineShow(show_of(load_doc(APPENDIX_A)))
+    for line in ("sel fixture 101, 102", "set pan 12.5", 'effect add "Pulse" id fx1'):
+        assert offline.execute(line).ok, line
+    before = offline.execute("programmer").text
+    assert before.startswith("selection: 101, 102\n")
+    assert "101 pan = 12.5" in before
+    assert "effect fx1 'Pulse' on 101, 102" in before
+
+    assert offline.execute("delete fixture 101 cascade").ok
+
+    assert offline.programmer.selection == ((102, 1),)
+    assert offline.programmer.effects == ()
+    assert offline.execute("programmer").text == (
+        "selection: 102\nblind: off\nhighlight: off\nfade: 0 s\n  102 pan = 12.5"
+    )
+    assert offline.execute("undo").ok
+    assert offline.execute("programmer").text == before
+
+
+def test_programmer_leaves_out_a_deleted_preset_and_undo_brings_it_back() -> None:
+    offline = OfflineShow(show_of(load_doc(APPENDIX_A)))
+    for line in ("sel fixture 101", "set color preset color 2", "delete preset color 2"):
+        assert offline.execute(line).ok, line
+
+    assert offline.programmer.values == ()
+    assert offline.execute("programmer").text == (
+        "selection: 101\nblind: off\nhighlight: off\nfade: 0 s"
+    )
+    assert offline.execute("undo").ok
+    assert "101 color = preset color 2" in offline.execute("programmer").text
 
 
 def test_a_cue_number_too_long_is_refused_through_submit() -> None:

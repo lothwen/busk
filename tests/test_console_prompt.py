@@ -289,7 +289,7 @@ def test_question_mark_shows_what_may_come_and_the_command(console: Console) -> 
         "    route add U sacn <universe> [unicast <host> | multicast <iface>]",
         "    route add U artnet <net>.<sub>.<uni> [unicast <host>]",
         "    route add U dmxusb enttecPro|dmxking <port> [hz N]",
-        "        (hz: the widget's output rate, 40 by default)",
+        "        (hz: the widget's output rate, 1 to 40, 40 by default)",
     ]
 
 

@@ -671,7 +671,8 @@ These are for the user to number in `docs/dev/tui/engine-gaps.md`, or not:
    is not `target`, instead of only when a value fell back. The panel shows this reply in the
    log.
 3. Deleting a preset the programmer references leaves `preset pr-… (gone)` in the
-   programmer. busk allows this; the TUI asks first and says so (§4 call 6).
+   programmer. busk allows this; the TUI asks first and says so (§4 call 6). The text is fixed
+   (2026-11-07): `programmer` now leaves the value out, as `ProgrammerStatus` does.
 
 ## 8. Not in this plan
 

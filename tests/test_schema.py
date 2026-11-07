@@ -32,6 +32,12 @@ def _channel(show: dict[str, Any], index: int) -> dict[str, Any]:
     return channel
 
 
+def _usb_route(hz: float) -> dict[str, Any]:
+    device = {"driver": "enttecPro", "port": "/dev/ttyUSB0"}
+    return {"id": "r-usb", "universeId": "u1", "enabled": True, "protocol": "dmxUsb",
+            "device": device, "refreshHz": hz}  # fmt: skip
+
+
 def _set(container_of: Callable[[dict[str, Any]], Any], key: str | int, value: object) -> Mutation:
     def mutate(show: dict[str, Any]) -> None:
         container_of(show)[key] = value
@@ -143,6 +149,31 @@ REJECTIONS: list[tuple[str, Mutation, str]] = [
         "address 513",
         _set(lambda s: s["fixtures"][0]["patch"], "address", 513),
         "fixtures[0].patch.address",
+    ),
+    (
+        "fixture number 0",
+        _set(lambda s: s["fixtures"][0], "number", 0),
+        "fixtures[0].number",
+    ),
+    (
+        "fixture number -5",
+        _set(lambda s: s["fixtures"][0], "number", -5),
+        "fixtures[0].number",
+    ),
+    (
+        "refresh rate 0",
+        _set(lambda s: s["output"]["routes"], 0, _usb_route(0)),
+        "output.routes[0].refreshHz",
+    ),
+    (
+        "refresh rate under 1",
+        _set(lambda s: s["output"]["routes"], 0, _usb_route(0.5)),
+        "output.routes[0].refreshHz",
+    ),
+    (
+        "refresh rate past 40",
+        _set(lambda s: s["output"]["routes"], 0, _usb_route(40.5)),
+        "output.routes[0].refreshHz",
     ),
     (
         "colour component above 1",

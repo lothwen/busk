@@ -152,10 +152,14 @@ def test_what_the_programmer_holds_on_a_lost_element_goes_dormant() -> None:
     run(offline, 'fixture 3 mode "One Channel"')
     assert offline.programmer.selection == ((3, 1),)
     assert [value.element for value in offline.programmer.values] == [1]
+    assert run(offline, "programmer") == [
+        "selection: 3\nblind: off\nhighlight: off\nfade: 0 s\n  3 intensity = 1"
+    ]
     assert elements(offline) == [(1, 1), (2, 1), (3, 1)]
     assert offline.tick(offline.time).universes[1][504] == 255
     run(offline, "undo")
     assert len(offline.programmer.selection) == 4
+    assert run(offline, "programmer")[0].startswith("selection: 3.1, 3.2, 3.3, 3.4\n")
 
 
 # ------------------------------------------------------------------ profile

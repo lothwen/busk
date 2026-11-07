@@ -1938,8 +1938,8 @@ module docs. `fixture add` now shares its parsing with them. What it settles:
   on a par, a tilt limit, which warns.
 - **What the programmer holds on a lost element goes dormant,** as for a deleted fixture.
   `ProgrammerStatus` leaves it out, the output is right, and `undo` brings it back. The
-  `programmer` line still prints it, one `1` per lost element in `selection: 1, 1, 1`: the
-  plan's §8 item 4 again.
+  `programmer` line printed it, one `1` per lost element in `selection: 1, 1, 1` (the plan's
+  §8 item 4), until it came to read `ProgrammerStatus` on 2026-11-07.
 - **The reply says what the fixture runs:** `fixture 102 runs 3ch`, `fixture 102 runs RGB Par
   3ch, 3ch`.
 - `fixture N modeId` still works: it is the generic edit.

@@ -87,8 +87,7 @@ def check_port(text: str) -> str | None:
 
 
 def check_rate(text: str) -> str | None:
-    """A refresh rate's check. busk takes any number, and keeps it to what a
-    widget runs at without a word."""
+    """A refresh rate's check: what a widget runs at, as busk takes it."""
     rate = read_number(text)
     if rate is None or not MIN_RATE <= rate <= MAX_RATE:
         return f"a rate from {MIN_RATE} to {MAX_RATE} Hz"

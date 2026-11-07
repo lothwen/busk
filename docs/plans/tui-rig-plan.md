@@ -1013,15 +1013,23 @@ number in `docs/dev/tui/engine-gaps.md`, or not:
 
 1. **Refusals in document paths.** `fixture add` past channel 512 prints one path per fixture, and
    `universe N number M` and `fixture N number M` name `universes[1]` or `fixtures[7]`. At the prompt
-   the messages stay unclear.
+   the messages stay unclear. Fixed 2026-11-07: the parser refuses these first, in one line (`fixture
+   900–903 would end at channel 575, past channel 512`, `fixture 102 exists`), and `fixture N patch`
+   with them. The same paths stay for what the validator alone sees: `group N number M`, `preset …
+   number M`, a `fixture N mode` or `profile` past channel 512, and the generic edit.
 2. **`thru` where it is not taken.** `fixture 900 thru 901 patch 2.1` replies `set fixtures[7].thru
    to "901 patch 2.1"`. The line reads as a generic property. `orientation` does the same. A `thru`
    on `orientation` would also make four heads one undo step (§4 call 4). That half is done
-   (GAP-28, 2026-11-07), and F3 sends a `thru` line per run. `patch` still reads as a property.
+   (GAP-28, 2026-11-07), and F3 sends a `thru` line per run. The other half is fixed the same day:
+   after `thru`, a line says `expected limits or orientation.<key>, got 'patch'`.
 3. **Fixture numbers are not checked:** `fixture add 0` and `fixture add -5` work, while a universe
-   starts at 1.
+   starts at 1. Fixed 2026-11-07: `Fixture.number` is a `PositiveInt`, so a show file with such a
+   number no longer loads, and `fixture add`, `fixture N number`, `universe add` and `universe N
+   number` say `… are numbered from 1`.
 4. **`programmer` prints `fx-… (gone)`** for a deleted fixture, selected or in an effect, while
    `ProgrammerStatus` leaves it out. The presets plan's §7 item 3 is the same thing for a preset.
+   Fixed 2026-11-07: the line reads `programmer_status`, so the two cannot differ, and a lost
+   element no longer prints `selection: 1, 1, 1`.
 5. **The report needs correcting** (step 14, not a busk change):
    - `delete universe` is refused by routes too;
    - the mode could already be changed with `modeId`;
@@ -1039,7 +1047,9 @@ number in `docs/dev/tui/engine-gaps.md`, or not:
    for such digits, raised 276 times before and never after.
 7. **`hz` takes any number** (found at step 13). `route add 1 dmxusb enttecPro /dev/ttyUSB0 hz 0`,
    `hz -1` and `hz 1000` are stored, and `output_rate` then keeps the widget to 1–40 Hz without a
-   word. The model's comment says 44. F8's form takes 1 to 40.
+   word. The model's comment says 44. F8's form takes 1 to 40. Fixed 2026-11-07: `refreshHz` is 1 to
+   40 in the model, so a show file outside it no longer loads, and `route add` says `expected a
+   refresh rate from 1 to 40 Hz, got 0`. The form and busk now take the same rates.
 8. **A number past 4,300 digits raised** (found fixing item 6, fixed 2026-11-07 as GAP-30, by one
    check in `tokenize` and a cap on cue numbers, at the user's choice). `int` refuses it, so
    `ValueError` leaves `execute()`, as in item 6, for an Art-Net address, a surface's port, `bind …

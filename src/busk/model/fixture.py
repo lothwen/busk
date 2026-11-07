@@ -69,7 +69,7 @@ class Location(TypedDict):
 class Fixture(EntityBase[FixtureId]):
     """A patched instance of a fixture profile mode."""
 
-    number: int  # user-facing fixture number (e.g. 101)
+    number: PositiveInt  # user-facing fixture number (e.g. 101)
     profileId: ProfileId
     profileRevision: str  # detects library drift
     modeId: ModeId

@@ -26,7 +26,7 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
     route add U sacn <universe> [unicast <host> | multicast <iface>]
     route add U artnet <net>.<sub>.<uni> [unicast <host>]
     route add U dmxusb enttecPro|dmxking <port> [hz N]
-        (hz: the widget's output rate, 40 by default)
+        (hz: the widget's output rate, 1 to 40, 40 by default)
     route <id> on|off
     surface add midi "<device>"
     surface add osc "<name>" [port N] [feedback <host>[:<port>]]
@@ -1348,6 +1348,8 @@ class _Parser:
     def _universe_add(self) -> Action:
         number = self.integer("a universe number")
         name = self._name() or f"Universe {number}"
+        if number < 1:
+            raise ParseError("universes are numbered from 1")
         if any(u["number"] == number for u in self.show["universes"]):
             raise ParseError(f"universe {number} exists")
         value = {"id": self.new_id("u", "universes"), "name": name, "number": number}
@@ -1358,6 +1360,8 @@ class _Parser:
         last = self.integer("a fixture number after thru") if self.keyword("thru") else first
         if last < first:
             raise ParseError("fixture add needs ascending numbers: N thru M with M ≥ N")
+        if first < 1:
+            raise ParseError("fixtures are numbered from 1")
         profile_name, mode_name = self._profile_and_mode()
         patch: tuple[str, int] | None = None
         if self.keyword("at"):
@@ -1365,6 +1369,9 @@ class _Parser:
         self.done()
         profile, notes, embed = self._profile(profile_name)
         mode = _mode(profile, mode_name)
+        span = f"{first}" if first == last else f"{first}–{last}"
+        if patch is not None:
+            _fits(f"fixture {span}", patch[1], (last - first + 1) * mode["footprint"])
         used = {f["number"] for f in self.show["fixtures"]}
         taken = self.taken("fixtures")
         commands: list[dict[str, Any]] = []
@@ -1384,7 +1391,6 @@ class _Parser:
                 "modeId": mode["id"], "patch": address,
                 "orientation": {"invertPan": False, "invertTilt": False, "swapPanTilt": False,
                                 "panOffset": 0, "tiltOffset": 0}}})  # fmt: skip
-        span = f"{first}" if first == last else f"{first}–{last}"
         label = f"added fixture {span}: {profile['name']}, {mode['name']}"
         return Submit(cast(Command, {"type": "BATCH", "label": label, "commands": commands}), notes)
 
@@ -1467,6 +1473,8 @@ class _Parser:
         if not dot:
             raise ParseError(f"expected an address as U.A, e.g. 1.101, got {token.text!r}")
         found = self.by_number("universes", number, "universe")
+        if not 1 <= start <= 512:
+            raise ParseError(f"expected a channel from 1 to 512, got {start}")
         return cast(str, found["id"]), start
 
     # output and surfaces
@@ -1502,7 +1510,10 @@ class _Parser:
                 "driver": "enttecPro" if driver == "enttecpro" else driver,
                 "port": self.take("a serial port such as /dev/ttyUSB0").text,
             }
-            route["refreshHz"] = self.number("a refresh rate in Hz") if self.keyword("hz") else 40
+            rate = self.number("a refresh rate in Hz") if self.keyword("hz") else 40
+            if not 1 <= rate <= 40:
+                raise ParseError(f"expected a refresh rate from 1 to 40 Hz, got {rate:g}")
+            route["refreshHz"] = rate
             return self.submit({"type": "ADD", "path": ["output", "routes"], "value": route})
         if protocol == "sacn":
             route["universe"] = self.integer("an sACN universe")
@@ -1815,7 +1826,7 @@ class _Parser:
             after = self.peek(3) if thru else following
             if after is not None and after.lower.startswith("orientation."):
                 return self._orientation()
-            if (after is not None and after.lower == "limits") or (thru and after is None):
+            if thru or (after is not None and after.lower == "limits"):
                 return self._limits()  # N thru M comes only before limits and orientation
             if following is None and self.peek() is not None:  # fixture N: Tab offers these
                 self.offers += ("patch", "thru", "limits", "mode", "profile", "location",
@@ -1839,6 +1850,8 @@ class _Parser:
                 return self._cue_verb(path, cue, verb)
         else:
             path = self.entity_path(head)
+        if head in ("fixture", "universe") and (token := self.peek()) and token.lower == "number":
+            return self._renumber(head, path)
         if head == "page":
             page = _element(self.show["pages"], path)
             if self.ending("slot"):  # page N: go to it
@@ -1859,6 +1872,18 @@ class _Parser:
             elif words == ["chase"]:
                 self.offers += ("hz", "bpm")
         return self._set(path, "name or timing.fadeIn")
+
+    def _renumber(self, head: str, path: EditPath) -> Action:
+        """``fixture|universe N number M``. The validator refuses a bad ``M``
+        too, but naming ``fixtures[7]``."""
+        self.k += 1
+        number = self.integer(f"a {head} number")
+        if number < 1:
+            raise ParseError(f"{head}s are numbered from 1")
+        items = self.show["fixtures"] if head == "fixture" else self.show["universes"]
+        if number != _element(items, path)["number"] and any(i["number"] == number for i in items):
+            raise ParseError(f"{head} {number} exists")
+        return self.submit({"type": "SET", "path": [*path, "number"], "value": number})
 
     def _page_add(self) -> Action:
         """``page add N ["name"]``: a page with no slots (``ASSIGN_PLAYBACK``
@@ -1986,6 +2011,9 @@ class _Parser:
             patch = None
         else:
             universe, address = self._address()
+            profile = _by_id(self.show["profiles"], fixture["profileId"])
+            mode = _by_id(profile["modes"], fixture["modeId"])
+            _fits(f"fixture {fixture['number']}", address, mode["footprint"])
             patch = {"universeId": universe, "address": address}
         return self.submit({"type": "PATCH_FIXTURE", "fixtureId": fixture["id"], "patch": patch})
 
@@ -2283,7 +2311,9 @@ class _Parser:
         span = f"fixture {self.typed(start)}"
         if self.ending("limits", *_ORIENTATION_WORDS):  # fixture N thru M: Tab offers these
             raise _Unfinished("expected limits or orientation.<key>")
-        self.expect("limits")
+        if self.keyword("limits") is None:
+            got = self.tokens[self.k].text
+            raise ParseError(f"expected limits or orientation.<key>, got {got!r}")
         what = self.expect("pan", "tilt", "intensity", "none")
         if what == "none":
             self.done()
@@ -2581,6 +2611,14 @@ def _element(items: Sequence[Any], path: EditPath) -> Mapping[str, Any]:
     names (the parser built the path, so it exists)."""
     selector = cast(Mapping[str, Any], path[-1])
     return cast(Mapping[str, Any], next(item for item in items if item["id"] == selector["id"]))
+
+
+def _fits(who: str, address: int, channels: int) -> None:
+    """Refuse ``channels`` from ``address`` that run past the universe. The
+    validator refuses them too, but once per fixture, by document path."""
+    last = address + channels - 1
+    if last > 512:
+        raise ParseError(f"{who} would end at channel {last}, past channel 512")
 
 
 def _by_id(items: Iterable[Mapping[str, Any]], ident: str) -> Mapping[str, Any]:

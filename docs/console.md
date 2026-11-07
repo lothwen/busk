@@ -29,7 +29,7 @@ At a terminal, `busk run` opens the `busk>` prompt:
       route add U sacn <universe> [unicast <host> | multicast <iface>]
       route add U artnet <net>.<sub>.<uni> [unicast <host>]
       route add U dmxusb enttecPro|dmxking <port> [hz N]
-          (hz: the widget's output rate, 40 by default)
+          (hz: the widget's output rate, 1 to 40, 40 by default)
   busk> route add 1
   ```
 

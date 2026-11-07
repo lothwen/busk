@@ -33,7 +33,7 @@ class DmxUsbRoute(TypedDict):
     enabled: bool
     protocol: Literal["dmxUsb"]
     device: DmxUsbDevice
-    refreshHz: float  # ≤ 44 for full 512-slot frames
+    refreshHz: Annotated[float, Field(ge=1, le=40)]  # the widget's own range
 
 
 @with_config(STRICT)

@@ -56,6 +56,20 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   than 300 digits in a row is now refused, and a cue number takes at most 300 on each side of its
   point, so such a file fails with `ShowLoadError`. `fade` no longer takes a number that long as an
   endless fade, which kept the programmer's values from reaching the output.
+- A refusal at the prompt named the document, not the rig: `fixture add` past channel 512 printed
+  a path for each fixture, and `fixture N number M` and `universe N number M` named `fixtures[7]`
+  and `universes[1]`. These lines and `fixture N patch` now say it in one line: `fixture 900–903
+  would end at channel 575, past channel 512`, `fixture 102 exists`.
+- `fixture N thru M` before anything but `limits` and `orientation.<key>` read as a property called
+  `thru`. It now says `expected limits or orientation.<key>, got 'patch'`.
+- Fixture numbers start at 1, as universe numbers do. `fixture add 0` and `fixture add -5` worked.
+  They are now refused, and a show file holding such a number fails with `ShowLoadError`.
+- `hz` on a DMX-USB route took any number, and the widget then kept it to 1–40 without a word, so
+  `list routes` said `0 Hz` of a route sent at 1. `route add` now takes 1 to 40, and a show file
+  with `refreshHz` outside that fails with `ShowLoadError`.
+- `programmer` printed `fx-… (gone)` and `preset pr-… (gone)` for what had been deleted, and
+  `selection: 1, 1, 1` for the elements a new mode lacks. It now lists what `LiveShow.programmer`
+  lists: the rest is dormant, and comes back with `undo`.
 - A TUI button whose look alone changed was not redrawn: a lit scope or curve, `[−]` `[+]`
   turning active, F5's `RUN` dimming.
 - A name the TUI sent to busk was written bare between quotes, so `C:\new` reached busk with a
