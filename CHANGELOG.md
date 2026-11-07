@@ -79,6 +79,16 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   long question was cut at the box. Both are fixed, and a question now wraps.
 - A TUI number dialog raised on a digit such as `²`, and on a paste past 4,300 digits, which ended
   the TUI. Both are refused there now, and so is any number past the 300 digits busk reads.
+- F3's dialogs sent a number of 1,000,000 or more as `1e+06`, which busk refuses for an offset or a
+  limit, and rounded one from 100,000 on to six digits: a location's x of 1234567.5 was stored as
+  1234570. Numbers now go out with every digit, to two decimals.
+- `route add` took the same route twice: `route add 1 sacn 1` three times gave three routes that
+  sent the same. It now says `the same as route r1 of universe 1`, also while that route is off.
+- A show file whose per-target value named an element past 4,300 digits raised `ValueError` out of
+  `load_show`. It now fails with `ShowLoadError`, as an element past 300 digits does.
+- `record cue … remove` replied with what the cue still held, so taking the only effect out of a
+  cue said `removed from cue 90/1: 0 entries, 0 effects`. It now counts what it takes out, as
+  `record preset … remove` does: `removed 0 values, 1 effect from cue 90/1`.
 
 ## [0.1.1] - 2026-10-27
 

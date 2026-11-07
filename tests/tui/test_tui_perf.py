@@ -5,7 +5,8 @@
   ``LiveShow`` on the same show.
 * Under ``busk run``: the engine process's overruns, and the CPU time of the
   console process, with the TUI as the frontend against a frontend that only
-  waits.
+  waits: the cores each uses over its steady part, past the TUI's start-up,
+  each over the time it really ran.
 
 The TUI runs on F1, which reads the running effects (Phase 1), on F2,
 which reads the output (Phase 2), and on F4 and F5 (Phase 3: F4 redraws
@@ -159,15 +160,15 @@ def test_under_busk_run_the_engine_runs_on_time(
             (6, "B", MOVING, moving, "position"))  # fmt: skip
     for page, layout, lines, bare, edit in runs:
         tui = run_frontend("tui", show, tmp_path, monkeypatch, page, lines, layout, edit)
-        cores = (tui["cpu"] - bare["cpu"]) / SECONDS
+        cores = tui["cpu"] / tui["seconds"] - bare["cpu"] / bare["seconds"]
         what = f"F{page}" + (f" {layout}" if page == 1 else "")
         what += f" editing a {edit} preset" if edit else ""
         what += ", P11's Circle running" if lines else ""
         print(
             f"\nbusk run, {what}: overruns {bare['overruns']}/{bare['ticks']} bare, "
             f"{tui['overruns']}/{tui['ticks']} with the TUI; "
-            f"console CPU {bare['cpu'] / SECONDS:.3f} core bare, {tui['cpu'] / SECONDS:.3f} with "
-            f"the TUI (+{cores:.3f})"
+            f"console CPU {bare['cpu'] / bare['seconds']:.3f} core bare, "
+            f"{tui['cpu'] / tui['seconds']:.3f} with the TUI (+{cores:.3f})"
         )
         assert tui["ticks"] > 0
         assert tui["overruns"] <= MAX_OVERRUNS * tui["ticks"]

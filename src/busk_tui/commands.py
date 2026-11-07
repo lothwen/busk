@@ -58,8 +58,9 @@ def save() -> Line:
 
 
 def number(value: float) -> str:
-    """A number as busk reads it, to two decimals at most: ``120``, ``120.5``."""
-    return f"{round(value, 2):g}"
+    """A number as busk reads it, to two decimals at most: ``120``, ``120.5``.
+    Every digit is written: busk reads no exponent (``1e+06``)."""
+    return f"{value:.2f}".rstrip("0").rstrip(".")
 
 
 # ------------------------------------------------------------- performance

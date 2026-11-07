@@ -1094,3 +1094,62 @@ engine gaps come first so that the whole plan can be built, settles them:
    ANSWER: (b), as step 2. This is the plan's reading of the instruction: only (b) lets `[delete]`
    work on a fixture in use. The prototype answered what (b) left open: a group, preset or cue left
    empty is valid, so it stays.
+
+## 11. Found in the audit (2026-11-07)
+
+On 2026-11-07, at `ace5bb3`, the user asked whether the plan was complete. Steps 1 to 14 are, and
+step 15 is the user's. The whole suite passed (5106 passed, 1 skipped, 20 deselected, in 33:54),
+and so did the rig's TUI tests on Textual 8.2.0 (536 passed). These five were found, or seen
+again. All five were fixed the same day, at the user's word:
+
+1. **F3's dialogs and busk read numbers differently** (TUI). `commands.number` writes
+   `f"{round(value, 2):g}"`, which keeps six significant digits. So a value a dialog takes can go
+   out changed, or be refused:
+   - an offset or a limit of 1,000,000 goes out as `1e+06`, and busk refuses it in the log
+     (`expected an offset in degrees, got '1e+06'`, `expected the lowest pan in degrees, got
+     '-1e+06'`);
+   - from 100,000 on, a value is rounded without a word: a pan limit of −123456.7 goes out as
+     `-123457`. A location is JSON, so busk takes `1e+06` there, but an x of 1234567.5 is stored as
+     1234570.
+
+   No rig needs such numbers, but the dialog and the line it sends disagree. Fixed 2026-11-07:
+   `commands.number` writes `f"{value:.2f}"` less its trailing zeros, so every digit goes out and
+   busk reads it as typed. The panel's cells show the same text (`1000000°`).
+2. **busk takes the same route twice** (busk). `route add 1 sacn 1`, run three times on the club
+   show, gives three routes that read the same in `list routes`. §2 noted it, and §8 did not take
+   it up. The validator refuses an sACN universe that another show universe sends, but not one the
+   same universe already sends. On F8, `[+ route…]` starts the sACN universe at the show
+   universe's number, so on the club show Enter in the form for universe 1 adds a second copy of
+   its route. Fixed 2026-11-07: `route add` refuses a route equal to one the show has but for its
+   id and whether it is on: `the same as route r1 of universe 1`. A route that is off counts, as
+   `route r1 on` is the way back to it. The validator is not changed, so a show file with two
+   copies still loads. On F8 the refusal shows in the log, as the form's other refusals do. A
+   route of the same universe to another place (`unicast 10.0.0.50`, `0.0.2`, another port) is
+   taken.
+3. **`parse_target_key` raises on a long element** (busk, left as found by GAP-30).
+   `parse_target_key("fx-1:" + "9" * 5000)` raises `ValueError` (`Exceeds the limit (4300 digits)
+   for integer string conversion`). It returns `None` for a key it cannot read, but not for this
+   one. Only a show file could hold such a key, and `submit()` then answers `internal error`.
+   Fixed 2026-11-07: the key's element takes at most `MAX_DIGITS` (300) digits, so such a key is
+   malformed, and `load_show` fails with `ShowLoadError` naming it (it raised `ValueError` out of
+   `load_show`). `MAX_DIGITS` moved from `busk.model.cue` to `busk.model.common`, which `cue`
+   imports, so the two cannot differ.
+4. **`record cue L/C remove` miscounts** (busk, the operations report's side finding, still there
+   at `ace5bb3`). With effect `fxz` recorded into cue 90/1 and still in the programmer, `record cue
+   90/1 remove` takes the effect out of the cue but replies `removed from cue 90/1: 0 entries, 0
+   effects`. The counts were what the cue still held, as `recorded …` counts what the cue holds,
+   so the reply read as "nothing removed". Fixed 2026-11-07: a remove counts what it takes out, as
+   `record preset … remove` does (`removed 2 values from preset …`), in values, one per target an
+   entry loses, and effects: `removed 0 values, 1 effect from cue 90/1`.
+5. **The perf gate failed** (tests). `uv run python -m pytest -m perf tests/tui -s`, run once,
+   alone on the machine after the suite: 6 passed, and `test_under_busk_run_the_engine_runs_on_time`
+   failed at +0.294 core against `MAX_CPU`, 0.25. The output was cut before the line that names the
+   page, so which page failed is not known. Step 12's perf note found that the gate's number
+   follows how long a run lasts, and the gate has flapped since Phase 3, so this may be the same
+   thing. It was. Run again at `ace5bb3` on 2026-11-07, the gate failed on its first page, F1 B, at
+   +0.292: the TUI's run took 905 engine ticks and the bare one 704, yet both were divided by 8 s,
+   and the TUI's CPU counted Textual's imports and start-up. Fixed 2026-11-07, in the harness:
+   `tui_perf_frontend.py` times the CPU and the wall time of the steady loop alone, after the
+   start-up, and the gate divides each run's CPU by its own time. The gate and `MAX_CPU` are not
+   changed. Run twice alone on the machine, it passed both times, from +0.140 (F4) to +0.202 (F1
+   C). Overruns still count over the whole run, start-up too: none in either.

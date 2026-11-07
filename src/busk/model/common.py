@@ -70,6 +70,11 @@ NonNegativeInt = Annotated[int, Field(ge=0)]
 PositiveInt = Annotated[int, Field(ge=1)]
 """An integer ≥ 1 (1-based numbers, counts)."""
 
+MAX_DIGITS: Final = 300
+"""The most digits a number has in a row. A ``float`` holds that many without
+turning to ``inf``, which takes 309, and ``int`` reads them on any Python: past
+4,300 digits it raises, and a Python can be set to raise from 640."""
+
 # -------------------------------------------------------------------- entity
 
 
@@ -113,7 +118,7 @@ class TargetRef(TypedDict):
 type TargetKey = str
 """Canonical string form of a :class:`TargetRef`: ``f"{fixtureId}:{element}"``."""
 
-_TARGET_KEY = re.compile(r"(?P<fixture>.+):(?P<element>0|[1-9][0-9]*)")
+_TARGET_KEY = re.compile(rf"(?P<fixture>.+):(?P<element>0|[1-9][0-9]{{0,{MAX_DIGITS - 1}}})")
 
 
 def target_key(ref: TargetRef) -> TargetKey:
@@ -125,8 +130,9 @@ def parse_target_key(key: str) -> TargetRef | None:
     """Parse a canonical :data:`TargetKey`; return ``None`` if it is malformed.
 
     The element must be written canonically (no sign, no leading zeros) so
-    that two different keys can never name the same target. The fixture id is
-    everything before the *last* colon, so ids may themselves contain colons.
+    that two different keys can never name the same target, in at most
+    :data:`MAX_DIGITS` digits. The fixture id is everything before the *last*
+    colon, so ids may themselves contain colons.
     """
     match = _TARGET_KEY.fullmatch(key)
     if match is None:

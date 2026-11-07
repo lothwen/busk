@@ -81,6 +81,29 @@ def test_a_route_cannot_come_on_where_it_would_clash(console: Console) -> None:
     assert run(console, "list routes")[0].startswith("r1  U1 → sACN 1 multicast eth0 (disabled)")
 
 
+def test_a_universe_takes_the_same_route_once(console: Console) -> None:
+    """On or off, a second copy would send the same: busk names the first."""
+    run(console, "route add 1 artnet 0.0.1", "route add 1 dmxusb enttecPro /dev/ttyUSB0")
+    routes = console.session.show["output"]["routes"]
+    artnet, dmx = routes[1]["id"], routes[2]["id"]
+    run(console, f"route {artnet} off")
+    for line, first in (
+        ("route add 1 sacn 1 multicast eth0", "r1"),
+        ("route add 1 artnet 0.0.1", artnet),
+        ("route add 1 artnet 0.0.1 broadcast eth0", artnet),
+        ("route add 1 dmxusb enttecPro /dev/ttyUSB0 hz 40", dmx),
+    ):
+        reply = console.execute(line)
+        assert reply.text == f"error: the same as route {first} of universe 1"
+        assert len(console.session.show["output"]["routes"]) == 3
+    run(
+        console,
+        "route add 1 sacn 1 unicast 10.0.0.50",
+        "route add 1 artnet 0.0.2",
+        "route add 1 dmxusb dmxking /dev/ttyUSB1",
+    )
+
+
 def test_a_universe_freed_of_its_routes_and_fixtures_is_deleted_plainly(console: Console) -> None:
     run(console, 'universe add 2 "Side"', "route add 2 sacn 2", "fixture 201 patch 2.1")
     route = console.session.show["output"]["routes"][-1]["id"]

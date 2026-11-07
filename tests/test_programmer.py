@@ -283,6 +283,12 @@ def test_slot_keys() -> None:
     assert split_slot_key("a:b/c:2/pan") == ({"fixtureId": "a:b/c", "element": 2}, "pan")
     assert split_slot_key("fx:0/sparkle") is None
     assert split_slot_key("fx/pan") is None
+    assert split_slot_key(f"fx:{'9' * 300}/pan") == (
+        {"fixtureId": "fx", "element": 10**300 - 1},
+        "pan",
+    )
+    assert split_slot_key(f"fx:{'9' * 301}/pan") is None  # more than busk reads in a row
+    assert split_slot_key(f"fx:{'9' * 5000}/pan") is None  # more than int reads
 
 
 def test_json_round_trip_and_lenient_restore(state: ShowState) -> None:

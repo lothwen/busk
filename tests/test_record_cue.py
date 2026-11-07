@@ -586,7 +586,15 @@ def test_remove_reports_no_tracked_values(state: ShowState) -> None:
     edit = record_cue(
         state, state.show, programmer, cmd("cl-song", cueNumber="2", merge="remove"), ids()
     )
-    assert edit.message == "removed from cue 1/2: 1 entry"
+    assert edit.message == "removed 2 values from cue 1/2"
+
+
+def test_remove_counts_the_targets_an_entry_loses(state: ShowState) -> None:
+    programmer = program(state, select("fx-mh1"), set_literal("intensity", 0.4))
+    edit = record_cue(
+        state, state.show, programmer, cmd("cl-song", cueNumber="2", merge="remove"), ids()
+    )
+    assert edit.message == "removed 1 value from cue 1/2"
 
 
 def test_literals_compare_as_the_compiler_clamps_them(appendix: dict[str, Any]) -> None:
@@ -727,7 +735,7 @@ def test_remove_deletes_the_instances_whose_id_the_programmer_holds(fx: dict[str
     # Only the id matters; ei-9 is not in the cue.
     programmer = program(state, add_effect(sweep(size=1.0)), add_effect(sweep("ei-9")))
     message, show = recorded(state, programmer, cmd("cl-pulse", cueNumber="1", merge="remove"))
-    assert message == "removed from cue 20/1: 0 entries, 1 effect"
+    assert message == "removed 0 values, 1 effect from cue 20/1"
     assert cue_of(show, "cl-pulse", "1")["effects"] == [pulse(fx)]
 
 

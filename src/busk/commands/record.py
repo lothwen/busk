@@ -106,8 +106,10 @@ programmer's effect instances into the cue's ``effects``:
 The message counts the cue's effects once any are involved (recorded, or in
 the cue before or after the record): ``recorded cue 9/4: 0
 entries, 1 effect; 1 effect tracked from cue 9/3``, and ends with the
-stopped effects it left out (``; 1 stopped effect not recorded``). A record
-fails only when neither a value nor an effect matches the filter.
+stopped effects it left out (``; 1 stopped effect not recorded``). *remove*
+counts what it takes out, in values (one per target an entry loses) and
+effects: ``removed 2 values, 1 effect from cue 9/4``. A record fails only
+when neither a value nor an effect matches the filter.
 ``RECORD_PRESET`` ignores effects.
 
 The cue list must exist; the console creates it in the same ``BATCH``.
@@ -567,10 +569,20 @@ def record_cue(
         if name is not None:
             ops.append(Op("replace", (*pointer, index, "name"), name))
         count = len(result)
-    verb = "removed from" if merge == "remove" else "recorded"
-    message = f"{verb} {label}: {_plural(count, 'entry', 'entries')}"
-    if instances or held or (existing is not None and existing["effects"]):
-        message += f", {_plural(len(held), 'effect')}"
+    involved = instances or held or (existing is not None and existing["effects"])
+    if merge == "remove":
+        assert existing is not None
+        expand = _expander(groups)
+        values = sum(len(expand(entry["targets"])) for entry in existing["entries"])
+        values -= sum(len(expand(entry["targets"])) for entry in result)
+        removed = _plural(values, "value")
+        if involved:
+            removed += f", {_plural(len(existing['effects']) - len(held), 'effect')}"
+        message = f"removed {removed} from {label}"
+    else:
+        message = f"recorded {label}: {_plural(count, 'entry', 'entries')}"
+        if involved:
+            message += f", {_plural(len(held), 'effect')}"
     if tracked or tracks:
         source = f"cue {cue_list['number']}/{cues[position - 1]['number']}"
         counts = [

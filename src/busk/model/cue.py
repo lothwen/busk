@@ -18,14 +18,18 @@ from typing import Annotated, Final, Literal, NotRequired, TypedDict
 from pydantic import Field, with_config
 
 from busk.model.attributes import AttributeFamily
-from busk.model.common import STRICT, AttributeId, CueId, CueListId, EntityBase, Seconds, Unit
+from busk.model.common import (
+    MAX_DIGITS,
+    STRICT,
+    AttributeId,
+    CueId,
+    CueListId,
+    EntityBase,
+    Seconds,
+    Unit,
+)
 from busk.model.effect import EffectInstance, Rate
 from busk.model.entry import FadeCurve, TargetSpec, ValueEntry
-
-MAX_DIGITS: Final = 300
-"""The most digits a number has in a row. A ``float`` holds that many without
-turning to ``inf``, which takes 309, and ``int`` reads them on any Python: past
-4,300 digits it raises, and a Python can be set to raise from 640."""
 
 CUE_NUMBER: Final = re.compile(rf"[0-9]{{1,{MAX_DIGITS}}}(?:\.[0-9]{{1,{MAX_DIGITS}}})?")
 """A valid cue number: digits with an optional decimal part."""

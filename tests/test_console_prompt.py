@@ -80,7 +80,7 @@ ORIENTATION = (
 EXPECTED: list[tuple[str, tuple[str, ...], tuple[str, ...], bool]] = [
     ("route add ", (), ("a universe number",), False),
     ("route add 1 ", ("sacn", "artnet", "dmxusb"), (), False),
-    ("route add 1 sacn 1 ", ("unicast", "multicast", "broadcast"), (), True),
+    ("route add 1 sacn 7 ", ("unicast", "multicast", "broadcast"), (), True),
     ("sel fixture ", (), ("a fixture number",), False),
     ("sel fixture 101 ", ("thru", ","), (), True),
     ("fixture ", ("add",), ("a fixture number",), False),

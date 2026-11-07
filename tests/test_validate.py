@@ -479,6 +479,17 @@ TARGETS = [
         },
     ),
     case(
+        "per-target keys: an element past 300 digits, and past int's limit",
+        put(
+            f"{ENTRY}[0].value",
+            {"kind": "perTarget", "values": {"fx-mh1:" + "9" * 301: 1, "fx-mh1:" + "9" * 5000: 1}},
+        ),
+        expect={
+            E(f'{ENTRY}[0].value.values["fx-mh1:{"9" * 301}"]'),
+            E(f'{ENTRY}[0].value.values["fx-mh1:{"9" * 5000}"]'),
+        },
+    ),
+    case(
         "effect instance targets",
         put(
             f"{PULSE}.targets",

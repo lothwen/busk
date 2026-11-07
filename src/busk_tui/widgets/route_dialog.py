@@ -11,8 +11,8 @@ takes, by protocol, for one universe.
 A modal dialog, because its fields are typed and only a modal has the keyboard.
 It sends nothing: it closes with the line, for the page to run. An interface
 left empty is left to busk, which has ``--iface``. What only busk can tell, such
-as an sACN universe another universe sends, is refused in the log, as for every
-control.
+as an sACN universe another universe sends, or a route the universe has already,
+is refused in the log, as for every control.
 """
 
 from __future__ import annotations

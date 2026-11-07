@@ -249,8 +249,8 @@ from busk.commands.patch import deep_copy
 from busk.commands.types import Command, EditPath
 from busk.console.cascade import fixture_cascade, universe_cascade
 from busk.model.attributes import ATTRIBUTES, AttributeDefinition
-from busk.model.common import TargetRef
-from busk.model.cue import CUE_NUMBER, MAX_DIGITS
+from busk.model.common import MAX_DIGITS, TargetRef
+from busk.model.cue import CUE_NUMBER
 from busk.model.effect import EffectTemplate
 from busk.model.profile import PROFILE_CATEGORIES, FixtureProfile, option_capabilities
 from busk.model.show import Show
@@ -1514,7 +1514,7 @@ class _Parser:
             if not 1 <= rate <= 40:
                 raise ParseError(f"expected a refresh rate from 1 to 40 Hz, got {rate:g}")
             route["refreshHz"] = rate
-            return self.submit({"type": "ADD", "path": ["output", "routes"], "value": route})
+            return self._add_route(route)
         if protocol == "sacn":
             route["universe"] = self.integer("an sACN universe")
             route["priority"] = 100
@@ -1536,6 +1536,15 @@ class _Parser:
             route["destination"] = {"kind": where, "iface": self.take("an interface").text}
         else:
             route["destination"] = fallback
+        return self._add_route(route)
+
+    def _add_route(self, route: dict[str, Any]) -> Action:
+        """Add ``route``, unless the universe has the same one: on or off,
+        with any id, it sends the same."""
+        new = {key: value for key, value in route.items() if key not in ("id", "enabled")}
+        for other in self.show["output"]["routes"]:
+            if {key: value for key, value in other.items() if key not in ("id", "enabled")} == new:
+                raise ParseError(f"the same as route {self._route_text(other)}")
         return self.submit({"type": "ADD", "path": ["output", "routes"], "value": route})
 
     def _route_id(self) -> str:

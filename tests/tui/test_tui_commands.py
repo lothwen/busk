@@ -343,6 +343,22 @@ def test_numbers_have_two_decimals_at_most() -> None:
     assert commands.number(120.0) == "120"
     assert commands.number(120.456) == "120.46"
     assert commands.number(99.5) == "99.5"
+    assert commands.number(0.004) == "0"
+    assert commands.number(-0.5) == "-0.5"
+
+
+@pytest.mark.parametrize("value", [1_000_000.0, -123456.7, 1234567.5, 10.0**20])
+def test_a_large_number_reaches_busk_as_typed(show: busk.OfflineShow, value: float) -> None:
+    """Every digit, no exponent, nothing rounded but past two decimals."""
+    text = commands.number(value)
+    assert float(text) == value
+    assert show.execute(commands.orientation(101, 101, "panOffset", value).text).ok
+    assert show.execute(commands.limit_range(101, 101, "pan", value, value + 1).text).ok
+    assert show.execute(commands.location(101, [value] * 6).text).ok
+    fixture = next(f for f in show.show["fixtures"] if f["number"] == 101)
+    assert fixture["orientation"]["panOffset"] == value
+    assert list(fixture["limits"]["pan"]) == [value, value + 1]
+    assert fixture["location"]["x"] == value
 
 
 @pytest.mark.parametrize("name", sorted(BUILDERS))
@@ -447,9 +463,9 @@ def test_the_route_form_and_busk_agree_on_an_sacn_universe(
     show: busk.OfflineShow, text: str
 ) -> None:
     """On universe 1, whose own route is the only one: no sACN universe is
-    taken by another."""
+    taken by another. To a host, so that no line is a copy of that route."""
     passes = route_dialog.check_sacn(text) is None
-    assert passes is show.execute(f"route add 1 sacn {text.strip()}").ok
+    assert passes is show.execute(f"route add 1 sacn {text.strip()} unicast 10.0.0.50").ok
 
 
 @pytest.mark.parametrize(

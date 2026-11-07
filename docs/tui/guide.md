@@ -849,7 +849,7 @@ The protocol's chips choose the fields:
   1 to 40 Hz.
 
 It sends `route add 2 sacn 2 multicast eth0`. What only busk can tell, such as an sACN universe
-another universe sends, is refused in the log.
+another universe sends, or a route the universe has already, is refused in the log.
 
 **DMX MAP**, one per universe: 64 channels to a row (32 on a narrow screen), the first one's
 address on the left. A fixture's start address is `█` and the rest of its footprint `▓`, in
