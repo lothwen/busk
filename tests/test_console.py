@@ -1272,3 +1272,133 @@ def test_a_cues_effect_leaves_a_running_cue_and_comes_back() -> None:
         assert live.execute("undo").ok
         eventually(lambda: effects() == ["ei-1"])
         assert live.show == running
+
+
+def status_of(live: LiveShow, number: int) -> Any:
+    """Playback ``number`` as the engine reports it (``None`` before a snapshot)."""
+    snapshot = live.snapshot
+    if snapshot is None:
+        return None
+    return next(p for p in snapshot.playbacks if p.number == number)
+
+
+def test_a_playback_added_and_placed_is_one_undo_step(console: Console, live: Live) -> None:
+    before = copy.deepcopy(live.session.show)
+    assert run(console, 'playback add 7 cuelist 10 at 2 "Blue 2"') == [
+        "added playback 7 'Blue 2' on cue list 10 at 1.2"
+    ]
+    assert "cue list 10, band 50, master fader" in run(console, "list playbacks")[0].splitlines()[3]
+    assert run(console, "list pages") == [
+        "*   1  Main                 1:1 2:7 3:3 4:- 5:- 6:6 7:- 8:-"
+    ]
+    assert run(console, "undo") == ["undid: added playback 7 'Blue 2' on cue list 10 at 1.2"]
+    assert live.session.show == before
+
+
+def test_a_playback_added_is_saved_and_reloaded(console: Console, tmp_path: Path) -> None:
+    run(console, 'playback add 7 cuelist 10 at 2 "Blue 2"', "playback 7 exclusivity color")
+    saved = tmp_path / "saved.json"
+    run(console, f'save "{saved}"')
+    show = load_show(saved)[0]
+    playback = next(p for p in show["playbacks"] if p["number"] == 7)
+    assert (playback["name"], playback["cueListId"], playback["exclusivity"]) == (
+        "Blue 2",
+        "cl-blue",
+        "color",
+    )
+    assert show["pages"][0]["slots"][1] == playback["id"]
+
+
+def test_a_playback_is_pointed_at_another_list_and_undo_brings_it_back(
+    console: Console, live: Live
+) -> None:
+    before = copy.deepcopy(live.session.show)
+    assert run(console, "playback 3 cuelist 1") == ["playback 3 runs cue list 1"]
+    assert "cue list 1," in run(console, "list playbacks")[0].splitlines()[1]
+    assert run(console, "undo") == ["undid: playback 3 runs cue list 1"]
+    assert live.session.show == before
+
+
+def test_a_goto_cue_the_new_list_lacks_is_a_warning(console: Console) -> None:
+    run(console, "playback 1 gotoCue 2")
+    reply = console.execute("playback 1 cuelist 10")
+    assert reply.ok
+    assert reply.text == (
+        "playback 1 runs cue list 10\nwarning playbacks[0].gotoCue: Cue list 'Blue' has no cue '2'"
+    )
+
+
+def test_the_properties_are_removed_and_undo_brings_them_back(console: Console, live: Live) -> None:
+    before = copy.deepcopy(live.session.show)
+    assert run(console, "playback 3 exclusivity none") == ["removed the exclusivity of playback 3"]
+    assert "exclusivity" not in next(p for p in live.session.show["playbacks"] if p["number"] == 3)
+    assert run(console, "undo") == ["undid: removed the exclusivity of playback 3"]
+    assert live.session.show == before
+    assert console.execute("playback 1 bogus 3").text == (
+        "error: playback 1 has no property 'bogus'"
+    )
+    assert run(console, "playback 1 flash.priorityBoost 5", "playback 1 flash.priorityBoost none")
+    assert live.session.show == before
+
+
+def test_a_running_playback_refuses_another_list_until_it_is_released() -> None:
+    running = show_of(load_doc(APPENDIX_A))
+    with LiveShow(running, output=False) as live:
+
+        def idle() -> bool:
+            status = status_of(live, 1)
+            return status is not None and status.state == "idle"
+
+        eventually(idle)
+        assert live.execute("go 1").ok
+        eventually(lambda: status_of(live, 1).state == "active")
+        assert live.execute("playback 1 cuelist 10").text == (
+            "error: playback 1 is running: release it first"
+        )
+        assert live.expected("playback 1 cuelist 10 ").error == (
+            "playback 1 is running: release it first"
+        )
+        assert live.show == running  # nothing changed, and it plays on
+        assert status_of(live, 1).cue == "1"
+        assert live.execute("release 1 0").ok
+        eventually(idle)
+        assert live.execute("playback 1 cuelist 10").text == "playback 1 runs cue list 10"
+        eventually(lambda: status_of(live, 1).cueCount == 1)
+        assert live.execute("go 1").ok
+        eventually(lambda: status_of(live, 1).cueName == "Blue")
+        assert live.execute("release 1 0").ok
+        eventually(idle)
+        assert live.execute("undo").ok
+        eventually(lambda: status_of(live, 1).cueCount == 2)
+        assert live.show == running
+
+
+def test_a_playback_added_on_a_running_show_is_there_at_once() -> None:
+    running = show_of(load_doc(APPENDIX_A))
+    with LiveShow(running, output=False) as live:
+        eventually(lambda: status_of(live, 1) is not None)
+        assert live.execute("go 3").ok
+        eventually(lambda: status_of(live, 3).state == "active")
+        assert live.execute("playback add 7 cuelist 10 at 2").ok
+        eventually(lambda: any(p.number == 7 for p in live.snapshot.playbacks))  # type: ignore[union-attr]
+        assert status_of(live, 7).state == "idle"
+        assert status_of(live, 3).state == "active"
+        assert live.execute("go 7").ok
+        eventually(lambda: status_of(live, 7).state == "active")
+        assert live.execute("release 7 0").ok
+        eventually(lambda: status_of(live, 7).state == "idle")
+        assert live.execute("undo").ok
+        eventually(lambda: all(p.number != 7 for p in live.snapshot.playbacks))  # type: ignore[union-attr]
+        assert status_of(live, 3).state == "active"
+
+
+def test_removing_a_property_reaches_a_running_show() -> None:
+    running = show_of(load_doc(APPENDIX_A))
+    with LiveShow(running, output=False) as live:
+        eventually(lambda: status_of(live, 1) is not None)
+        assert live.execute("go 3").ok
+        eventually(lambda: status_of(live, 3).state == "active")
+        assert live.execute("playback 3 exclusivity none").ok
+        assert live.execute("undo").ok
+        assert live.show == running
+        assert status_of(live, 3).state == "active"

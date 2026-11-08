@@ -328,6 +328,7 @@ class Console:
             effects=self.effects,
             programmer=snapshot.programmer,
             page=self._page(),
+            running=self._running(),
         )
 
     def _execute(self, line: str) -> Reply:
@@ -626,6 +627,13 @@ class Console:
         """The id of the engine's current page (``None`` without an engine)."""
         snapshot = self.session.engine_snapshot()
         return None if snapshot is None or snapshot.page is None else snapshot.page.id
+
+    def _running(self) -> frozenset[str]:
+        """The ids of the playbacks the engine has active or releasing."""
+        snapshot = self.session.engine_snapshot()
+        if snapshot is None:
+            return frozenset()
+        return frozenset(p.id for p in snapshot.playbacks if p.state != "idle")
 
     def _list_pages(self, show: Show) -> list[str]:
         """Each page's slots, ``*`` marking the current page: the engine's,

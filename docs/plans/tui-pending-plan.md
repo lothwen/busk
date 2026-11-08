@@ -280,6 +280,19 @@ Code: `_playback`, `_set`, `_goto_cue`, `_assign` in `src/busk/console/parser.py
    Verify: a taken number or slot, and an unknown list, refused in one line; `undo`; `playback N
    cuelist L` while it runs, on `LiveShow` and under `busk run`. If the engine does anything but
    release cleanly, the line refuses while the playback is active and says so.
+
+   **Done** (2026-11-08). As planned, in `_playback_add` and `_run_list` of
+   `src/busk/console/parser.py`. The engine does not release: `rebind` keeps a running playback
+   going from the cue that follows the old cue's number, and `undo` then lands on another cue. So
+   `playback N cuelist L` refuses while it is active or releasing, `playback 1 is running: release
+   it first`, through a new `Context.running` that `Console._running` reads from the engine's
+   snapshot. Which the user may veto:
+   - A new playback is named `Playback N` and has a `master` fader. `record slot`'s `size` fader
+     for a cue of effects only is not copied.
+   - The generic `playback N cueListId "<id>"` keeps working, and is guarded the same way.
+   - A `gotoCue` the new list lacks stays a warning, as the validator has it.
+   - The check reads the last snapshot, so a line sent straight after a `go`, before the engine's
+     next snapshot, goes through.
 2. **GAP-35, settings named.** At the property position of `playback N ` and `cuelist N `,
    `expected()` offers the names, and a closed set offers its values (`playback N fader `, `…
    ltpFaderMode `, `cuelist N tracking `). `help` and `docs/console.md` list them. `<property>
@@ -287,6 +300,27 @@ Code: `_playback`, `_set`, `_goto_cue`, `_assign` in `src/busk/console/parser.py
    GAP-25 did for limits. An unknown name is refused in one line. Verify: a test walks the names
    offered against `Playback` and `CueList`, so the list cannot drift from the model; a JSON value
    still works; the Tab completion tests that pin `playback N ` and `cuelist N `.
+
+   **Done** (2026-11-08). As planned, in `_setting` and the table `_SETTINGS`. The test walks the
+   two models' types, so a new property fails until it is named in the table, in `help` and in
+   `docs/console.md`. Which the user may veto:
+   - `none` also removes `chase`, `notes` and `tags`: every optional property of the two models,
+     not only the plan's four. `chase none` is refused on a list in chase mode.
+   - A name is taken in any case, as `orientation.*` is.
+   - A word outside a closed set is still refused by document path (§5, item 9). Only the offer is
+     new.
+   - `gotoCue` takes a bare cue number, through `goto`'s line, which also refuses a cue the list
+     lacks. The generic edit read `2` as a JSON number and refused it. In quotes it stays the
+     generic edit, and a cue the list lacks is a warning.
+   - `id`, `cueListId`, `flash`, `cues`, `chase.rate`, `chase.rate.kind` and `chase.rate.masterId`
+     are taken but not offered: other lines set them, by number, or they hold a whole object.
+
+**Phase 3 checks** (2026-11-08). The whole suite: 5,349 passed and 1 skipped, in 3:33 with `uv run
+pytest -n 6`. `ruff check`, `ruff format --check` and `mypy src` clean. `tests/test_frontend.py`
+runs the guard under `busk run` with processes. A real `busk run --state-dir …` with processes on
+the club show: `go 11`, the refusal, `release 11 0`, then each new line, `go` on the new list, and
+`undo` at the prompt, 0 command errors. Docs: `docs/console.md`, `busk help`, GAP-34 and GAP-35 in
+`docs/dev/tui/engine-gaps.md`, the report's rows and items 2 and 7, and `CHANGELOG.md`.
 
 ### Phase 4: Engine: deletes that cascade
 

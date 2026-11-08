@@ -77,6 +77,16 @@ ORIENTATION = (
     "orientation.tiltOffset",
 )
 
+PLAYBACK_PROPERTIES = (
+    "name", "number", "priority", "fader", "buttons", "ltpFaderMode", "ltpThreshold", "autoStart",
+    "autoRelease", "flash.level", "flash.includeLtp", "flash.priorityBoost", "exclusivity",
+    "gotoCue", "protectFromSwop", "releaseTime", "uiColor", "notes", "tags",
+)  # fmt: skip
+CUELIST_PROPERTIES = (
+    "name", "number", "mode", "tracking", "wrap", "releaseAtEnd", "chase", "chase.direction",
+    "chase.crossfade", "chase.rate.value", "chase.rate.multiplier", "notes", "tags",
+)  # fmt: skip
+
 # (line, words, values, runnable): the line ends where the next word starts
 EXPECTED: list[tuple[str, tuple[str, ...], tuple[str, ...], bool]] = [
     ("route add ", (), ("a universe number",), False),
@@ -123,8 +133,35 @@ EXPECTED: list[tuple[str, tuple[str, ...], tuple[str, ...], bool]] = [
     ("cue 10/1 ", ("effect", "time", "go", "follow", "wait", "release"),
      ("a property, e.g. name or timing.fadeIn",), False),
     ("cue 10/1 time 3 ", ("delay", *CURVES), (), True),
-    ("cuelist 10 ", ("sequence", "chase"), ("a property, e.g. name or timing.fadeIn",), False),
-    ("cuelist 10 chase ", ("hz", "bpm"), ("a value",), False),
+    ("cuelist 10 ", ("sequence", *CUELIST_PROPERTIES), (), False),
+    ("cuelist 10 chase ", ("hz", "bpm", "none"), ("a value",), False),
+    ("cuelist 10 tracking ", ("true", "false"), (), False),
+    ("cuelist 10 mode ", ("sequence", "chase"), (), False),
+    ("cuelist 10 chase.direction ", ("forward", "reverse", "bounce", "random"), (), False),
+    ("cuelist 10 chase.crossfade ", (), ("a value",), False),
+    ("cuelist 10 tracking true ", (), (), True),
+    ("playback ", ("add",), ("a playback number",), False),
+    ("playback add ", (), ("a playback number",), False),
+    ("playback add 5 ", ("cuelist",), (), False),
+    ("playback add 5 cuelist ", (), ("a cue list number",), False),
+    ("playback add 5 cuelist 10 ", ("at",), ("a name in quotes",), True),
+    ("playback add 5 cuelist 10 at ", (), ("a slot number, as S or P.S",), False),
+    ("playback add 5 cuelist 10 at 2 ", (), ("a name in quotes",), True),
+    ('playback add 5 cuelist 10 at 2 "Mine" ', (), (), True),
+    ("playback 1 ", ("goto", "cuelist", *PLAYBACK_PROPERTIES), (), False),
+    ("playback 1 cuelist ", (), ("a cue list number",), False),
+    ("playback 1 cuelist 10 ", (), (), True),
+    ("playback 1 fader ", ("master", "crossfade", "rate", "size", "temp", "none"), (), False),
+    ("playback 1 ltpFaderMode ", ("followFader", "threshold", "ignoreFader"), (), False),
+    ("playback 1 ltpfadermode ", ("followFader", "threshold", "ignoreFader"), (), False),
+    ("playback 1 autoStart ", ("true", "false"), (), False),
+    ("playback 1 flash.includeLtp ", ("true", "false"), (), False),
+    ("playback 1 flash.priorityBoost ", ("none",), ("a value",), False),
+    ("playback 1 exclusivity ", ("none",), ("a value",), False),
+    ("playback 1 exclusivity none ", (), (), True),
+    ("playback 1 exclusivity color ", (), (), True),
+    ("playback 1 priority ", (), ("a value",), False),
+    ("playback 1 number ", (), ("a playback number",), False),
     ("list ", LIST_KINDS, (), False),
     ("rename ", ("cue", "cuelist", "fixture", "group", "page", "playback", "preset", "show",
                  "universe"), (), False),
@@ -197,6 +234,9 @@ def test_what_may_follow_a_line(
         ("fixture 101 mode nope ", "profile 'Generic Spot 16ch' has no mode 'nope' (modes: 16ch)"),
         ('rename group 1 "back\\slash" ', "bad escape in a quote at column 21"),
         ("xyz ", "unknown command 'xyz' (try 'help')"),
+        ("playback 1 bogus ", "playback 1 has no property 'bogus'"),
+        ("playback 3 gotoCue none ", "playback 3 has no gotoCue"),
+        ("cuelist 10 bogus ", "cue list 10 has no property 'bogus'"),
         ('master "Sp', "unterminated quote at column 8"),
         (
             "set intensity +5% ",

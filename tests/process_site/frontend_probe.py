@@ -9,8 +9,9 @@ attached show, and follows the plan in the JSON file ``$BUSK_TEST_FRONTEND``:
   have come (reading them asks for them);
 * ``steps``: then, for each, ask about its ``line`` and run it, and wait until
   the show's routes are its ``routes`` (each id and state) and, when it has
-  them, the frame's universes are its ``universes`` and the output's fixture
-  elements its ``elements`` (each number and element);
+  them, the frame's universes are its ``universes``, the output's fixture
+  elements its ``elements`` (each number and element) and the snapshot's
+  playbacks its ``playbacks`` (each number, state and cue count);
 * ``effectOf``: then wait until that playback's effect runs;
 * ``colorOf``: then wait until that playback has a colour in the snapshot;
 * ``records``: then wait until a ``busk.run`` record contains each text;
@@ -100,10 +101,12 @@ def run(show: Any, plan: dict[str, Any], records: Records, report: dict[str, Any
         def routed(step: dict[str, Any] = step) -> bool:
             wanted = step.get("universes", [int(n) for n in show.frame.universes])
             output = [[f.number, f.element] for f in show.output.fixtures]
+            playbacks = [[p.number, p.state, p.cueCount] for p in show.snapshot.playbacks]
             return (
                 [[r.id, r.state] for r in show.routes or ()] == step["routes"]
                 and [int(n) for n in show.frame.universes] == wanted
                 and output == step.get("elements", output)
+                and playbacks == step.get("playbacks", playbacks)
             )
 
         if not wait(f"the routes and universes after {step['line']!r}", routed):

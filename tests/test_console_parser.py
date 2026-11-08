@@ -4,8 +4,21 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from types import UnionType
+from typing import (
+    Annotated,
+    Any,
+    Literal,
+    NotRequired,
+    TypeAliasType,
+    Union,
+    get_args,
+    get_origin,
+    get_type_hints,
+    is_typeddict,
+)
 
 import pytest
 
@@ -21,9 +34,12 @@ from busk.console.parser import (
     Source,
     Submit,
     SubmitAll,
+    expected,
     parse,
     tokenize,
 )
+from busk.model.cue import CueList
+from busk.model.playback import Playback
 from busk.session.ids import CounterIds
 from busk.session.library import EffectLibrary, ProfileLibrary, builtin_directory
 from busk.session.programmer import Programmer, slot_key
@@ -693,7 +709,7 @@ def test_queries_and_session_actions(line: str, action: object) -> None:
         ("delete route r1 now", "unexpected 'now'"),
         ("go 9", "no playback 9"),
         ("cue 1/9 timing.fadeIn 2", "no cue 1/9"),
-        ("playback 3", "expected a property, e.g. name or timing.fadeIn"),
+        ("playback 3", "expected a property"),
         ("playback 3 exclusivity", "expected a value"),
         ("delete show", "cannot delete 'show'"),
         ("blackout maybe", "expected on or off, got 'maybe'"),
@@ -2523,3 +2539,401 @@ def test_help_lists_the_new_lines() -> None:
     )
     assert "cue L/C effect <id> <prop[.sub…]> <value> | cue L/C effect <id> remove" in stripped
     assert 'cuelist add N ["name"]' in stripped
+    assert 'playback add N cuelist L [at [P.]S] ["name"] | playback N cuelist L' in stripped
+    assert "playback N <property> <value> | playback N <optional> none" in stripped
+    assert "cuelist N <property> <value> | cuelist N <optional> none" in stripped
+
+
+# ---------------------------------------------- GAP-34: a playback for a list
+
+
+def added(number: int, name: str, cue_list: str, ident: str = "pb-000000000001") -> dict[str, Any]:
+    """``_playback``'s defaults, as ``record slot`` makes them."""
+    return {
+        "type": "ADD",
+        "path": ["playbacks"],
+        "value": {
+            "id": ident,
+            "name": name,
+            "number": number,
+            "cueListId": cue_list,
+            "priority": 50,
+            "fader": "master",
+            "buttons": ["toggle", "flash"],
+            "ltpFaderMode": "threshold",
+            "ltpThreshold": 0.02,
+            "autoStart": True,
+            "autoRelease": True,
+            "flash": {"level": 1, "includeLtp": True},
+            "protectFromSwop": False,
+            "releaseTime": 1,
+        },
+    }
+
+
+def two_pages() -> Context:
+    """Appendix A with a second page, empty."""
+    doc = load_doc(APPENDIX_A)
+    doc["pages"].append({"id": "pg-2", "name": "Two", "number": 2, "slots": []})
+    return Context(show_of(doc), LIBRARY, CounterIds())
+
+
+@pytest.mark.parametrize(
+    ("line", "name"),
+    [("playback add 5 cuelist 10", "Playback 5"), ('playback add 5 cuelist 10 "Blue 2"', "Blue 2")],
+)
+def test_a_playback_is_added_on_a_list_that_exists(line: str, name: str) -> None:
+    assert command(line) == {
+        "type": "BATCH",
+        "label": f"added playback 5 {name!r} on cue list 10",
+        "commands": [added(5, name, "cl-blue")],
+    }
+
+
+@pytest.mark.parametrize(
+    ("line", "page", "slot", "where"),
+    [
+        ("playback add 5 cuelist 10 at 2", "page-1", 1, "1.2"),
+        ("playback add 5 cuelist 10 at 2.1", "pg-2", 0, "2.1"),
+        ("playback add 5 cuelist 10 at 2.40", "pg-2", 39, "2.40"),  # a slot past the last
+        ("playback add 5 cuelist 10 at 1.2", "page-1", 1, "1.2"),
+    ],
+)
+def test_a_playback_is_placed_in_the_same_undo_step(
+    line: str, page: str, slot: int, where: str
+) -> None:
+    action = parse(f'{line} "Mine"', two_pages())
+    assert isinstance(action, Submit)
+    assert action.command == {
+        "type": "BATCH",
+        "label": f"added playback 5 'Mine' on cue list 10 at {where}",
+        "commands": [
+            added(5, "Mine", "cl-blue"),
+            {
+                "type": "ASSIGN_PLAYBACK",
+                "pageId": page,
+                "slot": slot,
+                "playbackId": "pb-000000000001",
+            },
+        ],
+    }
+
+
+def test_a_slot_without_a_page_is_on_the_engines_current_page() -> None:
+    action = parse("playback add 5 cuelist 10 at 2", replace(two_pages(), page="pg-2"))
+    assert isinstance(action, Submit)
+    placed = action.command["commands"][1]  # type: ignore[typeddict-item]
+    assert (placed["pageId"], placed["slot"]) == ("pg-2", 1)
+
+
+def test_a_number_below_1_is_taken_as_page_add_takes_one() -> None:
+    assert command("playback add 0 cuelist 10")["commands"][0]["value"]["number"] == 0
+
+
+@pytest.mark.parametrize(
+    ("line", "error"),
+    [
+        ("playback add", "expected a playback number"),
+        ("playback add x", "expected a playback number, got 'x'"),
+        ("playback add 3 cuelist 10", "playback 3 exists"),
+        ("playback add 5", "expected cuelist"),
+        ("playback add 5 list 10", "expected cuelist, got 'list'"),
+        ("playback add 5 cuelist", "expected a cue list number"),
+        ("playback add 5 cuelist 99", "no cue list 99"),
+        ("playback add 5 cuelist 10 at", "expected a slot number, as S or P.S"),
+        ("playback add 5 cuelist 10 at x", "expected a slot number, as S or P.S, got 'x'"),
+        ("playback add 5 cuelist 10 at 0", "slots are counted from 1"),
+        ("playback add 5 cuelist 10 at 1", "slot 1 is in use on page 1"),
+        ("playback add 5 cuelist 10 at 1.3", "slot 3 is in use on page 1"),
+        ("playback add 5 cuelist 10 at 9.1", "no page 9"),
+        ('playback add 5 cuelist 10 "A" "B"', "unexpected 'B'"),
+        ("playback 1 cuelist", "expected a cue list number"),
+        ("playback 1 cuelist x", "expected a cue list number, got 'x'"),
+        ("playback 1 cuelist 99", "no cue list 99"),
+        ("playback 1 cuelist 10 now", "unexpected 'now'"),
+        ("playback 9 cuelist 10", "no playback 9"),
+    ],
+)
+def test_the_playback_lines_are_refused_in_one_line(line: str, error: str) -> None:
+    with pytest.raises(ParseError) as raised:
+        parse(line, context())
+    assert raised.value.message == error
+    assert "\n" not in raised.value.message
+
+
+def test_a_playback_is_pointed_at_another_list_by_number() -> None:
+    assert command("playback 1 cuelist 10") == {
+        "type": "BATCH",
+        "label": "playback 1 runs cue list 10",
+        "commands": [
+            {
+                "type": "SET",
+                "path": ["playbacks", {"id": "pb-song"}, "cueListId"],
+                "value": "cl-blue",
+            }
+        ],
+    }
+
+
+@pytest.mark.parametrize("line", ["playback 1 cuelist 10", "playback 1 cueListId cl-blue"])
+def test_another_list_is_refused_while_the_playback_runs(line: str) -> None:
+    running = replace(context(), running=frozenset({"pb-song"}))
+    with pytest.raises(ParseError) as raised:
+        parse(line, running)
+    assert raised.value.message == "playback 1 is running: release it first"
+    assert isinstance(parse("playback 3 cuelist 1", running), Submit)  # another playback is free
+
+
+def test_a_running_playback_may_change_anything_else() -> None:
+    running = replace(context(), running=frozenset({"pb-song"}))
+    assert isinstance(parse("playback 1 fader size", running), Submit)
+    assert isinstance(parse("playback 1 exclusivity none", running), Submit)
+
+
+# ------------------------------------- GAP-35: properties named, and removed
+
+
+PLAYBACK_LINES = ("goto", "cuelist")  # the lines beside the properties
+CUELIST_LINES = ("sequence",)
+PLAYBACK_UNOFFERED = {"id", "cueListId", "flash"}
+CUELIST_UNOFFERED = {"id", "cues", "chase.rate", "chase.rate.kind", "chase.rate.masterId"}
+
+
+def unaliased(hint: Any) -> Any:
+    """``hint`` without its aliases and its ``NotRequired`` and ``Annotated`` wrappers."""
+    while True:
+        if isinstance(hint, TypeAliasType):
+            hint = hint.__value__
+        elif get_origin(hint) in (NotRequired, Annotated):
+            hint = get_args(hint)[0]
+        else:
+            return hint
+
+
+def properties_of(typed: Any, prefix: str = "") -> dict[str, tuple[Any, bool]]:
+    """Every property of the ``TypedDict`` ``typed`` and of those it holds, dotted:
+    its type, and whether it is optional."""
+    found: dict[str, tuple[Any, bool]] = {}
+    for key, raw in get_type_hints(typed, include_extras=True).items():
+        name, hint = f"{prefix}{key}", unaliased(raw)
+        found[name] = (hint, get_origin(raw) is NotRequired)
+        union = get_origin(hint) in (Union, UnionType)
+        for member in map(unaliased, get_args(hint) if union else (hint,)):
+            if is_typeddict(member):
+                found |= properties_of(member, f"{name}.")
+    return found
+
+
+def offered(line: str) -> tuple[str, ...]:
+    return expected(line, context()).words
+
+
+WALKS = [
+    ("playback 1", Playback, PLAYBACK_LINES, PLAYBACK_UNOFFERED),
+    ("cuelist 1", CueList, CUELIST_LINES, CUELIST_UNOFFERED),
+]
+
+
+@pytest.mark.parametrize(("entity", "model", "lines", "unoffered"), WALKS)
+def test_the_names_offered_are_the_models(
+    entity: str, model: Any, lines: tuple[str, ...], unoffered: set[str]
+) -> None:
+    names = set(offered(f"{entity} ")) - set(lines)
+    assert names == set(properties_of(model)) - unoffered
+
+
+@pytest.mark.parametrize(("entity", "model", "lines", "unoffered"), WALKS)
+def test_every_property_of_the_model_is_taken(
+    entity: str, model: Any, lines: tuple[str, ...], unoffered: set[str]
+) -> None:
+    head = entity.split()[0]
+    collection = {"playback": "playbacks", "cuelist": "cueLists"}[head]
+    ident = {"playback": "pb-song", "cuelist": "cl-song"}[head]
+    for name in properties_of(model):
+        assert command(f"{entity} {name} 1") == {
+            "type": "SET",
+            "path": [collection, {"id": ident}, *name.split(".")],
+            "value": "1" if name == "gotoCue" else 1,
+        }, name
+        assert command(f"{entity} {name.upper()} 1")["path"][2:] == name.split("."), name
+
+
+@pytest.mark.parametrize(("entity", "model", "lines", "unoffered"), WALKS)
+def test_a_closed_set_offers_its_values_and_an_optional_property_none(
+    entity: str, model: Any, lines: tuple[str, ...], unoffered: set[str]
+) -> None:
+    sugar = {"number": (), "chase": ("hz", "bpm")}  # lines of their own come first
+    for name, (hint, optional) in properties_of(model).items():
+        if name in unoffered:
+            continue
+        if hint is bool:
+            words = ("true", "false")
+        elif get_origin(hint) is Literal:
+            words = get_args(hint)
+        else:
+            words = ()
+        wanted = (*sugar.get(name, ()), *words, *(("none",) if optional else ()))
+        assert offered(f"{entity} {name} ") == wanted, name
+
+
+def test_the_model_walk_sees_what_it_should() -> None:
+    assert properties_of(Playback)["flash.priorityBoost"][1] is True
+    assert properties_of(Playback)["fader"][1] is False
+    assert properties_of(CueList)["chase.rate.multiplier"][0] is float
+    assert get_origin(properties_of(Playback)["ltpFaderMode"][0]) is Literal
+
+
+@pytest.mark.parametrize(("entity", "model", "lines", "unoffered"), WALKS)
+def test_help_and_the_docs_name_every_property_offered(
+    entity: str, model: Any, lines: tuple[str, ...], unoffered: set[str]
+) -> None:
+    head = entity.split()[0]
+    start = next(
+        i for i, line in enumerate(HELP) if line.strip().startswith(f"{head} N <property>")
+    )
+    grammar = " ".join(line.strip() for line in HELP[start : start + 8])
+    docs = (Path(__file__).parent.parent / "docs" / "console.md").read_text()
+    for name in set(properties_of(model)) - unoffered:
+        assert re.search(rf"(?:\| |= ){re.escape(name)}(?: |$)", grammar), name
+        assert f"`{name}`" in docs, name
+
+
+@pytest.mark.parametrize(
+    ("line", "path", "label"),
+    [
+        (
+            "playback 3 exclusivity none",
+            ["playbacks", {"id": "pb-blue"}, "exclusivity"],
+            "removed the exclusivity of playback 3",
+        ),
+        (
+            "playback 3 EXCLUSIVITY NONE",
+            ["playbacks", {"id": "pb-blue"}, "exclusivity"],
+            "removed the exclusivity of playback 3",
+        ),
+    ],
+)
+def test_none_removes_an_optional_property_in_one_step(
+    line: str, path: list[Any], label: str
+) -> None:
+    assert command(line) == {
+        "type": "BATCH",
+        "label": label,
+        "commands": [{"type": "DELETE", "path": path}],
+    }
+
+
+def set_up(**changes: Any) -> Context:
+    """Appendix A with each ``changes`` key, ``playback`` or ``cuelist``, merged
+    into playback 1 or cue list 1."""
+    doc = load_doc(APPENDIX_A)
+    for key, value in changes.items():
+        doc[{"playback": "playbacks", "cuelist": "cueLists"}[key]][0].update(value)
+    return Context(show_of(doc), LIBRARY, CounterIds())
+
+
+@pytest.mark.parametrize(
+    ("line", "changes", "path"),
+    [
+        (
+            "playback 1 gotoCue none",
+            {"playback": {"gotoCue": "2"}},
+            ["playbacks", {"id": "pb-song"}, "gotoCue"],
+        ),
+        (
+            "playback 1 uiColor none",
+            {"playback": {"uiColor": "#ff0000"}},
+            ["playbacks", {"id": "pb-song"}, "uiColor"],
+        ),
+        (
+            "playback 1 flash.priorityBoost none",
+            {"playback": {"flash": {"level": 1, "includeLtp": True, "priorityBoost": 5}}},
+            ["playbacks", {"id": "pb-song"}, "flash", "priorityBoost"],
+        ),
+        (
+            "playback 1 notes none",
+            {"playback": {"notes": "x"}},
+            ["playbacks", {"id": "pb-song"}, "notes"],
+        ),
+        (
+            "cuelist 1 tags none",
+            {"cuelist": {"tags": ["x"]}},
+            ["cueLists", {"id": "cl-song"}, "tags"],
+        ),
+        (
+            "cuelist 1 chase none",
+            {"cuelist": {"chase": {"rate": {"kind": "hz", "value": 2}, "direction": "forward",
+                                   "crossfade": 0}}},
+            ["cueLists", {"id": "cl-song"}, "chase"],
+        ),
+    ],
+)  # fmt: skip
+def test_each_optional_property_is_removed(
+    line: str, changes: dict[str, Any], path: list[Any]
+) -> None:
+    action = parse(line, set_up(**changes))
+    assert isinstance(action, Submit)
+    assert action.command["commands"] == [{"type": "DELETE", "path": path}]  # type: ignore[typeddict-item]
+
+
+@pytest.mark.parametrize(
+    ("line", "value"),
+    [
+        ('playback 1 exclusivity "none"', "none"),  # the word, in quotes
+        ("playback 1 fader none", "none"),  # a value of the closed set, not a removal
+        ("playback 1 notes none of this", "none of this"),
+        ("playback 1 priority 60", 60),
+        ("playback 1 flash.level 50%", "50%"),  # the generic edit: the validator refuses it
+        ('playback 1 buttons ["go", "back"]', ["go", "back"]),
+        (
+            'playback 1 flash {"level": 0.5, "includeLtp": false}',
+            {"level": 0.5, "includeLtp": False},
+        ),
+        ('playback 1 fader "size"', "size"),
+        ("playback 1 gotoCue 2", "2"),  # a cue number, as `goto` takes it
+        ('playback 1 gotoCue "9"', "9"),  # the generic edit, which warns
+        ("cuelist 1 tracking true", True),
+        (
+            'cuelist 1 chase {"rate": {"kind": "hz", "value": 2}}',
+            {"rate": {"kind": "hz", "value": 2}},
+        ),
+    ],
+)
+def test_a_value_is_still_the_generic_edits(line: str, value: Any) -> None:
+    action = command(line)
+    assert action["type"] == "SET"
+    assert action["value"] == value
+
+
+@pytest.mark.parametrize(
+    ("line", "error"),
+    [
+        ("playback 1", "expected a property"),
+        ("playback 1 bogus 3", "playback 1 has no property 'bogus'"),
+        ("playback 1 flash.bogus 3", "playback 1 has no property 'flash.bogus'"),
+        ("playback 1 a..b 3", "playback 1 has no property 'a..b'"),
+        ("cuelist 1 bogus 3", "cue list 1 has no property 'bogus'"),
+        ("cuelist 1", "expected a property"),
+        ("playback 1 fader", "expected a value"),
+        ("playback 1 gotoCue 9", "no cue 1/9"),
+        ("playback 3 gotoCue none", "playback 3 has no gotoCue"),
+        ("playback 1 flash.priorityBoost none", "playback 1 has no flash.priorityBoost"),
+        ("cuelist 1 chase none", "cue list 1 has no chase"),
+    ],
+)
+def test_a_name_the_model_lacks_and_an_unset_property_are_refused(line: str, error: str) -> None:
+    with pytest.raises(ParseError) as raised:
+        parse(line, context())
+    assert raised.value.message == error
+
+
+def test_chase_none_is_refused_on_a_list_in_chase_mode() -> None:
+    chasing = set_up(
+        cuelist={
+            "mode": "chase",
+            "chase": {"rate": {"kind": "hz", "value": 2}, "direction": "forward", "crossfade": 0},
+        }
+    )
+    with pytest.raises(ParseError) as raised:
+        parse("cuelist 1 chase none", chasing)
+    assert raised.value.message == "cue list 1 is in chase mode: 'cuelist 1 sequence' first"

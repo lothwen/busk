@@ -16,6 +16,11 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   templates.
 - `cue L/C effect <id> remove` removes one effect from a cue by its id. The cue stays.
 - `cuelist add N ["name"]` makes a cue list with no cues.
+- `playback add N cuelist L [at [P.]S] ["name"]` makes a playback on a list that exists, placed on
+  a page in the same undo step. `playback N cuelist L` points one at another list by number, and
+  is refused while it runs.
+- `help`, Tab and `?` name a playback's and a cue list's properties and the values of those with
+  a closed set. `<property> none` removes an optional one, such as `playback 3 exclusivity none`.
 - F6 edits presets from controls. `[edit]` or a `+ record` tile opens the PRESET panel: what a
   preset holds and the cues that use it, rename, renumber, delete after a question, and new
   presets and new values recorded through the programmer. Its editors are the encoder rows, a

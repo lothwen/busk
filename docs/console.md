@@ -60,6 +60,7 @@ session, as the web remote's commands do. `help` prints the grammar.
 | Bindings, feedback | `bind "nanoKONTROL2" cc 1 0 fader 1`, `… cc 1 32 button 1 1 [led]`, `… cc 1 7 fader playback 18 [motor]`, `… cc 1 23 master gm`, `… cc 1 18 master "Speed 1"`, `… cc 1 46 tap ["Speed 1"]`, `… cc 1 42 blackout [momentary]`, `… cc 1 62 page +1`, `… note 1 60 page 2`, `bind "Touch" osc "/fader/1" fader 1 [display osc "/label/1"]`, `bind "nanoKONTROL2" clock tap`, `… cc 1 60 release all [2]`, `… note 1 61 output off`, `feedback "nanoKONTROL2" cc 1 32 thru 39 led\|motor\|display\|none`, `unbind "nanoKONTROL2" cc 1 60 [thru 61]` |
 | Pages | `page 2`, `page next\|prev`, `page add 2 ["Washes"]`, `page 2 slot 1 playback 14`, `page 2 slot 5 clear`, `record slot 2.1`, `playback 9 goto 4` |
 | Edit | `playback 3 exclusivity color`, `cue 3/1 timing.fadeIn 1`, `playback 1 buttons ["toggle", "flash", "release"]`, `show meta.title "Club Night"`, `rename group 1 "Heads"`, `delete cue 10/2`, `delete fixture 101 cascade`, `delete universe 2 cascade`, `fixture 101 location {"x": 1, "y": 2, "z": 3, "rx": 0, "ry": 0, "rz": 0}`, `fixture 101 location none`, `fixture 101 thru 104 orientation.invertPan true`, `fixture 101 orientation.panOffset 30` |
+| Playbacks | `playback add 5 cuelist 10 [at [P.]S] ["name"]`, `playback 3 cuelist 10`, `playback 3 fader size`, `playback 3 flash.level 0.5`, `playback 3 exclusivity none` |
 | Timing, triggers | `cue 9/1 time 3 easeInOut`, `cue 9/3 time 1/3 delay 0/1`, `cue 9/2 time position 4 [delay 1] [easeOut]`, `… bezier 0.4 0 0.2 1`, `cue 9/3 wait 8`, `cue 9/5 follow 4`, `cue 9/2 go`, `cue 9/5 release group 1 [only pan tilt]` |
 | Cue lists, tempo | `cuelist add 5 ["name"]`, `cuelist 9 tracking true`, `cuelist 10 chase bpm ["Speed 1"] [x 2] [forward\|reverse\|bounce\|random] [crossfade 0.25]`, `cuelist 10 chase hz 4`, `cuelist 10 sequence`, `master add speed "Speed 1" [bpm 120] [steps 0.5, 1, 2]` |
 | Effects, masters | `effect add "Circle" [id fx1] [hz 0.5 \| bpm ["Speed 1"] [x 0.5]] [size 15] [low 0 high 1] [phase 0 180] [groups N] [blocks N] [wings 2] [forward\|reverse\|bounce] [fadein 1] [sizemaster "FX"] [speedmaster "Speed 1"]`, `effect remove fx1`, `effect clear`, `effect stop fx1`, `effect run fx1`, `effect template add "Name" [{…layers…}]`, `effect template update "Name" [{…layers…}]`, `effect template rename "Name" "New"`, `effect template delete "Name"`, `cue 9/4 effect rainbow size 0.5`, `cue 9/4 effect rainbow remove`, `master add size "FX"`, `master add group "Wash level" group 2`, `master add fadetime "Fade"` |
@@ -101,6 +102,25 @@ session, as the web remote's commands do. `help` prints the grammar.
 * **An empty cue list.** `cuelist add 5 ["name"]` makes a list with no cues, with the
   defaults of one that `record cue` makes, and `record cue 5` then appends its cue 1. `go`
   is refused on a playback whose list has no cues.
+* **A playback for a list.** `playback add 5 cuelist 10` makes a playback on a list that
+  exists, with the defaults of one `record slot` makes. `at [P.]S` places it on a free
+  slot in the same undo step, on the current page without `P`. `playback 3 cuelist 10`
+  points one at another list, and is refused while it is active or releasing: the engine
+  would not release it, but go on from a cue of the new list picked by its number.
+  Release it first.
+* **A playback's and a cue list's properties.** Tab offers their names, and the values
+  of those with a closed set; a name is taken in any case, and one that does not exist is
+  refused. A playback has `name`, `number`, `priority` (its band), `fader`, `buttons`,
+  `ltpFaderMode`, `ltpThreshold`, `autoStart`, `autoRelease`, `flash.level`,
+  `flash.includeLtp`, `flash.priorityBoost`, `exclusivity`, `gotoCue`, `protectFromSwop`,
+  `releaseTime`, `uiColor`, `notes` and `tags`. A cue list has `name`, `number`, `mode`,
+  `tracking`, `wrap`, `releaseAtEnd`, `chase`, `chase.direction`, `chase.crossfade`,
+  `chase.rate.value`, `chase.rate.multiplier`, `notes` and `tags`. A value is JSON, else
+  plain text (`playback 3 buttons ["go", "flash"]`). `<property> none` removes an optional
+  one: `flash.priorityBoost`, `exclusivity`, `gotoCue`, `uiColor`, `chase`, `notes`,
+  `tags`. In quotes, `"none"` is the word, and `playback 3 fader none` is a fader that
+  does nothing, since `fader` is not optional. A list in chase mode keeps its `chase`
+  settings until `cuelist N sequence`. `gotoCue` takes a bare cue number, as `goto` does.
 * **Tracking lists record changes only.** In a list with `tracking` on, `record cue`
   stores only the values that differ from what the list already tracks into that cue
   (`recorded cue 9/2: 4 entries; 8 values tracked from cue 9/1`); a cue whose values all

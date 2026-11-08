@@ -92,6 +92,8 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-31](#gap-31-editing-effect-templates) Editing effect templates | action | important | F5 | **done** 2026-11-08 |
 | [GAP-32](#gap-32-removing-one-effect-from-a-cue) Removing one effect from a cue | action | important | F5 | **done** 2026-11-08 |
 | [GAP-33](#gap-33-an-empty-cue-list) An empty cue list | action | nice-to-have | F4 | **done** 2026-11-08 |
+| [GAP-34](#gap-34-a-playback-for-a-list) A playback for a list | action | important | F1 | **done** 2026-11-08 |
+| [GAP-35](#gap-35-a-playbacks-and-a-cue-lists-properties-named) A playback's and a cue list's properties named | read, action | important | F1, F4 | **done** 2026-11-08 |
 
 ---
 
@@ -2281,3 +2283,89 @@ number below 1 is taken, as for pages. `record cue N` then appends cue 1, and `l
 raise, but marked the playback active on no cue, and replied nothing. A bound control's `GO`, and
 `button N B on` on a `go` button, still do that, and the engine runs on. `goto` already said `no
 cue 1 in cue list 10`. Tests: as GAP-32.
+
+## GAP-34: A playback for a list
+
+**Status:** done 2026-11-08 (see **Done** at the end of this section).
+
+Found while writing the TUI's operations report (`docs/dev/tui/operations-report.md`,
+2026-11-01), and ordered in `docs/plans/tui-pending-plan.md`, Phase 3.
+
+**Needed by:** F1's `[new playback…]` and PLAYBACK panel.
+
+**Today:** `record slot` makes a playback, always with a new cue list. No line makes one for a
+list that exists. `playback N cueListId "<id>"` points one at another list, but needs busk's
+internal id.
+
+**Engine should provide:** `playback add N cuelist L [at [P.]S] ["name"]`, with the placing in
+the same undo step, and `playback N cuelist L`.
+
+**Priority:** important.
+
+**TUI until then:** none.
+
+**Done** (2026-11-08). The two lines, in `_playback_add` and `_run_list` of `console/parser.py`,
+each a labelled `BATCH`: `added playback 5 'Mine' on cue list 10 at 1.2`, `playback 1 runs cue list
+10`. Documented in `docs/console.md`, `busk help` and the parser's module docs. A new playback has
+`_playback`'s defaults and the name `Playback N`. A taken number, a taken slot and an unknown list
+are refused in one line, and a number below 1 is taken, as for pages. A slot past the page's last
+extends it.
+
+**`playback N cuelist L` is refused while the playback is active or releasing:** `playback 1 is
+running: release it first`. Tried on `LiveShow` first, as the plan asked: the engine does not
+release it. `PlaybackRuntime.rebind` keeps it running and re-points it by the rule for an edited
+list, so it goes on from the cue that follows the old cue's number, or the last, and `undo` then
+lands on a different cue from the one it left. `Context.running`, read by `Console._running` from
+the engine's snapshot as `page` is, tells the parser, so it holds under `busk run` with processes
+too. The generic `playback N cueListId "<id>"` is guarded the same way. A list the playback's
+`gotoCue` names no cue of stays a warning, the validator's own rule. A line sent before the
+snapshot shows a `go` still goes through.
+
+Tests: `tests/test_console_parser.py`, `tests/test_console.py` (with a running `LiveShow`),
+`tests/test_frontend.py` (`busk run` with processes) and the completion table of
+`tests/test_console_prompt.py`.
+
+## GAP-35: A playback's and a cue list's properties named
+
+**Status:** done 2026-11-08 (see **Done** at the end of this section).
+
+Found while writing the TUI's operations report (`docs/dev/tui/operations-report.md`,
+2026-11-01), and ordered in `docs/plans/tui-pending-plan.md`, Phase 3.
+
+**Needed by:** F1's PLAYBACK panel and F4's list controls, which would otherwise hard-code busk's
+schema names.
+
+**Today:** the settings are generic property lines with JSON values. `help` and `expected()` name
+none of them (`playback 3 ` gives "a property, e.g. name or timing.fadeIn"), a mistyped name is
+refused by document path, and no line removes an optional property: `playback 1 exclusivity none`
+stores the word `none`.
+
+**Engine should provide:** the names at the property position of `expected()`, a closed set's
+values after a name, the same names in `help` and the docs, and `<property> none` for an optional
+one.
+
+**Priority:** important.
+
+**TUI until then:** none.
+
+**Done** (2026-11-08). `_setting` in `console/parser.py`, from the table `_SETTINGS`, each property
+with the values of its closed set. `tests/test_console_parser.py` walks `Playback` and `CueList`,
+so a property added to the model fails until it is named here, in `help` and in `docs/console.md`.
+What it settles:
+
+- **Offered** are the properties set with one value. **Taken but not offered:** `id`, `cueListId`,
+  `flash`, `cues`, `chase.rate`, `chase.rate.kind` and `chase.rate.masterId`, which other lines
+  set, by number, or which hold a whole object.
+- **A name is taken in any case,** as `orientation.*` is. One the model lacks is refused in one
+  line: `playback 1 has no property 'bogus'`.
+- **The value stays the generic edit's,** JSON or plain text, and the validator judges it, so a word
+  outside a closed set is refused by document path (the plan's §5, item 9). Only the offer is new.
+- **`none`** removes `flash.priorityBoost`, `exclusivity`, `gotoCue`, `uiColor`, `chase`, `notes`
+  and `tags`, in one labelled undo step, and is refused when the property is not set: `playback 3
+  has no gotoCue`, as GAP-25's limits are. `"none"` in quotes is the word. `chase none` is refused
+  on a list in chase mode, which needs its settings, and `notes none of this` is a note, since
+  only a lone `none` removes.
+- **`gotoCue` takes a bare cue number,** as `playback N goto` does, because the generic edit reads
+  `2` as a JSON number and refuses it. A quoted one stays the generic edit.
+
+Tests: `tests/test_console_parser.py` and the completion table of `tests/test_console_prompt.py`.

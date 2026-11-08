@@ -89,6 +89,18 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
     effect template rename "<name>" "<new name>" | effect template delete "<name>"
     cue L/C effect <id> <prop[.sub…]> <value> | cue L/C effect <id> remove
     cuelist add N ["name"]
+    playback add N cuelist L [at [P.]S] ["name"] | playback N cuelist L
+    playback N <property> <value> | playback N <optional> none
+        <property> = name | number | priority | fader | buttons | ltpFaderMode
+                   | ltpThreshold | autoStart | autoRelease | flash.level
+                   | flash.includeLtp | flash.priorityBoost | exclusivity | gotoCue
+                   | protectFromSwop | releaseTime | uiColor | notes | tags
+        <optional> = flash.priorityBoost | exclusivity | gotoCue | uiColor | notes | tags
+    cuelist N <property> <value> | cuelist N <optional> none
+        <property> = name | number | mode | tracking | wrap | releaseAtEnd | chase
+                   | chase.direction | chase.crossfade | chase.rate.value
+                   | chase.rate.multiplier | notes | tags
+        <optional> = chase | notes | tags
     undo | redo | save [PATH] | list <kind> | list cues L | library | info
     status | help | source FILE | quit
 
@@ -246,6 +258,22 @@ cues, with the defaults of a list that ``record cue`` makes; ``record cue N``
 appends to it. ``go`` is refused on a playback whose list has no cues, since
 the engine would mark it active on no cue.
 
+A playback for a list (GAP-34). ``playback add N cuelist L`` makes a playback
+with the defaults of one that ``record slot`` makes, on a list that exists;
+``at [P.]S`` places it on a free slot in the same undo step, on the engine's
+current page without ``P``. ``playback N cuelist L`` points one at another
+list, and is refused while it is active or releasing: the engine would not
+release it but go on from a cue of the new list, picked by its number.
+
+A playback's and a cue list's properties (GAP-35). Tab offers their names and
+the values of a closed set; a name is taken in any case, and one the model does
+not have is refused here. The value is the generic edit's, and the validator
+judges it, so a word outside a closed set is refused by its document path.
+``gotoCue`` takes a bare cue number, as ``goto`` does.
+``<optional> none`` removes an optional property, refused when it is not set;
+in quotes, ``"none"`` is the word. ``chase none`` is refused on a list in chase
+mode, which needs them.
+
 Completion (Tab and ``?`` at the prompt, :mod:`busk.console.prompt`).
 :func:`expected` parses a line up to the word being typed. Where the line
 runs out, the parser notes what it was looking for: keywords, names in
@@ -351,8 +379,9 @@ class Context:
     """What parsing reads: the current show, the profile library, the id
     factory, the network interface for multicast and broadcast routes, the
     effect library, the programmer (``effect add`` targets its selection),
-    and the id of the engine's current page (``record slot S`` records on
-    it; ``None`` without an engine, which starts on the first page)."""
+    the id of the engine's current page (``record slot S`` records on it;
+    ``None`` without an engine, which starts on the first page), and the ids
+    of the playbacks the engine has active or releasing."""
 
     show: Show
     library: ProfileLibrary
@@ -361,6 +390,7 @@ class Context:
     effects: EffectLibrary = field(default_factory=builtin_effects)
     programmer: Programmer = EMPTY
     page: str | None = None
+    running: frozenset[str] = frozenset()
 
 
 def parse(line: str, context: Context) -> Action:
@@ -558,6 +588,39 @@ _EFFECT_OPTIONS: Final = (
     "id", "hz", "bpm", "size", "low", "phase", "groups", "blocks", "wings",
     *_EFFECT_DIRECTIONS, "fadein", "sizemaster", "speedmaster",
 )  # fmt: skip
+_BOOLEAN: Final = ("true", "false")
+_SETTINGS: Final[Mapping[str, Mapping[str, tuple[str, ...]]]] = {
+    "playback": {
+        "name": (), "number": (), "priority": (),
+        "fader": ("master", "crossfade", "rate", "size", "temp", "none"),
+        "buttons": (), "ltpFaderMode": ("followFader", "threshold", "ignoreFader"),
+        "ltpThreshold": (), "autoStart": _BOOLEAN, "autoRelease": _BOOLEAN, "flash.level": (),
+        "flash.includeLtp": _BOOLEAN, "flash.priorityBoost": (), "exclusivity": (), "gotoCue": (),
+        "protectFromSwop": _BOOLEAN, "releaseTime": (), "uiColor": (), "notes": (), "tags": (),
+    },
+    "cuelist": {
+        "name": (), "number": (), "mode": ("sequence", "chase"), "tracking": _BOOLEAN,
+        "wrap": _BOOLEAN, "releaseAtEnd": _BOOLEAN, "chase": (), "chase.direction": _DIRECTIONS,
+        "chase.crossfade": (), "chase.rate.value": (), "chase.rate.multiplier": (), "notes": (),
+        "tags": (),
+    },
+}  # fmt: skip
+"""What ``expected`` offers for a playback and a cue list (GAP-35): each
+property, with the values of a closed set."""
+_UNOFFERED: Final[Mapping[str, tuple[str, ...]]] = {
+    "playback": ("id", "cueListId", "flash"),
+    "cuelist": ("id", "cues", "chase.rate", "chase.rate.kind", "chase.rate.masterId"),
+}
+"""Properties a line may name that are not offered: other lines set them, by
+number, or they hold a whole object."""
+_SETTING_NAMES: Final = {
+    head: {name.lower(): name for name in (*settings, *_UNOFFERED[head])}
+    for head, settings in _SETTINGS.items()
+}
+_OPTIONAL: Final = frozenset(
+    {"flash.priorityBoost", "exclusivity", "gotoCue", "uiColor", "notes", "tags", "chase"}
+)
+"""Properties that ``none`` removes."""
 _DEFAULT_BPM: Final = 120
 _DEFAULT_PORTS: Final = {"osc": 8000, "web": 8080}
 _FEEDBACK: Final = {"led": "led", "motor": "motorFader", "display": "display"}
@@ -1355,7 +1418,8 @@ class _Parser:
             }
         )
 
-    def _record_slot(self) -> Action:
+    def _page_slot(self) -> tuple[dict[str, Any], int]:
+        """``[P.]S``: a page, the current one without ``P``, and a slot from 1."""
         token = self.take("a slot number, as S or P.S")
         match = _SLOT.fullmatch(token.text)
         if token.quoted or match is None:
@@ -1368,6 +1432,10 @@ class _Parser:
             if match[1] is None
             else self.by_number("pages", int(match[1]), "page")
         )
+        return page, slot
+
+    def _record_slot(self) -> Action:
+        page, slot = self._page_slot()
         options = self.options("merge", "name", "only")
         on = f"on page {page['number']}"
         occupant = page["slots"][slot - 1] if slot <= len(page["slots"]) else None
@@ -1950,6 +2018,8 @@ class _Parser:
             return self._universe_add()
         if head == "cuelist" and self.keyword("add"):
             return self._cuelist_add()
+        if head == "playback" and self.keyword("add"):
+            return self._playback_add()
         if head == "page":
             if self.keyword("add"):
                 return self._page_add()
@@ -1977,8 +2047,11 @@ class _Parser:
                 return self.submit({"type": "PAGE", "number": page["number"]})
             if self.keyword("slot"):
                 return self._assign(page["id"])
-        if head == "playback" and self.keyword("goto"):
-            return self._goto_cue(path)
+        if head == "playback":
+            if self.keyword("goto"):
+                return self._goto_cue(path)
+            if self.keyword("cuelist"):
+                return self._run_list(path)
         if head == "cuelist":
             if self.keyword("sequence"):
                 return self.submit({"type": "SET", "path": [*path, "mode"], "value": "sequence"})
@@ -1986,10 +2059,10 @@ class _Parser:
             if words in (["chase", "hz"], ["chase", "bpm"]):  # else chase {json}: a plain SET
                 self.k += 1
                 return self._chase(path)
-            if not words:
-                self.offers.append("chase")
-            elif words == ["chase"]:
+            if words == ["chase"]:
                 self.offers += ("hz", "bpm")
+        if head in _SETTINGS:
+            return self._setting(head, path)
         return self._set(path, "name or timing.fadeIn")
 
     def _renumber(self, head: str, path: EditPath) -> Action:
@@ -2050,6 +2123,56 @@ class _Parser:
         value = _cue_list(self.new_id("cl", "cueLists"), number, name)
         return self.submit({"type": "ADD", "path": ["cueLists"], "value": value})
 
+    def _playback_add(self) -> Action:
+        """``playback add N cuelist L [at [P.]S] ["name"]``: a playback on a
+        list that exists, placed on a page in the same undo step."""
+        number = self.integer("a playback number")
+        if any(playback["number"] == number for playback in self.show["playbacks"]):
+            raise ParseError(f"playback {number} exists")
+        self.expect("cuelist")
+        cue_list = self.by_number("cueLists", self.integer("a cue list number"), "cue list")
+        ident = self.new_id("pb", "playbacks")
+        label = f"on cue list {cue_list['number']}"
+        placed: list[dict[str, Any]] = []
+        if self.keyword("at"):
+            page, slot = self._page_slot()
+            if slot <= len(page["slots"]) and page["slots"][slot - 1] is not None:
+                raise ParseError(f"slot {slot} is in use on page {page['number']}")
+            label += f" at {page['number']}.{slot}"
+            placed.append(
+                {"type": "ASSIGN_PLAYBACK", "pageId": page["id"], "slot": slot - 1,
+                 "playbackId": ident}
+            )  # fmt: skip
+        name = self._name() or f"Playback {number}"
+        self.done()
+        value = _playback(ident, number, name, cue_list["id"])
+        return Submit(
+            _labelled(
+                f"added playback {number} {name!r} {label}",
+                {"type": "ADD", "path": ["playbacks"], "value": value},
+                *placed,
+            )
+        )
+
+    def _run_list(self, path: EditPath) -> Action:
+        """``playback N cuelist L``: the list it runs, by number."""
+        playback = _element(self.show["playbacks"], path)
+        cue_list = self.by_number("cueLists", self.integer("a cue list number"), "cue list")
+        self.done()
+        self._not_running(playback)
+        return Submit(
+            _labelled(
+                f"playback {playback['number']} runs cue list {cue_list['number']}",
+                {"type": "SET", "path": [*path, "cueListId"], "value": cue_list["id"]},
+            )
+        )
+
+    def _not_running(self, playback: Mapping[str, Any]) -> None:
+        """Refuse another list for a running playback: the engine would not
+        release it, but go on from a cue of the new list picked by its number."""
+        if playback["id"] in self.ctx.running:
+            raise ParseError(f"playback {playback['number']} is running: release it first")
+
     def _assign(self, page: str) -> Action:
         """``page P slot S playback N`` or ``page P slot S clear``."""
         slot = self._slot()
@@ -2077,12 +2200,50 @@ class _Parser:
         keys = prop.text.split(".")
         if not all(keys):
             raise ParseError(f"expected a property, got {prop.text!r}")
+        return self._value([*path, *keys])
+
+    def _value(self, path: EditPath) -> Action:
+        """The rest of the line as the value at ``path``: JSON, else the raw
+        text as a string."""
         raw = self.rest()
         try:
             value = json.loads(raw)
         except ValueError:
             value = raw
-        return Submit(cast(Command, {"type": "SET", "path": [*path, *keys], "value": value}))
+        return Submit(cast(Command, {"type": "SET", "path": path, "value": value}))
+
+    def _setting(self, head: str, path: EditPath) -> Action:
+        """``<property> <value>`` of a playback or a cue list, or ``<property>
+        none`` for an optional one (GAP-35)."""
+        collection, what = _COLLECTIONS[head]
+        item = _element(self.show[collection], path)  # type: ignore[literal-required]
+        who = f"{what} {item['number']}"
+        prop = self.take("a property", *_SETTINGS[head])
+        name = _SETTING_NAMES[head].get(prop.text.lower())
+        if name is None:
+            raise ParseError(f"{who} has no property {prop.text!r}")
+        keys = name.split(".")
+        optional = name in _OPTIONAL
+        words = _SETTINGS[head].get(name, ())
+        if self.ending(*words, *(("none",) if optional else ()), need="" if words else "a value"):
+            raise _Unfinished("expected a value")
+        if optional and self.peek(1) is None and self.keyword("none"):
+            holder: Mapping[str, Any] = item
+            for key in keys[:-1]:
+                holder = holder[key]
+            if keys[-1] not in holder:
+                raise ParseError(f"{who} has no {name}")
+            if name == "chase" and item["mode"] == "chase":
+                raise ParseError(
+                    f"{who} is in chase mode: 'cuelist {item['number']} sequence' first"
+                )
+            delete = {"type": "DELETE", "path": [*path, *keys]}
+            return Submit(_labelled(f"removed the {name} of {who}", delete))
+        if name == "cueListId":
+            self._not_running(item)
+        if name == "gotoCue" and not cast(Token, self.peek()).quoted:
+            return self._goto_cue(path)  # a cue number is not a JSON number
+        return self._value([*path, *keys])
 
     def _cue_effect(self, path: EditPath, cue: Mapping[str, Any], ref: str) -> Action:
         """``cue L/C effect <id> <prop[.sub…]> <value>``, a property of one of

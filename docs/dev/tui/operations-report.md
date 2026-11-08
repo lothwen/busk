@@ -63,8 +63,7 @@ In short:
   a screen except a programmer effect (`✕`), and ADD has controls only for cues (append) and
   programmer effects. UPDATE has pre-fills for a cue's timing, trigger and name. The rest is
   typed at the prompt.
-- **busk itself is missing a few lines.** It cannot add a playback for an existing cue
-  list, or edit a route. Only a fixture and a universe delete with what uses them: a preset, cue list or playback that something uses must first
+- **busk itself is missing a few lines.** It cannot edit a route. Only a fixture and a universe delete with what uses them: a preset, cue list or playback that something uses must first
   be freed by hand (see [What busk is missing](#what-busk-is-missing)).
 
 ## Fixtures and patch
@@ -178,13 +177,13 @@ recorded into cues, and the templates both are made from.
 | Flash | `flash N on\|off` | yes | control: FLASH, held |
 | Release | `release N [<s>]`, `release all` | yes | control: F5 state click (cue effects), F7 `release all`; prompt for one playback |
 | The playback's own buttons | `button N B on\|off`, `toggle N` (GAP-04) | yes | prompt. Every strip shows GO, ◂ and FLASH whatever the playback's `buttons` are, so a `toggle`, `release`, `select` or `swop` button cannot be pressed from F1 |
-| Add | none. `record slot [P.]S` creates a playback, always with a new cue list and its cue 1, with fixed defaults | partial: no playback for an existing cue list (`submit()` can) | prompt |
+| Add | `playback add N cuelist L [at [P.]S] ["name"]` (GAP-34); `record slot [P.]S` makes one with a new cue list and its cue 1 | yes | prompt |
 | Delete | `delete playback N` | partial: refused while a page slot holds it (`page P slot S clear` on every page first); its cue list stays | prompt |
 | Place on a page | `page P slot S playback N`, `page P slot S clear`, `page add N` | yes | prompt |
-| Buttons, fader function | `playback N buttons ["go", "flash", "release"]`, `playback N fader "rate"` | partial: generic properties with JSON values; `help` and `?` name no properties | prompt |
-| Band, exclusivity, flash, LTP, release time, colour | `playback N priority 60`, `… exclusivity "wash"`, `… flash.level 0.5`, `… ltpFaderMode "followFader"`, `… releaseTime 2`, `… uiColor "#ff8800"` | partial: as above | prompt |
+| Buttons, fader function | `playback N buttons ["go", "flash", "release"]`, `playback N fader rate` | yes: `help` and `?` name them (GAP-35) | prompt |
+| Band, exclusivity, flash, LTP, release time, colour | `playback N priority 60`, `… exclusivity wash`, `… flash.level 0.5`, `… ltpFaderMode followFader`, `… releaseTime 2`, `… uiColor "#ff8800"`, `<optional> none` | yes: as above | prompt |
 | Rename, renumber | `rename playback N "…"`, `playback N number M` | yes | prompt |
-| Run another cue list | `playback N cueListId "<id>"` | partial: needs busk's internal id | prompt |
+| Run another cue list | `playback N cuelist L` (GAP-34) | yes: refused while it runs | prompt |
 
 ## What busk is missing
 
@@ -192,8 +191,8 @@ Candidates for [engine-gaps.md](engine-gaps.md), if the TUI is to cover these:
 
 1. **Closed: effect templates** (GAP-31). `effect template delete`, `rename` and `update` do
    what only `submit()` could.
-2. **Playbacks** can only be created by `record slot`, which always makes a new cue list. No
-   line adds a playback for an existing list, or points a playback at another list by number.
+2. **Closed: a playback for a list** (GAP-34). `playback add N cuelist L [at [P.]S] ["name"]`
+   makes one and `playback N cuelist L` points one at another list by number.
 3. **Closed: a cue's effect** (GAP-32). `cue L/C effect <id> remove` removes one by its id.
 4. **Closed: a fixture's mode and profile** (GAP-26). `fixture N mode <mode>` and `fixture N
    profile "<profile>" mode <mode>` change them by name, each in one undo step.
@@ -202,10 +201,8 @@ Candidates for [engine-gaps.md](engine-gaps.md), if the TUI is to cover these:
    entity per line. To delete a preset used by cues, a cue list a playback runs or a playback
    on a page, every reference must be removed first. The error lists them. A TUI delete button
    for those would mostly show that error, as F6's stays grey and names what uses the preset.
-7. **Playback and cue list settings** are only reachable as generic property lines with JSON
-   values. They work, but `help` and `expected()` name no properties (`playback 3 ` gives "a
-   property, e.g. name or timing.fadeIn"). A TUI form would have to hard-code busk's schema
-   names.
+7. **Closed: playback and cue list settings** (GAP-35). `help` and `expected()` name them, a
+   closed set offers its values, and `<property> none` removes an optional one.
 8. **Closed: removing and switching a route** (GAP-23). This list first left it out: `route add`
    was the only route line, so none removed a route or switched one off.
 9. **A route** cannot be edited. To change one, delete it and add another.

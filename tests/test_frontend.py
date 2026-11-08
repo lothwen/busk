@@ -510,6 +510,42 @@ def test_a_universe_that_cascades_goes_from_the_engine_process_and_comes_back(
     assert back[-1] == [101, 102, 201]
 
 
+def test_a_running_playback_keeps_its_list_under_busk_run_with_processes(
+    tmp_path: Path, receiver: Receiver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GAP-34, under ``busk run`` with processes: the console process knows from
+    the frames what runs, and the list changes once the playback is idle."""
+    routes = [["r1", "ok"]]
+
+    def states(first: str, cues: int) -> list[list[object]]:
+        return [[1, first, cues], [3, "idle", 1], [6, "idle", 1]]
+
+    report_path = plan(
+        tmp_path,
+        monkeypatch,
+        steps=[
+            {"line": "go 1", "routes": routes, "playbacks": states("active", 2)},
+            {"line": "playback 1 cuelist 10", "routes": routes, "playbacks": states("active", 2)},
+            {"line": "release 1 0", "routes": routes, "playbacks": states("idle", 2)},
+            {"line": "playback 1 cuelist 10", "routes": routes, "playbacks": states("idle", 1)},
+            {"line": "undo", "routes": routes, "playbacks": states("idle", 2)},
+        ],
+    )
+    with BuskRun(
+        run_show(tmp_path), *frontend(tmp_path, "--no-log"), sacn_port=receiver.port
+    ) as busk:
+        assert busk.wait() == 0, busk.err
+    report = json.loads(report_path.read_text())
+    assert report["timeout"] is None, report
+    assert [step[1:3] for step in report["steps"]] == [
+        ["", True],
+        ["error: playback 1 is running: release it first", False],
+        ["", True],
+        ["playback 1 runs cue list 10", True],
+        ["undid: playback 1 runs cue list 10", True],
+    ]
+
+
 def test_a_library_profile_is_listed_taken_and_undone_from_the_engine_process(
     tmp_path: Path, receiver: Receiver, monkeypatch: pytest.MonkeyPatch
 ) -> None:
