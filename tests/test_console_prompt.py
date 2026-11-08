@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import os
 import select
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -445,7 +446,10 @@ def test_a_line_ending_in_a_question_mark_asks_where_it_is_no_key(console: Conso
 # ------------------------------------------------------------ a real prompt
 
 PROMPT_SCRIPT = f"""
+import fcntl
 import sys
+import termios
+fcntl.ioctl(0, termios.TIOCSCTTY, 0)  # the pty is this session's terminal: Ctrl+C is a SIGINT
 sys.path[:0] = [{str(ROOT / "src")!r}, {str(ROOT / "tests")!r}]
 from builders import APPENDIX_A, load_doc
 from session_harness import Live
@@ -457,17 +461,26 @@ print("[EXIT]", flush=True)
 
 
 def test_tab_question_mark_and_ctrl_c_on_a_terminal() -> None:
-    """The readline glue on a pseudo-terminal, with this interpreter's readline."""
-    pty = pytest.importorskip("pty")
+    """The readline glue on a pseudo-terminal, with this interpreter's readline.
+
+    The prompt starts through ``subprocess``, in a session of its own, and takes
+    the pty as that session's terminal itself. ``pty.fork`` would run Python in
+    the child between fork and exec, which can deadlock it in a process with
+    threads, such as a pytest-xdist worker."""
+    pytest.importorskip("termios")
     readline = pytest.importorskip("readline")
     libedit = "libedit" in (readline.__doc__ or "")
-    pid, fd = pty.fork()
-    if pid == 0:  # the child: a prompt on the terminal
-        try:
-            env = {**os.environ, "TERM": "xterm", "INPUTRC": os.devnull}
-            os.execve(sys.executable, [sys.executable, "-c", PROMPT_SCRIPT], env)
-        finally:
-            os._exit(127)
+    fd, terminal = os.openpty()
+    env = {**os.environ, "TERM": "xterm", "INPUTRC": os.devnull}
+    child = subprocess.Popen(
+        [sys.executable, "-c", PROMPT_SCRIPT],
+        stdin=terminal,
+        stdout=terminal,
+        stderr=terminal,
+        env=env,
+        start_new_session=True,
+    )
+    os.close(terminal)  # the child's alone, so its exit ends the reads below
     out = b""
 
     def expect(text: str) -> str:
@@ -484,6 +497,14 @@ def test_tab_question_mark_and_ctrl_c_on_a_terminal() -> None:
         before, _, out = out.partition(text.encode())
         return before.decode(errors="replace")
 
+    def ctrl_c() -> None:
+        """Press Ctrl+C at the prompt that has just shown. Python's readline acts
+        on a SIGINT only when it interrupts the select() that waits for a key:
+        one that lands between the prompt and that select() is lost, and the
+        terminal drops its input with it. Give readline time to get there."""
+        time.sleep(0.2)
+        os.write(fd, b"\x03")
+
     try:
         expect("busk> ")
         os.write(fd, b"sel fix\t101\r")  # Tab completes "fixture "
@@ -491,15 +512,14 @@ def test_tab_question_mark_and_ctrl_c_on_a_terminal() -> None:
         os.write(fd, b"route add 1 ?" + (b"\r" if libedit else b""))
         expect("next: artnet  dmxusb  sacn")
         expect("busk> ")  # the line again (libedit: a new, empty one)
-        time.sleep(0.2)  # a Ctrl+C while the help is still printing would be lost
         if not libedit:  # GNU readline kept the line: Ctrl+C clears it, and that is all
-            os.write(fd, b"\x03")
+            ctrl_c()
             assert "press Ctrl+C" not in expect("busk> ")
-        os.write(fd, b"\x03")
+        ctrl_c()
         expect("press Ctrl+C again to quit")
         expect("busk> ")
-        os.write(fd, b"\x03")
+        ctrl_c()
         expect("[EXIT]")
     finally:
         os.close(fd)
-        os.waitpid(pid, 0)
+        child.wait()

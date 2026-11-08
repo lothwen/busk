@@ -17,7 +17,18 @@ import pytest
 if importlib.util.find_spec("textual") is None:
     collect_ignore_glob = ["test_tui_*.py"]
 else:
+    import time
+
+    import textual._wait
+
     import busk
+
+    # Pilot.press, .click and .pause wait until the process looks idle, judged by
+    # process_time(), the CPU of every thread. A real engine thread (the end-to-end
+    # tests) never lets it look idle, so each wait ran to its 1 s cap. The app's own
+    # work runs on the event loop's thread: judge that thread alone.
+    assert hasattr(textual._wait, "process_time"), "Textual changed wait_for_idle"
+    textual._wait.process_time = time.thread_time
 
     ROOT = Path(__file__).resolve().parents[2]
     CLUB_NIGHT = ROOT / "examples" / "club-night.busk"

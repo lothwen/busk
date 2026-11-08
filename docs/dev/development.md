@@ -22,6 +22,7 @@ compiler and the ALSA headers.
 
 ```bash
 uv run pytest                                          # 3175 tests + 1 opt-in skip; no packet leaves the machine
+uv run pytest -n 6                                     # the same on 6 workers (pytest-xdist): minutes instead of a quarter of an hour
 uv run python -m pytest tests/tui                      # the terminal UI's tests (skipped without Textual)
 uv run pytest -m perf -s                               # conversion, output, tick, GO-burst, chase, effect, feedback, safety and TUI benchmarks (opt-in)
 uv run pytest -m soak -s                               # a 60 s soak with an engine kill, a console kill and an unplug (opt-in, Phase 7)
