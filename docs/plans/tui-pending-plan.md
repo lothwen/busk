@@ -341,9 +341,46 @@ One gap, five kinds. Code: `src/busk/console/cascade.py` and `_cmd_delete`. Test
    Verify, for each kind: every entity of both shipped shows, valid, and `undo` gives an equal
    document; all in a row, then saved and reloaded; `confirmation()` names what goes and says when
    a playback is running; an effect left with no palette; on a running show and under `busk run`.
+
+   **Done** (2026-11-08). As planned, in `preset_cascade`, `group_cascade`, `cue_list_cascade`,
+   `playback_cascade` and `page_cascade` of `src/busk/console/cascade.py`. A cue list's playbacks
+   are walked as one set, or two on one page or in one `BATCH` binding would be two edits of the
+   same place. Which the user may veto:
+   - **An effect left with no palette refuses the line**, with `cascade` too: `preset color 3 is
+     the last colour of a palette of effect template "Solid": change the template first`. The
+     validator refuses a colour layer with no colour, and §5, item 3 keeps a used template out of
+     cascades. Neither shipped show has a palette that names a preset. The other way would be to
+     drop the layer, or the template and the cue effects that use it.
+   - `PAGE` by number goes with its page, which the table did not name: it is `pageAbs` as a
+     command.
+   - A group's master takes what drives it: a `master` binding and `SET_MASTER`.
+   - The question and the reply give the entity's name, as a universe's do: `Delete preset color 1
+     "Blue"? It leaves cues 3/1, 9/1.` The programmer is not mentioned: what it holds of a deleted
+     preset goes dormant, as it did.
 2. **Refusals in words.** A plain `delete` of a used fixture, universe, preset, cue list, playback,
    group or page prints one line, counted from the same walk as the cascade: `fixture 101 is used
    by 2 groups, 2 presets and 14 cues: add cascade`.
+
+   **Done** (2026-11-08). As planned: `Cascade.refusal`, which `_cmd_delete` raises. At `delete
+   group 1 ` Tab offers `cascade`, and `expected()` says the line is not runnable as it stands.
+   Which the user may veto:
+   - The walk, not the validator, decides. So a plain `delete` is also refused for what the
+     validator only warns about or never checks: a page named by a `pageAbs` binding, and a fixture
+     named only by an `ADD_EFFECT` binding. Both went through before.
+   - A cue list counts the pages and bindings of its playbacks too: `cue list 9 is used by 1
+     playback and 2 pages: add cascade`, as the cascade's reply does.
+   - The generic edit keeps its paths (§5, item 9), so `docs/console.md`'s example of a refusal by
+     path is now a `group N members` edit.
+
+**Phase 4 checks** (2026-11-08). The whole suite: 5,420 passed and 1 skipped, in 3:19 with `uv run pytest -n 6`. `ruff
+check`, `ruff format --check` and `mypy src` clean. 34 mutations of `cascade.py` and `_cmd_delete`,
+all caught. `tests/test_cascade.py` deletes every group, preset, cue list, playback and page of both
+shipped shows with `undo`, and all of them in a row in two orders, saved and reloaded. A real `busk
+run --state-dir …` with processes on the club show: `go 11`, each refusal, then `delete playback 11
+cascade` and `delete cuelist 12 cascade` while they ran, the preset, the group, the current page,
+each with `undo`, 0 command errors and 0 overruns. Under `busk run` the running playback's question
+and its going are in `tests/test_frontend.py`. Docs: `docs/console.md`, `busk help`, GAP-36 in
+`docs/dev/tui/engine-gaps.md`, the report's rows, "In short" and item 6, and `CHANGELOG.md`.
 
 ### Phase 5: Engine: routes, several fixtures, profiles, parked values
 

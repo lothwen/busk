@@ -1,10 +1,11 @@
-"""Deletes that cascade (GAP-24 of ``docs/dev/tui/engine-gaps.md``).
+"""Deletes that cascade (GAP-24 and GAP-36 of ``docs/dev/tui/engine-gaps.md``).
 
 ``delete fixture N cascade`` takes the fixture out of everything that names
 it, and ``delete universe N cascade`` unpatches its fixtures and removes its
-routes, each in one undo step. A plain ``delete`` stays refused while
-anything uses what it deletes. Both ask first, always, and say what would go
-(``OfflineShow.confirmation``).
+routes. ``preset``, ``group``, ``cuelist``, ``playback`` and ``page`` cascade
+too, each in one undo step. A plain ``delete`` is refused in one line while
+anything uses what it deletes. A cascade asks first, always, and says what
+would go (``OfflineShow.confirmation``).
 
 The rig below has three pars, 1 to 3, and 1 is the one that goes.
 """
@@ -12,6 +13,7 @@ The rig below has three pars, 1 to 3, and 1 is the one that goes.
 from __future__ import annotations
 
 import copy
+import json
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -64,15 +66,19 @@ def submit(show: OfflineShow, command: dict[str, Any]) -> None:
     assert result.ok, result.message
 
 
-def bind(show: OfflineShow, ident: str, command: dict[str, Any]) -> None:
+def bind_action(show: OfflineShow, ident: str, action: dict[str, Any]) -> None:
     surface = show.show["surfaces"][0]["id"]
     binding = {
         "id": ident,
         "surfaceId": surface,
         "input": {"kind": "midiNote", "channel": 1, "note": len(show.show["bindings"])},
-        "action": {"kind": "command", "command": command},
+        "action": action,
     }
     submit(show, {"type": "ADD", "path": ["bindings"], "value": binding})
+
+
+def bind(show: OfflineShow, ident: str, command: dict[str, Any]) -> None:
+    bind_action(show, ident, {"kind": "command", "command": command})
 
 
 def cascade(show: OfflineShow, line: str = FIXTURE_LINE) -> Any:
@@ -383,6 +389,481 @@ def test_a_binding_that_patches_into_the_universe_goes(
     assert [binding["id"] for binding in doc["bindings"]] == ["here", "out"]
 
 
+# ------------------------------------------------------------------- a preset
+
+
+@pytest.fixture
+def colours(rig: OfflineShow) -> OfflineShow:
+    """Colour presets 1 and 2. Cue 10/1 uses both, and holds a level of 3."""
+    run(
+        rig,
+        "sel fixture 1",
+        "set color 1 0 0",
+        "record preset color 1",
+        "set color 0 1 0",
+        "record preset color 2",
+        "clear",
+        "sel fixture 1",
+        "set color preset color 1",
+        "sel fixture 2",
+        "set color preset color 2",
+        "sel fixture 3",
+        "set intensity 50%",
+        "record cue 10/1",
+        "clear",
+        "sel none",
+    )
+    return rig
+
+
+def preset_id(show: OfflineShow, number: int = 1) -> str:
+    return str(preset(show.show, number)["id"])
+
+
+def palette(*entries: dict[str, Any]) -> list[dict[str, Any]]:
+    return [{"attribute": "color", "palette": list(entries), "blend": "fade", "mode": "absolute"}]
+
+
+def template(show: OfflineShow, name: str, layers: list[dict[str, Any]]) -> None:
+    run(show, f'effect template add "{name}" {json.dumps(layers)}')
+
+
+def template_named(doc: Any, name: str) -> Any:
+    return next(t for t in doc["effects"] if t["name"] == name)
+
+
+def test_a_preset_takes_the_entries_that_use_it(colours: OfflineShow) -> None:
+    other = preset_id(colours, 2)
+    assert not colours.execute("delete preset color 1").ok
+    doc = cascade(colours, "delete preset color 1 cascade")
+    values = [entry["value"] for entry in cue(doc)["entries"]]
+    assert {"kind": "preset", "presetId": other} in values
+    assert {"kind": "literal", "value": 0.5} in values
+    assert len(values) == 2
+    assert [p["number"] for p in doc["presets"]] == [2]
+
+
+def test_a_cue_left_with_no_entry_stays(rig: OfflineShow) -> None:
+    run(rig, "sel fixture 1", "set color 1 0 0", "record preset color 1", "clear", "sel fixture 1")
+    run(rig, "set color preset color 1", "record cue 10/1", "clear", "sel none")
+    held = cue(cascade(rig, "delete preset color 1 cascade"))
+    assert held["entries"] == []
+
+
+def test_a_preset_leaves_a_palette_and_the_other_colours_stay(colours: OfflineShow) -> None:
+    gone, kept = preset_id(colours, 1), preset_id(colours, 2)
+    red = {"r": 1.0, "g": 0.0, "b": 0.0}
+    template(colours, "Mix", palette({"presetId": gone}, red, {"presetId": kept}))
+    assert not colours.execute("delete preset color 1").ok
+    doc = cascade(colours, "delete preset color 1 cascade")
+    assert template_named(doc, "Mix")["layers"][0]["palette"] == [red, {"presetId": kept}]
+
+
+def test_a_preset_a_palette_does_not_name_leaves_it_alone(colours: OfflineShow) -> None:
+    template(colours, "Mix", palette({"presetId": preset_id(colours, 2)}))
+    before = copy.deepcopy(template_named(colours.show, "Mix"))
+    doc = cascade(colours, "delete preset color 1 cascade")
+    assert template_named(doc, "Mix") == before
+
+
+@pytest.mark.parametrize("line", ["delete preset color 1 cascade", "delete preset color 1"])
+def test_a_palette_left_with_no_colour_refuses_the_line_whole(
+    colours: OfflineShow, line: str
+) -> None:
+    """A colour layer needs a colour, and a used template is not cascaded."""
+    template(colours, "Solid", palette({"presetId": preset_id(colours)}))
+    before = copy.deepcopy(colours.show)
+    reply = colours.execute(line)
+    assert not reply.ok
+    assert "\n" not in reply.text
+    assert colours.show == before
+    assert colours.confirmation(line) is None
+
+
+def test_the_refusal_names_the_palette_it_would_empty(colours: OfflineShow) -> None:
+    template(colours, "Solid", palette({"presetId": preset_id(colours)}))
+    assert colours.execute("delete preset color 1 cascade").text == (
+        'error: preset color 1 is the last colour of a palette of effect template "Solid": '
+        "change the template first"
+    )
+    assert colours.execute("delete preset color 1").text == (
+        "error: preset color 1 is used by 1 cue and 1 effect template: add cascade"
+    )
+
+
+def test_a_preset_takes_the_bindings_that_apply_it(colours: OfflineShow) -> None:
+    gone, kept = preset_id(colours, 1), preset_id(colours, 2)
+
+    def source(preset: str) -> dict[str, Any]:
+        return {"kind": "preset", "presetId": preset}
+
+    bind(colours, "apply", {"type": "APPLY_PRESET", "presetId": gone})
+    bind(colours, "set", {"type": "SET_ATTRIBUTE", "attribute": "color", "value": source(gone)})
+    bind(colours, "other", {"type": "APPLY_PRESET", "presetId": kept})
+    bind(
+        colours, "other set", {"type": "SET_ATTRIBUTE", "attribute": "color", "value": source(kept)}
+    )
+    doc = cascade(colours, "delete preset color 1 cascade")
+    assert [binding["id"] for binding in doc["bindings"]] == ["other", "other set"]
+
+
+# ------------------------------------------------------------------- a group
+
+
+@pytest.fixture
+def grouped(rig: OfflineShow) -> OfflineShow:
+    """Group 1 of fixtures 1 and 2, group 2 of 3. Cue 10/1 has an entry and an
+    effect on each, and releases each."""
+    run(
+        rig,
+        "sel fixture 1 thru 2",
+        'record group 1 "Pair"',
+        "sel fixture 3",
+        'record group 2 "One"',
+        "clear",
+        "sel group 1",
+        "set intensity 50%",
+        'effect add "Pulse"',
+        "sel group 2",
+        "set intensity 20%",
+        'effect add "Pulse"',
+        "record cue 10/1",
+        "clear",
+        "sel none",
+        "cuelist 10 tracking true",
+        "cue 10/1 release group 1",
+        "cue 10/1 release group 2",
+    )
+    return rig
+
+
+def group_id(show: OfflineShow, number: int = 1) -> str:
+    return str(next(g for g in show.show["groups"] if g["number"] == number)["id"])
+
+
+def test_a_group_takes_what_targets_it_and_the_other_group_stays(grouped: OfflineShow) -> None:
+    other = {"kind": "group", "groupId": group_id(grouped, 2)}
+    assert not grouped.execute("delete group 1").ok
+    doc = cascade(grouped, "delete group 1 cascade")
+    held = cue(doc)
+    assert [item["targets"] for item in held["entries"]] == [other]
+    assert [item["targets"] for item in held["effects"]] == [other]
+    assert [item["targets"] for item in held["releases"]] == [other]
+    assert [g["number"] for g in doc["groups"]] == [2]
+
+
+def test_a_cue_with_only_the_group_stays_empty(rig: OfflineShow) -> None:
+    run(rig, "sel fixture 1", 'record group 1 "One"', "set intensity 50%")
+    run(rig, "record cue 10/1", "clear", "sel none")
+    held = cue(cascade(rig, "delete group 1 cascade"))
+    assert (held["entries"], held["effects"]) == ([], [])
+
+
+def test_a_group_takes_its_group_master_and_what_drives_it(grouped: OfflineShow) -> None:
+    run(grouped, 'master add group "Pair level" group 1', 'master add group "One level" group 2')
+    pair, one, grand = [
+        next(m["id"] for m in grouped.show["masters"] if m["name"] == name)
+        for name in ("Pair level", "One level", "Grand Master")
+    ]
+    bind_action(grouped, "drive", {"kind": "master", "masterId": pair})
+    bind(grouped, "set", {"type": "SET_MASTER", "masterId": pair, "level": 1})
+    bind_action(grouped, "other", {"kind": "master", "masterId": one})
+    bind(grouped, "grand", {"type": "SET_MASTER", "masterId": grand, "level": 1})
+    assert not grouped.execute("delete group 1").ok
+    doc = cascade(grouped, "delete group 1 cascade")
+    assert sorted(m["name"] for m in doc["masters"]) == ["Grand Master", "One level"]
+    assert [binding["id"] for binding in doc["bindings"]] == ["other", "grand"]
+
+
+def test_a_group_takes_the_bindings_that_target_it(grouped: OfflineShow) -> None:
+    def on_group(number: int) -> dict[str, Any]:
+        return {"kind": "group", "groupId": group_id(grouped, number)}
+
+    def add_effect(targets: dict[str, Any]) -> dict[str, Any]:
+        effect = copy.deepcopy(cue(grouped.show)["effects"][0])
+        return {"type": "ADD_EFFECT", "effect": {**effect, "targets": targets}}
+
+    bind(grouped, "sel", {"type": "SELECT", "mode": "replace", "targets": on_group(1)})
+    bind(grouped, "fx", add_effect(on_group(1)))
+    bind(grouped, "sel 2", {"type": "SELECT", "mode": "replace", "targets": on_group(2)})
+    bind(grouped, "fx 2", add_effect(on_group(2)))
+    assert not grouped.execute("delete group 1").ok
+    doc = cascade(grouped, "delete group 1 cascade")
+    assert [binding["id"] for binding in doc["bindings"]] == ["sel 2", "fx 2"]
+
+
+# ------------------------------------------------------- a playback, a cue list
+
+
+@pytest.fixture
+def played(rig: OfflineShow) -> OfflineShow:
+    """Cue list 10 runs on playbacks 1 and 2, and 11 on 3. Page 1 holds 1 and
+    2; page 2 holds 3 and 1."""
+    run(
+        rig,
+        "sel fixture 1",
+        "set intensity 50%",
+        "record cue 10/1",
+        "record cue 11/1",
+        "clear",
+        "sel none",
+        'page add 2 "Other"',
+        'playback add 1 cuelist 10 at 1.1 "A"',
+        'playback add 2 cuelist 10 at 1.2 "B"',
+        'playback add 3 cuelist 11 at 2.1 "C"',
+        "page 2 slot 2 playback 1",
+    )
+    return rig
+
+
+def playback_id(show: OfflineShow, number: int) -> str:
+    return str(next(p for p in show.show["playbacks"] if p["number"] == number)["id"])
+
+
+def page_of(doc: Any, number: int) -> Any:
+    return next(p for p in doc["pages"] if p["number"] == number)
+
+
+def assign(page: str, slot: int, playback: str | None) -> dict[str, Any]:
+    return {"type": "ASSIGN_PLAYBACK", "pageId": page, "slot": slot, "playbackId": playback}
+
+
+def test_a_playback_empties_its_slots_and_its_list_stays(played: OfflineShow) -> None:
+    two, three = playback_id(played, 2), playback_id(played, 3)
+    assert not played.execute("delete playback 1").ok
+    doc = cascade(played, "delete playback 1 cascade")
+    assert page_of(doc, 1)["slots"] == [None, two]
+    assert page_of(doc, 2)["slots"] == [three, None]
+    assert [p["number"] for p in doc["playbacks"]] == [2, 3]
+    assert sorted(c["number"] for c in doc["cueLists"]) == [10, 11]
+
+
+def test_a_playback_takes_the_bindings_that_name_it(played: OfflineShow) -> None:
+    one, two = playback_id(played, 1), playback_id(played, 2)
+    page = page_of(played.show, 1)["id"]
+    bind_action(played, "abs", {"kind": "playbackFaderAbs", "playbackId": one})
+    bind(played, "go", {"type": "GO", "playbackId": one})
+    bind(played, "fader", {"type": "SET_FADER", "playbackId": one, "level": 1})
+    bind(
+        played, "button", {"type": "PLAYBACK_BUTTON", "playbackId": one, "button": 0, "down": True}
+    )
+    bind(played, "goto", {"type": "GOTO", "playbackId": one, "cueNumber": "1"})
+    bind(played, "assign", assign(page, 3, one))
+    bind_action(played, "abs 2", {"kind": "playbackFaderAbs", "playbackId": two})
+    bind(played, "go 2", {"type": "GO", "playbackId": two})
+    bind_action(played, "by slot", {"kind": "playbackFader", "slot": 0})
+    bind(played, "slot", {"type": "SET_FADER", "slot": 0, "level": 1})
+    bind(played, "empty", assign(page, 3, None))
+    doc = cascade(played, "delete playback 1 cascade")
+    assert [binding["id"] for binding in doc["bindings"]] == [
+        "abs 2",
+        "go 2",
+        "by slot",
+        "slot",
+        "empty",
+    ]
+
+
+def test_a_batch_binding_keeps_what_does_not_name_it(played: OfflineShow) -> None:
+    one, three = playback_id(played, 1), playback_id(played, 3)
+    page = page_of(played.show, 1)["id"]
+    both = [assign(page, 4, one), assign(page, 5, three)]
+    bind(played, "both", {"type": "BATCH", "label": "both", "commands": both})
+    alone = {"type": "BATCH", "label": "one", "commands": [assign(page, 4, one)]}
+    bind(played, "alone", alone)
+    [binding] = cascade(played, "delete playback 1 cascade")["bindings"]
+    assert binding["id"] == "both"
+    assert binding["action"]["command"]["commands"] == [assign(page, 5, three)]
+
+
+def test_a_cue_list_takes_every_playback_that_runs_it(played: OfflineShow) -> None:
+    three = playback_id(played, 3)
+    assert not played.execute("delete cuelist 10").ok
+    doc = cascade(played, "delete cuelist 10 cascade")
+    assert [c["number"] for c in doc["cueLists"]] == [11]
+    assert [p["number"] for p in doc["playbacks"]] == [3]
+    assert page_of(doc, 1)["slots"] == [None, None]
+    assert page_of(doc, 2)["slots"] == [three, None]
+
+
+def test_a_binding_of_two_of_its_playbacks_is_one_edit(played: OfflineShow) -> None:
+    """One edit per binding, or the second would put the first's command back."""
+    one, two, three = (playback_id(played, n) for n in (1, 2, 3))
+    page = page_of(played.show, 1)["id"]
+    mixed = [assign(page, 4, one), assign(page, 5, two), assign(page, 6, three)]
+    bind(played, "mixed", {"type": "BATCH", "label": "mixed", "commands": mixed})
+    gone = [assign(page, 4, one), assign(page, 5, two)]
+    bind(played, "gone", {"type": "BATCH", "label": "gone", "commands": gone})
+    [binding] = cascade(played, "delete cuelist 10 cascade")["bindings"]
+    assert binding["id"] == "mixed"
+    assert binding["action"]["command"]["commands"] == [assign(page, 6, three)]
+
+
+def test_a_cue_list_takes_the_bindings_of_its_playbacks_and_its_own(played: OfflineShow) -> None:
+    one, three = playback_id(played, 1), playback_id(played, 3)
+    ten, eleven = (
+        next(c["id"] for c in played.show["cueLists"] if c["number"] == n) for n in (10, 11)
+    )
+    bind_action(played, "abs", {"kind": "playbackFaderAbs", "playbackId": one})
+    bind(played, "go", {"type": "GO", "playbackId": one})
+    bind(played, "record", {"type": "RECORD_CUE", "cueListId": ten})
+    bind(played, "go 3", {"type": "GO", "playbackId": three})
+    bind(played, "record 11", {"type": "RECORD_CUE", "cueListId": eleven})
+    doc = cascade(played, "delete cuelist 10 cascade")
+    assert [binding["id"] for binding in doc["bindings"]] == ["go 3", "record 11"]
+
+
+def test_a_cue_list_only_a_binding_names_needs_the_cascade(played: OfflineShow) -> None:
+    run(played, "cuelist add 12")
+    ident = next(c["id"] for c in played.show["cueLists"] if c["number"] == 12)
+    bind(played, "record", {"type": "RECORD_CUE", "cueListId": ident})
+    assert played.execute("delete cuelist 12").text == (
+        "error: cue list 12 is used by 1 binding: add cascade"
+    )
+    assert cascade(played, "delete cuelist 12 cascade")["bindings"] == []
+
+
+def test_a_cue_list_with_no_playback_goes_plainly(rig: OfflineShow) -> None:
+    run(rig, "cuelist add 12")
+    assert rig.confirmation("delete cuelist 12") is None
+    assert rig.execute("delete cuelist 12").ok
+    assert rig.show["cueLists"] == []
+
+
+# -------------------------------------------------------------------- a page
+
+
+def test_a_page_takes_what_names_it_and_its_playbacks_stay(played: OfflineShow) -> None:
+    three = playback_id(played, 3)
+    first, second = page_of(played.show, 1)["id"], page_of(played.show, 2)["id"]
+    bind_action(played, "abs", {"kind": "pageAbs", "number": 2})
+    bind(played, "number", {"type": "PAGE", "number": 2})
+    bind(played, "assign", assign(second, 1, three))
+    bind_action(played, "abs 1", {"kind": "pageAbs", "number": 1})
+    bind(played, "number 1", {"type": "PAGE", "number": 1})
+    bind(played, "assign 1", assign(first, 3, three))
+    bind_action(played, "relative", {"kind": "page", "delta": 1})
+    bind(played, "delta", {"type": "PAGE", "delta": 1})
+    doc = cascade(played, "delete page 2 cascade")
+    assert [page["number"] for page in doc["pages"]] == [1]
+    assert [p["number"] for p in doc["playbacks"]] == [1, 2, 3]
+    assert [binding["id"] for binding in doc["bindings"]] == [
+        "abs 1",
+        "number 1",
+        "assign 1",
+        "relative",
+        "delta",
+    ]
+
+
+def test_a_page_named_only_by_number_needs_the_cascade(played: OfflineShow) -> None:
+    bind_action(played, "abs", {"kind": "pageAbs", "number": 2})
+    assert played.execute("delete page 2").text == (
+        "error: page 2 is used by 1 binding: add cascade"
+    )
+    assert page_of(played.show, 2)
+
+
+def test_a_page_nothing_names_goes_plainly_with_its_playbacks_on_it(played: OfflineShow) -> None:
+    assert played.confirmation("delete page 2") is None
+    assert played.execute("delete page 2").ok
+    assert [p["number"] for p in played.show["playbacks"]] == [1, 2, 3]
+
+
+def test_the_last_page_can_go(played: OfflineShow) -> None:
+    run(played, "delete page 2 cascade")
+    assert cascade(played, "delete page 1 cascade")["pages"] == []
+
+
+# ---------------------------------------------------------- a refusal in words
+
+
+USED_REFUSALS = [
+    ("delete fixture 1", "fixture 1 is used by 1 group and 1 preset: add cascade"),
+    ("delete universe 1", "universe 1 is used by 3 fixtures and 1 route: add cascade"),
+    ("delete preset intensity 1", "preset intensity 1 is used by 1 cue: add cascade"),
+    ("delete group 1", "group 1 is used by 1 cue: add cascade"),
+    ("delete cuelist 10", "cue list 10 is used by 1 playback and 1 page: add cascade"),
+    ("delete playback 1", "playback 1 is used by 1 page: add cascade"),
+]
+
+
+@pytest.fixture
+def used(rig: OfflineShow) -> OfflineShow:
+    run(
+        rig,
+        "sel fixture 1",
+        "set intensity 50%",
+        "record preset intensity 1 target",
+        "clear",
+        "sel fixture 1",
+        'record group 1 "One"',
+        "sel group 1",
+        "set intensity preset intensity 1",
+        "record cue 10/1",
+        "clear",
+        "sel none",
+        "route add 1 sacn 1",
+        'playback add 1 cuelist 10 at 1.1 "A"',
+    )
+    return rig
+
+
+@pytest.mark.parametrize(("line", "said"), USED_REFUSALS)
+def test_a_plain_delete_says_what_uses_it_in_one_line(
+    used: OfflineShow, line: str, said: str
+) -> None:
+    before = copy.deepcopy(used.show)
+    assert used.execute(line).text == f"error: {said}"
+    assert used.show == before
+
+
+@pytest.mark.parametrize(("line", "said"), USED_REFUSALS)
+def test_a_used_plain_delete_offers_the_cascade(used: OfflineShow, line: str, said: str) -> None:
+    found = used.expected(f"{line} ")
+    assert found.words == ("cascade",)
+    assert not found.runnable
+    assert found.error is None
+
+
+def test_a_plain_delete_counts_bindings_and_parked_values(rig: OfflineShow) -> None:
+    ids = {f["number"]: f["id"] for f in rig.show["fixtures"]}
+    run(rig, "park fixture 1 intensity 0")
+    bind(rig, "b1", select(fx(ids[1])))
+    assert rig.execute("delete fixture 1").text == (
+        "error: fixture 1 is used by 1 parked value and 1 binding: add cascade"
+    )
+
+
+def test_an_unused_entity_deletes_plainly_and_asks_nothing(rig: OfflineShow) -> None:
+    run(rig, "sel fixture 1", 'record group 1 "One"', "set intensity 50%")
+    run(rig, "record preset intensity 1 target", "clear", "sel none", "cuelist add 9")
+    run(rig, "page add 2", "universe add 2")
+    for line in (
+        "delete group 1",
+        "delete preset intensity 1",
+        "delete cuelist 9",
+        "delete page 2",
+        "delete universe 2",
+    ):
+        assert rig.confirmation(line) is None, line
+        assert rig.expected(f"{line} ").runnable, line
+        reply = rig.execute(line)
+        assert reply.ok, (line, reply.text)
+    assert "universe 2" not in {f"universe {u['number']}" for u in rig.show["universes"]}
+
+
+def test_a_word_after_the_number_is_still_refused_first(used: OfflineShow) -> None:
+    assert used.execute("delete group 1 now").text == "error: unexpected 'now'"
+
+
+def test_the_cue_keeps_its_plain_delete(rig: OfflineShow) -> None:
+    run(rig, "sel fixture 1", "set intensity 50%", "record cue 10/1", "clear", "sel none")
+    assert rig.expected("delete cue 10/1 ").words == ()
+    assert rig.execute("delete cue 10/1 cascade").text == "error: unexpected 'cascade'"
+    assert rig.execute("delete cue 10/1").ok
+
+
 # -------------------------------------------------------------- the two shows
 
 
@@ -445,6 +926,61 @@ def test_universe_1_of_each_show_can_go_and_come_back(
     assert doc["universes"] == []
     assert doc["output"]["routes"] == []
     assert all(fixture["patch"] is None for fixture in doc["fixtures"])
+
+
+# ---------------------------------------------------------------- what it says
+
+
+OTHERS = ("groups", "presets", "cueLists", "playbacks", "pages")
+
+
+def other_lines(doc: Any, order: tuple[str, ...] = OTHERS) -> list[str]:
+    """``delete …`` of every group, preset, cue list, playback and page."""
+    words = {
+        "groups": lambda item: f"delete group {item['number']}",
+        "presets": lambda item: f"delete preset {item['pool']} {item['number']}",
+        "cueLists": lambda item: f"delete cuelist {item['number']}",
+        "playbacks": lambda item: f"delete playback {item['number']}",
+        "pages": lambda item: f"delete page {item['number']}",
+    }
+    return [words[kind](item) for kind in order for item in doc[kind]]
+
+
+@pytest.mark.parametrize("make", [club, tupper])
+def test_every_other_entity_of_the_shows_can_go_and_come_back(
+    make: Callable[[Show], OfflineShow], club_show: Show
+) -> None:
+    show = make(club_show)
+    before = copy.deepcopy(show.show)
+    for line in other_lines(show.show):
+        cascade(show, f"{line} cascade")
+        run(show, "undo")
+        assert show.show == before, line
+
+
+@pytest.mark.parametrize("make", [club, tupper])
+@pytest.mark.parametrize(
+    "order",
+    [
+        ("playbacks", "cueLists", "groups", "presets", "pages"),
+        ("cueLists", "pages", "presets", "groups"),
+    ],
+)
+def test_the_others_in_a_row_leave_a_show_that_saves_and_reloads(
+    make: Callable[[Show], OfflineShow],
+    order: tuple[str, ...],
+    club_show: Show,
+    tmp_path: Path,
+) -> None:
+    show = make(club_show)
+    for line in other_lines(show.show, order):
+        run(show, f"{line} cascade")
+    for kind in order:
+        assert show.show[kind] == [], kind  # type: ignore[literal-required]
+    assert show.show["playbacks"] == []
+    path = tmp_path / "empty.show"
+    run(show, f"save {path}")
+    assert load_show(path)[0]["cueLists"] == []
 
 
 # ---------------------------------------------------------------- what it says
@@ -605,6 +1141,104 @@ def test_a_script_does_not_ask(rig: OfflineShow, tmp_path: Path) -> None:
     assert rig.show["universes"] == []
 
 
+def test_the_question_and_the_reply_of_a_preset(colours: OfflineShow) -> None:
+    template(colours, "Mix", palette({"presetId": preset_id(colours)}, {"r": 1, "g": 0, "b": 0}))
+    bind(colours, "b1", {"type": "APPLY_PRESET", "presetId": preset_id(colours)})
+    line = "delete preset color 1 cascade"
+    assert colours.confirmation(line) == (
+        'Delete preset color 1 "Color 1"? It leaves cue 10/1; effect template "Mix" and 1 binding.'
+    )
+    assert colours.execute(line).text == (
+        'deleted preset color 1 "Color 1": left 1 cue, 1 effect template, 1 binding'
+    )
+
+
+def test_a_preset_nothing_uses_still_asks(rig: OfflineShow) -> None:
+    run(rig, "sel fixture 1", "set color 1 0 0", 'record preset color 1 "Red"', "clear", "sel none")
+    assert rig.confirmation("delete preset color 1 cascade") == 'Delete preset color 1 "Red"?'
+    assert rig.execute("delete preset color 1 cascade").text == 'deleted preset color 1 "Red"'
+
+
+def test_the_question_and_the_reply_of_a_group(grouped: OfflineShow) -> None:
+    run(grouped, 'master add group "Pair level" group 1')
+    assert grouped.confirmation("delete group 1 cascade") == (
+        'Delete group 1 "Pair"? It leaves cue 10/1 and master "Pair level".'
+    )
+    assert grouped.execute("delete group 1 cascade").text == (
+        'deleted group 1 "Pair": left 1 cue, 1 master'
+    )
+
+
+def test_the_question_and_the_reply_of_a_playback(played: OfflineShow) -> None:
+    bind(played, "go", {"type": "GO", "playbackId": playback_id(played, 1)})
+    assert played.confirmation("delete playback 1 cascade") == (
+        'Delete playback 1 "A"? It leaves pages 1, 2 and 1 binding.'
+    )
+    assert played.execute("delete playback 1 cascade").text == (
+        'deleted playback 1 "A": left 2 pages, 1 binding'
+    )
+
+
+def test_the_question_and_the_reply_of_a_cue_list(played: OfflineShow) -> None:
+    bind(played, "go", {"type": "GO", "playbackId": playback_id(played, 1)})
+    assert played.confirmation("delete cuelist 10 cascade") == (
+        'Delete cue list 10 "Cue list 10" and playbacks 1, 2? They leave pages 1, 2 and 1 binding.'
+    )
+    assert played.execute("delete cuelist 10 cascade").text == (
+        'deleted cue list 10 "Cue list 10" and 2 playbacks: left 2 pages, 1 binding'
+    )
+
+
+def test_a_cue_list_with_one_playback_says_it_leaves(played: OfflineShow) -> None:
+    assert played.confirmation("delete cuelist 11 cascade") == (
+        'Delete cue list 11 "Cue list 11" and playback 3? It leaves page 2.'
+    )
+
+
+def test_the_question_and_the_reply_of_a_page(played: OfflineShow) -> None:
+    bind_action(played, "abs", {"kind": "pageAbs", "number": 2})
+    assert played.confirmation("delete page 2 cascade") == (
+        'Delete page 2 "Other"? It leaves 1 binding.'
+    )
+    assert played.execute("delete page 2 cascade").text == 'deleted page 2 "Other": left 1 binding'
+    assert played.confirmation("delete page 1 cascade") == 'Delete page 1 "Main"?'
+
+
+def test_the_question_says_a_playback_is_running(played: OfflineShow) -> None:
+    run(played, "go 1")
+    played.tick(0.1)
+    assert played.confirmation("delete playback 1 cascade") == (
+        'Delete playback 1 "A"? It leaves pages 1, 2. Playback 1 is running.'
+    )
+    assert played.confirmation("delete playback 2 cascade") == (
+        'Delete playback 2 "B"? It leaves page 1.'
+    )
+    assert played.confirmation("delete cuelist 10 cascade") == (
+        'Delete cue list 10 "Cue list 10" and playbacks 1, 2? They leave pages 1, 2. '
+        "Playback 1 is running."
+    )
+    run(played, "go 2")
+    played.tick(0.2)
+    assert played.confirmation("delete cuelist 10 cascade") == (
+        'Delete cue list 10 "Cue list 10" and playbacks 1, 2? They leave pages 1, 2. '
+        "Playbacks 1, 2 are running."
+    )
+
+
+def test_a_prompt_refuses_a_used_plain_delete_without_asking(used: OfflineShow) -> None:
+    lines = iter(["delete group 1", "quit", ""])  # "": do not save
+    asked: list[str] = []
+
+    def ask(prompt: str) -> str:
+        asked.append(prompt)
+        return next(lines)
+
+    written: list[str] = []
+    interact(used._console, ask=ask, write=written.append)
+    assert written[0] == "error: group 1 is used by 1 cue: add cascade"
+    assert not any("Delete" in prompt for prompt in asked)
+
+
 # --------------------------------------------------------------- a running show
 
 
@@ -665,3 +1299,72 @@ def test_a_fixture_goes_from_a_running_show_and_comes_back(running: Show) -> Non
         assert live.execute("undo").ok
         eventually(lambda: seen() == {101, 102, 201})
         assert live.show == running
+
+
+def test_a_running_playback_goes_and_comes_back_idle(running: Show) -> None:
+    with LiveShow(running, output=False) as live:
+
+        def states() -> dict[int, str]:
+            snapshot = live.snapshot
+            return {} if snapshot is None else {p.number: p.state for p in snapshot.playbacks}
+
+        eventually(lambda: 1 in states())
+        assert live.execute("go 1").ok
+        eventually(lambda: states()[1] == "active")
+        assert "Playback 1 is running." in (live.confirmation("delete playback 1 cascade") or "")
+        reply = live.execute("delete playback 1 cascade")
+        assert reply.ok, reply.text
+        eventually(lambda: 1 not in states())
+        assert live.execute("undo").ok
+        eventually(lambda: states().get(1) == "idle")
+        assert live.show == running
+
+
+def test_a_running_cue_list_goes_with_its_playback(running: Show) -> None:
+    with LiveShow(running, output=False) as live:
+
+        def states() -> dict[int, str]:
+            snapshot = live.snapshot
+            return {} if snapshot is None else {p.number: p.state for p in snapshot.playbacks}
+
+        eventually(lambda: 1 in states())
+        assert live.execute("go 1").ok
+        eventually(lambda: states()[1] == "active")
+        lists = {p["number"]: p["cueListId"] for p in running["playbacks"]}
+        number = next(c["number"] for c in running["cueLists"] if c["id"] == lists[1])
+        reply = live.execute(f"delete cuelist {number} cascade")
+        assert reply.ok, reply.text
+        eventually(lambda: 1 not in states())
+        assert live.execute("undo").ok
+        eventually(lambda: states().get(1) == "idle")
+        assert live.show == running
+
+
+def test_the_page_on_show_can_go_from_a_running_show(running: Show) -> None:
+    with LiveShow(running, output=False) as live:
+
+        def page() -> int | None:
+            snapshot = live.snapshot
+            return None if snapshot is None or snapshot.page is None else snapshot.page.number
+
+        eventually(lambda: page() is not None)
+        first = page()
+        assert live.execute(f"delete page {first} cascade").ok
+        eventually(lambda: page() != first)
+        assert live.execute("undo").ok
+        assert live.show == running
+
+
+def test_a_group_and_a_preset_go_from_a_running_show(running: Show) -> None:
+    group, preset = running["groups"][0], running["presets"][0]
+    with LiveShow(running, output=False) as live:
+        eventually(lambda: live.snapshot is not None)
+        for line in (
+            f"delete group {group['number']} cascade",
+            f"delete preset {preset['pool']} {preset['number']} cascade",
+        ):
+            reply = live.execute(line)
+            assert reply.ok, reply.text
+            assert live.execute("undo").ok
+        assert live.show == running
+        assert live.health is None or live.health.state == "running"

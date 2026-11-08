@@ -47,7 +47,7 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
     rename <entity> "name" | delete <entity> | delete route <id>
         <entity> = fixture N | group N | preset <pool> N | cuelist N | cue L/C
                  | playback N | page N | universe N | show
-    delete fixture N cascade | delete universe N cascade
+    delete <entity> cascade            (every entity above but cue and show)
     cue L/C time <in>[/<out>] [delay <in>[/<out>]] [<curve>]
     cue L/C time <family> <fade> [delay <d>] [<curve>]
         <curve> = linear | easeIn | easeOut | easeInOut | snapStart | snapEnd
@@ -211,11 +211,17 @@ stop a universe's output, so an interactive prompt asks first, as for
 ``output off``. A disabled route is not checked against the others, so
 ``on`` is refused where its sACN universe or port is taken by then.
 
-Deletes that cascade (GAP-24, :mod:`busk.console.cascade`). A plain ``delete``
-is refused while anything uses what it deletes. ``delete fixture N cascade``
-takes the fixture out of everything that names it, and ``delete universe N
-cascade`` unpatches its fixtures and removes its routes, each in one undo
-step. An interactive prompt asks first, always, saying what would go.
+Deletes that cascade (GAP-24 and GAP-36, :mod:`busk.console.cascade`). A plain
+``delete`` is refused in one line while anything uses what it deletes, counted
+from the walk the cascade makes. ``delete fixture N cascade`` takes the fixture
+out of everything that names it, and ``delete universe N cascade`` unpatches its
+fixtures and removes its routes. ``delete preset <pool> N cascade`` takes the
+cue entries that use it and leaves the palettes that name it, ``delete group N
+cascade`` takes what targets it and its group masters, ``delete cuelist N
+cascade`` takes the playbacks that run it, ``delete playback N cascade`` empties
+its page slots, and ``delete page N cascade`` leaves its playbacks. A binding
+that names what goes, goes too. Each is one undo step. An interactive prompt
+asks first, always, saying what would go.
 
 Removing a limit and a location (GAP-25). ``limits pan|tilt|intensity none``
 removes that limit from each fixture named and keeps the others; the last one
@@ -293,7 +299,16 @@ from typing import Any, Final, cast
 
 from busk.commands.patch import deep_copy
 from busk.commands.types import Command, EditPath
-from busk.console.cascade import fixture_cascade, universe_cascade
+from busk.console.cascade import (
+    Cascade,
+    cue_list_cascade,
+    fixture_cascade,
+    group_cascade,
+    page_cascade,
+    playback_cascade,
+    preset_cascade,
+    universe_cascade,
+)
 from busk.model.attributes import ATTRIBUTES, AttributeDefinition
 from busk.model.common import MAX_DIGITS, TargetRef
 from busk.model.cue import CUE_NUMBER, cue_number_key
@@ -2370,19 +2385,38 @@ class _Parser:
         if head not in _ENTITIES or head == "show":
             raise ParseError(f"cannot delete {head!r}")
         path = self.entity_path(head)
-        if head in ("fixture", "universe") and self.keyword("cascade"):
+        if head == "cue":
+            return self.submit({"type": "DELETE", "path": path})
+        cascade = self._cascade(head, path)
+        if self.keyword("cascade"):
             self.done()
-            return self._cascade(head, path)
+            if cascade.blocked is not None:
+                raise ParseError(cascade.blocked)
+            return Submit(_labelled(cascade.label, *cascade.commands), confirm=cascade.question)
+        self.done()
+        if cascade.refusal is not None:
+            raise self.fail(cascade.refusal)
         return self.submit({"type": "DELETE", "path": path})
 
-    def _cascade(self, head: str, path: EditPath) -> Action:
-        """``delete fixture|universe N cascade``: always asks first at a prompt."""
+    def _cascade(self, head: str, path: EditPath) -> Cascade:
+        """What ``delete <head> … cascade`` would do: always asks first at a
+        prompt. It also holds the refusal of a plain ``delete``."""
+        show, running = self.show, self.ctx.running
+        collection = "presets" if head == "preset" else _COLLECTIONS[head][0]
+        item = _element(show[collection], path)  # type: ignore[literal-required]
         if head == "fixture":
-            fixture = _element(self.show["fixtures"], path)
-            cascade = fixture_cascade(self.show, fixture, self.ctx.programmer)
-        else:
-            cascade = universe_cascade(self.show, _element(self.show["universes"], path))
-        return Submit(_labelled(cascade.label, *cascade.commands), confirm=cascade.question)
+            return fixture_cascade(show, item, self.ctx.programmer)
+        if head == "cuelist":
+            return cue_list_cascade(show, item, running)
+        if head == "playback":
+            return playback_cascade(show, item, running)
+        by_kind = {
+            "universe": universe_cascade,
+            "preset": preset_cascade,
+            "group": group_cascade,
+            "page": page_cascade,
+        }
+        return by_kind[head](show, item)
 
     def _delete_route(self) -> Action:
         """``delete route <id>``: asks first at a prompt, as ``output off`` does."""

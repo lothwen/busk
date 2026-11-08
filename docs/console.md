@@ -59,7 +59,7 @@ session, as the web remote's commands do. `help` prints the grammar.
 | Surfaces | `surface add midi "nanoKONTROL2"`, `surface add osc "Touch" [port 8000] [feedback 10.0.0.5:9000]`, `surface add web "Phone" [port 8080] [on 10.0.0.2]`, `surface "nanoKONTROL2" pickup soft\|jump` |
 | Bindings, feedback | `bind "nanoKONTROL2" cc 1 0 fader 1`, `… cc 1 32 button 1 1 [led]`, `… cc 1 7 fader playback 18 [motor]`, `… cc 1 23 master gm`, `… cc 1 18 master "Speed 1"`, `… cc 1 46 tap ["Speed 1"]`, `… cc 1 42 blackout [momentary]`, `… cc 1 62 page +1`, `… note 1 60 page 2`, `bind "Touch" osc "/fader/1" fader 1 [display osc "/label/1"]`, `bind "nanoKONTROL2" clock tap`, `… cc 1 60 release all [2]`, `… note 1 61 output off`, `feedback "nanoKONTROL2" cc 1 32 thru 39 led\|motor\|display\|none`, `unbind "nanoKONTROL2" cc 1 60 [thru 61]` |
 | Pages | `page 2`, `page next\|prev`, `page add 2 ["Washes"]`, `page 2 slot 1 playback 14`, `page 2 slot 5 clear`, `record slot 2.1`, `playback 9 goto 4` |
-| Edit | `playback 3 exclusivity color`, `cue 3/1 timing.fadeIn 1`, `playback 1 buttons ["toggle", "flash", "release"]`, `show meta.title "Club Night"`, `rename group 1 "Heads"`, `delete cue 10/2`, `delete fixture 101 cascade`, `delete universe 2 cascade`, `fixture 101 location {"x": 1, "y": 2, "z": 3, "rx": 0, "ry": 0, "rz": 0}`, `fixture 101 location none`, `fixture 101 thru 104 orientation.invertPan true`, `fixture 101 orientation.panOffset 30` |
+| Edit | `playback 3 exclusivity color`, `cue 3/1 timing.fadeIn 1`, `playback 1 buttons ["toggle", "flash", "release"]`, `show meta.title "Club Night"`, `rename group 1 "Heads"`, `delete cue 10/2`, `delete fixture 101 cascade`, `delete universe 2 cascade`, `delete preset color 3 cascade`, `delete group 2 cascade`, `delete cuelist 9 cascade`, `delete playback 3 cascade`, `delete page 2 cascade`, `fixture 101 location {"x": 1, "y": 2, "z": 3, "rx": 0, "ry": 0, "rz": 0}`, `fixture 101 location none`, `fixture 101 thru 104 orientation.invertPan true`, `fixture 101 orientation.panOffset 30` |
 | Playbacks | `playback add 5 cuelist 10 [at [P.]S] ["name"]`, `playback 3 cuelist 10`, `playback 3 fader size`, `playback 3 flash.level 0.5`, `playback 3 exclusivity none` |
 | Timing, triggers | `cue 9/1 time 3 easeInOut`, `cue 9/3 time 1/3 delay 0/1`, `cue 9/2 time position 4 [delay 1] [easeOut]`, `… bezier 0.4 0 0.2 1`, `cue 9/3 wait 8`, `cue 9/5 follow 4`, `cue 9/2 go`, `cue 9/5 release group 1 [only pan tilt]` |
 | Cue lists, tempo | `cuelist add 5 ["name"]`, `cuelist 9 tracking true`, `cuelist 10 chase bpm ["Speed 1"] [x 2] [forward\|reverse\|bounce\|random] [crossfade 0.25]`, `cuelist 10 chase hz 4`, `cuelist 10 sequence`, `master add speed "Speed 1" [bpm 120] [steps 0.5, 1, 2]` |
@@ -212,19 +212,30 @@ session, as the web remote's commands do. `help` prints the grammar.
   output, so the prompt asks first, as for `output off`. A route that is off is not
   checked against the others, so `route <id> on` is refused when its sACN universe or its
   port is taken by then.
-* **Deletes that cascade.** A plain `delete` is refused while anything uses what it deletes
-  (see **Errors**). `delete fixture N cascade` takes the fixture out of everything that
-  names it: groups, presets' target values, cues, park entries and bindings. A cue entry, a
-  cue effect, a release or a binding left with no target goes with it. A group, a preset or
-  a cue left empty stays, for you to keep or delete. `delete universe N cascade` unpatches
-  its fixtures, which stay in the show, and removes its routes. Each is one undo step. The
-  prompt always asks first and says what would go, and the reply counts it:
+* **Deletes that cascade.** A plain `delete` is refused while anything uses what it deletes,
+  and says what does: `fixture 101 is used by 2 groups, 2 presets and 14 cues: add cascade`.
+  With `cascade` it goes, with what names it, in one undo step. The prompt always asks first
+  and says what would go, and the reply counts it:
 
   ```
   busk> delete fixture 101 cascade
   Delete fixture 101? It leaves groups 1, 4 and presets position 1, 2. [y/N] y
   deleted fixture 101: left 2 groups, 2 presets
   ```
+
+  | Line | What goes with it | What stays |
+  |---|---|---|
+  | `delete fixture N cascade` | what names it leaves it: groups, presets' target values, cue entries, cue effects, releases, park entries, bindings. An entry, effect, release or binding left with no target goes | a group, a preset or a cue left empty, for you to keep or delete |
+  | `delete universe N cascade` | its routes; the bindings that patch into it | its fixtures, unpatched |
+  | `delete preset <pool> N cascade` | the cue entries that use it, its place in effect palettes, the bindings that apply it | the cues. Its value is not written into them |
+  | `delete group N cascade` | the cue entries, effects and releases that target it, its group masters, the bindings that name them | the cues |
+  | `delete cuelist N cascade` | the playbacks that run it, as the next row does each | |
+  | `delete playback N cascade` | its page slots, which go empty, its `fader playback N` bindings and the bindings that name it | its cue list; bindings by slot |
+  | `delete page N cascade` | the bindings that go to it by number or assign to it | its playbacks |
+
+  A preset that is the last colour of an effect palette is refused even with `cascade`,
+  because a colour layer needs a colour: change the template first, with `effect template
+  update`. The question says when a playback that goes is running.
 * **Undo** walks one timeline of show edits and programmer changes (1000 steps): the last
   action, whatever it was. Blind and the programmer's fade time are modes and are never
   undone. Saving is not a step.
@@ -232,9 +243,9 @@ session, as the web remote's commands do. `help` prints the grammar.
   replace`), and an edit that would make the show invalid lists every place it breaks:
 
   ```
-  busk> delete group 2
-  error: deleted groups[1]: rejected, the show would not be valid
-    cueLists[1].cues[0].entries[1].targets.groupId: Unknown group 'g-par'
+  busk> group 2 members [{"fixtureId": "nope", "element": 0}]
+  error: set groups[1].members to [{"fixtureId": "nope", "element": 0}]: rejected, the show would not be valid
+    groups[1].members[0].fixtureId: Unknown fixture 'nope'
   ```
 
 ## Attributes

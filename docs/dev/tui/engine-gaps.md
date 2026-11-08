@@ -94,6 +94,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-33](#gap-33-an-empty-cue-list) An empty cue list | action | nice-to-have | F4 | **done** 2026-11-08 |
 | [GAP-34](#gap-34-a-playback-for-a-list) A playback for a list | action | important | F1 | **done** 2026-11-08 |
 | [GAP-35](#gap-35-a-playbacks-and-a-cue-lists-properties-named) A playback's and a cue list's properties named | read, action | important | F1, F4 | **done** 2026-11-08 |
+| [GAP-36](#gap-36-the-other-deletes-that-cascade) The other deletes that cascade | action | important | F1, F4, F6, F3 | **done** 2026-11-08 |
 
 ---
 
@@ -2369,3 +2370,55 @@ What it settles:
   `2` as a JSON number and refuses it. A quoted one stays the generic edit.
 
 Tests: `tests/test_console_parser.py` and the completion table of `tests/test_console_prompt.py`.
+
+## GAP-36: The other deletes that cascade
+
+**Status:** done 2026-11-08 (see **Done** at the end of this section).
+
+Found while writing the TUI's operations report (`docs/dev/tui/operations-report.md`, 2026-11-01),
+and ordered in `docs/plans/tui-pending-plan.md`, Phase 4.
+
+**Needed by:** F4's list `[delete]`, F6's `[delete]`, F3's groups, and the playback controls of F1.
+
+**Today:** only a fixture and a universe cascade (GAP-24). A preset, a cue list, a playback or a
+group in use is refused by document path, and every reference must be removed by hand first.
+
+**Engine should provide:** `… cascade` for each of them and for a page, under GAP-24's rule, and a
+plain `delete` of something in use refused in one line, counted from the same walk.
+
+**Priority:** important.
+
+**TUI until then:** a `[delete]` for those would mostly show a refusal.
+
+**Done** (2026-11-08). Five lines, in `busk.console.cascade`, beside GAP-24's two, and a `refusal`
+on `Cascade` that `_cmd_delete` uses for a plain `delete`. What it settles:
+
+- **Every reference the validator checks is walked.** A preset: cue entries, palette entries,
+  `APPLY_PRESET` and a `SET_ATTRIBUTE` that names it. A group: what targets it in a cue, `SELECT`,
+  `ADD_EFFECT`, its group masters and what drives them, a `master` action and `SET_MASTER`. A cue
+  list: `RECORD_CUE` and its playbacks. A playback: page slots, `playbackFaderAbs`, and any command
+  with its `playbackId`. A page: `pageAbs`, `ASSIGN_PLAYBACK`, and `PAGE` by number, which the plan
+  did not name. Both of those by number are only warnings to the validator.
+- **A cue list's playbacks are one walk,** not one per playback. Two of them on one page or one
+  `BATCH` binding would otherwise be two edits of the same place, and the second would put the
+  first's reference back.
+- **A palette left with no colour refuses the line,** cascade included: `preset color 3 is the
+  last colour of a palette of effect template "Solid": change the template first`. The validator
+  refuses such a layer, and the plan's §5 item 3 keeps a used template out of cascades. Dropping
+  the layer, or the template and its cue effects, would take more than the question could name.
+- **A plain `delete` is refused by the walk, not the validator,** so its one line counts what the
+  cascade would touch. So it is also refused for what the validator only warns about or does not
+  check: a page named by a `pageAbs` binding, and a fixture named only by an `ADD_EFFECT` binding.
+  What nothing uses still goes plainly and asks nothing.
+- **The refusal is unfinished, not wrong:** `expected()` at `delete group 1 ` offers `cascade`, and
+  says the line is not runnable as it stands.
+- **The question names what goes** and, for a playback and a cue list, says `Playback 1 is running.`
+  (the last snapshot, as GAP-34's guard reads it). The programmer is not mentioned: what it holds
+  of a deleted preset goes dormant as it did.
+- **On a running show,** a playback that goes is dropped by the engine's rebind, and `undo` brings
+  it back idle. The current page, when it goes, moves on as `PageState.rebind` says.
+
+Tests: `tests/test_cascade.py` (each kind of reference and what stays, every entity of both shipped
+shows, all in a row in two orders, saved and reloaded, the refusals, questions and replies, a
+running `LiveShow`), the parser's rows, completion in `tests/test_console_prompt.py`, and `busk run`
+with processes in `tests/test_frontend.py`.

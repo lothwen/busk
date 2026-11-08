@@ -38,7 +38,7 @@ import threading
 import types
 from collections.abc import Iterator
 from pathlib import Path
-from typing import NoReturn
+from typing import Any, NoReturn
 
 import numpy as np
 import pytest
@@ -479,6 +479,53 @@ def test_the_route_lines_reach_the_engine_process_and_undo_takes_each_back(
         ["Delete route r1 of universe 1?", "deleted route r1", True],
         [None, "undid: deleted route r1", True],
     ]
+
+
+def test_a_running_playback_that_cascades_goes_from_the_engine_process_and_comes_back(
+    tmp_path: Path, receiver: Receiver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GAP-36, under ``busk run`` with processes: the question says it runs, it
+    leaves the snapshot, and ``undo`` brings it back idle."""
+    doc = load_doc(APPENDIX_A)
+    cues = {cue_list["id"]: len(cue_list["cues"]) for cue_list in doc["cueLists"]}
+
+    def playbacks(state: dict[int, str]) -> list[list[Any]]:
+        return [
+            [p["number"], state.get(p["number"], "idle"), cues[p["cueListId"]]]
+            for p in sorted(doc["playbacks"], key=lambda p: p["number"])
+            if state.get(p["number"]) != "gone"
+        ]
+
+    number = doc["playbacks"][0]["number"]
+    report_path = plan(
+        tmp_path,
+        monkeypatch,
+        steps=[
+            {
+                "line": f"go {number}",
+                "routes": [["r1", "ok"]],
+                "playbacks": playbacks({number: "active"}),
+            },
+            {
+                "line": f"delete playback {number} cascade",
+                "routes": [["r1", "ok"]],
+                "playbacks": playbacks({number: "gone"}),
+            },
+            {"line": "undo", "routes": [["r1", "ok"]], "playbacks": playbacks({})},
+        ],
+    )
+    with BuskRun(
+        run_show(tmp_path), *frontend(tmp_path, "--no-log"), sacn_port=receiver.port
+    ) as busk:
+        assert busk.wait() == 0, busk.err
+    report = json.loads(report_path.read_text())
+    assert report["timeout"] is None, report
+    _, gone, back = report["steps"]
+    assert gone[0].startswith(f"Delete playback {number} ")
+    assert gone[0].endswith(f"Playback {number} is running.")
+    assert gone[1].startswith(f"deleted playback {number} ")
+    assert gone[2] is True
+    assert back[2] is True
 
 
 def test_a_universe_that_cascades_goes_from_the_engine_process_and_comes_back(

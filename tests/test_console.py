@@ -128,11 +128,12 @@ def test_commands_print_their_result(console: Console) -> None:
 
 
 def test_errors_print_with_every_issue_path(console: Console) -> None:
-    reply = console.execute("delete group 2")
+    reply = console.execute('group 2 members [{"fixtureId": "nope", "element": 0}]')
     assert not reply.ok
     assert reply.text.splitlines() == [
-        "error: deleted groups[1]: rejected, the show would not be valid",
-        "  cueLists[1].cues[0].entries[1].targets.groupId: Unknown group 'g-par'",
+        'error: set groups[1].members to [{"fixtureId": "nope", "element": 0}]: '
+        "rejected, the show would not be valid",
+        "  groups[1].members[0].fixtureId: Unknown fixture 'nope'",
     ]
     reply = console.execute("sel group 9")
     assert (reply.ok, reply.text) == (False, "error: no group 9")

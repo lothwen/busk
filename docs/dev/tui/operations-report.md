@@ -45,13 +45,13 @@ do can already be typed in the TUI. The tables below show how much the screens h
 | Fixtures, patch | control (F3, F8, F1 A/C) | control (F3's form, F8's place) | control (cascades) | control (F3's FIXTURE panel, F8's place) |
 | Universes, routes | control (F8) | control (F8) | control (a universe cascades) | control; a route cannot be edited: engine no |
 | Cues | control (F4) | control (append); prompt (at a number) | prompt | pre-fill (timing, trigger, name); prompt (values) |
-| Cue lists | control (F4) | prompt | prompt; engine partial | control (sequence/chase); prompt for the rest |
-| Presets | control (F6, colour chips) | control (F6's PRESET panel) | control; engine partial | control (values, name, number) |
+| Cue lists | control (F4) | prompt | prompt | control (sequence/chase); prompt for the rest |
+| Presets | control (F6, colour chips) | control (F6's PRESET panel) | control | control (values, name, number) |
 | Effects in the programmer | control (F5, F1 B) | control | control | control (stop, run); prompt (settings) |
 | Effects in cues | control (F5) | control (via `record cue`) | prompt | prompt |
 | Effect templates | control (F5) | prompt (JSON) | prompt | prompt |
 | Playbacks, operating | control (F1) | n/a | n/a | control: fader, GO, ◂, FLASH; the playback's own buttons: prompt |
-| Playbacks, configuration | partial: not shown | prompt; engine partial | prompt; engine partial | prompt; engine partial |
+| Playbacks, configuration | partial: not shown | prompt | prompt | prompt |
 
 In short:
 
@@ -63,8 +63,8 @@ In short:
   a screen except a programmer effect (`✕`), and ADD has controls only for cues (append) and
   programmer effects. UPDATE has pre-fills for a cue's timing, trigger and name. The rest is
   typed at the prompt.
-- **busk itself is missing a few lines.** It cannot edit a route. Only a fixture and a universe delete with what uses them: a preset, cue list or playback that something uses must first
-  be freed by hand (see [What busk is missing](#what-busk-is-missing)).
+- **busk itself is missing a few lines.** It cannot edit a route, and deletes take one entity per
+  line (see [What busk is missing](#what-busk-is-missing)).
 
 ## Fixtures and patch
 
@@ -72,7 +72,7 @@ In short:
 |---|---|---|---|
 | Show | typed `LiveShow.show` and `.output`; `list fixtures` | yes | control: F3 table (profile, mode, patch, live values, source); its edit mode (limits, place) and FIXTURE panel (limits, orientation, location); F8's DMX map; F1 A and C |
 | Add | `fixture add N [thru M] "<profile>" mode <mode> [at U.A]` | yes | control: F3's new fixture form, with a picker from `fixture_profiles` (GAP-27); F8's `[add fixture here…]` opens it at a free channel |
-| Delete | `delete fixture N cascade` (GAP-24), `delete fixture N` | yes: one fixture per line (`thru` is refused). A plain `delete` stays refused while a group, preset or cue names it | control: `[delete]`, always `cascade`, after busk's question |
+| Delete | `delete fixture N cascade` (GAP-24), `delete fixture N` | yes: one fixture per line (`thru` is refused). A plain `delete` is refused in one line while anything names it | control: `[delete]`, always `cascade`, after busk's question |
 | Patch, unpatch | `fixture N patch U.A`, `fixture N patch none` | yes | control: F3's PATCH; F8's `[patch N here]` on a free channel |
 | Rename | `rename fixture N "…"` | yes | control: `[rename…]`, a name dialog |
 | Renumber | `fixture N number M` (generic property) | yes | control: `[number…]`, a dialog that refuses a taken number |
@@ -91,7 +91,7 @@ GAP-22 is still open: a parked value reads as "none" in F3's source column.
 |---|---|---|---|
 | Show | typed `LiveShow.show` and `.routes`; `list universes`, `list routes` | yes | control: F8 UNIVERSES, ROUTES with each route's state and packet rate, and a DMX map per universe |
 | Add a universe | `universe add N ["name"]` | yes | control: `[+ universe…]`, a form |
-| Delete a universe | `delete universe N cascade` (GAP-24), `delete universe N` | yes. A plain `delete` stays refused while a fixture is patched in it or a route sends it | control: `[delete]`, always `cascade`, after busk's question |
+| Delete a universe | `delete universe N cascade` (GAP-24), `delete universe N` | yes. A plain `delete` is refused in one line while a fixture is patched in it or a route sends it | control: `[delete]`, always `cascade`, after busk's question |
 | Rename | `rename universe N "…"` | yes | control: `[rename…]`, a name dialog |
 | Renumber | `universe N number M` (generic property) | yes | control: `[number…]`, a dialog that refuses a taken number |
 | Add a route | `route add …` | yes | control: `[+ route…]`, a form per protocol |
@@ -130,7 +130,7 @@ GAP-22 is still open: a parked value reads as "none" in F3's source column.
 |---|---|---|---|
 | Show | typed `LiveShow.show`; `list cuelists` | yes | control: F4 CUELISTS (number, name, kind, cue count, playback) and the meta line (mode, tracking, chase settings, playbacks and level, groups) |
 | Add | `cuelist add N ["name"]` (GAP-33), a list with no cues. `record cue N/1` creates list N with its first cue; `record slot` creates a list with a playback | yes | prompt |
-| Delete | `delete cuelist N` | partial: refused while a playback runs it | prompt |
+| Delete | `delete cuelist N cascade` (GAP-36), with the playbacks that run it; `delete cuelist N` | yes. A plain `delete` is refused in one line while a playback runs it | prompt |
 | Sequence or chase | `cuelist N sequence`, `cuelist N chase hz\|bpm …` | yes | control: F4 toggle (keeps the list's chase settings, else `bpm x 1`); prompt for rate, direction and crossfade |
 | Tracking | `cuelist N tracking true\|false` (generic property) | yes | prompt (F4 shows it) |
 | Rename | `rename cuelist N "…"` | yes | prompt |
@@ -142,7 +142,7 @@ GAP-22 is still open: a parked value reads as "none" in F3's source column.
 |---|---|---|---|
 | Show | typed `LiveShow.show`; `list presets` | yes | control: F6 tiles per pool with a preview; colour chips on F1 and F2. In edit mode, the PRESET panel shows what a preset holds (each stored value, its scope and where) and the cues and effect palettes that use it |
 | Add | `record preset <pool> N [global\|profile\|target] ["name"]` | yes | control: F6's `+ record` tile opens the PRESET panel, with the next free number. Every pool the rig can record into shows. The panel sets the number, name and scope, the selection, and every value the pool records: encoder rows, a colour picker, option chips for the discrete attributes, and spreads (fans). It shows what a record takes, then `[record]` |
-| Delete | `delete preset <pool> N` | partial: refused while a cue uses it | control: `[delete]`, after the TUI's own question (busk asks none). Inert while cues or effect palettes use the preset, and the panel names them |
+| Delete | `delete preset <pool> N cascade` (GAP-36), `delete preset <pool> N` | yes. A plain `delete` is refused in one line while a cue or a palette uses it. The cascade is refused only for a palette's last colour | control: `[delete]`, after the TUI's own question (busk asks none). Inert while cues or effect palettes use the preset, and the panel names them |
 | Change its values | `record preset <pool> N merge\|replace\|remove` | yes | control: `[its fixtures]`, `[load]`, the panel's editors, then `[merge]`, `[replace]` or `[remove]` |
 | Rename | `rename preset <pool> N "…"` | yes | control: `[rename…]`, a name dialog |
 | Renumber | `preset <pool> N number M` (generic property) | yes | control: `[number…]`, a dialog that refuses a taken number |
@@ -178,7 +178,7 @@ recorded into cues, and the templates both are made from.
 | Release | `release N [<s>]`, `release all` | yes | control: F5 state click (cue effects), F7 `release all`; prompt for one playback |
 | The playback's own buttons | `button N B on\|off`, `toggle N` (GAP-04) | yes | prompt. Every strip shows GO, ◂ and FLASH whatever the playback's `buttons` are, so a `toggle`, `release`, `select` or `swop` button cannot be pressed from F1 |
 | Add | `playback add N cuelist L [at [P.]S] ["name"]` (GAP-34); `record slot [P.]S` makes one with a new cue list and its cue 1 | yes | prompt |
-| Delete | `delete playback N` | partial: refused while a page slot holds it (`page P slot S clear` on every page first); its cue list stays | prompt |
+| Delete | `delete playback N cascade` (GAP-36), `delete playback N` | yes: its cue list stays. A plain `delete` is refused in one line while a page slot holds it | prompt |
 | Place on a page | `page P slot S playback N`, `page P slot S clear`, `page add N` | yes | prompt |
 | Buttons, fader function | `playback N buttons ["go", "flash", "release"]`, `playback N fader rate` | yes: `help` and `?` name them (GAP-35) | prompt |
 | Band, exclusivity, flash, LTP, release time, colour | `playback N priority 60`, `… exclusivity wash`, `… flash.level 0.5`, `… ltpFaderMode followFader`, `… releaseTime 2`, `… uiColor "#ff8800"`, `<optional> none` | yes: as above | prompt |
@@ -197,10 +197,9 @@ Candidates for [engine-gaps.md](engine-gaps.md), if the TUI is to cover these:
 4. **Closed: a fixture's mode and profile** (GAP-26). `fixture N mode <mode>` and `fixture N
    profile "<profile>" mode <mode>` change them by name, each in one undo step.
 5. **Closed: an empty cue list** (GAP-33). `cuelist add N ["name"]` makes one.
-6. **Deletes cascade only for fixtures and universes** (GAP-24 closed those), and take one
-   entity per line. To delete a preset used by cues, a cue list a playback runs or a playback
-   on a page, every reference must be removed first. The error lists them. A TUI delete button
-   for those would mostly show that error, as F6's stays grey and names what uses the preset.
+6. **Closed in part: deletes that cascade** (GAP-24, GAP-36). A fixture, universe, preset,
+   group, cue list, playback and page each take `cascade`, and a plain `delete` of something in
+   use says so in one line. They still take one entity per line.
 7. **Closed: playback and cue list settings** (GAP-35). `help` and `expected()` name them, a
    closed set offers its values, and `<property> none` removes an optional one.
 8. **Closed: removing and switching a route** (GAP-23). This list first left it out: `route add`
@@ -224,8 +223,8 @@ host it:
 
 ## Side findings
 
-- `LiveShow.confirmation()` asks before `delete fixture|universe N cascade`, `delete route <id>`
-  and `route <id> off`, so F3's and F8's controls show busk's question. It asks nothing before
+- `LiveShow.confirmation()` asks before every `delete … cascade`, `delete route <id>` and
+  `route <id> off`, so F3's and F8's controls show busk's question. It asks nothing before
   any other `delete`, a `record … replace` or `effect clear`. They are undo steps. A TUI delete
   button there would rely on `undo`, unless the TUI asks first itself. F6's `[delete]` asks first
   (`RunLine.ask`).

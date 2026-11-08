@@ -10,6 +10,11 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- `delete preset <pool> N cascade`, `delete group N cascade`, `delete cuelist N cascade`, `delete
+  playback N cascade` and `delete page N cascade`, each one undo step. What names the entity
+  leaves it or goes with it, and the question says what would go and when a playback runs. A cue
+  list takes the playbacks that run it. A plain `delete` of a fixture, universe, preset, group, cue
+  list, playback or page in use is now refused in one line that counts what uses it.
 - `effect template delete "<name>"`, `effect template rename "<name>" "<new name>"` and `effect
   template update "<name>" <JSON layers>`, each one undo step. A delete is refused while a cue, a
   binding or the programmer uses the template, and says which. All three act on the show's own

@@ -1,6 +1,7 @@
-"""``delete fixture N cascade`` and ``delete universe N cascade`` (GAP-24 of
-``docs/dev/tui/engine-gaps.md``): the edits of one undo step, and the words
-for them. A pure function of the show, like the parser that calls it.
+"""``delete … cascade`` (GAP-24 and GAP-36 of ``docs/dev/tui/engine-gaps.md``):
+the edits of one undo step, and the words for them. A pure function of the
+show, like the parser that calls it. The same walk gives the one line a plain
+``delete`` of something in use is refused with.
 
 A fixture leaves everything that names it: every group's members, every
 preset's target values, every cue entry's targets and per-target values,
@@ -16,12 +17,24 @@ fixture's members go empty and the others follow their members.
 
 A universe unpatches its fixtures, which stay in the show, and takes its
 routes with it. A binding that patches a fixture into it goes.
+
+A preset takes the cue entries that use it and leaves the palettes that name
+it, and a cue stays with what is left. It does not write its value into them.
+A palette it would leave with no colour stops the line: the validator refuses
+such a layer, and a used template is not cascaded.
+
+A group takes the cue entries, effects and releases that target it, and its
+group masters. A cue list takes the playbacks that run it, each as ``delete
+playback`` does, and leaves their page slots empty. A playback leaves the
+slots that hold it, and its cue list stays. A page goes alone: its playbacks
+stay. A binding or a command that names what goes, goes too, whichever of
+these it is.
 """
 
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, cast
 
@@ -48,6 +61,10 @@ class Cascade:
     """What the line replies: what it took, counted."""
     question: str
     """What a prompt asks first: what it would take, named."""
+    refusal: str | None
+    """What a plain ``delete`` says, ``None`` when nothing uses it."""
+    blocked: str | None = None
+    """Why not even the cascade can run, ``None`` when it can."""
 
 
 def fixture_cascade(show: Show, fixture: _Doc, programmer: Programmer) -> Cascade:
@@ -56,7 +73,8 @@ def fixture_cascade(show: Show, fixture: _Doc, programmer: Programmer) -> Cascad
     commands: list[_Doc] = []
     groups = _leave_groups(show, ident, commands)
     presets = _leave_presets(show, ident, commands)
-    cues = _leave_cues(show, ident, commands)
+    changes = (("entries", _entry), ("effects", _targeted), ("releases", _targeted))
+    cues = _leave_cues(show, ident, commands, changes)
     park = [entry for entry in show["park"] if entry["slot"]["target"]["fixtureId"] != ident]
     parked = len(show["park"]) - len(park)
     if parked:
@@ -77,7 +95,9 @@ def fixture_cascade(show: Show, fixture: _Doc, programmer: Programmer) -> Cascad
     question = f"Delete {subject}?{_sentence('It leaves ', named, '; ')}"
     if _held(programmer, ident):
         question += " The programmer holds it."
-    return Cascade(tuple(commands), _reply(subject, "left ", counted), question)
+    return Cascade(
+        tuple(commands), _reply(subject, "left ", counted), question, _refused(subject, counted)
+    )
 
 
 def universe_cascade(show: Show, universe: _Doc) -> Cascade:
@@ -96,7 +116,7 @@ def universe_cascade(show: Show, universe: _Doc) -> Cascade:
         *bindings,
         _delete(["universes", {"id": ident}]),
     ]
-    subject = f"universe {universe['number']} {json.dumps(universe['name'], ensure_ascii=False)}"
+    subject = f"universe {universe['number']} {_quoted(universe['name'])}"
     said = [
         _count(len(fixtures), "fixture loses its patch", "fixtures lose their patch"),
         _count(len(routes), "route goes", "routes go"),
@@ -108,7 +128,115 @@ def universe_cascade(show: Show, universe: _Doc) -> Cascade:
         _count(len(bindings), "binding gone", "bindings gone"),
     ]
     question = f"Delete {subject}?{_sentence('', said, ', ')}"
-    return Cascade(tuple(commands), _reply(subject, "", counted), question)
+    uses = [
+        _count(len(fixtures), "fixture"),
+        _count(len(routes), "route"),
+        _count(len(bindings), "binding"),
+    ]
+    return Cascade(
+        tuple(commands),
+        _reply(subject, "", counted),
+        question,
+        _refused(f"universe {universe['number']}", uses),
+    )
+
+
+def preset_cascade(show: Show, preset: _Doc) -> Cascade:
+    """``preset`` goes from ``show``, and from what uses it."""
+    ident = preset["id"]
+    who = f"preset {preset['pool']} {preset['number']}"
+    commands: list[_Doc] = []
+    cues = _leave_cues(show, ident, commands, (("entries", _off_preset),))
+    templates, blocked = _leave_palettes(show, who, ident, commands)
+    bindings = _binding_edits(show, _preset_command, ident)
+    commands += bindings
+    commands.append(_delete(["presets", {"id": ident}]))
+    named = [
+        _named("cue", cues),
+        _named("effect template", templates),
+        _count(len(bindings), "binding"),
+    ]
+    counted = [
+        _count(len(cues), "cue"),
+        _count(len(templates), "effect template"),
+        _count(len(bindings), "binding"),
+    ]
+    return _leaves(commands, who, preset, named, counted, blocked=blocked)
+
+
+def group_cascade(show: Show, group: _Doc) -> Cascade:
+    """``group`` goes from ``show``, with what targets it and its masters."""
+    ident = group["id"]
+    masters = [m for m in show["masters"] if m["kind"] == "group" and m["groupId"] == ident]
+    gone = [master["id"] for master in masters]
+    commands: list[_Doc] = []
+    changes = (("entries", _off_group), ("effects", _off_group), ("releases", _off_group))
+    cues = _leave_cues(show, ident, commands, changes)
+    bindings = [
+        *_binding_edits(show, _group_command(gone), ident),
+        *_action_edits(show, lambda a: a["kind"] == "master" and a["masterId"] in gone),
+    ]
+    commands += bindings
+    commands += [_delete(["masters", {"id": master}]) for master in gone]
+    commands.append(_delete(["groups", {"id": ident}]))
+    named = [
+        _named("cue", cues),
+        _named("master", [_quoted(master["name"]) for master in masters]),
+        _count(len(bindings), "binding"),
+    ]
+    counted = [
+        _count(len(cues), "cue"),
+        _count(len(masters), "master"),
+        _count(len(bindings), "binding"),
+    ]
+    return _leaves(commands, f"group {group['number']}", group, named, counted)
+
+
+def cue_list_cascade(show: Show, cue_list: _Doc, running: Collection[str]) -> Cascade:
+    """``cue_list`` goes from ``show``, with the playbacks that run it."""
+    ident = cue_list["id"]
+    runs = [p for p in show["playbacks"] if p["cueListId"] == ident]
+    gone = [playback["id"] for playback in runs]
+    numbers = [playback["number"] for playback in runs]
+    commands: list[_Doc] = []
+    pages, bindings = _leave_playbacks(show, gone, _list_command(gone), ident, commands)
+    commands.append(_delete(["cueLists", {"id": ident}]))
+
+    who = f"cue list {cue_list['number']}"
+    subject = f"{who} {_quoted(cue_list['name'])}"
+    taken = f" and {_named('playback', numbers)}" if numbers else ""
+    start = "They leave " if len(numbers) > 1 else "It leaves "
+    named = [_named("page", pages), _count(bindings, "binding")]
+    counted = [_count(len(pages), "page"), _count(bindings, "binding")]
+    uses = [_count(len(runs), "playback"), *counted]
+    question = f"Delete {subject}{taken}?{_sentence(start, named, '; ')}{_running(runs, running)}"
+    with_them = f"{subject} and {_count(len(runs), 'playback')}" if runs else subject
+    return Cascade(
+        tuple(commands), _reply(with_them, "left ", counted), question, _refused(who, uses)
+    )
+
+
+def playback_cascade(show: Show, playback: _Doc, running: Collection[str]) -> Cascade:
+    """``playback`` goes from ``show``, and its cue list stays."""
+    ident = playback["id"]
+    commands: list[_Doc] = []
+    pages, bindings = _leave_playbacks(show, [ident], _playback_command([ident]), ident, commands)
+    named = [_named("page", pages), _count(bindings, "binding")]
+    counted = [_count(len(pages), "page"), _count(bindings, "binding")]
+    after = _running([playback], running)
+    return _leaves(commands, f"playback {playback['number']}", playback, named, counted, after)
+
+
+def page_cascade(show: Show, page: _Doc) -> Cascade:
+    """``page`` goes from ``show``, and its playbacks stay."""
+    ident, number = page["id"], page["number"]
+    bindings = [
+        *_binding_edits(show, _page_command(number), ident),
+        *_action_edits(show, lambda a: a["kind"] == "pageAbs" and a["number"] == number),
+    ]
+    commands = [*bindings, _delete(["pages", {"id": ident}])]
+    said = [_count(len(bindings), "binding")]
+    return _leaves(commands, f"page {number}", page, said, said)
 
 
 # ------------------------------------------------------------- a fixture leaves
@@ -150,8 +278,11 @@ def _leave_presets(show: Show, ident: str, commands: list[_Doc]) -> list[tuple[s
     return found
 
 
-def _leave_cues(show: Show, ident: str, commands: list[_Doc]) -> list[str]:
-    """Edit each cue that names ``ident``; their numbers as ``L/C``."""
+def _leave_cues(
+    show: Show, ident: str, commands: list[_Doc], changes: Sequence[tuple[str, _Change]]
+) -> list[str]:
+    """Edit each cue that ``changes`` change, each a key of the cue and what to
+    do to its items; their numbers as ``L/C``."""
     found: list[str] = []
     for cue_list in show["cueLists"]:
         for cue in cue_list["cues"]:
@@ -159,11 +290,7 @@ def _leave_cues(show: Show, ident: str, commands: list[_Doc]) -> list[str]:
             path: EditPath = ["cueLists", {"id": cue_list["id"]}, "cues", {"id": cue["id"]}]
             edits = [
                 _set([*path, key], kept)
-                for key, change in (
-                    ("entries", _entry),
-                    ("effects", _targeted),
-                    ("releases", _targeted),
-                )
+                for key, change in changes
                 if (kept := _edited(doc.get(key, ()), change, ident)) is not None
             ]
             if edits:
@@ -242,7 +369,162 @@ def _universe_command(command: _Doc, ident: str) -> _Doc | None:
     return None if patch is not None and patch["universeId"] == ident else command
 
 
-# ------------------------------------------------------------------- both
+# ------------------------------------------------------------- a preset goes
+
+
+def _is_preset(source: _Doc, ident: str) -> bool:
+    return bool(source["kind"] == "preset" and source["presetId"] == ident)
+
+
+def _off_preset(entry: _Doc, ident: str) -> _Doc | None:
+    """A cue entry, gone when its value is preset ``ident``."""
+    return None if _is_preset(entry["value"], ident) else entry
+
+
+def _palette(layer: _Doc, ident: str) -> _Doc | None:
+    """A template's layer without preset ``ident``; ``None`` when that leaves
+    its palette no colour."""
+    palette = layer.get("palette")
+    if palette is None:
+        return layer
+    kept = [colour for colour in palette if colour.get("presetId") != ident]
+    if len(kept) == len(palette):
+        return layer
+    return {**layer, "palette": kept} if kept else None
+
+
+def _leave_palettes(
+    show: Show, who: str, ident: str, commands: list[_Doc]
+) -> tuple[list[str], str | None]:
+    """Edit each template with ``ident`` in a palette; their names, quoted, and
+    why the line must stop when a palette would have no colour left."""
+    names: list[str] = []
+    blocked = None
+    for template in show["effects"]:
+        layers = _edited(cast(Sequence[_Doc], template["layers"]), _palette, ident)
+        if layers is None:
+            continue
+        name = _quoted(template["name"])
+        names.append(name)
+        if len(layers) < len(template["layers"]):
+            blocked = f"{who} is the last colour of a palette of effect template {name}: "
+            blocked += "change the template first"
+        commands.append(_set(["effects", {"id": template["id"]}, "layers"], layers))
+    return names, blocked
+
+
+def _preset_command(command: _Doc, ident: str) -> _Doc | None:
+    if command["type"] == "APPLY_PRESET" and command["presetId"] == ident:
+        return None
+    if command["type"] == "SET_ATTRIBUTE" and _is_preset(command["value"], ident):
+        return None
+    return command
+
+
+# -------------------------------------------------------------- a group goes
+
+
+def _is_group(spec: _Doc, ident: str) -> bool:
+    return bool(spec["kind"] == "group" and spec["groupId"] == ident)
+
+
+def _off_group(item: _Doc, ident: str) -> _Doc | None:
+    """A cue's entry, effect or release, gone when it targets group ``ident``."""
+    return None if _is_group(item["targets"], ident) else item
+
+
+def _group_command(masters: Collection[str]) -> _Change:
+    """What a binding's command does when a group and ``masters`` go."""
+
+    def change(command: _Doc, ident: str) -> _Doc | None:
+        kind = command["type"]
+        if kind == "SELECT" and _is_group(command["targets"], ident):
+            return None
+        if kind == "ADD_EFFECT" and _is_group(command["effect"]["targets"], ident):
+            return None
+        return None if kind == "SET_MASTER" and command["masterId"] in masters else command
+
+    return change
+
+
+# -------------------------------------------------- a cue list, a playback goes
+
+
+def _playback_command(playbacks: Collection[str]) -> _Change:
+    """What a binding's command does when ``playbacks`` go."""
+
+    def change(command: _Doc, ident: str) -> _Doc | None:
+        return None if command.get("playbackId") in playbacks else command
+
+    return change
+
+
+def _list_command(playbacks: Collection[str]) -> _Change:
+    """What a binding's command does when a cue list and ``playbacks`` go."""
+    of_playbacks = _playback_command(playbacks)
+
+    def change(command: _Doc, ident: str) -> _Doc | None:
+        if command["type"] == "RECORD_CUE" and command["cueListId"] == ident:
+            return None
+        return of_playbacks(command, ident)
+
+    return change
+
+
+def _leave_playbacks(
+    show: Show, gone: Sequence[str], change: _Change, ident: str, commands: list[_Doc]
+) -> tuple[list[int], int]:
+    """Take ``gone`` off the pages and the bindings, ``change`` deciding for a
+    binding's command, and delete them; the numbers of the pages they leave and
+    how many bindings change. One edit per page and per binding, whatever
+    number of ``gone`` it names."""
+    pages: list[int] = []
+    for page in show["pages"]:
+        if any(slot in gone for slot in page["slots"]):
+            pages.append(page["number"])
+            slots = [None if slot in gone else slot for slot in page["slots"]]
+            commands.append(_set(["pages", {"id": page["id"]}, "slots"], slots))
+    bindings = [
+        *_binding_edits(show, change, ident),
+        *_action_edits(show, lambda a: a["kind"] == "playbackFaderAbs" and a["playbackId"] in gone),
+    ]
+    commands += bindings
+    commands += [_delete(["playbacks", {"id": playback}]) for playback in gone]
+    return pages, len(bindings)
+
+
+def _running(playbacks: Sequence[_Doc], running: Collection[str]) -> str:
+    """`` Playbacks 1, 2 are running.``, of those the engine has going, or nothing."""
+    numbers = [playback["number"] for playback in playbacks if playback["id"] in running]
+    if not numbers:
+        return ""
+    return f" {_named('Playback', numbers)} {'is' if len(numbers) == 1 else 'are'} running."
+
+
+# -------------------------------------------------------------- a page goes
+
+
+def _page_command(number: int) -> _Change:
+    """What a binding's command does when page ``number`` goes."""
+
+    def change(command: _Doc, ident: str) -> _Doc | None:
+        if command["type"] == "ASSIGN_PLAYBACK" and command["pageId"] == ident:
+            return None
+        return None if command["type"] == "PAGE" and command.get("number") == number else command
+
+    return change
+
+
+# ------------------------------------------------------------------- all
+
+
+def _action_edits(show: Show, goes: Callable[[_Doc], bool]) -> list[_Doc]:
+    """One delete per binding whose action ``goes`` says so."""
+    return [
+        _delete(["bindings", {"id": binding["id"]}])
+        for binding in show["bindings"]
+        if goes(cast(_Doc, binding["action"]))
+    ]
 
 
 def _binding_edits(show: Show, change: _Change, ident: str) -> list[_Doc]:
@@ -322,13 +604,48 @@ def _named_presets(presets: Sequence[tuple[str, int]]) -> str:
     return f"preset{'' if len(presets) == 1 else 's'} {', '.join(names)}" if names else ""
 
 
-def _sentence(start: str, parts: Iterable[str], separator: str) -> str:
-    """`` It leaves a; b and c.``, of the parts that say something, or nothing."""
+def _quoted(name: str) -> str:
+    return json.dumps(name, ensure_ascii=False)
+
+
+def _joined(parts: Iterable[str], separator: str) -> str:
+    """``a; b and c``, of the parts that say something."""
     said = [part for part in parts if part]
     if not said:
         return ""
     head = separator.join(said[:-1])
-    return f" {start}{f'{head} and ' if head else ''}{said[-1]}."
+    return f"{f'{head} and ' if head else ''}{said[-1]}"
+
+
+def _sentence(start: str, parts: Iterable[str], separator: str) -> str:
+    """`` It leaves a; b and c.``, of the parts that say something, or nothing."""
+    joined = _joined(parts, separator)
+    return f" {start}{joined}." if joined else ""
+
+
+def _refused(who: str, uses: Iterable[str]) -> str | None:
+    """``group 1 is used by 2 cues and 1 binding: add cascade``, or ``None``."""
+    joined = _joined(uses, ", ")
+    return f"{who} is used by {joined}: add cascade" if joined else None
+
+
+def _leaves(
+    commands: Sequence[_Doc],
+    who: str,
+    item: _Doc,
+    named: Iterable[str],
+    counted: Iterable[str],
+    after: str = "",
+    *,
+    blocked: str | None = None,
+) -> Cascade:
+    """The words for ``who`` going, named ``item``'s name, and leaving what uses it."""
+    counts = list(counted)
+    subject = f"{who} {_quoted(item['name'])}"
+    question = f"Delete {subject}?{_sentence('It leaves ', named, '; ')}{after}"
+    return Cascade(
+        tuple(commands), _reply(subject, "left ", counts), question, _refused(who, counts), blocked
+    )
 
 
 def _reply(subject: str, start: str, counted: Iterable[str]) -> str:
