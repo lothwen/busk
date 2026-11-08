@@ -154,6 +154,20 @@ EXPECTED: list[tuple[str, tuple[str, ...], tuple[str, ...], bool]] = [
     ("effect ", ("add", "remove", "clear", "template", "stop", "run"), (), False),
     ("effect add ", TEMPLATES, (), False),
     ("effect stop ", (), ("an effect id",), False),
+    ("effect template ", ("add", "delete", "rename", "update"), (), False),
+    ("effect template delete ", ('"Pulse"',), (), False),
+    ("effect template rename ", ('"Pulse"',), (), False),
+    ('effect template rename "Pulse" ', (), ("a name in quotes",), False),
+    ('effect template rename "Pulse" "Beat" ', (), (), True),
+    ("effect template update ", ('"Pulse"',), (), False),
+    ('effect template update "Pulse" ', (), ("the layers as a JSON list",), False),
+    ("cue 20/1 effect ", ("ei-1",), (), False),
+    ("cue 20/1 effect ei-1 ", ("remove",), ("a property, e.g. size or rate.multiplier",), False),
+    ("cue 20/1 effect ei-1 remove ", (), (), True),
+    ("cuelist ", ("add",), ("a cue list number",), False),
+    ("cuelist add ", (), ("a cue list number",), False),
+    ("cuelist add 5 ", (), ("a name in quotes",), True),
+    ('cuelist add 5 "Mine" ', (), (), True),
     ("profile ", ("update", '"Generic Spot 16ch"', '"RGB Par 3ch"'), (), False),
     ('profile "RGB Par 3ch" ', ("category",), (), False),
     ('profile "RGB Par 3ch" category ', (*PROFILE_CATEGORIES, "none"), (), False),
@@ -389,10 +403,22 @@ def complete(console: Console, line: str, *, kind: str = "\t", libedit: bool = F
     return found
 
 
+def test_a_line_that_cannot_run_says_why_where_it_ends() -> None:
+    used = after('effect template delete "Pulse" ')
+    assert (used.runnable, used.error) == (False, "template 'Pulse' is used by cue 20/1")
+    doc = load_doc(APPENDIX_A)
+    doc["effects"].append({**doc["effects"][0], "id": "ef-spare", "name": "Spare"})
+    free = expected('effect template delete "Spare" ', Context(show_of(doc), LIBRARY, CounterIds()))
+    assert (free.runnable, free.error) == (True, None)
+    doc["cueLists"][1]["cues"] = []
+    empty = expected("go 3 ", Context(show_of(doc), LIBRARY, CounterIds()))
+    assert (empty.runnable, empty.error) == (False, "cue list 10 has no cues")
+
+
 def test_tab_completes_a_keyword_with_a_space(console: Console) -> None:
     assert complete(console, "rou") == ["route "]
     assert complete(console, "Rou") == ["route "]
-    assert complete(console, "effect template ") == ["add "]  # the only word that may come
+    assert complete(console, 'fixture 101 profile "RGB Par 3ch" ') == ["mode "]  # the only word
     assert complete(console, "route add 1 s") == ["sacn "]
 
 
@@ -421,7 +447,7 @@ def test_question_mark_never_completes(console: Console) -> None:
 def test_libedit_prints_the_help_itself(
     console: Console, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert complete(console, "effect template ", libedit=True) == ["add "]
+    assert complete(console, 'fixture 101 profile "RGB Par 3ch" ', libedit=True) == ["mode "]
     assert complete(console, "route add 1 ", libedit=True) == []
     out = capsys.readouterr().out
     assert "\nnext: artnet  dmxusb  sacn\n" in out

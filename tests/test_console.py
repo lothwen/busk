@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import signal
+import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from builders import APPENDIX_A, load_doc, show_of
-from busk import OfflineShow, ScriptError
+from busk import LiveShow, OfflineShow, ScriptError, load_show
 from busk.console.console import Console, interact
 from busk.console.parser import SubmitAll
 from busk.console.prompt import Editing
+from busk.model.show import Show
 from busk.session.library import ProfileLibrary, builtin_directory
 from session_harness import Live
 
@@ -1070,3 +1074,201 @@ def test_info_ends_with_the_runs_processes(live: Live) -> None:
     about = ["processes: root 1, engine 2, console 3", "restarts: engine 0, console 0"]
     console = Console(live.session, LIBRARY, about=lambda: about)
     assert run(console, "info")[0].splitlines()[-2:] == about
+
+
+# ------------------------------------------------- GAP-31, GAP-32, GAP-33
+
+SINE_TILT = [{"attribute": "tilt", "waveform": {"kind": "sine"}, "phaseOffset": 0, "mode": "add"}]
+TILT_JSON = json.dumps(SINE_TILT)
+PULSE_CUE = "cue 20/1"
+
+
+def template(show: Any, ident: str = "ef-pulse") -> dict[str, Any]:
+    return next(t for t in show["effects"] if t["id"] == ident)
+
+
+def test_a_template_is_renamed_updated_and_deleted_each_in_one_undo_step(
+    console: Console, live: Live
+) -> None:
+    before = copy.deepcopy(live.session.show)
+    assert run(console, 'effect template rename "Pulse" "Beat"', "undo") == [
+        "renamed effect template 'Pulse' to 'Beat'",
+        "undid: renamed effect template 'Pulse' to 'Beat'",
+    ]
+    assert live.session.show == before
+    assert run(console, f'effect template update "Pulse" {TILT_JSON}') == [
+        "updated effect template 'Pulse': 1 layer"
+    ]
+    assert template(live.session.show)["layers"] == SINE_TILT
+    assert run(console, "undo") == ["undid: updated effect template 'Pulse': 1 layer"]
+    assert live.session.show == before
+    run(console, f'effect template add "Spare" {TILT_JSON}')
+    with_spare = copy.deepcopy(live.session.show)
+    assert run(console, 'effect template delete "Spare"') == ["deleted effect template 'Spare'"]
+    assert live.session.show == before
+    assert run(console, "undo") == ["undid: deleted effect template 'Spare'"]
+    assert live.session.show == with_spare
+
+
+def test_a_used_template_stays_and_the_reply_says_why(console: Console) -> None:
+    reply = console.execute('effect template delete "Pulse"')
+    assert not reply.ok
+    assert reply.text == "error: template 'Pulse' is used by cue 20/1"
+    assert "\n" not in reply.text
+
+
+def test_an_update_the_show_cannot_take_is_refused_whole(console: Console, live: Live) -> None:
+    before = copy.deepcopy(live.session.show)
+    reply = console.execute('effect template update "Pulse" []')
+    assert not reply.ok
+    assert "An effect template needs at least one layer" in reply.text
+    assert live.session.show == before
+
+
+def test_an_update_a_cues_effect_cannot_take_is_refused(console: Console, live: Live) -> None:
+    add = [{**SINE_TILT[0], "attribute": "intensity"}]
+    run(console, f'effect template update "Pulse" {json.dumps(add)}', "cue 20/1 effect ei-1 size 2")
+    before = copy.deepcopy(live.session.show)
+    multiply = [{**add[0], "mode": "multiply"}]
+    reply = console.execute(f'effect template update "Pulse" {json.dumps(multiply)}')
+    assert not reply.ok
+    assert "An effect with a multiply layer needs a size within 0..1" in reply.text
+    assert live.session.show == before
+
+
+def test_a_cue_list_may_be_numbered_below_one_as_a_page_may(console: Console) -> None:
+    assert run(console, "cuelist add 0") == ["added cue list 'Cue list 0'"]
+
+
+def test_a_template_edit_survives_a_save_and_a_load(tmp_path: Path) -> None:
+    path = tmp_path / "show.json"
+    offline = OfflineShow(show_of(load_doc(APPENDIX_A)), path=path)
+    run_lines = [
+        f'effect template add "Spare" {TILT_JSON}',
+        f'effect template update "Pulse" {TILT_JSON}',
+        'effect template rename "Pulse" "Beat"',
+        "cue 20/1 effect ei-1 remove",
+        'effect template delete "Beat"',
+        'cuelist add 5 "Blue Wash"',
+    ]
+    for line in run_lines:
+        reply = offline.execute(line)
+        assert reply.ok, (line, reply.text)
+    offline.save()
+    loaded = load_show(path)[0]
+    assert [t["name"] for t in loaded["effects"]] == ["Spare"]
+    assert next(cl for cl in loaded["cueLists"] if cl["number"] == 5)["name"] == "Blue Wash"
+    assert next(cl for cl in loaded["cueLists"] if cl["number"] == 20)["cues"][0]["effects"] == []
+
+
+def test_removing_a_cues_only_effect_leaves_the_cue(console: Console, live: Live) -> None:
+    before = copy.deepcopy(live.session.show)
+    assert run(console, f"{PULSE_CUE} effect ei-1 remove") == ["removed effect ei-1 from cue 20/1"]
+    cues = next(cl for cl in live.session.show["cueLists"] if cl["number"] == 20)["cues"]
+    assert [cue["effects"] for cue in cues] == [[]]
+    assert run(console, "undo") == ["undid: removed effect ei-1 from cue 20/1"]
+    assert live.session.show == before
+
+
+def test_an_empty_cue_list_is_listed_and_recorded_into(console: Console, live: Live) -> None:
+    before = copy.deepcopy(live.session.show)
+    assert run(console, "cuelist add 5") == ["added cue list 'Cue list 5'"]
+    assert any(
+        line.split() == ["5", "Cue", "list", "5", "no", "cues"]
+        for line in run(console, "list cuelists")[0].splitlines()
+    )
+    assert run(console, "sel fixture 101", "set intensity 1", "record cue 5")[2] == (
+        "recorded cue 5/1: 1 entry"
+    )
+    cues = next(cl for cl in live.session.show["cueLists"] if cl["number"] == 5)["cues"]
+    assert [cue["number"] for cue in cues] == ["1"]
+    run(console, "undo", "undo", "undo", "undo")
+    assert live.session.show == before
+
+
+def empty_list_show() -> Show:
+    """Appendix A with playback 3's list emptied."""
+    doc = load_doc(APPENDIX_A)
+    doc["cueLists"][1]["cues"] = []
+    return show_of(doc)
+
+
+def eventually(condition: Callable[[], bool], timeout: float = 5.0) -> None:
+    deadline = time.monotonic() + timeout
+    while not condition():
+        assert time.monotonic() < deadline, "timed out"
+        time.sleep(0.01)
+
+
+def test_go_and_goto_say_so_on_an_empty_list_offline() -> None:
+    offline = OfflineShow(empty_list_show())
+    assert offline.execute("go 3").text == "error: cue list 10 has no cues"
+    assert offline.execute("goto 3 1").text == "error: no cue 1 in cue list 10"
+
+
+def test_go_and_goto_on_an_empty_list_leave_a_running_engine_alone() -> None:
+    with LiveShow(empty_list_show(), output=False) as live:
+
+        def state() -> str | None:
+            snapshot = live.snapshot
+            if snapshot is None:
+                return None
+            return next(p.state for p in snapshot.playbacks if p.number == 3)
+
+        eventually(lambda: state() == "idle")
+        assert live.execute("go 3").text == "error: cue list 10 has no cues"
+        assert live.execute("goto 3 1").text == "error: no cue 1 in cue list 10"
+        health = live.health
+        assert health is not None
+        ticks = health.ticks
+        eventually(lambda: live.health is not None and live.health.ticks > ticks)
+        assert live.health is not None
+        assert live.health.state == "running"
+        assert state() == "idle"
+
+
+def source_of(live: LiveShow, family: str) -> str | None:
+    """What drives ``family`` on moving head 101 (``None`` before the first readout)."""
+    output = live.output
+    if output is None:
+        return None
+    return next(f for f in output.fixtures if f.number == 101).source[family]
+
+
+def test_a_template_update_reaches_the_cue_that_runs_it() -> None:
+    running = show_of(load_doc(APPENDIX_A))
+    with LiveShow(running, output=False) as live:
+        assert live.execute("toggle 6").ok
+        eventually(lambda: source_of(live, "intensity") == "effect")
+        assert source_of(live, "position") != "effect"
+        reply = live.execute(f'effect template update "Pulse" {TILT_JSON}')
+        assert reply.ok, reply.text
+        eventually(lambda: source_of(live, "position") == "effect")
+        assert source_of(live, "intensity") != "effect"
+        assert live.execute("undo").ok
+        eventually(lambda: source_of(live, "intensity") == "effect")
+        assert live.show == running
+
+
+def test_a_cues_effect_leaves_a_running_cue_and_comes_back() -> None:
+    running = show_of(load_doc(APPENDIX_A))
+    with LiveShow(running, output=False) as live:
+
+        def effects() -> list[str]:
+            status = live.effects
+            return [] if status is None else [effect.id for effect in status.effects]
+
+        def state() -> str | None:
+            snapshot = live.snapshot
+            if snapshot is None:
+                return None
+            return next(p.state for p in snapshot.playbacks if p.number == 6)
+
+        assert live.execute("toggle 6").ok
+        eventually(lambda: effects() == ["ei-1"])
+        assert live.execute("cue 20/1 effect ei-1 remove").ok
+        eventually(lambda: effects() == [])
+        assert state() == "active"
+        assert live.execute("undo").ok
+        eventually(lambda: effects() == ["ei-1"])
+        assert live.show == running

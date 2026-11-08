@@ -89,6 +89,9 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-28](#gap-28-orientation-for-several-fixtures) Orientation for several fixtures | action | nice-to-have | F3 | **done** 2026-11-07 |
 | [GAP-29](#gap-29-a-digit-int-cannot-read) A digit `int` cannot read | contract | important | prompt | **done** 2026-11-07 |
 | [GAP-30](#gap-30-a-number-too-long-for-int) A number too long for `int` | contract | important | prompt | **done** 2026-11-07 |
+| [GAP-31](#gap-31-editing-effect-templates) Editing effect templates | action | important | F5 | **done** 2026-11-08 |
+| [GAP-32](#gap-32-removing-one-effect-from-a-cue) Removing one effect from a cue | action | important | F5 | **done** 2026-11-08 |
+| [GAP-33](#gap-33-an-empty-cue-list) An empty cue list | action | nice-to-have | F4 | **done** 2026-11-08 |
 
 ---
 
@@ -2178,3 +2181,103 @@ it stops at 300 digits, with a copy of the limit, since `MAX_DIGITS` is not in `
 
 **Left as found:** `parse_target_key` in `model/common.py` raises for a target key with such an
 element. A show file could hold one, and `submit()` answers `internal error`.
+
+## GAP-31: Editing effect templates
+
+**Status:** done 2026-11-08 (see **Done** at the end of this section).
+
+Found while writing the TUI's operations report (`docs/dev/tui/operations-report.md`,
+2026-11-01), and ordered in `docs/plans/tui-pending-plan.md`, Phase 2.
+
+**Needed by:** F5's template editor.
+
+**Today:** `effect template add` makes a template and refuses a name that exists. No line
+deletes, renames or changes one, and `delete` does not take templates. `submit()` can do all
+three, but it takes a name another template has, and leaves a programmer effect with no
+template.
+
+**Engine should provide:** `effect template delete "<name>"`, `effect template rename "<name>"
+"<new name>"` and `effect template update "<name>" <JSON layers>`, each one undo step.
+
+**Priority:** important.
+
+**TUI until then:** none.
+
+**Done** (2026-11-08). The three lines, in `_effect_template` of `console/parser.py`, each a
+labelled `BATCH` of one edit, so the reply and `undo` say what happened: `deleted effect template
+'Pulse'`, `renamed effect template 'Pulse' to 'Beat'`, `updated effect template 'Pulse': 2
+layers`. Documented in `docs/console.md`, `busk help` and the parser's module docs. No public name
+was added. What it settles:
+
+- **A template is found as `effect add` finds it:** by name in any case, by id, or by the
+  library's name for the show's copy of it, renamed or not. Tab offers the show's names.
+- **Only the show's own.** A library template the show has no copy of is refused by all three:
+  `template 'Circle' is the library's: the show has no copy`. Embedding it first is `effect add`'s
+  job.
+- **A used template stays.** The refusal is one line and names what uses it: `template 'Pulse'
+  is used by cues 12/1, 20/1, 1 binding and the programmer`. There is no cascade.
+- **A binding counts,** which the plan did not name. A binding can hold an `ADD_EFFECT`, and the
+  validator does not check that reference, so the delete would otherwise leave a control that
+  fails when pressed.
+- **`rename` refuses a name another template has, in any case,** since the validator would take
+  it. A template may change the case of its own name.
+- **`update` reads its layers as `add` does,** and the validator decides the rest. A list it
+  cannot take is refused whole, by document path, as `add` is: the path names the layer the
+  operator typed. A cue effect the new layers make invalid refuses the line too.
+- **On a running show,** `update` reaches a cue that is running, at once, and `undo` puts it back.
+- Tests: `tests/test_console_parser.py`, `tests/test_console.py` (with a running `LiveShow`) and
+  the completion table of `tests/test_console_prompt.py`.
+
+## GAP-32: Removing one effect from a cue
+
+**Status:** done 2026-11-08 (see **Done** at the end of this section).
+
+Found while writing the TUI's operations report (`docs/dev/tui/operations-report.md`,
+2026-11-01), and ordered in `docs/plans/tui-pending-plan.md`, Phase 2.
+
+**Needed by:** F5's `✕` on a cue effect.
+
+**Today:** `cue L/C effect <id> <prop> <value>` edits one, but nothing removes one by its id.
+`record cue L/C remove` needs the effect in the programmer first.
+
+**Engine should provide:** `cue L/C effect <id> remove`, one undo step.
+
+**Priority:** important.
+
+**TUI until then:** F5's `✕` works on programmer effects only.
+
+**Done** (2026-11-08). The line, in `_cue_effect` of `console/parser.py`. It replies `removed
+effect fx1 from cue 11/1`, and Tab offers `remove` beside the properties. Documented in
+`docs/console.md`, `busk help` and the parser's module docs. An unknown id is refused by name, as
+the property line does. A cue left with nothing stays, as a cascade leaves one. On a running show
+the effect leaves the active cue, which stays active, and `undo` brings it back. Tests:
+`tests/test_console_parser.py`, `tests/test_console.py` (with a running `LiveShow`) and the
+completion table of `tests/test_console_prompt.py`.
+
+## GAP-33: An empty cue list
+
+**Status:** done 2026-11-08 (see **Done** at the end of this section).
+
+Found while writing the TUI's operations report (`docs/dev/tui/operations-report.md`,
+2026-11-01), and ordered in `docs/plans/tui-pending-plan.md`, Phase 2.
+
+**Needed by:** F4's `[+ list…]`.
+
+**Today:** `record cue N` makes list N along with its first cue, so a list cannot exist before
+something is recorded into it. The model takes one with no cues.
+
+**Engine should provide:** `cuelist add N ["name"]`.
+
+**Priority:** nice-to-have.
+
+**TUI until then:** none.
+
+**Done** (2026-11-08). The line, in `_cuelist_add` of `console/parser.py`, built with `_cue_list`,
+so it has the defaults of a list `record cue` makes. A taken number is refused in one line, and a
+number below 1 is taken, as for pages. `record cue N` then appends cue 1, and `list cuelists` says
+`no cues`. Documented in `docs/console.md`, `busk help` and the parser's module docs.
+
+**`go` on an empty list is refused,** which is new: `cue list 10 has no cues`. The engine did not
+raise, but marked the playback active on no cue, and replied nothing. A bound control's `GO`, and
+`button N B on` on a `go` button, still do that, and the engine runs on. `goto` already said `no
+cue 1 in cue list 10`. Tests: as GAP-32.

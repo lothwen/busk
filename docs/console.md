@@ -61,8 +61,8 @@ session, as the web remote's commands do. `help` prints the grammar.
 | Pages | `page 2`, `page next\|prev`, `page add 2 ["Washes"]`, `page 2 slot 1 playback 14`, `page 2 slot 5 clear`, `record slot 2.1`, `playback 9 goto 4` |
 | Edit | `playback 3 exclusivity color`, `cue 3/1 timing.fadeIn 1`, `playback 1 buttons ["toggle", "flash", "release"]`, `show meta.title "Club Night"`, `rename group 1 "Heads"`, `delete cue 10/2`, `delete fixture 101 cascade`, `delete universe 2 cascade`, `fixture 101 location {"x": 1, "y": 2, "z": 3, "rx": 0, "ry": 0, "rz": 0}`, `fixture 101 location none`, `fixture 101 thru 104 orientation.invertPan true`, `fixture 101 orientation.panOffset 30` |
 | Timing, triggers | `cue 9/1 time 3 easeInOut`, `cue 9/3 time 1/3 delay 0/1`, `cue 9/2 time position 4 [delay 1] [easeOut]`, `… bezier 0.4 0 0.2 1`, `cue 9/3 wait 8`, `cue 9/5 follow 4`, `cue 9/2 go`, `cue 9/5 release group 1 [only pan tilt]` |
-| Cue lists, tempo | `cuelist 9 tracking true`, `cuelist 10 chase bpm ["Speed 1"] [x 2] [forward\|reverse\|bounce\|random] [crossfade 0.25]`, `cuelist 10 chase hz 4`, `cuelist 10 sequence`, `master add speed "Speed 1" [bpm 120] [steps 0.5, 1, 2]` |
-| Effects, masters | `effect add "Circle" [id fx1] [hz 0.5 \| bpm ["Speed 1"] [x 0.5]] [size 15] [low 0 high 1] [phase 0 180] [groups N] [blocks N] [wings 2] [forward\|reverse\|bounce] [fadein 1] [sizemaster "FX"] [speedmaster "Speed 1"]`, `effect remove fx1`, `effect clear`, `effect stop fx1`, `effect run fx1`, `effect template add "Name" [{…layers…}]`, `cue 9/4 effect rainbow size 0.5`, `master add size "FX"`, `master add group "Wash level" group 2`, `master add fadetime "Fade"` |
+| Cue lists, tempo | `cuelist add 5 ["name"]`, `cuelist 9 tracking true`, `cuelist 10 chase bpm ["Speed 1"] [x 2] [forward\|reverse\|bounce\|random] [crossfade 0.25]`, `cuelist 10 chase hz 4`, `cuelist 10 sequence`, `master add speed "Speed 1" [bpm 120] [steps 0.5, 1, 2]` |
+| Effects, masters | `effect add "Circle" [id fx1] [hz 0.5 \| bpm ["Speed 1"] [x 0.5]] [size 15] [low 0 high 1] [phase 0 180] [groups N] [blocks N] [wings 2] [forward\|reverse\|bounce] [fadein 1] [sizemaster "FX"] [speedmaster "Speed 1"]`, `effect remove fx1`, `effect clear`, `effect stop fx1`, `effect run fx1`, `effect template add "Name" [{…layers…}]`, `effect template update "Name" [{…layers…}]`, `effect template rename "Name" "New"`, `effect template delete "Name"`, `cue 9/4 effect rainbow size 0.5`, `cue 9/4 effect rainbow remove`, `master add size "FX"`, `master add group "Wash level" group 2`, `master add fadetime "Fade"` |
 | Perform | `go 9`, `back 9`, `goto 9 4`, `release 3 [2]`, `fader 3 75%`, `flash 3 on\|off`, `toggle 3`, `button 3 2 on\|off`, `gm 0.5`, `master "Speed 1" 0.75`, `tap ["Speed 1"]`, `bpm ["Speed 1"] 128`, `blackout on\|off` |
 | Safety, panic | `park fixture 204 intensity 0`, `park group 2 color 1 0 0`, `unpark fixture 204 [intensity]`, `unpark all`, `fixture 101 thru 102 limits tilt -90 10`, `fixture 301 limits intensity 50%`, `fixture 101 limits tilt none`, `fixture 101 limits none`, `safety strobe 3\|off`, `highlight on\|off`, `release all [2]`, `output on\|off` |
 | Profiles | `profile update "Generic Spot 16ch"` (to the library's other revision), `profile "Generic Spot 16ch" category wash\|none`, `list profiles` |
@@ -98,6 +98,9 @@ session, as the web remote's commands do. `help` prints the grammar.
   `toggle` and `flash` buttons, `threshold` LTP at 2 %, auto start/release, a flash that
   brings LTP, 1 s release) and puts it in the slot, as one undo step. On an occupied slot
   it records into the playback's cue, with `merge`, `replace` or `remove`.
+* **An empty cue list.** `cuelist add 5 ["name"]` makes a list with no cues, with the
+  defaults of one that `record cue` makes, and `record cue 5` then appends its cue 1. `go`
+  is refused on a playback whose list has no cues.
 * **Tracking lists record changes only.** In a list with `tracking` on, `record cue`
   stores only the values that differ from what the list already tracks into that cue
   (`recorded cue 9/2: 4 entries; 8 values tracked from cue 9/1`); a cue whose values all
@@ -121,13 +124,21 @@ session, as the web remote's commands do. `help` prints the grammar.
   `low`/`high` and phase for that template, ×1 on the show's only speed master (else 1
   Hz), and the id `fx<n>` that neither the programmer nor any cue uses. A slot recorded
   with only effects gets a `size` fader. `list effects` lists the show's templates,
-  `list cues` counts each cue's effects, and `cue L/C effect <id> <prop> <value>` edits
-  a recorded instance. `effect stop fx1` stops a programmer effect and keeps it, with its
+  `list cues` counts each cue's effects, `cue L/C effect <id> <prop> <value>` edits a
+  recorded instance, and `cue L/C effect <id> remove` removes it: the cue stays, even with
+  nothing left in it. `effect stop fx1` stops a programmer effect and keeps it, with its
   settings, until `effect run fx1` runs it again: it fades out and in over the
   programmer's fade time, as `effect remove` and `effect add` would, and restarts its
   cycle once it has gone. `programmer` marks it `(stopped)`; `record cue` leaves it out
   and says so (`; 1 stopped effect not recorded`); `effect add` with its id replaces its
   settings and keeps it stopped. Stopping and running are undo steps.
+* **Editing a template.** `effect template update "Name" […]` replaces its layers, read
+  as `effect template add` reads them. `effect template rename "Name" "New"` renames it,
+  and refuses a name another template has, in any case. `effect template delete "Name"` is
+  refused while a cue, a binding or the programmer uses it, and says which. Each finds the
+  template as `effect add` does, and is one undo step. They act on the show's own
+  templates: one that only the library has is refused, and is changed by embedding a copy
+  with `effect add` first.
 * **Pages and surfaces.** `page N`, `page next` and `page prev` turn the
   engine's page (`list pages` marks it with `*`); `page add` creates one with empty slots,
   and `page P slot S playback N` fills a slot. `surface add osc` and `surface add web`

@@ -2238,3 +2238,288 @@ def test_help_lists_the_relative_and_component_lines() -> None:
 def test_help_lists_the_stop_and_run_lines() -> None:
     stripped = [line.strip() for line in HELP]
     assert "effect remove <id> | effect clear | effect stop <id> | effect run <id>" in stripped
+
+
+# ------------------------------- effect templates (GAP-31, engine-gaps.md)
+
+SINE_TILT = [{"attribute": "tilt", "waveform": {"kind": "sine"}, "phaseOffset": 0, "mode": "add"}]
+SPARE = ["effects", {"id": "ef-spare"}]
+
+
+def spare_doc() -> dict[str, Any]:
+    """:func:`fx_doc` plus "Spare", a template nothing uses."""
+    doc = fx_doc()
+    doc["effects"].append({"id": "ef-spare", "name": "Spare", "layers": SINE_TILT})
+    return doc
+
+
+def template_action(line: str, doc: dict[str, Any] | None = None) -> Submit:
+    action = parse(line, fx_context(spare_doc() if doc is None else doc))
+    assert isinstance(action, Submit), action
+    return action
+
+
+def template_error(
+    line: str, doc: dict[str, Any] | None = None, programmer: Programmer | None = None
+) -> str:
+    with pytest.raises(ParseError) as raised:
+        parse(line, fx_context(spare_doc() if doc is None else doc, programmer))
+    return raised.value.message
+
+
+@pytest.mark.parametrize(
+    ("line", "label", "edit"),
+    [
+        (
+            'effect template delete "Spare"',
+            "deleted effect template 'Spare'",
+            {"type": "DELETE", "path": SPARE},
+        ),
+        (
+            'effect template delete "sPARE"',  # any case, as `effect add` finds it
+            "deleted effect template 'Spare'",
+            {"type": "DELETE", "path": SPARE},
+        ),
+        (
+            "effect template delete ef-spare",  # or by its id, unquoted
+            "deleted effect template 'Spare'",
+            {"type": "DELETE", "path": SPARE},
+        ),
+        (
+            'effect template rename "Spare" "Nod"',
+            "renamed effect template 'Spare' to 'Nod'",
+            {"type": "SET", "path": [*SPARE, "name"], "value": "Nod"},
+        ),
+        (
+            'effect template rename "Spare" "SPARE"',  # its own name, in another case
+            "renamed effect template 'Spare' to 'SPARE'",
+            {"type": "SET", "path": [*SPARE, "name"], "value": "SPARE"},
+        ),
+        (
+            f'effect template update "Spare" {json.dumps(SINE_TILT)}',
+            "updated effect template 'Spare': 1 layer",
+            {"type": "SET", "path": [*SPARE, "layers"], "value": SINE_TILT},
+        ),
+        (
+            f'effect template update "Pulse" {json.dumps(SINE_TILT * 2)}',  # used: it may change
+            "updated effect template 'Pulse': 2 layers",
+            {
+                "type": "SET",
+                "path": ["effects", {"id": "ef-pulse"}, "layers"],
+                "value": SINE_TILT * 2,
+            },
+        ),
+    ],
+)
+def test_the_lines_of_a_template_are_one_labelled_step(
+    line: str, label: str, edit: dict[str, Any]
+) -> None:
+    action = template_action(line)
+    assert action.command == {"type": "BATCH", "label": label, "commands": [edit]}
+    assert action.confirm is None
+
+
+def test_a_rename_and_an_update_find_a_library_copy_by_the_librarys_name() -> None:
+    doc = spare_doc()
+    circle = EFFECTS.find("Circle")
+    assert circle is not None
+    doc["effects"].append({**circle.template, "name": "Round"})
+    path = ["effects", {"id": circle.template["id"]}]
+    [edit] = template_action('effect template rename "Circle" "Dish"', doc).command["commands"]  # type: ignore[typeddict-item]
+    assert edit == {"type": "SET", "path": [*path, "name"], "value": "Dish"}
+    assert template_action('effect template delete "Circle"', doc).command["label"] == (  # type: ignore[typeddict-item]
+        "deleted effect template 'Round'"
+    )
+
+
+@pytest.mark.parametrize(
+    ("line", "error"),
+    [
+        ('effect template delete "Nope"', "no template 'Nope' in the show (see 'list effects')"),
+        (
+            'effect template rename "Nope" "A"',
+            "no template 'Nope' in the show (see 'list effects')",
+        ),
+        ('effect template update "Nope" []', "no template 'Nope' in the show (see 'list effects')"),
+        (
+            'effect template delete "Circle"',
+            "template 'Circle' is the library's: the show has no copy",
+        ),
+        (
+            'effect template rename "Circle" "Round"',
+            "template 'Circle' is the library's: the show has no copy",
+        ),
+        (
+            'effect template update "Circle" []',
+            "template 'Circle' is the library's: the show has no copy",
+        ),
+        ('effect template rename "Spare" "Pulse"', "a template named 'Pulse' exists"),
+        ('effect template rename "Spare" "pULSE"', "a template named 'pULSE' exists"),
+        ('effect template rename "Spare" Nod', "expected a name in quotes"),
+        ('effect template rename "Spare"', "expected a name in quotes"),
+        ('effect template rename "Spare" "Nod" now', "unexpected 'now'"),
+        ('effect template delete "Spare" now', "unexpected 'now'"),
+        ("effect template delete", "expected a template name in quotes"),
+        ("effect template update", "expected a template name in quotes"),
+        (
+            'effect template update "Spare"',
+            'expected the layers as a JSON list, e.g. [{"attribute": "pan", …}]',
+        ),
+        (
+            'effect template update "Spare" {"attribute": "tilt"}',
+            'expected the layers as a JSON list, e.g. [{"attribute": "pan", …}]',
+        ),
+        (
+            'effect template update "Spare" [{"attribute": "tilt",',
+            'expected the layers as a JSON list, e.g. [{"attribute": "pan", …}]: '
+            "Expecting property name enclosed in double quotes: line 1 column 23 (char 22)",
+        ),
+        ("effect template wobble", "expected add or delete or rename or update, got 'wobble'"),
+    ],
+)
+def test_template_line_errors(line: str, error: str) -> None:
+    assert template_error(line) == error
+
+
+def test_a_used_template_is_not_deleted_and_the_refusal_names_what_uses_it() -> None:
+    doc = spare_doc()
+    doc["cueLists"][0]["cues"][0]["effects"] = [
+        {**doc["cueLists"][2]["cues"][0]["effects"][0], "id": "ei-2"}
+    ]
+    assert (
+        template_error('effect template delete "Pulse"', doc)
+        == "template 'Pulse' is used by cues 1/1, 20/1"
+    )
+
+
+def effect_on(template: str) -> dict[str, Any]:
+    return {**instance(), "templateId": template}
+
+
+def test_the_programmer_keeps_a_template_from_being_deleted() -> None:
+    programmer = Programmer(selection=(MH1, MH2), effects=(effect_on("ef-spare"),))  # type: ignore[arg-type]
+    assert (
+        template_error('effect template delete "Spare"', programmer=programmer)
+        == "template 'Spare' is used by the programmer"
+    )
+
+
+def bind_effect(doc: dict[str, Any], command: dict[str, Any]) -> None:
+    doc["bindings"].append(
+        {
+            "id": "b-fx",
+            "surfaceId": doc["surfaces"][0]["id"],
+            "input": {"kind": "midiNote", "channel": 16, "note": 99},
+            "action": {"kind": "command", "command": command},
+        }
+    )
+
+
+def test_a_binding_keeps_a_template_from_being_deleted() -> None:
+    doc = spare_doc()
+    bind_effect(doc, {"type": "ADD_EFFECT", "effect": effect_on("ef-spare")})
+    assert (
+        template_error('effect template delete "Spare"', doc)
+        == "template 'Spare' is used by 1 binding"
+    )
+
+
+def test_a_refusal_lists_everything_that_uses_the_template() -> None:
+    doc = spare_doc()
+    doc["cueLists"][2]["cues"][0]["effects"][0]["templateId"] = "ef-spare"
+    bind_effect(doc, {"type": "ADD_EFFECT", "effect": effect_on("ef-spare")})
+    programmer = Programmer(selection=(MH1, MH2), effects=(effect_on("ef-spare"),))  # type: ignore[arg-type]
+    assert (
+        template_error('effect template delete "Spare"', doc, programmer)
+        == "template 'Spare' is used by cue 20/1, 1 binding and the programmer"
+    )
+
+
+def test_a_binding_of_another_kind_uses_no_template() -> None:
+    doc = spare_doc()
+    bind_effect(doc, {"type": "ADD_EFFECT", "effect": effect_on("ef-pulse")})
+    assert template_action('effect template delete "Spare"', doc).confirm is None
+
+
+# ------------------------------------ a cue's effect (GAP-32, engine-gaps.md)
+
+
+def test_a_cues_effect_is_removed_by_its_id_in_one_labelled_step() -> None:
+    assert template_action("cue 20/1 effect ei-1 remove").command == {
+        "type": "BATCH",
+        "label": "removed effect ei-1 from cue 20/1",
+        "commands": [{"type": "DELETE", "path": [*PULSE_CUE, "effects", {"id": "ei-1"}]}],
+    }
+
+
+def test_removing_a_cues_effect_refuses_an_unknown_id_and_more_words() -> None:
+    assert template_error("cue 20/1 effect nope remove") == "cue 20/1 has no effect 'nope'"
+    assert template_error("cue 20/1 effect ei-1 remove now") == "unexpected 'now'"
+
+
+def test_a_property_is_still_set_after_an_effects_id() -> None:
+    assert template_action("cue 20/1 effect ei-1 size 0.5").command == {
+        "type": "SET",
+        "path": [*PULSE_CUE, "effects", {"id": "ei-1"}, "size"],
+        "value": 0.5,
+    }
+
+
+# ----------------------------------- an empty cue list (GAP-33, engine-gaps.md)
+
+
+@pytest.mark.parametrize(
+    ("line", "name"),
+    [("cuelist add 5", "Cue list 5"), ('cuelist add 5 "Blue Wash"', "Blue Wash")],
+)
+def test_a_cue_list_is_added_with_no_cues(line: str, name: str) -> None:
+    assert command(line) == {
+        "type": "ADD",
+        "path": ["cueLists"],
+        "value": {
+            "id": "cl-000000000001",
+            "name": name,
+            "number": 5,
+            "mode": "sequence",
+            "tracking": False,
+            "wrap": False,
+            "releaseAtEnd": False,
+            "cues": [],
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    ("line", "error"),
+    [
+        ("cuelist add 10", "cue list 10 exists"),
+        ("cuelist add", "expected a cue list number"),
+        ("cuelist add x", "expected a cue list number, got 'x'"),
+        ('cuelist add 5 "A" "B"', "unexpected 'B'"),
+    ],
+)
+def test_cuelist_add_errors(line: str, error: str) -> None:
+    with pytest.raises(ParseError) as raised:
+        parse(line, context())
+    assert raised.value.message == error
+
+
+def test_go_says_so_when_the_playbacks_list_has_no_cues() -> None:
+    doc = load_doc(APPENDIX_A)
+    doc["cueLists"][1]["cues"] = []
+    ctx = Context(show_of(doc), LIBRARY, CounterIds())
+    with pytest.raises(ParseError, match=r"^cue list 10 has no cues$"):
+        parse("go 3", ctx)
+    with pytest.raises(ParseError, match=r"^unexpected 'now'$"):
+        parse("go 3 now", ctx)
+    assert parse("go 1", ctx) == Submit({"type": "GO", "playbackId": "pb-song"})
+
+
+def test_help_lists_the_new_lines() -> None:
+    stripped = [line.strip() for line in HELP]
+    assert 'effect template update "<name>" <JSON layers>' in stripped
+    assert 'effect template rename "<name>" "<new name>" | effect template delete "<name>"' in (
+        stripped
+    )
+    assert "cue L/C effect <id> <prop[.sub…]> <value> | cue L/C effect <id> remove" in stripped
+    assert 'cuelist add N ["name"]' in stripped

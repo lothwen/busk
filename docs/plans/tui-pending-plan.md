@@ -233,12 +233,39 @@ Code: `_cmd_effect`, `_template_add`, `_cue_effect` in `src/busk/console/parser.
 
    Verify: each line and its `undo`; `expected()` at every position; a used template; a duplicate
    name in any case; saved and reloaded; `update` on a running show with the template's cue active.
+
+   **Done** (2026-11-08). As planned, in `_effect_template` of `src/busk/console/parser.py`. A
+   template is found as `effect add` finds it. Each line is a labelled `BATCH`, so the reply and
+   `undo` read `renamed effect template 'Pulse' to 'Beat'`. Which the user may veto:
+   - A binding counts as a user, which the plan did not name. A binding can hold an `ADD_EFFECT`,
+     and the validator does not check that reference, so a delete would break the control.
+   - The refusal names cues by number and counts bindings: `template 'Pulse' is used by cues 12/1,
+     20/1, 1 binding and the programmer`.
+   - `rename` and `update` refuse a library template the show has no copy of, as `delete` does.
+   - A bad `update` is refused by document path, as `effect template add` is (§5, item 9).
 2. **GAP-32, a cue's effect.** `cue L/C effect <id> remove`. Verify: one undo step; `expected()`
    offers `remove` after the id; an unknown id refused by name; the cue left empty stays; the cue
    active on a running show.
+
+   **Done** (2026-11-08). As planned, in `_cue_effect`. It replies `removed effect fx1 from cue
+   11/1`. On a running show the effect leaves and the cue stays active.
 3. **GAP-33, an empty cue list.** `cuelist add N ["name"]`, built with `_cue_list`. Verify: a taken
    number refused in one line; `record cue N` then appends cue 1; `list cuelists`; `go` and `goto`
    on a playback that runs an empty list say so and do not raise.
+
+   **Done** (2026-11-08). As planned, in `_cuelist_add`. Which the user may veto:
+   - `go` is refused by the parser: `cue list 10 has no cues`. It raised nothing before, but replied
+     nothing and marked the playback active on no cue. `goto` already said `no cue 1 in cue list
+     10`.
+   - A bound control's `GO`, and `button N B on` on a `go` button, still mark it active on no cue.
+     The engine runs on. Phase 9's strips send `button`, so they will meet this on an empty list.
+   - A number below 1 is taken, as `page add` takes one.
+
+**Phase 2 checks** (2026-11-08). The whole suite: 5,238 passed and 1 skipped, in 3:11 with `uv run
+pytest -n 6`. `ruff check`, `ruff format --check` and `mypy src` clean. A real `busk run --state-dir
+…` with processes on the club show: `go 11`, then each new line and refusal at the prompt, 0 command
+errors. Docs: `docs/console.md`, `busk help`, GAP-31 to GAP-33 in `docs/dev/tui/engine-gaps.md`, the
+report's rows and items 1, 3 and 5, and `CHANGELOG.md`.
 
 ### Phase 3: Engine: playbacks
 

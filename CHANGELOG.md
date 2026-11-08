@@ -10,6 +10,12 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- `effect template delete "<name>"`, `effect template rename "<name>" "<new name>"` and `effect
+  template update "<name>" <JSON layers>`, each one undo step. A delete is refused while a cue, a
+  binding or the programmer uses the template, and says which. All three act on the show's own
+  templates.
+- `cue L/C effect <id> remove` removes one effect from a cue by its id. The cue stays.
+- `cuelist add N ["name"]` makes a cue list with no cues.
 - F6 edits presets from controls. `[edit]` or a `+ record` tile opens the PRESET panel: what a
   preset holds and the cues that use it, rename, renumber, delete after a question, and new
   presets and new values recorded through the programmer. Its editors are the encoder rows, a
@@ -44,6 +50,8 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Fixed
 
+- `go` on a playback whose cue list has no cues replied nothing and marked it active on no cue.
+  It is now a refused line that says so.
 - A name in quotes with a bad escape (`"back\slash"`) or a control character raised
   `JSONDecodeError` out of `execute`, `expected`, `confirmation` and `run_script`. It is now a
   refused line that names the column.

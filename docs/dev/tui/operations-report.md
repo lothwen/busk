@@ -45,11 +45,11 @@ do can already be typed in the TUI. The tables below show how much the screens h
 | Fixtures, patch | control (F3, F8, F1 A/C) | control (F3's form, F8's place) | control (cascades) | control (F3's FIXTURE panel, F8's place) |
 | Universes, routes | control (F8) | control (F8) | control (a universe cascades) | control; a route cannot be edited: engine no |
 | Cues | control (F4) | control (append); prompt (at a number) | prompt | pre-fill (timing, trigger, name); prompt (values) |
-| Cue lists | control (F4) | prompt; engine partial | prompt; engine partial | control (sequence/chase); prompt for the rest |
+| Cue lists | control (F4) | prompt | prompt; engine partial | control (sequence/chase); prompt for the rest |
 | Presets | control (F6, colour chips) | control (F6's PRESET panel) | control; engine partial | control (values, name, number) |
 | Effects in the programmer | control (F5, F1 B) | control | control | control (stop, run); prompt (settings) |
-| Effects in cues | control (F5) | control (via `record cue`) | prompt; engine partial | prompt |
-| Effect templates | control (F5) | prompt (JSON) | none: engine no | none: engine no |
+| Effects in cues | control (F5) | control (via `record cue`) | prompt | prompt |
+| Effect templates | control (F5) | prompt (JSON) | prompt | prompt |
 | Playbacks, operating | control (F1) | n/a | n/a | control: fader, GO, ◂, FLASH; the playback's own buttons: prompt |
 | Playbacks, configuration | partial: not shown | prompt; engine partial | prompt; engine partial | prompt; engine partial |
 
@@ -63,10 +63,8 @@ In short:
   a screen except a programmer effect (`✕`), and ADD has controls only for cues (append) and
   programmer effects. UPDATE has pre-fills for a cue's timing, trigger and name. The rest is
   typed at the prompt.
-- **busk itself is missing a few lines.** It cannot delete, change or rename an effect
-  template. It cannot add a playback for an existing cue list, or remove one effect from a
-  cue. It cannot edit a route, or create an empty cue list. Only a fixture and a universe
-  delete with what uses them: a preset, cue list or playback that something uses must first
+- **busk itself is missing a few lines.** It cannot add a playback for an existing cue
+  list, or edit a route. Only a fixture and a universe delete with what uses them: a preset, cue list or playback that something uses must first
   be freed by hand (see [What busk is missing](#what-busk-is-missing)).
 
 ## Fixtures and patch
@@ -132,7 +130,7 @@ GAP-22 is still open: a parked value reads as "none" in F3's source column.
 | Operation | busk line | Engine | TUI |
 |---|---|---|---|
 | Show | typed `LiveShow.show`; `list cuelists` | yes | control: F4 CUELISTS (number, name, kind, cue count, playback) and the meta line (mode, tracking, chase settings, playbacks and level, groups) |
-| Add | none. `record cue N/1` creates list N with its first cue; `record slot` creates a list with a playback | partial: no empty list | prompt |
+| Add | `cuelist add N ["name"]` (GAP-33), a list with no cues. `record cue N/1` creates list N with its first cue; `record slot` creates a list with a playback | yes | prompt |
 | Delete | `delete cuelist N` | partial: refused while a playback runs it | prompt |
 | Sequence or chase | `cuelist N sequence`, `cuelist N chase hz\|bpm …` | yes | control: F4 toggle (keeps the list's chase settings, else `bpm x 1`); prompt for rate, direction and crossfade |
 | Tracking | `cuelist N tracking true\|false` (generic property) | yes | prompt (F4 shows it) |
@@ -162,12 +160,12 @@ recorded into cues, and the templates both are made from.
 | Add to a cue | `record cue L/C` with effects in the programmer | yes | control: F4 `[record cue L]` |
 | Add a template | `effect template add "<name>" <JSON layers>` | yes | prompt |
 | Remove from the programmer | `effect remove <id>`, `effect clear` | yes | control: `✕` on F5; prompt for `effect clear` |
-| Remove from a cue | none. Work-around: `effect add` with the same id, then `record cue L/C remove` | partial | prompt |
-| Delete a template | none (`submit()` can, while no cue uses it) | no | none |
+| Remove from a cue | `cue L/C effect <id> remove` (GAP-32) | yes | prompt |
+| Delete a template | `effect template delete "<name>"` (GAP-31) | yes: refused while a cue, a binding or the programmer uses it, and for a template only the library has | prompt |
 | Stop, run (programmer) | `effect stop <id>`, `effect run <id>` | yes | control: state toggle on F5 and F1 B |
 | Change settings (programmer) | `effect add "<template>" id <id> …` replaces them | yes | prompt |
 | Change settings (cue) | `cue L/C effect <id> <prop> <value>` | yes | prompt |
-| Change or rename a template | none: `effect template add` refuses a name that exists | no | none |
+| Change or rename a template | `effect template update "<name>" <JSON layers>`, `effect template rename "<name>" "<new name>"` (GAP-31) | yes: the show's own templates | prompt |
 
 ## Playbacks (buttons and faders)
 
@@ -192,16 +190,14 @@ recorded into cues, and the templates both are made from.
 
 Candidates for [engine-gaps.md](engine-gaps.md), if the TUI is to cover these:
 
-1. **Effect templates** cannot be deleted, changed or renamed from the console.
-   `effect template add` refuses an existing name, and `delete` does not take templates.
-   `submit()` can do all three.
+1. **Closed: effect templates** (GAP-31). `effect template delete`, `rename` and `update` do
+   what only `submit()` could.
 2. **Playbacks** can only be created by `record slot`, which always makes a new cue list. No
    line adds a playback for an existing list, or points a playback at another list by number.
-3. **A cue's effect** cannot be removed by its id. `record cue L/C remove` needs the effect in
-   the programmer first.
+3. **Closed: a cue's effect** (GAP-32). `cue L/C effect <id> remove` removes one by its id.
 4. **Closed: a fixture's mode and profile** (GAP-26). `fixture N mode <mode>` and `fixture N
    profile "<profile>" mode <mode>` change them by name, each in one undo step.
-5. **An empty cue list** cannot be created. This is minor: recording cue 1 creates the list.
+5. **Closed: an empty cue list** (GAP-33). `cuelist add N ["name"]` makes one.
 6. **Deletes cascade only for fixtures and universes** (GAP-24 closed those), and take one
    entity per line. To delete a preset used by cues, a cue list a playback runs or a playback
    on a page, every reference must be removed first. The error lists them. A TUI delete button
@@ -224,7 +220,8 @@ host it:
 - **F4**: delete a cue; re-record a cue (`merge`, `replace`, `remove`); record at a number;
   a new cue list; delete, rename, tracking and chase settings of a list; release targets.
 - **F5**: edit an effect's settings (programmer: `effect add … id <id>`; cue: `cue L/C
-  effect`); `effect clear`; add a template.
+  effect`); remove one effect from a cue; `effect clear`; add, delete, rename and change a
+  template.
 - **Playbacks**: no screen views or edits their configuration (buttons, fader function,
   band, exclusivity, flash, LTP mode, release time, page slots), and none adds or deletes one.
 

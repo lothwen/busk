@@ -85,7 +85,10 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
         [speedmaster "<name>"]
     effect remove <id> | effect clear | effect stop <id> | effect run <id>
     effect template add "<name>" <JSON layers>
-    cue L/C effect <id> <prop[.sub…]> <value>
+    effect template update "<name>" <JSON layers>
+    effect template rename "<name>" "<new name>" | effect template delete "<name>"
+    cue L/C effect <id> <prop[.sub…]> <value> | cue L/C effect <id> remove
+    cuelist add N ["name"]
     undo | redo | save [PATH] | list <kind> | list cues L | library | info
     status | help | source FILE | quit
 
@@ -227,6 +230,21 @@ a target on an element the new mode lacks, and warns of an overlap. What the
 new profile cannot do is kept and does nothing, as a preset's pan on a par.
 The facades' ``fixture_profiles`` (GAP-27) lists every profile ``fixture add``
 takes, the library's too, found by :func:`find_profile`, ``fixture add``'s rule.
+
+Editing effect templates (GAP-31). ``effect template delete``, ``rename`` and
+``update`` find a template as ``effect add`` does, and act only on the show's
+own: a library template the show has no copy of is refused. ``delete`` is
+refused while a cue, a binding or the programmer uses the template, and names
+them. ``rename`` refuses a name another template has, in any case. ``update``
+replaces the layers, read as ``add`` reads them.
+
+A cue's effect (GAP-32). ``cue L/C effect <id> remove`` removes one effect by
+its id, in one undo step; a cue left with nothing stays.
+
+An empty cue list (GAP-33). ``cuelist add N ["name"]`` makes a list with no
+cues, with the defaults of a list that ``record cue`` makes; ``record cue N``
+appends to it. ``go`` is refused on a playback whose list has no cues, since
+the engine would mark it active on no cue.
 
 Completion (Tab and ``?`` at the prompt, :mod:`busk.console.prompt`).
 :func:`expected` parses a line up to the word being typed. Where the line
@@ -1024,8 +1042,7 @@ class _Parser:
         if verb == "add":
             return self._effect_add()
         if verb == "template":
-            self.expect("add")
-            return self._template_add()
+            return self._effect_template()
         if verb == "clear":
             return self.submit({"type": "REMOVE_EFFECT"})
         programmer = self.ctx.programmer
@@ -1148,13 +1165,97 @@ class _Parser:
             n += 1
         return f"fx{n}"
 
+    def _effect_template(self) -> Action:
+        """``effect template add|delete|rename|update …``."""
+        verb = self.expect("add", "delete", "rename", "update")
+        if verb == "add":
+            return self._template_add()
+        template = self._show_template()
+        if verb == "delete":
+            return self._template_delete(template)
+        if verb == "rename":
+            return self._template_rename(template)
+        layers = self._layers()
+        count = f"{len(layers)} layer{'s' * (len(layers) != 1)}"
+        edit = {
+            "type": "SET",
+            "path": ["effects", {"id": template["id"]}, "layers"],
+            "value": layers,
+        }
+        return Submit(_labelled(f"updated effect template {template['name']!r}: {count}", edit))
+
     def _template_add(self) -> Action:
         """``effect template add "<name>" <JSON layers>``."""
         name = self._name()
         if name is None:
             raise self.fail("expected a template name in quotes")
-        if any(t["name"].casefold() == name.casefold() for t in self.show["effects"]):
+        self._template_name_free(name)
+        layers = self._layers()
+        value = {"id": self.new_id("ef", "effects"), "name": name, "layers": layers}
+        return self.submit({"type": "ADD", "path": ["effects"], "value": value})
+
+    def _template_delete(self, template: Mapping[str, Any]) -> Action:
+        """``effect template delete "<name>"``: refused while it is used."""
+        self.done()
+        users = self._template_users(template["id"])
+        if users:
+            raise ParseError(f"template {template['name']!r} is used by {users}")
+        delete = {"type": "DELETE", "path": ["effects", {"id": template["id"]}]}
+        return Submit(_labelled(f"deleted effect template {template['name']!r}", delete))
+
+    def _template_rename(self, template: Mapping[str, Any]) -> Action:
+        """``effect template rename "<name>" "<new name>"``."""
+        name = self._name()
+        if name is None:
+            raise self.fail("expected a name in quotes")
+        self.done()
+        self._template_name_free(name, template["id"])
+        edit = {"type": "SET", "path": ["effects", {"id": template["id"]}, "name"], "value": name}
+        return Submit(_labelled(f"renamed effect template {template['name']!r} to {name!r}", edit))
+
+    def _show_template(self) -> Mapping[str, Any]:
+        """The template of the show that the next word names, as ``effect
+        add`` finds it. Refused for one only the library has."""
+        names = _quoted(t["name"] for t in self.show["effects"])
+        name = self.take("a template name in quotes", *names).text
+        found = find_template(self.show, self.ctx.effects, name)
+        if found is None:
+            raise ParseError(f"no template {name!r} in the show (see 'list effects')")
+        template, _, embed = found
+        if embed:
+            raise ParseError(
+                f"template {template['name']!r} is the library's: the show has no copy"
+            )
+        return template
+
+    def _template_name_free(self, name: str, own: str | None = None) -> None:
+        """Refuse a name another template has, in any case (not the one with
+        id ``own``, which may change its case)."""
+        folded = name.casefold()
+        if any(t["name"].casefold() == folded and t["id"] != own for t in self.show["effects"]):
             raise ParseError(f"a template named {name!r} exists")
+
+    def _template_users(self, ident: str) -> str:
+        """What uses the template, in words; empty when nothing does."""
+        cues = [
+            f"{cue_list['number']}/{cue['number']}"
+            for cue_list in self.show["cueLists"]
+            for cue in cue_list["cues"]
+            if any(effect["templateId"] == ident for effect in cue["effects"])
+        ]
+        bindings = sum(
+            _adds_template(cast(Mapping[str, Any], binding["action"]), ident)
+            for binding in self.show["bindings"]
+        )
+        users = [f"cue{'s' * (len(cues) != 1)} {', '.join(cues)}"] if cues else []
+        if bindings:
+            users.append(f"{bindings} binding{'s' * (bindings != 1)}")
+        if any(effect["templateId"] == ident for effect in self.ctx.programmer.effects):
+            users.append("the programmer")
+        return f"{', '.join(users[:-1])} and {users[-1]}" if len(users) > 1 else "".join(users)
+
+    def _layers(self) -> list[Any]:
+        """``<JSON layers>``, to the end of the line."""
         example = 'expected the layers as a JSON list, e.g. [{"attribute": "pan", …}]'
         if self.ending(need="the layers as a JSON list"):
             raise _Unfinished(example)
@@ -1164,8 +1265,7 @@ class _Parser:
             raise ParseError(f"{example}: {exc}") from None
         if not isinstance(layers, list):
             raise ParseError(example)
-        value = {"id": self.new_id("ef", "effects"), "name": name, "layers": layers}
-        return self.submit({"type": "ADD", "path": ["effects"], "value": value})
+        return layers
 
     # recording
 
@@ -1848,6 +1948,8 @@ class _Parser:
                                 *_ORIENTATION_WORDS)  # fmt: skip
         if head == "universe" and self.keyword("add"):
             return self._universe_add()
+        if head == "cuelist" and self.keyword("add"):
+            return self._cuelist_add()
         if head == "page":
             if self.keyword("add"):
                 return self._page_add()
@@ -1939,6 +2041,15 @@ class _Parser:
         value = {"id": self.new_id("page", "pages"), "name": name, "number": number, "slots": []}
         return self.submit({"type": "ADD", "path": ["pages"], "value": value})
 
+    def _cuelist_add(self) -> Action:
+        """``cuelist add N ["name"]``: a list with no cues."""
+        number = self.integer("a cue list number")
+        if any(cue_list["number"] == number for cue_list in self.show["cueLists"]):
+            raise ParseError(f"cue list {number} exists")
+        name = self._name() or f"Cue list {number}"
+        value = _cue_list(self.new_id("cl", "cueLists"), number, name)
+        return self.submit({"type": "ADD", "path": ["cueLists"], "value": value})
+
     def _assign(self, page: str) -> Action:
         """``page P slot S playback N`` or ``page P slot S clear``."""
         slot = self._slot()
@@ -1974,12 +2085,20 @@ class _Parser:
         return Submit(cast(Command, {"type": "SET", "path": [*path, *keys], "value": value}))
 
     def _cue_effect(self, path: EditPath, cue: Mapping[str, Any], ref: str) -> Action:
-        """``cue L/C effect <id> <prop[.sub…]> <value>``: a property of one
-        of the cue's effect instances."""
+        """``cue L/C effect <id> <prop[.sub…]> <value>``, a property of one of
+        the cue's effect instances, or ``cue L/C effect <id> remove``."""
         ident = self.take("an effect id", *(effect["id"] for effect in cue["effects"])).text
         if not any(effect["id"] == ident for effect in cue["effects"]):
             raise ParseError(f"cue {ref} has no effect {ident!r}")
-        return self._set([*path, "effects", {"id": ident}], "size or rate.multiplier")
+        effect: EditPath = [*path, "effects", {"id": ident}]
+        if self.keyword("remove"):
+            self.done()
+            return Submit(
+                _labelled(
+                    f"removed effect {ident} from cue {ref}", {"type": "DELETE", "path": effect}
+                )
+            )
+        return self._set(effect, "size or rate.multiplier")
 
     def _cue_verb(self, path: EditPath, cue: Mapping[str, Any], verb: str) -> Action:
         """``cue L/C time|go|follow|wait|release …``: edits of the cue's timing,
@@ -2125,7 +2244,12 @@ class _Parser:
     # performance
 
     def _cmd_go(self) -> Action:
-        return self.submit({"type": "GO", "playbackId": self.playback_id()})
+        playback = self.by_number("playbacks", self.integer("a playback number"), "playback")
+        self.done()
+        cue_list = _by_id(self.show["cueLists"], playback["cueListId"])
+        if not cue_list["cues"]:
+            raise ParseError(f"cue list {cue_list['number']} has no cues")
+        return self.submit({"type": "GO", "playbackId": playback["id"]})
 
     def _cmd_back(self) -> Action:
         return self.submit({"type": "BACK", "playbackId": self.playback_id()})
@@ -2698,6 +2822,16 @@ def _address_text(address: Mapping[str, Any]) -> str:
     if address["kind"] == "midiNote":
         return f"note {address['channel']} {address['note']}"
     return f"osc {json.dumps(address['path'])}"
+
+
+def _adds_template(action: Mapping[str, Any], ident: str) -> bool:
+    """Whether a binding's ``action`` adds an effect of template ``ident``."""
+    command = action["command"] if action["kind"] == "command" else None
+    return (
+        command is not None
+        and command["type"] == "ADD_EFFECT"
+        and bool(command["effect"]["templateId"] == ident)
+    )
 
 
 def _batch(*commands: Mapping[str, Any]) -> dict[str, Any]:
