@@ -99,7 +99,8 @@ the TUI crashes, the output stops. **For a show, start `busk-tui` without `--sta
 | ` ! …` | a warning |
 
 Performance lines (`go`, `fader`, `gm` …) have no answer: the status bar and the pages show
-what they did. Scroll the log with the mouse wheel.
+what they did. A line wider than the log wraps at its words, the later rows under the text.
+Scroll the log with the mouse wheel.
 
 **The prompt** runs any console line ([the console](../console.md)), and keeps working
 whatever the rest of the screen does. Its right side shows the selection, the page, the
@@ -299,9 +300,9 @@ live colour and intensity, or a `█` per element, its number under it (cyan whi
 A fixture with pan or tilt also shows them: the pan as an arrow (`↑` at 0°, `→` at 90°,
 clockwise: the angle from the fixture's home, not a direction on stage) and the tilt in
 degrees. Fixtures without a place are under AUDIENCE, in a `no place` row. `[location…]`
-puts `fixture N location {…}` in the prompt, with the fixture's place when it has one, for
-the first selected fixture (else the first without a place): select a fixture, click it,
-type its place. Clicks select as in OUTPUT.
+opens the form F3 uses, of the six values (`x`, `y`, `z` in metres, `rx`, `ry`, `rz` in degrees),
+starting at the fixture's place when it has one, for the first selected fixture (else the first
+without a place): select a fixture, click it, type its place. Clicks select as in OUTPUT.
 
 The right column has the playbacks as compact rows (`[GO]` only), MASTERS with the tempo
 row, and QUICK (the group buttons and colour chips). Below 100 columns it goes under the
@@ -493,7 +494,7 @@ nothing. From the top:
 - **LOCATION:** the six values of its place on stage, or `no place`. `[location…]` is a form of
   the six: `x`, `y`, `z` in metres and `rx`, `ry`, `rz` in degrees, starting at its own.
   `[no place]`, on a fixture with a place, sends `fixture 102 location none`. F1 C draws what
-  has a place.
+  has a place, and its `[location…]` opens this form.
 
 LIMITS and ORIENTATION act on every selected fixture while the fixture shown is selected, as
 their headings say (`LIMITS · 101 thru 102 (2)`); the rest of the panel acts on the fixture shown

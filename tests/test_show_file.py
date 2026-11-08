@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from builders import APPENDIX_A, load_doc, show_of
+from busk import OfflineShow
 from busk.model.validate import validate_show
 from busk.persistence import show_file
 from busk.persistence.paths import autosave_directory, installation_cid, state_directory
@@ -119,6 +120,71 @@ def test_bad_files_are_refused(tmp_path: Path, name: str, content: bytes, messag
     with pytest.raises(ShowLoadError) as raised:
         load_show(path)
     assert [issue.message for issue in raised.value.issues] == [message]
+
+
+def _old_show(tmp_path: Path) -> Path:
+    """A show file as busk took them before fixture numbers and ``refreshHz``
+    had ranges: fixture 0, and a DMX-USB route at 44 Hz."""
+    doc = load_doc(APPENDIX_A)
+    doc["fixtures"][0]["number"] = 0
+    doc["output"]["routes"].append(
+        {
+            "id": "r-usb",
+            "universeId": doc["universes"][0]["id"],
+            "enabled": True,
+            "protocol": "dmxUsb",
+            "device": {"driver": "enttecPro", "port": "/dev/ttyUSB0"},
+            "refreshHz": 44,
+        }
+    )
+    path = tmp_path / "old.json"
+    path.write_text(json.dumps(doc), encoding="utf-8")
+    return path
+
+
+def test_a_show_from_before_the_ranges_loads_with_warnings(tmp_path: Path) -> None:
+    show, warnings = load_show(_old_show(tmp_path))
+    assert show["fixtures"][0]["number"] == 0
+    assert show["output"]["routes"][1]["refreshHz"] == 44  # the file's: the widget runs 40
+    assert [(issue.severity, str(issue)) for issue in warnings] == [
+        ("warning", "fixtures[0].number: Fixtures are numbered from 1, got 0"),
+        (
+            "warning",
+            "output.routes[1].refreshHz: 44 Hz is past the widget's 40 Hz: it runs at 40 Hz",
+        ),
+    ]
+
+
+def test_a_rate_past_44_still_stops_a_load(tmp_path: Path) -> None:
+    path = _old_show(tmp_path)
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    doc["output"]["routes"][1]["refreshHz"] = 44.5
+    path.write_text(json.dumps(doc), encoding="utf-8")
+    with pytest.raises(ShowLoadError):
+        load_show(path)
+
+
+def test_the_console_refuses_new_ones_and_undo_brings_an_old_one_back(tmp_path: Path) -> None:
+    show, _ = load_show(_old_show(tmp_path))
+    offline = OfflineShow(show)
+    for line, error in (
+        ("fixture 102 number 0", "fixtures are numbered from 1"),
+        ("fixture 0 number -1", "fixtures are numbered from 1"),
+        ('fixture add 0 "RGB Par 3ch" mode 3ch', "fixtures are numbered from 1"),
+        (
+            "route add 1 dmxusb enttecPro /dev/ttyUSB1 hz 44",
+            "expected a refresh rate from 1 to 40 Hz, got 44",
+        ),
+    ):
+        reply = offline.execute(line)
+        assert (reply.ok, reply.text) == (False, f"error: {error}")
+    renumbered = offline.execute("fixture 0 number 150")
+    assert renumbered.ok, renumbered.text
+    assert offline.execute("undo").ok  # back to a number no new line may give
+    assert offline.show["fixtures"][0]["number"] == 0
+    renamed = offline.execute('rename fixture 0 "Old"')  # an edit of the fixture itself
+    assert renamed.ok, renamed.text
+    assert "numbered from 1" not in renamed.text  # said once, at the load
 
 
 def test_a_cue_number_too_long_for_int_is_refused(tmp_path: Path) -> None:

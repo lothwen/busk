@@ -50,7 +50,6 @@ from busk_tui.widgets.dialogs import ConfirmDialog, FormDialog, TextDialog
 from busk_tui.widgets.fixture_panel import (
     CATEGORIES,
     check_level,
-    check_place,
     check_span,
     limit_text,
     location_text,
@@ -67,6 +66,7 @@ from busk_tui.widgets.fixturetable import (
     swatches,
 )
 from busk_tui.widgets.legend import Legend
+from busk_tui.widgets.location_form import check_place
 from busk_tui.widgets.log import LogView
 from busk_tui.widgets.options import LIT
 

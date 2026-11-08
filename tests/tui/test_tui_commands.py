@@ -254,11 +254,7 @@ PREFILLS = (
 )
 """Lines the UI puts in the prompt to finish."""
 
-WHOLE_PREFILLS = (
-    commands.location_prefill(101, None),
-    commands.location_prefill(102, (1.5, -2.0, 4.25, 0.0, 0.0, 90.0)),
-    commands.unbind_prefill("nanoKONTROL2", "cc 1 0"),
-)
+WHOLE_PREFILLS = (commands.unbind_prefill("nanoKONTROL2", "cc 1 0"),)
 """Pre-fills that are whole lines: Enter runs them."""
 
 PERFORMANCE_WORDS = {
@@ -551,7 +547,6 @@ def test_no_prefill_builder_is_left_unused() -> None:
         path.read_text() for path in package.rglob("*.py") if path.name != "commands.py"
     )
     names = [name for name in vars(commands) if name.endswith("_prefill")]
-    assert "location_prefill" in names  # F1 C keeps its own
     assert [name for name in names if f"commands.{name}(" not in source] == []
 
 
@@ -613,7 +608,7 @@ def test_the_heads_take_what_their_profile_says(
 
 
 def test_the_whole_prefills_run(show: busk.OfflineShow) -> None:
-    assert commands.location_prefill(101, None) == (
+    assert commands.location(101, (0.0,) * 6).text == (
         'fixture 101 location {"x": 0, "y": 0, "z": 0, "rx": 0, "ry": 0, "rz": 0}'
     )
     for line in WHOLE_PREFILLS:

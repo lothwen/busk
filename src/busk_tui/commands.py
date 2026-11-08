@@ -460,12 +460,6 @@ def rename_cue_prefill(cue_list: int, cue: str) -> str:
     return f'rename cue {cue_list}/{cue} "'
 
 
-def location_prefill(fixture: int, place: Sequence[float] | None) -> str:
-    """:func:`location`, whole, at the fixture's own place when it has one,
-    to change."""
-    return location(fixture, (0.0,) * 6 if place is None else place).text
-
-
 def bind_prefill(surface: str) -> str:
     """``bind "nanoKONTROL2" ``: an input and what it drives next."""
     return f"bind {quoted(surface)} "

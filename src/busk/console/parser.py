@@ -250,7 +250,7 @@ from busk.commands.types import Command, EditPath
 from busk.console.cascade import fixture_cascade, universe_cascade
 from busk.model.attributes import ATTRIBUTES, AttributeDefinition
 from busk.model.common import MAX_DIGITS, TargetRef
-from busk.model.cue import CUE_NUMBER
+from busk.model.cue import CUE_NUMBER, cue_number_key
 from busk.model.effect import EffectTemplate
 from busk.model.profile import PROFILE_CATEGORIES, FixtureProfile, option_capabilities
 from busk.model.show import Show
@@ -1414,6 +1414,7 @@ class _Parser:
         name = self.take("a mode name", *(_word(m["name"]) for m in profile["modes"])).text
         self.done()
         mode = _mode(profile, name)
+        _patch_fits(fixture, mode)
         path = ["fixtures", {"id": fixture["id"]}, "modeId"]
         return Submit(
             _labelled(
@@ -1431,6 +1432,7 @@ class _Parser:
         self.done()
         profile, notes, embed = self._profile(profile_name)
         mode = _mode(profile, mode_name)
+        _patch_fits(fixture, mode)
         path = ["fixtures", {"id": fixture["id"]}]
         commands: list[dict[str, Any]] = []
         if embed:
@@ -1517,6 +1519,10 @@ class _Parser:
             return self._add_route(route)
         if protocol == "sacn":
             route["universe"] = self.integer("an sACN universe")
+            if not 1 <= route["universe"] <= 63999:
+                raise ParseError(
+                    f"expected an sACN universe from 1 to 63999, got {route['universe']}"
+                )
             route["priority"] = 100
             fallback = {"kind": "multicast", "iface": self.ctx.iface}
         else:
@@ -1857,9 +1863,11 @@ class _Parser:
             verb = self.keyword(*_CUE_VERBS)
             if verb is not None:
                 return self._cue_verb(path, cue, verb)
+            if (token := self.peek()) and token.lower == "number":
+                return self._renumber_cue(path, cue)
         else:
             path = self.entity_path(head)
-        if head in ("fixture", "universe") and (token := self.peek()) and token.lower == "number":
+        if head != "show" and (token := self.peek()) and token.lower == "number":
             return self._renumber(head, path)
         if head == "page":
             page = _element(self.show["pages"], path)
@@ -1883,16 +1891,43 @@ class _Parser:
         return self._set(path, "name or timing.fadeIn")
 
     def _renumber(self, head: str, path: EditPath) -> Action:
-        """``fixture|universe N number M``. The validator refuses a bad ``M``
-        too, but naming ``fixtures[7]``."""
+        """``<entity> N number M``, ``preset <pool> N number M``. The validator
+        refuses a bad ``M`` too, but naming ``fixtures[7]``. A preset's number
+        is unique within its pool."""
         self.k += 1
-        number = self.integer(f"a {head} number")
-        if number < 1:
+        collection, what = _COLLECTIONS.get(head, ("presets", "preset"))
+        number = self.integer(f"a {what} number")
+        if head in ("fixture", "universe") and number < 1:
             raise ParseError(f"{head}s are numbered from 1")
-        items = self.show["fixtures"] if head == "fixture" else self.show["universes"]
-        if number != _element(items, path)["number"] and any(i["number"] == number for i in items):
-            raise ParseError(f"{head} {number} exists")
+        items = self.show[collection]  # type: ignore[literal-required]
+        item = _element(items, path)
+        pool = item.get("pool")
+        if number != item["number"] and any(
+            other["number"] == number and other.get("pool") == pool for other in items
+        ):
+            raise ParseError(f"{what}{'' if pool is None else f' {pool}'} {number} exists")
         return self.submit({"type": "SET", "path": [*path, "number"], "value": number})
+
+    def _renumber_cue(self, path: EditPath, cue: Mapping[str, Any]) -> Action:
+        """``cue L/C number M``, between the cue's neighbours: a list keeps its
+        cues in order, and the validator would say so by document path."""
+        self.k += 1
+        token = self.take("a cue number")
+        key = cue_number_key(token.text)
+        if key is None:
+            raise ParseError(f"expected a cue number, got {token.text!r}")
+        cue_list = _element(self.show["cueLists"], path[:2])
+        cues = cast(list[Mapping[str, Any]], cue_list["cues"])
+        here = f"cue {cue_list['number']}/"
+        for other in cues:
+            if other is not cue and _same_cue(other["number"], token.text):
+                raise ParseError(f"{here}{other['number']} exists")
+        at = cues.index(cue)
+        for index, other in enumerate(cues):
+            theirs = tuple(int(part) for part in other["number"].split("."))
+            if other is not cue and (index < at) != (theirs < key):
+                raise ParseError(f"{here}{cue['number']} cannot pass {here}{other['number']}")
+        return self.submit({"type": "SET", "path": [*path, "number"], "value": token.text})
 
     def _page_add(self) -> Action:
         """``page add N ["name"]``: a page with no slots (``ASSIGN_PLAYBACK``
@@ -2628,6 +2663,12 @@ def _fits(who: str, address: int, channels: int) -> None:
     last = address + channels - 1
     if last > 512:
         raise ParseError(f"{who} would end at channel {last}, past channel 512")
+
+
+def _patch_fits(fixture: Mapping[str, Any], mode: Mapping[str, Any]) -> None:
+    """Refuse a ``mode`` that takes the patched ``fixture`` past the universe."""
+    if fixture["patch"] is not None:
+        _fits(f"fixture {fixture['number']}", fixture["patch"]["address"], mode["footprint"])
 
 
 def _by_id(items: Iterable[Mapping[str, Any]], ident: str) -> Mapping[str, Any]:

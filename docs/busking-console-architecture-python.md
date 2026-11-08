@@ -487,7 +487,7 @@ class Location(TypedDict):
     rz: float
 
 class Fixture(EntityBase[FixtureId]):
-    number: int                               # user-facing fixture number (e.g. 101), from 1
+    number: int                               # user-facing fixture number (e.g. 101), from 1 (a show file below 1 loads with a warning)
     profileId: ProfileId
     profileRevision: str                      # detects library drift
     modeId: ModeId
@@ -944,7 +944,7 @@ class DmxUsbRoute(TypedDict):
     enabled: bool
     protocol: Literal["dmxUsb"]
     device: DmxUsbDevice
-    refreshHz: float                                         # 1 to 40: the widget's own range
+    refreshHz: float                                         # 1 to 40: the widget's own range (a show file at 41 to 44 loads with a warning and runs at 40)
 
 class ArtNetPortAddress(TypedDict):                          # 7 + 4 + 4 bits
     net: int

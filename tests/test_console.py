@@ -839,6 +839,24 @@ def too_long(template: str) -> Any:
             "route add 1 dmxusb enttecPro /dev/ttyUSB0 hz 1000",
             "expected a refresh rate from 1 to 40 Hz, got 1000",
         ),
+        ("route add 1 sacn 0", "expected an sACN universe from 1 to 63999, got 0"),
+        ("route add 1 sacn -1", "expected an sACN universe from 1 to 63999, got -1"),
+        ("route add 1 sacn 64000", "expected an sACN universe from 1 to 63999, got 64000"),
+        ("group 1 number 2", "group 2 exists"),
+        ("cuelist 1 number 10", "cue list 10 exists"),
+        ("playback 1 number 3", "playback 3 exists"),
+        ("preset color 1 number 2", "preset color 2 exists"),
+        ("group 1 number x", "expected a group number, got 'x'"),
+        ("group 1 number 1.5", "expected a group number, got '1.5'"),
+        ("cuelist 1 number x", "expected a cue list number, got 'x'"),
+        ("playback 1 number x", "expected a playback number, got 'x'"),
+        ("page 1 number x", "expected a page number, got 'x'"),
+        ("preset color 1 number x", "expected a preset number, got 'x'"),
+        ("cue 1/1 number 2", "cue 1/2 exists"),
+        ("cue 1/1 number 2.0", "cue 1/1 cannot pass cue 1/2"),
+        ("cue 1/1 number 7", "cue 1/1 cannot pass cue 1/2"),
+        ("cue 1/2 number 0.5", "cue 1/2 cannot pass cue 1/1"),
+        ("cue 1/1 number x", "expected a cue number, got 'x'"),
     ],
 )
 def test_a_line_busk_cannot_read_is_refused_wherever_it_goes(
@@ -859,6 +877,20 @@ def test_a_line_busk_cannot_read_is_refused_wherever_it_goes(
     assert offline.show == before
 
 
+def test_a_number_a_preset_of_another_pool_has_is_free() -> None:
+    offline = OfflineShow(show_of(load_doc(APPENDIX_A)))
+    assert offline.execute("preset color 2 number 3").ok
+    assert offline.execute("preset position 1 number 3").ok
+
+
+def test_a_cue_takes_its_number_as_typed_or_in_quotes() -> None:
+    offline = OfflineShow(show_of(load_doc(APPENDIX_A)))
+    assert offline.execute("cue 1/1 number 1.5").ok
+    assert offline.show["cueLists"][0]["cues"][0]["number"] == "1.5"
+    assert offline.execute('cue 1/1.5 number "1.25"').ok
+    assert offline.show["cueLists"][0]["cues"][0]["number"] == "1.25"
+
+
 @pytest.mark.parametrize(
     "line",
     [
@@ -873,6 +905,20 @@ def test_a_line_busk_cannot_read_is_refused_wherever_it_goes(
         "fixture 201 patch 1.1",
         "route add 1 dmxusb enttecPro /dev/ttyUSB0 hz 1",
         "route add 1 dmxusb enttecPro /dev/ttyUSB0 hz 40",
+        "route add 1 sacn 2",
+        "route add 1 sacn 63999",
+        "group 1 number 1",  # its own number: nothing to refuse
+        "group 1 number 7",
+        "group 1 number 0",  # only fixtures and universes start at 1
+        "cuelist 1 number 7",
+        "playback 1 number 7",
+        "page 1 number 7",
+        "preset color 1 number 1",
+        "preset color 1 number 7",
+        "cue 1/1 number 1",
+        "cue 1/1 number 1.5",  # between its neighbours
+        "cue 1/2 number 7",  # the last: nothing to pass
+        "cue 1/1 number 0.5",
     ],
 )
 def test_the_edge_of_each_refusal_still_runs(line: str) -> None:

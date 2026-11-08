@@ -151,16 +151,6 @@ REJECTIONS: list[tuple[str, Mutation, str]] = [
         "fixtures[0].patch.address",
     ),
     (
-        "fixture number 0",
-        _set(lambda s: s["fixtures"][0], "number", 0),
-        "fixtures[0].number",
-    ),
-    (
-        "fixture number -5",
-        _set(lambda s: s["fixtures"][0], "number", -5),
-        "fixtures[0].number",
-    ),
-    (
         "refresh rate 0",
         _set(lambda s: s["output"]["routes"], 0, _usb_route(0)),
         "output.routes[0].refreshHz",
@@ -171,8 +161,8 @@ REJECTIONS: list[tuple[str, Mutation, str]] = [
         "output.routes[0].refreshHz",
     ),
     (
-        "refresh rate past 40",
-        _set(lambda s: s["output"]["routes"], 0, _usb_route(40.5)),
+        "refresh rate past 44",
+        _set(lambda s: s["output"]["routes"], 0, _usb_route(44.5)),
         "output.routes[0].refreshHz",
     ),
     (

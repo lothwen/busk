@@ -1029,6 +1029,10 @@ class _SemanticPass:
         spans: dict[str, list[tuple[int, int, int]]] = {}
         for f, fixture in enumerate(fixtures):
             path = f"fixtures[{f}]"
+            if fixture["number"] < 1:
+                self._warning(
+                    f"{path}.number", f"Fixtures are numbered from 1, got {fixture['number']}"
+                )
             profile = self.profiles.get(fixture["profileId"])
             mode = self._mode_of(fixture)
             if profile is None:
@@ -1707,6 +1711,11 @@ class _SemanticPass:
             self._ref(
                 route["universeId"], self.universes, f"output.routes[{r}].universeId", "universe"
             )
+            if route["protocol"] == "dmxUsb" and route["refreshHz"] > 40:
+                self._warning(
+                    f"output.routes[{r}].refreshHz",
+                    f"{route['refreshHz']:g} Hz is past the widget's 40 Hz: it runs at 40 Hz",
+                )
         self._check_sacn_universes(routes)
         self._check_dmx_usb_ports(routes)
         try:

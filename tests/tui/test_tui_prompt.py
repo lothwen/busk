@@ -5,8 +5,13 @@ quitting, Ctrl+C and the pane cursor. Headless, with a fake bridge; with
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
+from rich.cells import cell_len
+from rich.console import Console
 from textual import events
+from textual.app import App, ComposeResult
 from textual.pilot import Pilot
 from tui_fakes import FakeBridge, Reply, drive, make_app, settle, show_model
 
@@ -16,7 +21,7 @@ from busk_tui.model import EngineNews, FixtureInfo, SessionChanged, SessionState
 from busk_tui.widgets.dialogs import ConfirmDialog, QuitDialog
 from busk_tui.widgets.fixturetable import FixtureTable
 from busk_tui.widgets.help import HelpOverlay
-from busk_tui.widgets.log import LogView, log_line
+from busk_tui.widgets.log import LogView, log_line, log_rows
 from busk_tui.widgets.prompt import HintRow, Prompt
 
 
@@ -104,6 +109,120 @@ def test_the_log_line_types(kind: str, prefix: str, color: str) -> None:
     assert line.plain == prefix + "text"
     assert color in str(line.spans[0].style)
     assert log_line("error", "issue", first=False).plain == "   issue"
+
+
+LOG_KINDS = [
+    ("typed", "busk> "),
+    ("ui", " ui> "),
+    ("result", "      "),
+    ("error", " ✗ "),
+    ("info", " · "),
+    ("warning", " ! "),
+]
+
+
+def strip_rows(log: LogView) -> list[str]:
+    return [strip.text.rstrip() for strip in log.lines]
+
+
+@pytest.mark.parametrize(("kind", "prefix"), LOG_KINDS)
+def test_a_wrapped_line_goes_on_under_its_text(kind: str, prefix: str) -> None:
+    words = [f"word{n}" for n in range(30)]
+    rows = log_rows(Console(), kind, " ".join(words), 40)  # type: ignore[arg-type]
+    assert len(rows) > 1
+    assert rows[0].plain.startswith(prefix + "word0")
+    assert all(row.plain.startswith(" " * len(prefix) + "word") for row in rows[1:])
+    assert all(row.cell_len <= 40 for row in rows)
+    assert [word for row in rows for word in row.plain.removeprefix(prefix).split()] == words
+
+
+def test_the_rows_of_a_line_keep_its_prefix_and_text_colours() -> None:
+    first, second = log_rows(Console(), "error", "aaaa bbbb", 8)
+    assert (first.plain.rstrip(), second.plain) == (" ✗ aaaa", "   bbbb")
+    assert colors.RED in str(first.spans[0].style)
+    assert colors.RED in str(second.style)
+
+
+def test_a_word_wider_than_a_row_folds() -> None:
+    rows = log_rows(Console(), "info", "x" * 25, 13)
+    assert [row.plain for row in rows] == [" · " + "x" * 10, "   " + "x" * 10, "   " + "x" * 5]
+
+
+def test_an_empty_line_and_one_that_fits_are_one_row() -> None:
+    assert [row.plain for row in log_rows(Console(), "result", "", 40)] == ["      "]
+    assert [row.plain for row in log_rows(Console(), "info", "ok", 40)] == [" · ok"]
+    assert log_rows(Console(), "error", "ok", 40, first=False)[0].plain == "   ok"
+
+
+def test_a_300_character_reply_shows_every_word_at_99_columns() -> None:
+    app = make_app()
+
+    async def body(pilot: Pilot[int]) -> None:
+        log = app.query_one(LogView)
+        before = len(log.lines)
+        words = [f"word{n:03}" for n in range(38)]
+        text = " ".join(words)
+        assert len(text) > 300
+        log.add("result", text)
+        await pilot.pause()
+        rows = strip_rows(log)[before:]
+        room = log.scrollable_content_region.width
+        assert room == 99 - 3  # the padding and the scrollbar
+        assert len(rows) == 4
+        assert all(cell_len(row) <= room for row in rows)
+        assert " ".join(rows).split() == words
+        assert log.max_scroll_x == 0
+        assert list(log.entries)[-1] == ("result", text)  # one item for the line
+        assert log.is_vertical_scroll_end
+
+    drive(app, body, size=(99, 30))
+
+
+def test_a_resize_flows_the_kept_lines_again() -> None:
+    app = make_app()
+
+    async def body(pilot: Pilot[int]) -> None:
+        log = app.query_one(LogView)
+        log.add("error", "first\nsecond " + "word " * 30)
+        log.add("info", "short")
+        await pilot.pause()
+        kept = list(log.entries)
+        wide = strip_rows(log)
+        await pilot.resize_terminal(60, 30)
+        await pilot.pause()
+        assert list(log.entries) == kept
+        narrow = strip_rows(log)
+        room = log.scrollable_content_region.width
+        assert room == 60 - 3
+        assert len(narrow) > len(wide)
+        assert all(cell_len(row) <= room for row in narrow)
+        assert log.max_scroll_x == 0
+        assert " ✗ first" in narrow
+        assert not any(row.startswith(" ✗ second") for row in narrow)
+        assert any(row.startswith("   second") for row in narrow)  # first=False survives it
+        assert narrow[-1] == " · short"
+        assert log.is_vertical_scroll_end
+        await pilot.resize_terminal(99, 30)
+        await pilot.pause()
+        assert strip_rows(log) == wide  # back as it was
+
+    drive(app, body, size=(99, 30))
+
+
+def test_a_line_added_before_the_pane_has_a_width_shows_once_it_has_one() -> None:
+    class Host(App[None]):
+        def compose(self) -> ComposeResult:
+            view = LogView()
+            view.add("info", "early")
+            yield view
+
+    async def main() -> None:
+        host = Host()
+        async with host.run_test(size=(80, 20)) as pilot:
+            await pilot.pause()
+            assert strip_rows(host.query_one(LogView)) == [" · early"]
+
+    asyncio.run(main())
 
 
 def test_history_walks_back_and_returns_to_the_draft() -> None:

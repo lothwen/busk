@@ -66,6 +66,7 @@ from busk_tui.widgets.dialogs import (
 )
 from busk_tui.widgets.fixture_form import FixtureForm, find_choice, find_mode, mode_labels
 from busk_tui.widgets.fixturetable import profile_text
+from busk_tui.widgets.location_form import PLACE, open_location_form
 from busk_tui.widgets.options import LIT, pick_chips
 from busk_tui.widgets.patch_chooser import PatchChooser, channels_text, span_text
 from busk_tui.widgets.preset_panel import PANEL_WIDTH
@@ -87,9 +88,6 @@ TOGGLES: Final[dict[str, tuple[str, tuple[str, ...]]]] = {
 
 OFFSETS: Final[dict[str, str]] = {"panOffset": "pan", "tiltOffset": "tilt"}
 """Each offset's ``orientation`` key and its axis."""
-
-PLACE: Final = ("x", "y", "z", "rx", "ry", "rz")
-"""The fields of a location, in :data:`busk_tui.model.Location`'s order."""
 
 
 def spans_text(spans: Iterable[tuple[int, int]]) -> str:
@@ -186,12 +184,6 @@ def check_level(values: tuple[str, ...]) -> str | None:
 
 def check_offset(text: str) -> str | None:
     return None if read_number(text) is not None else "a number, in degrees"
-
-
-def check_place(values: tuple[str, ...]) -> str | None:
-    if all(read_number(value) is not None for value in values):
-        return None
-    return "six numbers"
 
 
 def put(widget: Static, text: Text) -> None:
@@ -704,24 +696,10 @@ class FixturePanel(VerticalScroll):
         self.app.push_screen(TextDialog(title, value, check_offset, "in degrees"), given)
 
     def ask_location(self) -> None:
-        """``[location…]``: ``fixture 101 location {"x": 1, …}``, all six at once
-        (``location.x`` fails until a location exists)."""
+        """``[location…]``: the form of the six values, for the chosen fixture."""
         fixture = self.fixture()
-        if fixture is None:
-            return
-
-        def given(values: tuple[str, ...] | None) -> None:
-            if values is None or self.chosen != fixture.number:
-                return
-            place = tuple(float(value) for value in values)
-            if place != fixture.location:
-                self.post_message(RunLine(commands.location(fixture.number, place)))
-
-        starts = fixture.location or (0.0,) * len(PLACE)
-        fields = tuple((key, commands.number(v)) for key, v in zip(PLACE, starts, strict=True))
-        note = "x, y, z in metres · rx, ry, rz in degrees"
-        title = f"LOCATION · fixture {fixture.number}"
-        self.app.push_screen(FormDialog(title, fields, check_place, note), given)
+        if fixture is not None:
+            open_location_form(self, fixture, lambda: self.chosen == fixture.number)
 
     def drop_location(self) -> None:
         """``[no place]``: ``fixture 101 location none``."""

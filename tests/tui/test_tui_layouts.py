@@ -48,6 +48,7 @@ from busk_tui.pages.busk_stage import (
     stage_rows,
 )
 from busk_tui.shell import BuskApp
+from busk_tui.widgets.dialogs import FormDialog
 from busk_tui.widgets.fixture_palette import UNLIT, element_cells, select_line
 from busk_tui.widgets.log import LogView
 from busk_tui.widgets.playbacks import PlaybackColumn, PlaybackRow
@@ -465,7 +466,7 @@ def test_the_stage_plot() -> None:
     drive(app, body)
 
 
-def test_the_location_prefill_and_a_rig_with_no_places() -> None:
+def test_the_location_form_and_a_rig_with_no_places() -> None:
     bridge = FakeBridge()
     app = make_app(bridge, layout="C")
     loose = tuple(FixtureInfo(f.number, f.elements, f.name, f.profile) for f in FIXTURES)
@@ -480,9 +481,19 @@ def test_the_location_prefill_and_a_rig_with_no_places() -> None:
         assert lines[4].startswith("no place")
         assert str(layout.edit_label.content) == "place fixture 101 Spot 1"
         await pilot.click(layout.edits, offset=(1, 0))
-        assert app.prompt.value == (
-            'fixture 101 location {"x": 0, "y": 0, "z": 0, "rx": 0, "ry": 0, "rz": 0}'
-        )
+        await pilot.pause()
+        dialog = app.screen
+        assert isinstance(dialog, FormDialog)
+        assert dialog.labels == ("x", "y", "z", "rx", "ry", "rz")
+        assert [field.value for field in dialog.inputs] == ["0"] * 6
+        await pilot.press(*"north", "enter")  # refused in the dialog
+        assert isinstance(app.screen, FormDialog)
+        await pilot.press("ctrl+u", *"1.5", "tab", *"-2", "enter")
+        await settle(pilot, app)
+        assert sent(bridge) == [
+            ('fixture 101 location {"x": 1.5, "y": -2, "z": 0, "rx": 0, "ry": 0, "rz": 0}', "ui")
+        ]
+        assert app.prompt.value == ""
         bridge.events.append(ProgrammerChanged(programmer(selection=((202, 1),))))
         await settle(pilot, app)
         assert str(layout.edit_label.content) == "place fixture 202 Wash 2"
@@ -490,7 +501,7 @@ def test_the_location_prefill_and_a_rig_with_no_places() -> None:
     drive(app, body)
 
 
-def test_the_location_prefill_starts_from_the_fixtures_place() -> None:
+def test_the_location_form_starts_from_the_fixtures_place_and_sends_a_change() -> None:
     bridge = FakeBridge()
     app = make_app(bridge, layout="C")
 
@@ -501,9 +512,23 @@ def test_the_location_prefill_starts_from_the_fixtures_place() -> None:
         assert str(layout.edit_label.content) == "place fixture 301 Bar"  # the first unplaced
         bridge.events.append(ProgrammerChanged(programmer(selection=((101, 1),))))
         await settle(pilot, app)
-        assert layout.edits.buttons[0].prefill == (
-            'fixture 101 location {"x": -2, "y": -1, "z": 5, "rx": 0, "ry": 0, "rz": 0}'
-        )
+        item = app.current_page.items()[-4]  # the pane cursor reaches it, as a click does
+        assert item.label == "[location…]"
+        item.action()
+        await pilot.pause()
+        dialog = app.screen
+        assert isinstance(dialog, FormDialog)
+        assert [field.value for field in dialog.inputs] == ["-2", "-1", "5", "0", "0", "0"]
+        await pilot.press("enter")  # the same place: nothing to send
+        await settle(pilot, app)
+        assert bridge.sent == []
+        await pilot.click(layout.edits, offset=(1, 0))
+        await pilot.pause()
+        await pilot.press("ctrl+u", *"3", "enter")
+        await settle(pilot, app)
+        assert sent(bridge) == [
+            ('fixture 101 location {"x": 3, "y": -1, "z": 5, "rx": 0, "ry": 0, "rz": 0}', "ui")
+        ]
 
     drive(app, body)
 
@@ -624,9 +649,7 @@ def test_the_pane_cursor_reaches_each_layout_and_switches_them() -> None:
         labels = [item.line or item.prefill or item.label for item in items]
         assert labels[:3] == ["go 1", "go 2", "go 3"]
         assert "sel fixture 401" in labels
-        assert labels[-4] == (
-            'fixture 301 location {"x": 0, "y": 0, "z": 0, "rx": 0, "ry": 0, "rz": 0}'
-        )
+        assert labels[-4] == "[location…]"
         await pilot.press("up", "up", "enter")  # layout A
         await pilot.pause()
         assert app.view.layout == "A"

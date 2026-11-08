@@ -10,9 +10,9 @@ wash, ``▲`` strobe; one ``█`` per element for a fixture of several) in its
 live output colour and intensity, its number under it, and on a fixture
 with pan or tilt the pan as an arrow (``↑`` at 0°, clockwise) and the tilt
 (``↗ 30°``). Fixtures without a place are in a row of their own, under
-AUDIENCE, and ``[location…]`` puts ``fixture N location {…}`` in the
-prompt for the first selected fixture (else the first without a place). A
-click selects, a Shift-click adds or takes out.
+AUDIENCE, and ``[location…]`` opens the form of the six values for the first
+selected fixture (else the first without a place), as F3's FIXTURE panel
+does. A click selects, a Shift-click adds or takes out.
 
 The right column: compact PLAYBACKS (``Pn``, name, bar, level, ``[GO]``),
 MASTERS (the grand, size and group masters, and the tempo row), QUICK
@@ -30,7 +30,7 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Static
 
-from busk_tui import colors, commands
+from busk_tui import colors
 from busk_tui.colors import ColorMode
 from busk_tui.commands import Line
 from busk_tui.model import (
@@ -47,6 +47,7 @@ from busk_tui.pages.busk_stack import BAR_MASTERS
 from busk_tui.widgets.controls import ButtonStrip, StripButton, button_label
 from busk_tui.widgets.fixture_palette import FixturePalette, Spot, centred, element_cells
 from busk_tui.widgets.fixturetable import COLOR_CELLS, by_fixture
+from busk_tui.widgets.location_form import open_location_form
 from busk_tui.widgets.masters import MasterBars
 from busk_tui.widgets.panel import Panel
 from busk_tui.widgets.playbacks import PlaybackRow
@@ -307,11 +308,6 @@ class StagePlot(FixturePalette):
         return fixtures[0] if fixtures else None
 
 
-def location_button(fixture: FixtureInfo) -> StripButton:
-    text = commands.location_prefill(fixture.number, fixture.location)
-    return StripButton(button_label("location…", colors.MID), Line(text), prefill=text)
-
-
 class StageLayout(Horizontal):
     """Layout C (see the module docs)."""
 
@@ -403,10 +399,17 @@ class StageLayout(Horizontal):
             label.append(f"fixture {fixture.number}", style=colors.CYAN)
             if fixture.name:
                 label.append(f" {fixture.name}", style=colors.FG)
-            buttons.append(location_button(fixture))
+            label_text = button_label("location…", colors.MID)
+            buttons.append(StripButton(label_text, Line(""), action=self.ask_location))
         if label != self.edit_label.content:
             self.edit_label.update(label)
         self.edits.show(buttons)
+
+    def ask_location(self) -> None:
+        """``[location…]``: the form of the six values."""
+        fixture = self.plot.edited()
+        if fixture is not None:
+            open_location_form(self, fixture)
 
     def _build_tempo(self, show: ShowModel | None) -> None:
         first = first_speed(show)

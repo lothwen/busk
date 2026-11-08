@@ -12,6 +12,8 @@ The Presets rows were updated on 2026-11-02, once
 and its PRESET panel). The fixture, universe and route rows were updated on 2026-11-07, once
 [the rig plan](../../plans/tui-rig-plan.md) gave every one a control (F3's edit mode, FIXTURE
 panel and new fixture form, F8's strips and place) and closed what busk lacked (GAP-23 to GAP-27).
+From 2026-11-08, [the pending plan](../../plans/tui-pending-plan.md) tracks what is left, phase by
+phase.
 
 ## How to read it
 
@@ -59,8 +61,8 @@ In short:
   but not the rest of a show yet.** F3, F8 and F6 show, add, delete and update fixtures,
   universes, routes and presets from controls alone. Beyond them, nothing can be deleted from
   a screen except a programmer effect (`✕`), and ADD has controls only for cues (append) and
-  programmer effects. UPDATE has pre-fills for a cue's timing, trigger and name, and F1 C's for
-  a fixture's location. The rest is typed at the prompt.
+  programmer effects. UPDATE has pre-fills for a cue's timing, trigger and name. The rest is
+  typed at the prompt.
 - **busk itself is missing a few lines.** It cannot delete, change or rename an effect
   template. It cannot add a playback for an existing cue list, or remove one effect from a
   cue. It cannot edit a route, or create an empty cue list. Only a fixture and a universe
@@ -78,7 +80,7 @@ In short:
 | Rename | `rename fixture N "…"` | yes | control: `[rename…]`, a name dialog |
 | Renumber | `fixture N number M` (generic property) | yes | control: `[number…]`, a dialog that refuses a taken number |
 | Limits | `fixture N [thru M] limits …`, `… limits pan\|tilt\|intensity none` (GAP-25), `… limits none` | yes | control: `[limit…]`, `[none]`, `[no limits]`, on the selection |
-| Location | `fixture N location {…}`, `… location none` (GAP-25) | yes | control: `[location…]`, `[no place]` on F3; pre-fill on F1 C |
+| Location | `fixture N location {…}`, `… location none` (GAP-25) | yes | control: `[location…]`, `[no place]` on F3; `[location…]` on F1 C |
 | Orientation | `fixture N [thru M] orientation.<key> <value>` (GAP-28) | yes | control: toggles and `[offset…]`, on the selection |
 | Category | `profile "<name>" category …` | yes | control: chips |
 | Change mode | `fixture N mode <mode>` (GAP-26) | yes | control: chips |
@@ -228,8 +230,6 @@ host it:
 
 ## Side findings
 
-- **busk bug:** `record cue L/C remove` removes the cue's effect but replies `… 0 effects`.
-  Seen on cue 11/1; `undo` brings the effect back.
 - `LiveShow.confirmation()` asks before `delete fixture|universe N cascade`, `delete route <id>`
   and `route <id> off`, so F3's and F8's controls show busk's question. It asks nothing before
   any other `delete`, a `record … replace` or `effect clear`. They are undo steps. A TUI delete

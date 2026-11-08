@@ -60,13 +60,24 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   a path for each fixture, and `fixture N number M` and `universe N number M` named `fixtures[7]`
   and `universes[1]`. These lines and `fixture N patch` now say it in one line: `fixture 900–903
   would end at channel 575, past channel 512`, `fixture 102 exists`.
+- More refusals named the document: `N number M` on a group, cue list, playback, page or preset,
+  `cue L/C number M`, `route add` with an sACN universe outside 1 to 63999, and a mode or profile
+  that takes a patched fixture past channel 512. Each now says it in one line: `group 2 exists`,
+  `cue 1/1 cannot pass cue 1/2`, `expected an sACN universe from 1 to 63999, got 0`, `fixture 3
+  would end at channel 524, past channel 512`. A cue's number no longer needs quotes:
+  `cue 1/1 number 1.5`.
+- The TUI's log cut a line at the pane's edge. A long line now wraps at its words, the later rows
+  under the text and not the prefix, and a resize flows the log again.
+- F1 layout C's `[location…]` filled the prompt with a line of JSON to finish. It now opens the
+  same form of six values as F3's FIXTURE panel.
 - `fixture N thru M` before anything but `limits` and `orientation.<key>` read as a property called
   `thru`. It now says `expected limits or orientation.<key>, got 'patch'`.
 - Fixture numbers start at 1, as universe numbers do. `fixture add 0` and `fixture add -5` worked.
-  They are now refused, and a show file holding such a number fails with `ShowLoadError`.
+  They are now refused. A show file holding such a number loads, with a warning.
 - `hz` on a DMX-USB route took any number, and the widget then kept it to 1–40 without a word, so
-  `list routes` said `0 Hz` of a route sent at 1. `route add` now takes 1 to 40, and a show file
-  with `refreshHz` outside that fails with `ShowLoadError`.
+  `list routes` said `0 Hz` of a route sent at 1. `route add` now takes 1 to 40. A show file with
+  `refreshHz` from 41 to 44 loads with a warning and runs at 40, and one below 1 or past 44 fails
+  with `ShowLoadError`.
 - `programmer` printed `fx-… (gone)` and `preset pr-… (gone)` for what had been deleted, and
   `selection: 1, 1, 1` for the elements a new mode lacks. It now lists what `LiveShow.programmer`
   lists: the rest is dormant, and comes back with `undo`.

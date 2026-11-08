@@ -119,7 +119,10 @@ def test_the_new_modes_channels_reach_the_frame() -> None:
 
 
 def test_a_mode_past_channel_512_is_refused() -> None:
-    refused(OfflineShow(rig()), "fixture 3 mode 20ch", "past channel 512")
+    offline = OfflineShow(rig())
+    refused(offline, "fixture 3 mode 20ch", "past channel 512")
+    reply = offline.execute("fixture 3 mode 20ch")
+    assert reply.text == "error: fixture 3 would end at channel 524, past channel 512"
 
 
 def test_a_mode_that_overlaps_warns_and_is_taken() -> None:
@@ -142,7 +145,7 @@ def test_a_mode_is_not_asked_about() -> None:
 def test_a_mode_is_refused_while_anything_names_an_element_it_lacks(line: str) -> None:
     offline = OfflineShow(rig())
     run(offline, "fixture 3 mode Cells", "sel fixture 3.4", "set intensity 0.5", line, "clear")
-    refused(offline, "fixture 3 mode 20ch", "does not exist")
+    refused(offline, 'fixture 3 mode "One Channel"', "does not exist")
 
 
 def test_what_the_programmer_holds_on_a_lost_element_goes_dormant() -> None:
@@ -244,6 +247,8 @@ def test_a_profile_past_channel_512_is_refused_and_embeds_nothing() -> None:
         'fixture 3 profile "Generic Spot 16ch" mode 16ch',
         "past channel 512",
     )
+    reply = offline.execute('fixture 3 profile "Generic Spot 16ch" mode 16ch')
+    assert reply.text == "error: fixture 3 would end at channel 520, past channel 512"
 
 
 def test_a_bar_is_refused_while_groups_name_its_elements(tmp_path: Path) -> None:

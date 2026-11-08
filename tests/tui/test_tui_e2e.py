@@ -23,6 +23,7 @@
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 from collections.abc import Callable
@@ -43,7 +44,7 @@ from busk_tui.commands import Line, percent
 from busk_tui.model import FixtureInfo, Orientation
 from busk_tui.pages.busk_console import OutputGrid
 from busk_tui.pages.busk_stack import StackLayout
-from busk_tui.pages.busk_stage import StagePlot
+from busk_tui.pages.busk_stage import StageLayout, StagePlot
 from busk_tui.pages.fixtures import FixturesPage
 from busk_tui.pages.patch import PatchPage, RoutesTable, UniverseTable
 from busk_tui.pages.presets import PresetsPage
@@ -1286,6 +1287,98 @@ def test_layouts_a_and_c_show_the_real_output(club_path: Path, tmp_path: Path) -
         assert plot.lines[0].plain.startswith("y 2.0")
         assert lit(plot, 202)
         assert "sel fixture 202" in [item.line for item in app.current_page.items()]
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_f1_c_places_a_fixture_through_its_form_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(layout="C"), standalone=True)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.view.show is not None and app.view.output is not None)
+        layout = app.query_one(StageLayout)
+        await until(pilot, lambda: layout.plot.edited() is not None)
+        fixture = layout.plot.edited()
+        assert fixture is not None
+        await pilot.click(layout.edits, offset=(1, 0))
+        await until(pilot, lambda: isinstance(app.screen, FormDialog))
+        await pilot.press("ctrl+u", *"1", "tab", "ctrl+u", *"7.5", "enter")
+        await until(pilot, lambda: 7.5 in [row.y for row in layout.plot.rows], timeout=1.0)
+        assert app.view.show is not None
+        placed = next(f for f in app.view.show.fixtures if f.number == fixture.number)
+        assert placed.location is not None
+        assert placed.location[:2] == (1.0, 7.5)
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_a_refusal_is_one_line_and_a_long_answer_wraps_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(), standalone=True)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.view.show is not None)
+        log = app.query_one(LogView)
+        await pilot.press(*"route add 1 sacn 0", "enter")
+        message = "expected an sACN universe from 1 to 63999, got 0"
+        await until(pilot, lambda: ("error", message) in log.entries)
+        assert [e for e in log.entries if e[0] == "error"] == [("error", message)]
+        await pilot.press(*"list groups", "enter")  # the club show's lines pass 99 columns
+        await until(pilot, lambda: any(kind == "result" for kind, _ in log.entries))
+        await pilot.pause()
+        room = log.scrollable_content_region.width
+        assert len(log.lines) > len(log.entries)
+        assert log.max_scroll_x == 0
+        assert all(strip.cell_length <= room for strip in log.lines)
+
+    try:
+        drive(app, body, size=(99, 40))
+    finally:
+        bridge.stop()
+
+
+def test_a_show_from_before_the_ranges_opens_and_says_so(club_path: Path, tmp_path: Path) -> None:
+    """Fixture 0 and a route at 44 Hz: a warning each in the log, on the real engine."""
+    path = tmp_path / "old.json"
+    show = busk.load_show(club_path)[0]
+    doc = json.loads(json.dumps(show))
+    doc["fixtures"][0]["number"] = 0
+    doc["output"]["routes"] = [
+        {
+            "id": "r-usb",
+            "universeId": doc["universes"][0]["id"],
+            "enabled": False,
+            "protocol": "dmxUsb",
+            "device": {"driver": "enttecPro", "port": "/dev/null"},
+            "refreshHz": 44,
+        }
+    ]
+    path.write_text(json.dumps(doc), encoding="utf-8")
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(), standalone=True)
+
+    async def body(pilot: Pilot[int]) -> None:
+        log = app.query_one(LogView)
+        status = app.query_one(StatusBar)
+        await until(pilot, lambda: status.engine == "running")
+        news = [text for kind, text in log.entries if kind == "warning"]
+        assert any("Fixtures are numbered from 1, got 0" in text for text in news)
+        assert any("44 Hz is past the widget's 40 Hz" in text for text in news)
 
     try:
         drive(app, body)
