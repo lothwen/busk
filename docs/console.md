@@ -54,19 +54,19 @@ session, as the web remote's commands do. `help` prints the grammar.
 | Values | `set intensity 80%`, `set pan -45`, `set color 1 0.5 0 w 0.2`, `set gobo1 breakup`, `set pan spread -30 30 [center\|edges]`, `set color preset color 1`, `preset position 1`, `set intensity by 5%`, `set pan by -15`, `set color.r 50%`, `set color.b by -10%` |
 | Programmer | `clear`, `blind on\|off`, `fade 2` (programmer changes fade over 2 s), `programmer` |
 | Record | `record group N`, `record preset <pool> N [global\|profile\|target]`, `record cue L/C [only <family>…] [freeze]`, `record slot S [only <family>…]`; each takes `merge`, `replace` or `remove` and a `"name"` |
-| Patch | `universe add 1 "Stage"`, `fixture add 101 thru 104 "Generic Spot 16ch" mode 16ch at 1.1`, `fixture 101 patch 2.1`, `fixture 101 patch none`, `fixture 101 mode 16ch`, `fixture 101 profile "RGB Par 3ch" mode 3ch` |
-| Output | `route add 1 sacn 1 [unicast 10.0.0.20 \| multicast IF]`, `route add 1 artnet 0.0.1 [unicast 10.0.0.20 \| broadcast IF]`, `route add 1 dmxusb enttecPro\|dmxking /dev/ttyUSB0 [hz 40]`, `route r-1 on\|off`, `delete route r-1` |
+| Patch | `universe add 1 "Stage"`, `fixture add 101 thru 104 "Generic Spot 16ch" mode 16ch at 1.1`, `fixture 101 patch 2.1`, `fixture 101 patch none`, `fixture 101 thru 104 patch 2.1\|none`, `fixture 101 mode 16ch`, `fixture 101 profile "RGB Par 3ch" mode 3ch` |
+| Output | `route add 1 sacn 1 [unicast 10.0.0.20 \| multicast IF]`, `route add 1 artnet 0.0.1 [unicast 10.0.0.20 \| broadcast IF]`, `route add 1 dmxusb enttecPro\|dmxking /dev/ttyUSB0 [hz 40]`, `route r-1 on\|off`, `route r-1 change 1 sacn 2 [unicast 10.0.0.20]` (what `route add` takes), `delete route r-1` |
 | Surfaces | `surface add midi "nanoKONTROL2"`, `surface add osc "Touch" [port 8000] [feedback 10.0.0.5:9000]`, `surface add web "Phone" [port 8080] [on 10.0.0.2]`, `surface "nanoKONTROL2" pickup soft\|jump` |
 | Bindings, feedback | `bind "nanoKONTROL2" cc 1 0 fader 1`, `… cc 1 32 button 1 1 [led]`, `… cc 1 7 fader playback 18 [motor]`, `… cc 1 23 master gm`, `… cc 1 18 master "Speed 1"`, `… cc 1 46 tap ["Speed 1"]`, `… cc 1 42 blackout [momentary]`, `… cc 1 62 page +1`, `… note 1 60 page 2`, `bind "Touch" osc "/fader/1" fader 1 [display osc "/label/1"]`, `bind "nanoKONTROL2" clock tap`, `… cc 1 60 release all [2]`, `… note 1 61 output off`, `feedback "nanoKONTROL2" cc 1 32 thru 39 led\|motor\|display\|none`, `unbind "nanoKONTROL2" cc 1 60 [thru 61]` |
 | Pages | `page 2`, `page next\|prev`, `page add 2 ["Washes"]`, `page 2 slot 1 playback 14`, `page 2 slot 5 clear`, `record slot 2.1`, `playback 9 goto 4` |
-| Edit | `playback 3 exclusivity color`, `cue 3/1 timing.fadeIn 1`, `playback 1 buttons ["toggle", "flash", "release"]`, `show meta.title "Club Night"`, `rename group 1 "Heads"`, `delete cue 10/2`, `delete fixture 101 cascade`, `delete universe 2 cascade`, `delete preset color 3 cascade`, `delete group 2 cascade`, `delete cuelist 9 cascade`, `delete playback 3 cascade`, `delete page 2 cascade`, `fixture 101 location {"x": 1, "y": 2, "z": 3, "rx": 0, "ry": 0, "rz": 0}`, `fixture 101 location none`, `fixture 101 thru 104 orientation.invertPan true`, `fixture 101 orientation.panOffset 30` |
+| Edit | `playback 3 exclusivity color`, `cue 3/1 timing.fadeIn 1`, `playback 1 buttons ["toggle", "flash", "release"]`, `show meta.title "Club Night"`, `rename group 1 "Heads"`, `delete cue 10/2`, `delete fixture 101 cascade`, `delete fixture 101 thru 104 cascade`, `delete universe 2 cascade`, `delete preset color 3 cascade`, `delete group 2 cascade`, `delete cuelist 9 cascade`, `delete playback 3 cascade`, `delete page 2 cascade`, `fixture 101 location {"x": 1, "y": 2, "z": 3, "rx": 0, "ry": 0, "rz": 0}`, `fixture 101 location none`, `fixture 101 thru 104 orientation.invertPan true`, `fixture 101 orientation.panOffset 30` |
 | Playbacks | `playback add 5 cuelist 10 [at [P.]S] ["name"]`, `playback 3 cuelist 10`, `playback 3 fader size`, `playback 3 flash.level 0.5`, `playback 3 exclusivity none` |
 | Timing, triggers | `cue 9/1 time 3 easeInOut`, `cue 9/3 time 1/3 delay 0/1`, `cue 9/2 time position 4 [delay 1] [easeOut]`, `… bezier 0.4 0 0.2 1`, `cue 9/3 wait 8`, `cue 9/5 follow 4`, `cue 9/2 go`, `cue 9/5 release group 1 [only pan tilt]` |
 | Cue lists, tempo | `cuelist add 5 ["name"]`, `cuelist 9 tracking true`, `cuelist 10 chase bpm ["Speed 1"] [x 2] [forward\|reverse\|bounce\|random] [crossfade 0.25]`, `cuelist 10 chase hz 4`, `cuelist 10 sequence`, `master add speed "Speed 1" [bpm 120] [steps 0.5, 1, 2]` |
 | Effects, masters | `effect add "Circle" [id fx1] [hz 0.5 \| bpm ["Speed 1"] [x 0.5]] [size 15] [low 0 high 1] [phase 0 180] [groups N] [blocks N] [wings 2] [forward\|reverse\|bounce] [fadein 1] [sizemaster "FX"] [speedmaster "Speed 1"]`, `effect remove fx1`, `effect clear`, `effect stop fx1`, `effect run fx1`, `effect template add "Name" [{…layers…}]`, `effect template update "Name" [{…layers…}]`, `effect template rename "Name" "New"`, `effect template delete "Name"`, `cue 9/4 effect rainbow size 0.5`, `cue 9/4 effect rainbow remove`, `master add size "FX"`, `master add group "Wash level" group 2`, `master add fadetime "Fade"` |
 | Perform | `go 9`, `back 9`, `goto 9 4`, `release 3 [2]`, `fader 3 75%`, `flash 3 on\|off`, `toggle 3`, `button 3 2 on\|off`, `gm 0.5`, `master "Speed 1" 0.75`, `tap ["Speed 1"]`, `bpm ["Speed 1"] 128`, `blackout on\|off` |
 | Safety, panic | `park fixture 204 intensity 0`, `park group 2 color 1 0 0`, `unpark fixture 204 [intensity]`, `unpark all`, `fixture 101 thru 102 limits tilt -90 10`, `fixture 301 limits intensity 50%`, `fixture 101 limits tilt none`, `fixture 101 limits none`, `safety strobe 3\|off`, `highlight on\|off`, `release all [2]`, `output on\|off` |
-| Profiles | `profile update "Generic Spot 16ch"` (to the library's other revision), `profile "Generic Spot 16ch" category wash\|none`, `list profiles` |
+| Profiles | `profile update "Generic Spot 16ch"` (to the library's other revision), `profile "Generic Spot 16ch" category wash\|none`, `profile import "fixtures/spot.gdtf"`, `list profiles` |
 | Session | `undo`, `redo`, `save [PATH]`, `list fixtures\|groups\|presets\|cuelists\|playbacks\|pages\|universes\|routes\|surfaces\|bindings\|masters\|profiles\|effects\|park`, `list cues 9`, `library`, `info`, `status`, `source FILE`, `quit` |
 
 ## Notes
@@ -211,7 +211,17 @@ session, as the web remote's commands do. `help` prints the grammar.
   show and sends nothing. `route <id> off` and `delete route <id>` stop a universe's
   output, so the prompt asks first, as for `output off`. A route that is off is not
   checked against the others, so `route <id> on` is refused when its sACN universe or its
-  port is taken by then.
+  port is taken by then. `route <id> change` takes what `route add` takes, in one undo step.
+  The route keeps its id and whether it is on, and an sACN route that stays sACN keeps its
+  priority. It refuses what `route add` refuses, and what would change nothing.
+* **Several fixtures.** `fixture N thru M patch U.A` places every fixture of the span, in
+  number order, each straight after the one before by its footprint, so a hole in the numbers
+  leaves no hole in the channels. A span that would run past channel 512 is refused whole.
+  `fixture N thru M patch none` unpatches them. Each is one undo step.
+* **Importing a profile** (see [Fixture profiles](profiles.md#importing-ofl-and-gdtf-files)). `profile import
+  "<path>"` embeds the profile of an OFL `.json`, a `.gdtf` or a busk profile file in the show,
+  in one undo step, and says what the importer could not map. It is refused if the show holds
+  the profile by id, or a profile by that name, in any case.
 * **Deletes that cascade.** A plain `delete` is refused while anything uses what it deletes,
   and says what does: `fixture 101 is used by 2 groups, 2 presets and 14 cues: add cascade`.
   With `cascade` it goes, with what names it, in one undo step. The prompt always asks first
@@ -225,13 +235,16 @@ session, as the web remote's commands do. `help` prints the grammar.
 
   | Line | What goes with it | What stays |
   |---|---|---|
-  | `delete fixture N cascade` | what names it leaves it: groups, presets' target values, cue entries, cue effects, releases, park entries, bindings. An entry, effect, release or binding left with no target goes | a group, a preset or a cue left empty, for you to keep or delete |
+  | `delete fixture N [thru M] cascade` | what names it leaves it: groups, presets' target values, cue entries, cue effects, releases, park entries, bindings. An entry, effect, release or binding left with no target goes | a group, a preset or a cue left empty, for you to keep or delete |
   | `delete universe N cascade` | its routes; the bindings that patch into it | its fixtures, unpatched |
   | `delete preset <pool> N cascade` | the cue entries that use it, its place in effect palettes, the bindings that apply it | the cues. Its value is not written into them |
   | `delete group N cascade` | the cue entries, effects and releases that target it, its group masters, the bindings that name them | the cues |
   | `delete cuelist N cascade` | the playbacks that run it, as the next row does each | |
   | `delete playback N cascade` | its page slots, which go empty, its `fader playback N` bindings and the bindings that name it | its cue list; bindings by slot |
   | `delete page N cascade` | the bindings that go to it by number or assign to it | its playbacks |
+
+  `delete fixture N thru M cascade` deletes every fixture the span holds in one undo step and
+  always needs `cascade`.
 
   A preset that is the last colour of an effect palette is refused even with `cascade`,
   because a colour layer needs a colour: change the template first, with `effect template

@@ -13,6 +13,7 @@ The rig below has three pars, 1 to 3, and 1 is the one that goes.
 from __future__ import annotations
 
 import copy
+import itertools
 import json
 import time
 from collections.abc import Callable
@@ -25,7 +26,10 @@ from builders import APPENDIX_A, ROOT, load_doc, localhost_route, show_of
 from busk import LiveShow, OfflineShow, load_show, new_show
 from busk.commands.types import Command
 from busk.console.console import interact
+from busk.console.parser import Context, Submit, parse
 from busk.model.show import Show
+from busk.session.ids import CounterIds
+from busk.session.library import ProfileLibrary
 from sacn_receiver import Receiver
 
 CLUB_NIGHT = ROOT / "examples" / "club-night.busk"
@@ -821,7 +825,7 @@ def test_a_plain_delete_says_what_uses_it_in_one_line(
 @pytest.mark.parametrize(("line", "said"), USED_REFUSALS)
 def test_a_used_plain_delete_offers_the_cascade(used: OfflineShow, line: str, said: str) -> None:
     found = used.expected(f"{line} ")
-    assert found.words == ("cascade",)
+    assert found.words[-1] == "cascade"
     assert not found.runnable
     assert found.error is None
 
@@ -1368,3 +1372,173 @@ def test_a_group_and_a_preset_go_from_a_running_show(running: Show) -> None:
             assert live.execute("undo").ok
         assert live.show == running
         assert live.health is None or live.health.state == "running"
+
+
+# ----------------------------------------------- several fixtures (GAP-38)
+
+SPAN_LINE = "delete fixture 1 thru 2 cascade"
+
+
+def body(show: OfflineShow) -> dict[str, Any]:
+    """The show as a document, without the times of its ``meta``."""
+    return {key: copy.deepcopy(value) for key, value in show.show.items() if key != "meta"}
+
+
+def spans(show: OfflineShow) -> list[tuple[int, int]]:
+    """Each two fixtures of ``show`` next to each other, by number."""
+    numbers = sorted(f["number"] for f in show.show["fixtures"])
+    return list(itertools.pairwise(numbers))
+
+
+@pytest.mark.parametrize("make", [club, tupper], ids=["club", "tupper"])
+def test_a_span_leaves_the_same_show_as_its_fixtures_one_by_one(
+    make: Callable[[Show], OfflineShow], club_show: Show
+) -> None:
+    for first, last in spans(make(club_show)):
+        together, apart = make(club_show), make(club_show)
+        run(together, f"delete fixture {first} thru {last} cascade")
+        run(apart, f"delete fixture {first} cascade", f"delete fixture {last} cascade")
+        assert body(together) == body(apart), (first, last)
+
+
+@pytest.mark.parametrize("make", [club, tupper], ids=["club", "tupper"])
+def test_every_fixture_of_a_show_goes_in_one_line_and_comes_back(
+    make: Callable[[Show], OfflineShow], club_show: Show, tmp_path: Path
+) -> None:
+    show = make(club_show)
+    before = body(show)
+    numbers = sorted(f["number"] for f in show.show["fixtures"])
+    run(show, f"delete fixture {numbers[0]} thru {numbers[-1]} cascade")
+    assert show.show["fixtures"] == []
+    path = tmp_path / "empty.show"
+    run(show, f'save "{path}"')
+    assert load_show(path)[0]["fixtures"] == []
+    run(show, "undo")
+    assert body(show) == before
+
+
+def test_a_group_of_a_span_keeps_what_is_left_of_it_in_one_edit(rig: OfflineShow) -> None:
+    """Two edits of one group would put back what the first took."""
+    run(rig, "sel fixture 1 thru 3", 'record group 1 "All"')
+    groups = [c for c in _commands(rig, SPAN_LINE) if c["path"][0] == "groups"]
+    assert len(groups) == 1
+    run(rig, SPAN_LINE)
+    third = next(f["id"] for f in rig.show["fixtures"] if f["number"] == 3)
+    assert rig.show["groups"][0]["members"] == [fx(third)]
+
+
+def _commands(show: OfflineShow, line: str) -> list[dict[str, Any]]:
+    """The edits of the ``BATCH`` that ``line`` sends."""
+    action = parse(line, Context(show.show, ProfileLibrary(), CounterIds()))
+    assert isinstance(action, Submit)
+    return cast(list[dict[str, Any]], cast(dict[str, Any], action.command)["commands"])
+
+
+def test_what_names_several_keeps_what_is_left_or_goes(
+    rig: OfflineShow, ids: dict[int, str]
+) -> None:
+    run(
+        rig,
+        "sel fixture 1 thru 3",
+        "set intensity 50%",
+        "record cue 10/1",
+        "park fixture 1 thru 2 intensity 0",
+    )
+    bind(rig, "some", select(fx(ids[1]), fx(ids[3])))
+    bind(rig, "only", select(fx(ids[1]), fx(ids[2])))
+    run(rig, SPAN_LINE)
+    entry = rig.show["cueLists"][0]["cues"][0]["entries"][0]
+    assert entry["targets"]["refs"] == [fx(ids[3])]
+    assert rig.show["park"] == []
+    bindings = {b["id"]: b for b in rig.show["bindings"]}
+    assert set(bindings) == {"some"}  # the other had only what went
+    assert bindings["some"]["action"]["command"]["targets"]["refs"] == [fx(ids[3])]
+
+
+def test_per_target_values_of_a_span_leave_together(rig: OfflineShow, ids: dict[int, str]) -> None:
+    run(rig, "sel fixture 1 thru 3", "set intensity spread 0 100%", "record cue 10/1")
+    run(rig, SPAN_LINE)
+    entry = rig.show["cueLists"][0]["cues"][0]["entries"][0]
+    assert list(entry["value"]["values"]) == [f"{ids[3]}:0"]
+
+
+def test_every_binding_that_patches_a_fixture_of_a_span_goes(
+    rig: OfflineShow, ids: dict[int, str]
+) -> None:
+    for number, name in ((1, "one"), (2, "two"), (3, "three")):
+        bind(rig, name, {"type": "PATCH_FIXTURE", "fixtureId": ids[number], "patch": None})
+    run(rig, SPAN_LINE)
+    assert [binding["id"] for binding in rig.show["bindings"]] == ["three"]
+
+
+def test_the_question_and_the_reply_of_a_span(rig: OfflineShow) -> None:
+    run(
+        rig,
+        "sel fixture 1 thru 2",
+        "set intensity 50%",
+        "record preset intensity 1 target",
+        "record cue 10/1",
+        'record group 4 "A"',
+        "clear",
+    )
+    question = rig.confirmation(SPAN_LINE)
+    assert question == (
+        "Delete 2 fixtures from 1 to 2? They leave group 4; preset intensity 1 and cue 10/1."
+    )
+    reply = rig.execute(SPAN_LINE)
+    assert (reply.ok, reply.text.splitlines()[0]) == (
+        True,
+        "deleted 2 fixtures from 1 to 2: left 1 group, 1 preset, 1 cue",
+    )
+    assert rig.execute("undo").text.startswith("undid: deleted 2 fixtures from 1 to 2")
+
+
+def test_the_question_says_how_many_of_a_span_the_programmer_holds(rig: OfflineShow) -> None:
+    run(rig, "sel fixture 2 thru 3", "set intensity 50%")
+    assert rig.confirmation("delete fixture 1 thru 3 cascade") == (
+        "Delete 3 fixtures from 1 to 3? The programmer holds 2 of them."
+    )
+
+
+def test_a_span_with_a_hole_says_what_it_takes(rig: OfflineShow) -> None:
+    run(rig, "delete fixture 2")
+    assert rig.confirmation("delete fixture 1 thru 3 cascade") == ("Delete 2 fixtures from 1 to 3?")
+    run(rig, "delete fixture 1 thru 3 cascade")
+    assert rig.show["fixtures"] == []
+
+
+def test_a_span_given_backwards_goes_too(rig: OfflineShow) -> None:
+    run(rig, "delete fixture 3 thru 1 cascade")
+    assert rig.show["fixtures"] == []
+
+
+def test_a_span_that_holds_one_fixture_says_it_as_one(rig: OfflineShow) -> None:
+    assert rig.confirmation("delete fixture 3 thru 9 cascade") == "Delete fixture 3?"
+
+
+def test_a_span_of_nothing_is_refused(rig: OfflineShow) -> None:
+    reply = rig.execute("delete fixture 7 thru 9 cascade")
+    assert (reply.ok, reply.text) == (False, "error: no fixture from 7 to 9")
+
+
+def test_a_span_always_needs_cascade(rig: OfflineShow) -> None:
+    reply = rig.execute("delete fixture 1 thru 2")
+    assert (reply.ok, reply.text) == (False, "error: expected cascade")
+    assert len(rig.show["fixtures"]) == 3
+    found = rig.expected("delete fixture 1 thru 2 ")
+    assert (found.words, found.runnable) == (("cascade",), False)
+
+
+def test_tab_offers_thru_after_a_fixture_to_delete(rig: OfflineShow) -> None:
+    assert rig.expected("delete fixture 1 ").words == ("thru", "cascade")
+    assert rig.expected("delete group ").words == ()
+
+
+def test_a_span_goes_from_a_running_show_and_comes_back(running: Show) -> None:
+    with LiveShow(running) as live:
+        before = copy.deepcopy(live.show["fixtures"])
+        reply = live.execute("delete fixture 101 thru 102 cascade")
+        assert reply.ok, reply.text
+        assert [f["number"] for f in live.show["fixtures"]] == [201]
+        assert live.execute("undo").ok
+        assert live.show["fixtures"] == before

@@ -11,7 +11,7 @@ as the safety stage left it (stage 11), in two halves:
   frame, and per lane what drives it. The sources' and relatives' share is
   :meth:`Resolver.attribute <busk.engine.resolver.Resolver.attribute>`;
   the safety stage's own comes on top: the highlight is the programmer's,
-  and a parked lane is nobody's. It allocates two arrays and a small tuple,
+  and a parked lane is park's. It allocates two arrays and a small tuple,
   so the engine captures only while someone reads the output
   (:attr:`Engine.captureOutput <busk.engine.loop.Engine.captureOutput>`).
 * :func:`read_output`, on any thread: the public
@@ -41,11 +41,18 @@ from busk.engine.install import Highlight
 from busk.engine.resolver import Resolver
 from busk.engine.snapshot import FixtureOutput, OutputSnapshot, OutputSource
 
-SOURCES: Final[tuple[OutputSource, ...]] = ("none", "playback", "effect", "programmer")
+SOURCES: Final[tuple[OutputSource, ...]] = ("none", "playback", "effect", "programmer", "park")
 """The output sources by rank: a family's source is the highest-ranked one
 that drives one of its lanes."""
 
-_RANKS: Final[Mapping[OriginKind, int]] = {"playback": 1, "effect": 2, "programmer": 3}
+_RANKS: Final[Mapping[OriginKind, int]] = {
+    "playback": 1,
+    "effect": 2,
+    "programmer": 3,
+    "park": 4,
+}
+_PARK: Final = Origin("park")
+"""What holds a parked lane, for the readout alone: park is no source."""
 _INTENSITY: Final = FAMILY_CODES["intensity"]
 
 
@@ -86,12 +93,14 @@ def capture(
         *(source.origin for source in sources),
         *(relative.origin for relative in relatives),
         PROGRAMMER,
+        _PARK,
     )
+    programmer, park = len(origins) - 2, len(origins) - 1
     if highlight is not None:
-        owners[highlight.lanes] = len(origins) - 1
+        owners[highlight.lanes] = programmer
     safety = compiled.safety
-    owners[safety.parkIntensity] = -1
-    owners[safety.parkLanes] = -1
+    owners[safety.parkIntensity] = park
+    owners[safety.parkLanes] = park
     owners.flags.writeable = False
     values = frame.copy()
     values.flags.writeable = False

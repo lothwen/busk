@@ -404,8 +404,7 @@ what busk outputs for it now, after the masters, blackout, park and limits:
 
 The values are coloured by what drives them: magenta the programmer, white a playback, green
 an effect, grey nothing (the intensity and `src` by what drives the intensity, pan and tilt
-by what drives the position, zoom by the beam's). A parked value counts as nothing: busk
-does not say which values park holds.
+by what drives the position, zoom by the beam's). A parked value counts as nothing here.
 
 A click on a row selects the fixture (`sel fixture 101`); Shift-click adds it to the
 selection, or takes it out when it is in (`sel + fixture 101`, `sel - fixture 101`). The pane

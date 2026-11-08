@@ -232,11 +232,13 @@
       "id: str",
       "source: Literal['show', 'library']",
       "manufacturer: str",
+      "revision: str",
+      "library_revision: str | None",
       "modes: tuple[FixtureModeInfo, ...]"
     ],
     "kind": "frozen dataclass",
     "members": {
-      "__init__": "(self, *, name: str, id: str, source: Literal['show', 'library'], manufacturer: str, modes: tuple[FixtureModeInfo, ...]) -> None"
+      "__init__": "(self, *, name: str, id: str, source: Literal['show', 'library'], manufacturer: str, revision: str, library_revision: str | None, modes: tuple[FixtureModeInfo, ...]) -> None"
     },
     "module": "busk.console.console"
   },

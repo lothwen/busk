@@ -80,7 +80,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-19](#gap-19-status-under-liveshow) `status` under `LiveShow` | action | nice-to-have | prompt | **done** 2026-10-24 |
 | [GAP-20](#gap-20-completion-and-hints) Completion and hints | read | nice-to-have | prompt | **done** 2026-10-24 |
 | [GAP-21](#gap-21-engine-health) Engine health | read | nice-to-have | status bar | **done** 2026-10-24 |
-| [GAP-22](#gap-22-parked-values-in-the-output-source) Parked values in the output source | read | nice-to-have | F3 | open (found 2026-10-26) |
+| [GAP-22](#gap-22-parked-values-in-the-output-source) Parked values in the output source | read | nice-to-have | F3 | **done** 2026-11-08 |
 | [GAP-23](#gap-23-removing-and-switching-routes) Removing and switching routes | action | important | F8 | **done** 2026-11-05 |
 | [GAP-24](#gap-24-deletes-that-cascade) Deletes that cascade | action | important | F3, F8 | **done** 2026-11-05 |
 | [GAP-25](#gap-25-removing-one-limit-and-a-location) Removing one limit, and a location | action | nice-to-have | F3 | **done** 2026-11-05 |
@@ -95,6 +95,9 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-34](#gap-34-a-playback-for-a-list) A playback for a list | action | important | F1 | **done** 2026-11-08 |
 | [GAP-35](#gap-35-a-playbacks-and-a-cue-lists-properties-named) A playback's and a cue list's properties named | read, action | important | F1, F4 | **done** 2026-11-08 |
 | [GAP-36](#gap-36-the-other-deletes-that-cascade) The other deletes that cascade | action | important | F1, F4, F6, F3 | **done** 2026-11-08 |
+| [GAP-37](#gap-37-editing-a-route) Editing a route | action | nice-to-have | F8 | **done** 2026-11-08 |
+| [GAP-38](#gap-38-several-fixtures-in-one-line) Several fixtures in one line | action | nice-to-have | F3 | **done** 2026-11-08 |
+| [GAP-39](#gap-39-importing-a-profile-and-its-revisions) Importing a profile, and its revisions | action, read | nice-to-have | F3 | **done** 2026-11-08 |
 
 ---
 
@@ -1734,6 +1737,8 @@ applies.
 
 ## GAP-22: Parked values in the output source
 
+**Status:** done 2026-11-08 (see **Done** at the end of this section).
+
 Found while building the TUI's Phase 4 (2026-10-26), not in the first plan.
 
 **Needed by:** F3's source colouring (spec §8.3: magenta programmer, white playback, green
@@ -1754,6 +1759,23 @@ The highlight could get a word of its own the same way, if a display wants it.
 **Priority:** nice-to-have.
 
 **TUI until then:** F3 shows a parked value as driven by nothing, and the guide says so.
+
+**Done** (2026-11-08). `OutputSource` has a fifth value, `"park"`. In `busk.engine.readout`, park
+is one more origin, ranked above the programmer. What it settles:
+
+- **One parked attribute makes the family `park`:** of a family's attributes, the highest rank
+  wins, so a parked tilt reads `park` over a pan the programmer holds. A family none of whose
+  lanes is parked keeps its source.
+- **`playback` stays `None`** for a parked intensity, even when a playback's cue holds the value.
+- **A blackout does not change it:** a parked intensity is dark and still says `park`, and park
+  outranks the highlight, which it also wins over in the output.
+- **The cells of a bar read the dimmer they use,** so a parked master dimmer reads `park` on every
+  cell without a dimmer of its own.
+- **F3 does not read it yet.** `busk_tui.bridge` turns `park` into `none`, one expression, as F3's
+  tables know four sources and would raise on a fifth. Phase 12 of the pending plan takes it out.
+
+Tests: `tests/test_output_readout.py`, across the engine process in `tests/test_frontend.py`, and
+the bridge in `tests/tui/test_tui_bridge.py`.
 
 ## GAP-23: Removing and switching routes
 
@@ -2422,3 +2444,115 @@ Tests: `tests/test_cascade.py` (each kind of reference and what stays, every ent
 shows, all in a row in two orders, saved and reloaded, the refusals, questions and replies, a
 running `LiveShow`), the parser's rows, completion in `tests/test_console_prompt.py`, and `busk run`
 with processes in `tests/test_frontend.py`.
+
+## GAP-37: Editing a route
+
+**Status:** done 2026-11-08 (see **Done** at the end of this section).
+
+Found while writing the TUI's operations report (`docs/dev/tui/operations-report.md`, 2026-11-01),
+and ordered in `docs/plans/tui-pending-plan.md`, Phase 5.
+
+**Needed by:** F8's `[edit…]`.
+
+**Today:** a route can be added, switched and deleted. To change one, the operator deletes it and
+adds another, which is two undo steps and a new id.
+
+**Engine should provide:** `route <id> change <what route add takes>`, one undo step that keeps the
+id and whether the route is on.
+
+**Priority:** nice-to-have.
+
+**TUI until then:** F8 has no `[edit…]`.
+
+**Done** (2026-11-08). In `_route_change` of `src/busk/console/parser.py`, which shares
+`_route_fields` with `route add`. What it settles:
+
+- **Each key is its own edit.** `SET` cannot replace a list element, so each key that differs is
+  set and each the new route lacks is deleted, as `profile update` does. Another protocol leaves
+  none of the old keys, and the route keeps its place.
+- **An sACN route that stays sACN keeps its priority.** No line sets one, so a change must not
+  lose it. Going to another protocol drops it with the other keys.
+- **What `route add` refuses, it refuses,** by the same code, an equal route included, on or off.
+- **A line that would change nothing is refused:** `route r-1 already sends that`. Otherwise it
+  would be an undo step of no edit.
+- **It asks nothing.** The output's reconcile compares a route by value, so the same id with
+  another value closes the old sender (an sACN route says Stream_Terminated) and opens the new one.
+
+Tests: `tests/test_route_status.py` (every protocol to every other, the refusals, Tab, saved and
+reloaded, a running `LiveShow`), and `busk run` with processes in `tests/test_frontend.py`.
+
+## GAP-38: Several fixtures in one line
+
+**Status:** done 2026-11-08 (see **Done** at the end of this section).
+
+Found while building the TUI's rig controls (`docs/plans/tui-rig-plan.md` §9), and ordered in
+`docs/plans/tui-pending-plan.md`, Phase 5.
+
+**Needed by:** F3's `[delete]` and PATCH on a selection that is one run.
+
+**Today:** `delete` and `patch` take one fixture per line. Two lines are two undo steps, and the
+second can fail after the first went through.
+
+**Engine should provide:** `delete fixture N thru M cascade`, and `fixture N thru M patch U.A|none`,
+laid out by footprint. One undo step each, and all or nothing.
+
+**Priority:** nice-to-have.
+
+**TUI until then:** F3's `[delete]` and PATCH take one fixture.
+
+**Done** (2026-11-08). In `_patch` and `_delete_fixtures` of `src/busk/console/parser.py`, and
+`fixture_cascade`, which now walks several fixtures. What it settles:
+
+- **The cascade is one walk over the ids that go,** not one per fixture. Two edits of one group or
+  binding would put back what the first took. A test holds a span equal, as a document, to its
+  fixtures deleted one by one, on both shipped shows.
+- **`thru` takes the fixtures the span holds,** as every other `thru` does. A hole in the numbers
+  leaves no hole in the channels, and a span given backwards is laid out in number order.
+- **The whole run must fit:** `fixture 1 thru 6 would end at channel 513, past channel 512`. Nothing
+  is patched then. An overlap warns, as one fixture's does.
+- **A plain `delete fixture N thru M` is not a line.** It says `expected cascade`, and Tab offers
+  `cascade`, so deleting a run always asks and says what goes.
+- **The words count what they found:** `Delete 2 fixtures from 101 to 102? They leave groups 1, 4
+  and presets position 1, 2. The programmer holds 2 of them.`, and a span that holds one fixture
+  reads as that fixture.
+
+Tests: `tests/test_cascade.py`, `tests/test_console.py`, and `busk run` with processes in
+`tests/test_frontend.py`.
+
+## GAP-39: Importing a profile, and its revisions
+
+**Status:** done 2026-11-08 (see **Done** at the end of this section).
+
+Found while building the TUI's rig controls (`docs/plans/tui-rig-plan.md` §9), and ordered in
+`docs/plans/tui-pending-plan.md`, Phase 5.
+
+**Needed by:** F3's `[import…]` in the profile picker and its `[update profile]`.
+
+**Today:** `busk import` writes a profile file from the shell, and a library directory is read at
+the start of a run. No line brings a profile into a running show. `FixtureProfileInfo` has no
+revision, so nothing tells a control that `profile update` has something to do.
+
+**Engine should provide:** `profile import "<path>"`, and both revisions on `FixtureProfileInfo`.
+
+**Priority:** nice-to-have.
+
+**TUI until then:** F3's picker lists what the library held when the run started.
+
+**Done** (2026-11-08). `read_profile` in `src/busk/session/library.py` holds what
+`ProfileLibrary._load` did, and both use it. `ImportProfile` is a new action of the parser, and
+`Console._import_profile` reads the file, as `_source` reads its own, so the parser stays pure.
+What it settles:
+
+- **Three formats, told apart as a library directory does:** a `.gdtf`, an OFL `.json` and a busk
+  profile `.json`. The plan named two.
+- **The profile goes into the show,** as one undo step, and not into a library directory.
+- **A file that fails says so in one line:** `cannot import 'x.gdtf': …`.
+- **An id the show holds is refused,** whatever the revision: no line replaces a show's copy from a
+  file. **So is a name the show holds,** in any case: `fixture add` would never find it by name, and
+  `fixture_profiles` would leave it out. A name only the library holds is taken, and shadows it.
+- **What the importer could not map is said** as `note:` lines before the reply.
+- **`revision` is the one listed, and `library_revision` is the library's for that id,** `None` when
+  it has none. Where both are set and differ, `profile update` has something to do: it finds the
+  library's copy the same way. They are required fields, so a stub must set them.
+
+Tests: `tests/test_fixture_profiles.py`, and `busk run` with processes in `tests/test_frontend.py`.

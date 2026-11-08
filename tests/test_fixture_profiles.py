@@ -33,8 +33,13 @@ from busk import (
     load_show,
     new_show,
 )
+from busk.console.parser import Context, ImportProfile, parse
 from busk.model.show import Show
 from busk.persistence.show_file import save_show
+from busk.session.ids import CounterIds
+from gdtf_builder import archive, description, function
+from gdtf_builder import channel as gdtf_channel
+from gdtf_builder import mode as gdtf_mode
 
 CLUB_NIGHT = ROOT / "examples" / "club-night.busk"
 TUPPER_DEMO = ROOT / "examples" / "tupperdmx" / "tupper-demo.show"
@@ -44,6 +49,8 @@ PIX = FixtureProfileInfo(
     id="prof-pix",
     source="library",
     manufacturer="Chauvet DJ",
+    revision="1",
+    library_revision="1",
     modes=(FixtureModeInfo(name="36-CH", footprint=36, elements=12),),
 )
 ML56 = FixtureProfileInfo(
@@ -51,6 +58,8 @@ ML56 = FixtureProfileInfo(
     id="prof-ml56",
     source="library",
     manufacturer="Eurolite",
+    revision="1",
+    library_revision="1",
     modes=(FixtureModeInfo(name="4-channel", footprint=4, elements=1),),
 )
 PAR = FixtureProfileInfo(
@@ -58,6 +67,8 @@ PAR = FixtureProfileInfo(
     id="prof-par",
     source="library",
     manufacturer="Generic",
+    revision="1",
+    library_revision="1",
     modes=(FixtureModeInfo(name="3ch", footprint=3, elements=1),),
 )
 SPOT = FixtureProfileInfo(
@@ -65,6 +76,8 @@ SPOT = FixtureProfileInfo(
     id="prof-mh",
     source="library",
     manufacturer="Generic",
+    revision="1",
+    library_revision="1",
     modes=(FixtureModeInfo(name="16ch", footprint=16, elements=1),),
 )
 MHX25 = FixtureProfileInfo(
@@ -72,6 +85,8 @@ MHX25 = FixtureProfileInfo(
     id="prof-mhx25",
     source="library",
     manufacturer="Stairville",
+    revision="1",
+    library_revision="1",
     modes=(FixtureModeInfo(name="12-channel", footprint=12, elements=1),),
 )
 LIBRARY = (PIX, ML56, PAR, SPOT, MHX25)
@@ -85,6 +100,8 @@ def held(info: FixtureProfileInfo) -> FixtureProfileInfo:
         id=info.id,
         source="show",
         manufacturer=info.manufacturer,
+        revision=info.revision,
+        library_revision=info.library_revision,
         modes=info.modes,
     )
 
@@ -148,6 +165,8 @@ def test_every_mode_of_a_profile_is_listed_in_its_order() -> None:
         id="prof-two",
         source="show",
         manufacturer="Test",
+        revision="1",
+        library_revision=None,
         modes=(
             FixtureModeInfo(name="20 ch", footprint=20, elements=1),
             FixtureModeInfo(name="Cells", footprint=4, elements=4),
@@ -335,3 +354,209 @@ def test_a_saved_show_lists_the_same_after_loading(tmp_path: Path) -> None:
     save_show(show.show, path)
     loaded, _ = load_show(path)
     assert OfflineShow(loaded).fixture_profiles == show.fixture_profiles
+
+
+# ------------------------------------------------- the revisions (GAP-39)
+
+
+def listed(show: OfflineShow, name: str) -> FixtureProfileInfo:
+    return next(p for p in show.fixture_profiles if p.name == name)
+
+
+def with_revision(ident: str, revision: str) -> Show:
+    """Appendix A's show, its copy of profile ``ident`` at ``revision``."""
+    doc = load_doc(APPENDIX_A)
+    next(p for p in doc["profiles"] if p["id"] == ident)["revision"] = revision
+    return show_of(doc)
+
+
+def test_a_library_profile_lists_the_librarys_revision_twice() -> None:
+    info = listed(OfflineShow(new_show("Rig")), "RGB Par 3ch")
+    assert (info.source, info.revision, info.library_revision) == ("library", "1", "1")
+
+
+def test_a_profile_at_the_librarys_revision_has_nothing_to_update() -> None:
+    show = OfflineShow(appendix())
+    info = listed(show, "RGB Par 3ch")
+    assert (info.source, info.revision, info.library_revision) == ("show", "1", "1")
+    assert "already at the library" in show.execute('profile update "RGB Par 3ch"').text
+
+
+def test_a_revision_that_differs_says_profile_update_has_work() -> None:
+    show = OfflineShow(with_revision("prof-par", "7"))
+    info = listed(show, "RGB Par 3ch")
+    assert (info.source, info.revision, info.library_revision) == ("show", "7", "1")
+    assert show.execute('profile update "RGB Par 3ch"').ok
+    updated = listed(show, "RGB Par 3ch")
+    assert updated.revision == updated.library_revision == "1"
+
+
+def test_a_profile_only_the_show_holds_has_no_library_revision() -> None:
+    show = OfflineShow(appendix(own("prof-own", "Own")))
+    assert listed(show, "Own").library_revision is None
+    assert "no library profile" in show.execute('profile update "Own"').text
+
+
+# ---------------------------------------------- importing a profile (GAP-39)
+
+
+def gdtf_spot() -> bytes:
+    """A GDTF fixture of a dimmer and a control channel busk has no attribute for."""
+    channels = (gdtf_channel("1", function("Dimmer")), gdtf_channel("2", function("Control1")))
+    return description(gdtf_mode("2ch", *channels), name="Spot", manufacturer="Generic")
+
+
+def gdtf_file(tmp_path: Path) -> tuple[Path, str]:
+    return archive(tmp_path / "spot.gdtf", gdtf_spot()), "Generic Spot"
+
+
+def ofl_file(tmp_path: Path) -> tuple[Path, str]:
+    folder = tmp_path / "acme"
+    folder.mkdir()
+    file = folder / "dim.json"
+    channels = {"Dimmer": {"capability": {"type": "Intensity"}}}
+    fixture = {
+        "name": "Test",
+        "meta": {"lastModifyDate": "2026-01-02"},
+        "availableChannels": channels,
+        "modes": [{"name": "All", "channels": list(channels)}],
+    }
+    file.write_text(json.dumps(fixture))
+    return file, "acme Test"
+
+
+def busk_file(tmp_path: Path) -> tuple[Path, str]:
+    file = tmp_path / "own.json"
+    file.write_text(json.dumps(own("prof-own", "Own")))
+    return file, "Own"
+
+
+FORMATS = [gdtf_file, ofl_file, busk_file]
+FORMAT_IDS = ["gdtf", "ofl", "busk"]
+
+
+@pytest.mark.parametrize("make", FORMATS, ids=FORMAT_IDS)
+def test_a_file_of_each_format_is_embedded_in_one_undo_step(
+    make: Callable[[Path], tuple[Path, str]], tmp_path: Path
+) -> None:
+    file, name = make(tmp_path)
+    show = OfflineShow(appendix())
+    before = copy.deepcopy(show.show["profiles"])
+    reply = show.execute(f'profile import "{file}"')
+    assert reply.ok, reply.text
+    assert reply.text.splitlines()[-1] == f"imported profile {name!r}"
+    assert [p["name"] for p in show.show["profiles"]][-1] == name
+    info = listed(show, name)
+    assert (info.source, info.library_revision) == ("show", None)
+    assert show.execute("undo").text == f"undid: imported profile {name!r}"
+    assert show.show["profiles"] == before
+    assert all(p.name != name for p in show.fixture_profiles)
+
+
+def test_the_importers_notes_are_said(tmp_path: Path) -> None:
+    file, _ = gdtf_file(tmp_path)
+    reply = OfflineShow(appendix()).execute(f'profile import "{file}"')
+    assert reply.ok
+    assert (
+        reply.text.splitlines()[0]
+        == "note: Beam_Control1: no busk attribute (Control1); held at DMX 0"
+    )
+
+
+def test_fixture_add_takes_the_imported_profile_by_name(tmp_path: Path) -> None:
+    file, name = busk_file(tmp_path)
+    show = OfflineShow(appendix())
+    assert show.execute(f'profile import "{file}"').ok
+    assert json.dumps(name) in show.expected("fixture add 900 ").words
+    assert show.execute(f'fixture add 900 "{name}" mode 2ch at 1.300').ok
+    assert show.show["fixtures"][-1]["profileId"] == "prof-own"
+
+
+def test_an_imported_profile_is_saved_and_reloaded(tmp_path: Path) -> None:
+    file, name = busk_file(tmp_path)
+    show = OfflineShow(appendix())
+    path = tmp_path / "saved.show"
+    assert show.execute(f'profile import "{file}"').ok
+    assert show.execute(f'save "{path}"').ok
+    assert listed(OfflineShow(load_show(path)[0]), name).source == "show"
+
+
+def bad_files(tmp_path: Path) -> dict[str, Path]:
+    missing = tmp_path / "missing"
+    bad = {
+        "bad.json": tmp_path / "bad.json",
+        "not-a-profile.json": tmp_path / "not-a-profile.json",
+        "bad.gdtf": tmp_path / "bad.gdtf",
+    }
+    bad["bad.json"].write_text("{")
+    bad["not-a-profile.json"].write_text(json.dumps({"id": "x"}))
+    bad["bad.gdtf"].write_bytes(b"not a zip")
+    return {**bad, "missing.json": missing / "m.json", "missing.gdtf": missing / "m.gdtf",
+            "a folder": tmp_path}  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    "which",
+    ["bad.json", "not-a-profile.json", "bad.gdtf", "missing.json", "missing.gdtf", "a folder"],
+)
+def test_a_file_that_fails_says_so_in_one_line_and_changes_nothing(
+    which: str, tmp_path: Path
+) -> None:
+    file = bad_files(tmp_path)[which]
+    show = OfflineShow(appendix())
+    before = copy.deepcopy(show.show)
+    reply = show.execute(f'profile import "{file}"')
+    assert not reply.ok
+    assert reply.text.startswith(f"error: cannot import {str(file)!r}: ")
+    assert "\n" not in reply.text
+    assert show.show == before
+
+
+def test_an_id_the_show_holds_is_refused(tmp_path: Path) -> None:
+    file = tmp_path / "again.json"
+    file.write_text(json.dumps(own("prof-own", "Another name")))
+    show = OfflineShow(appendix(own("prof-own", "Own")))
+    before = copy.deepcopy(show.show)
+    reply = show.execute(f'profile import "{file}"')
+    assert (reply.ok, reply.text) == (False, "error: the show holds this profile as 'Own'")
+    assert show.show == before
+
+
+@pytest.mark.parametrize("name", ["Own", "OWN"])
+def test_a_name_the_show_holds_is_refused_in_any_case(name: str, tmp_path: Path) -> None:
+    """``fixture add`` would never find it by that name."""
+    file = tmp_path / "twin.json"
+    file.write_text(json.dumps(own("prof-twin", name)))
+    show = OfflineShow(appendix(own("prof-own", "Own")))
+    reply = show.execute(f'profile import "{file}"')
+    assert (reply.ok, reply.text) == (False, "error: the show has a profile named 'Own'")
+
+
+def test_a_name_only_the_library_holds_takes_its_place(tmp_path: Path) -> None:
+    file = tmp_path / "shadow.json"
+    file.write_text(json.dumps(own("prof-shadow", "Stairville MH-X25 LED Spot")))
+    show = OfflineShow(appendix())
+    assert show.execute(f'profile import "{file}"').ok
+    info = listed(show, "Stairville MH-X25 LED Spot")
+    assert (info.id, info.source) == ("prof-shadow", "show")
+
+
+def test_an_import_asks_nothing(tmp_path: Path) -> None:
+    file, _ = busk_file(tmp_path)
+    assert OfflineShow(appendix()).confirmation(f'profile import "{file}"') is None
+
+
+@pytest.mark.parametrize("path", ["nope.gdtf", "with space/nope.json"])
+def test_the_parser_names_the_file_and_reads_nothing(path: str) -> None:
+    context = Context(appendix(), ProfileLibrary(), CounterIds())
+    assert parse(f'profile import "{path}"', context) == ImportProfile(Path(path))
+
+
+def test_a_library_directory_still_reports_what_a_file_says(tmp_path: Path) -> None:
+    """``ProfileLibrary`` reads through the same function as the line."""
+    (tmp_path / "bad.json").write_text("{")
+    archive(tmp_path / "spot.gdtf", gdtf_spot())
+    library = ProfileLibrary([tmp_path], builtin=False)
+    assert [p["name"] for p in library] == ["Generic Spot"]
+    assert any(line.startswith(f"{tmp_path / 'bad.json'}: ") for line in library.problems)
+    assert any("Beam_Control1" in line for line in library.problems)

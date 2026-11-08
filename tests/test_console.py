@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 
 from builders import APPENDIX_A, load_doc, show_of
-from busk import LiveShow, OfflineShow, ScriptError, load_show
+from busk import LiveShow, OfflineShow, ScriptError, load_show, new_show
 from busk.console.console import Console, interact
 from busk.console.parser import SubmitAll
 from busk.console.prompt import Editing
@@ -795,8 +795,10 @@ def too_long(template: str) -> Any:
         ),
         ('bind "nanoKONTROL2" cc 1 1 page ²', "expected +N, -N or a page number, got '²'"),
         ('surface add osc "Lemur" port ²', "expected a port (1–65535), got '²'"),
-        ("fixture 101 thru 102 patch 1.200", "expected limits or orientation.<key>, got 'patch'"),
-        ('fixture 101 thru 102 name "x"', "expected limits or orientation.<key>, got 'name'"),
+        (
+            'fixture 101 thru 102 name "x"',
+            "expected patch, limits or orientation.<key>, got 'name'",
+        ),
         (
             'fixture add 300 "RGB Par 3ch" mode 3ch at 1.511',
             "fixture 300 would end at channel 513, past channel 512",
@@ -1403,3 +1405,122 @@ def test_removing_a_property_reaches_a_running_show() -> None:
         assert live.execute("undo").ok
         assert live.show == running
         assert status_of(live, 3).state == "active"
+
+
+# ------------------------------------------- several fixtures patched (GAP-38)
+
+
+@pytest.fixture
+def patched_rig() -> OfflineShow:
+    """Pars 1 to 3 and a spot 4 in universe 1, an unpatched par 6, and an empty
+    universe 2: footprints 3, 3, 3, 16, 3, and no fixture 5."""
+    show = OfflineShow(new_show("Rig"))
+    for line in (
+        'universe add 1 "Stage"',
+        'universe add 2 "Side"',
+        'fixture add 1 thru 3 "RGB Par 3ch" mode 3ch at 1.1',
+        'fixture add 4 "Generic Spot 16ch" mode 16ch at 1.50',
+        'fixture add 6 "RGB Par 3ch" mode 3ch',
+    ):
+        assert show.execute(line).ok, line
+    return show
+
+
+def patches(show: OfflineShow) -> dict[int, tuple[int, int] | None]:
+    """Fixture number → (universe number, address), ``None`` when unpatched."""
+    universes = {u["id"]: u["number"] for u in show.show["universes"]}
+    return {
+        f["number"]: None
+        if f["patch"] is None
+        else (universes[f["patch"]["universeId"]], f["patch"]["address"])
+        for f in show.show["fixtures"]
+    }
+
+
+def test_a_run_is_laid_out_by_each_fixtures_footprint(patched_rig: OfflineShow) -> None:
+    reply = patched_rig.execute("fixture 1 thru 6 patch 2.100")
+    assert (reply.ok, reply.text) == (True, "patched fixture 1 thru 6 at 2.100, up to channel 127")
+    assert patches(patched_rig) == {
+        1: (2, 100), 2: (2, 103), 3: (2, 106), 4: (2, 109), 6: (2, 125),
+    }  # fmt: skip
+
+
+def test_a_hole_in_the_numbers_leaves_no_hole_in_the_channels(patched_rig: OfflineShow) -> None:
+    """``thru`` takes the fixtures the span holds, as every ``thru`` does."""
+    assert patched_rig.execute("fixture 4 thru 6 patch 2.1").ok
+    found = patches(patched_rig)
+    assert (found[4], found[6]) == ((2, 1), (2, 17))
+
+
+def test_a_run_given_backwards_is_laid_out_in_number_order(patched_rig: OfflineShow) -> None:
+    assert patched_rig.execute("fixture 3 thru 1 patch 2.10").ok
+    found = patches(patched_rig)
+    assert (found[1], found[2], found[3]) == ((2, 10), (2, 13), (2, 16))
+
+
+def test_a_run_that_ends_on_the_last_channel_fits(patched_rig: OfflineShow) -> None:
+    assert patched_rig.execute("fixture 1 thru 6 patch 2.485").ok
+    assert patches(patched_rig)[6] == (2, 510)
+
+
+def test_a_run_past_the_last_channel_is_refused_whole(patched_rig: OfflineShow) -> None:
+    before = patches(patched_rig)
+    reply = patched_rig.execute("fixture 1 thru 6 patch 2.486")
+    assert (reply.ok, reply.text) == (
+        False,
+        "error: fixture 1 thru 6 would end at channel 513, past channel 512",
+    )
+    assert patches(patched_rig) == before
+
+
+def test_a_run_is_one_undo_step(patched_rig: OfflineShow) -> None:
+    before = patches(patched_rig)
+    assert patched_rig.execute("fixture 1 thru 6 patch 2.100").ok
+    undone = patched_rig.execute("undo")
+    assert undone.text == "undid: patched fixture 1 thru 6 at 2.100, up to channel 127"
+    assert patches(patched_rig) == before
+
+
+def test_a_run_is_unpatched_in_one_undo_step(patched_rig: OfflineShow) -> None:
+    before = patches(patched_rig)
+    reply = patched_rig.execute("fixture 1 thru 3 patch none")
+    assert (reply.ok, reply.text.splitlines()[0]) == (True, "unpatched fixture 1 thru 3")
+    assert [patches(patched_rig)[n] for n in (1, 2, 3)] == [None, None, None]
+    assert patched_rig.execute("undo").ok
+    assert patches(patched_rig) == before
+
+
+def test_a_run_onto_another_fixture_warns_as_one_fixture_does(patched_rig: OfflineShow) -> None:
+    reply = patched_rig.execute("fixture 1 thru 3 patch 1.60")
+    assert reply.ok
+    assert "warning" in reply.text
+    assert patches(patched_rig)[1] == (1, 60)
+
+
+@pytest.mark.parametrize(
+    ("line", "error"),
+    [
+        ("fixture 1 thru 3 patch 9.1", "no universe 9"),
+        ("fixture 1 thru 3 patch 2.0", "expected a channel from 1 to 512, got 0"),
+        ("fixture 1 thru 3 patch 2", "expected an address as U.A, e.g. 1.101, got '2'"),
+        ("fixture 7 thru 9 patch 2.1", "no fixture from 7 to 9"),
+        ("fixture 1 thru 3 patch 2.1 x", "unexpected 'x'"),
+    ],
+)
+def test_a_bad_run_changes_nothing(patched_rig: OfflineShow, line: str, error: str) -> None:
+    before = patches(patched_rig)
+    reply = patched_rig.execute(line)
+    assert (reply.ok, reply.text) == (False, f"error: {error}")
+    assert patches(patched_rig) == before
+
+
+def test_a_span_that_holds_one_fixture_patches_it(patched_rig: OfflineShow) -> None:
+    assert patched_rig.execute("fixture 5 thru 6 patch 2.1").ok
+    assert patches(patched_rig)[6] == (2, 1)
+
+
+def test_tab_offers_patch_after_a_span_and_what_a_patch_takes(patched_rig: OfflineShow) -> None:
+    assert patched_rig.expected("fixture 1 thru 3 ").words[0] == "patch"
+    after = patched_rig.expected("fixture 1 thru 3 patch ")
+    assert (after.words, after.values) == (("none",), ("an address as U.A, e.g. 1.101",))
+    assert patched_rig.expected("fixture 1 thru 3 patch none ").runnable

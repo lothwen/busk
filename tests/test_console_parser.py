@@ -696,8 +696,8 @@ def test_queries_and_session_actions(line: str, action: object) -> None:
         ("route", "expected add or a route id"),
         ("route r-x on", "no route r-x"),
         ("route R1 on", "no route R1"),  # an id, typed as it is
-        ("route r1", "expected on or off"),
-        ("route r1 maybe", "expected on or off, got 'maybe'"),
+        ("route r1", "expected on or off or change"),
+        ("route r1 maybe", "expected on or off or change, got 'maybe'"),
         ("route r1 on now", "unexpected 'now'"),
         ("delete cue 1/1 cascade", "unexpected 'cascade'"),
         ("delete group 1 cascade now", "unexpected 'now'"),

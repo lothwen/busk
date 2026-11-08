@@ -102,34 +102,39 @@ class ProfileLibrary:
         return next((p for p in self._profiles.values() if p["name"].casefold() == folded), None)
 
     def _load(self, path: Path) -> None:
-        data: Any = None
-        if path.suffix != ".gdtf":
-            try:
-                data = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-                self.problems.append(f"{path}: {exc}")
-                return
-        profile: FixtureProfile | None
-        if path.suffix == ".gdtf" or is_ofl(data):
-            report: ImportReport
-            try:
-                if path.suffix == ".gdtf":
-                    report = read_gdtf(path)
-                else:
-                    report = import_ofl(data, manufacturer=manufacturer_of(path), key=path.stem)
-            except ImportFailed as exc:
-                self.problems.append(f"{path}: {exc}")
-                return
-            profile, problem = report.profile, ""
-            self.problems.extend(f"{path}: {note}" for note in report.notes)
-        else:
-            profile, problem = validate_profile(data)
+        profile, notes, problem = read_profile(path)
+        self.problems.extend(f"{path}: {note}" for note in notes)
         if profile is None:
             self.problems.append(f"{path}: {problem}")
         elif profile["id"] in self._profiles:
             self.problems.append(f"{path}: profile id {profile['id']!r} is already loaded")
         else:
             self._profiles[profile["id"]] = profile
+
+
+def read_profile(path: Path) -> tuple[FixtureProfile | None, tuple[str, ...], str]:
+    """The profile in the file at ``path``, the import's notes, and why there
+    is none. A ``*.gdtf`` file is a GDTF fixture, and any other is JSON: an Open
+    Fixture Library fixture when it has ``availableChannels``, else a busk
+    profile. Raises nothing: a file that cannot be used says why."""
+    data: Any = None
+    if path.suffix != ".gdtf":
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            return None, (), str(exc)
+    if path.suffix != ".gdtf" and not is_ofl(data):
+        profile, problem = validate_profile(data)
+        return profile, (), problem
+    report: ImportReport
+    try:
+        if path.suffix == ".gdtf":
+            report = read_gdtf(path)
+        else:
+            report = import_ofl(data, manufacturer=manufacturer_of(path), key=path.stem)
+    except ImportFailed as exc:
+        return None, (), str(exc)
+    return report.profile, report.notes, ""
 
 
 def validate_profile(data: Any) -> tuple[FixtureProfile | None, str]:

@@ -372,6 +372,29 @@ def test_busk_runs_console_process_reads_them_from_the_engine_process(hosts: lis
     assert [element.number for element in output.fixtures] == [101, 102, 201]
 
 
+def test_a_parked_value_says_park_from_the_engine_process(hosts: list[Host]) -> None:
+    """GAP-22: the readout's origins cross the process boundary as they are."""
+    show, compiled = appendix()
+    bus = remote(compiled)
+    live = attached(bus, show, compiled)
+    hosts.append(host := Host())
+    host.attach(bus)
+    assert live.output is None  # the first read asks
+    assert live.execute("park fixture 201 intensity 30%").ok
+
+    def parked() -> bool:
+        output = live.output
+        return output is not None and any(
+            element.number == 201 and element.source["intensity"] == "park"
+            for element in output.fixtures
+        )
+
+    until(parked)
+    output = live.output
+    assert output is not None
+    assert next(e for e in output.fixtures if e.number == 201).playback is None
+
+
 # ----------------------------------------------------- busk run --frontend
 
 
@@ -639,6 +662,79 @@ def test_a_library_profile_is_listed_taken_and_undone_from_the_engine_process(
     assert took[:3] == [None, "fixture 201 runs Extra, Two", True]
     assert undid[:3] == [None, "undid: fixture 201 runs Extra, Two", True]
     assert again[:3] == took[:3]
+
+
+def test_a_changed_route_closes_the_old_sender_and_opens_the_new_from_the_engine_process(
+    tmp_path: Path, receiver: Receiver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GAP-37, under ``busk run`` with processes: the root's output reconciles
+    the route by its value, whatever its id says."""
+    line = "route r1 change 1 sacn 7 unicast 127.0.0.1"
+    report_path = plan(
+        tmp_path,
+        monkeypatch,
+        steps=[{"line": line, "routes": [["r1", "ok"]]}],
+        records=["universe 7"],
+        sleep=0.5,
+    )
+    with BuskRun(
+        run_show(tmp_path), *frontend(tmp_path, "--no-log"), sacn_port=receiver.port
+    ) as busk:
+        terminated = False
+        while True:  # a TimeoutError here is the test's failure
+            packet = receiver.receive(15.0)
+            terminated = terminated or (packet.universe == 1 and packet.terminated)
+            if packet.universe == 7:
+                break
+        assert terminated  # the old route says goodbye before the new one opens
+        assert busk.wait() == 0, busk.err
+    report = json.loads(report_path.read_text())
+    assert report["timeout"] is None, report
+    assert report["steps"][0][:3] == [None, "changed route r1", True]
+
+
+def test_several_fixtures_and_an_imported_profile_reach_the_engine_process(
+    tmp_path: Path, receiver: Receiver, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """GAP-38 and GAP-39, under ``busk run`` with processes: the file is read in
+    the console process, and the engine process follows the fixtures."""
+    cells = [channel(k, "intensity", element=k) for k in range(2)]
+    extra = {**profile("prof-extra", mode(cells, mode_id="Two", elements=2)), "name": "Extra"}
+    file = tmp_path / "extra.json"
+    file.write_text(json.dumps(extra))
+    routes = [["r1", "ok"]]
+    all_three = [[101, 1], [102, 1], [201, 1]]
+    report_path = plan(
+        tmp_path,
+        monkeypatch,
+        steps=[
+            {"line": "fixture 101 thru 102 patch none", "routes": routes},
+            {"line": "undo", "routes": routes},
+            {
+                "line": "delete fixture 101 thru 102 cascade",
+                "routes": routes,
+                "elements": [[201, 1]],
+            },
+            {"line": "undo", "routes": routes, "elements": all_three},
+            {"line": f'profile import "{file}"', "routes": routes},
+        ],
+    )
+    with BuskRun(
+        run_show(tmp_path), *frontend(tmp_path, "--no-log"), sacn_port=receiver.port
+    ) as busk:
+        assert busk.wait() == 0, busk.err
+    report = json.loads(report_path.read_text())
+    assert report["timeout"] is None, report
+    unpatched, undone, deleted, back, imported = report["steps"]
+    assert unpatched[1].startswith("unpatched fixture 101 thru 102")
+    assert unpatched[2] is True
+    assert unpatched[-1] == [201]
+    assert undone[-1] == [101, 102, 201]
+    assert deleted[0].startswith("Delete 2 fixtures from 101 to 102?")
+    assert deleted[1].startswith("deleted 2 fixtures from 101 to 102")
+    assert back[-1] == [101, 102, 201]
+    assert imported[:3] == [None, "imported profile 'Extra'", True]
+    assert ["Extra", "show", [2]] in report["profiles"]
 
 
 def test_a_frontend_that_raises_comes_back_with_its_console(

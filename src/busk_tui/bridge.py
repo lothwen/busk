@@ -1137,7 +1137,10 @@ def output_model(snapshot: OutputSnapshot) -> OutputModel:
                 pan=out.pan,
                 tilt=out.tilt,
                 zoom=out.zoom,
-                sources=tuple(out.source.items()),
+                sources=tuple(
+                    (family, "none" if source == "park" else source)  # F3 reads it in Phase 12
+                    for family, source in out.source.items()
+                ),
                 playback=out.playback,
             )
             for out in snapshot.fixtures

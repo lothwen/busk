@@ -43,7 +43,7 @@ do can already be typed in the TUI. The tables below show how much the screens h
 | | SHOW | ADD | DELETE | UPDATE |
 |---|---|---|---|---|
 | Fixtures, patch | control (F3, F8, F1 A/C) | control (F3's form, F8's place) | control (cascades) | control (F3's FIXTURE panel, F8's place) |
-| Universes, routes | control (F8) | control (F8) | control (a universe cascades) | control; a route cannot be edited: engine no |
+| Universes, routes | control (F8) | control (F8) | control (a universe cascades) | control; editing a route: prompt |
 | Cues | control (F4) | control (append); prompt (at a number) | prompt | pre-fill (timing, trigger, name); prompt (values) |
 | Cue lists | control (F4) | prompt | prompt | control (sequence/chase); prompt for the rest |
 | Presets | control (F6, colour chips) | control (F6's PRESET panel) | control | control (values, name, number) |
@@ -63,8 +63,8 @@ In short:
   a screen except a programmer effect (`✕`), and ADD has controls only for cues (append) and
   programmer effects. UPDATE has pre-fills for a cue's timing, trigger and name. The rest is
   typed at the prompt.
-- **busk itself is missing a few lines.** It cannot edit a route, and deletes take one entity per
-  line (see [What busk is missing](#what-busk-is-missing)).
+- **busk has the lines the TUI needs.** Deleting several presets, cues or lists at once is all it
+  still lacks (see [What busk is missing](#what-busk-is-missing)).
 
 ## Fixtures and patch
 
@@ -72,8 +72,8 @@ In short:
 |---|---|---|---|
 | Show | typed `LiveShow.show` and `.output`; `list fixtures` | yes | control: F3 table (profile, mode, patch, live values, source); its edit mode (limits, place) and FIXTURE panel (limits, orientation, location); F8's DMX map; F1 A and C |
 | Add | `fixture add N [thru M] "<profile>" mode <mode> [at U.A]` | yes | control: F3's new fixture form, with a picker from `fixture_profiles` (GAP-27); F8's `[add fixture here…]` opens it at a free channel |
-| Delete | `delete fixture N cascade` (GAP-24), `delete fixture N` | yes: one fixture per line (`thru` is refused). A plain `delete` is refused in one line while anything names it | control: `[delete]`, always `cascade`, after busk's question |
-| Patch, unpatch | `fixture N patch U.A`, `fixture N patch none` | yes | control: F3's PATCH; F8's `[patch N here]` on a free channel |
+| Delete | `delete fixture N [thru M] cascade` (GAP-24, GAP-38), `delete fixture N` | yes: a run takes `thru` and always `cascade`. A plain `delete` is refused in one line while anything names it | control: `[delete]`, always `cascade`, after busk's question |
+| Patch, unpatch | `fixture N [thru M] patch U.A`, `fixture N [thru M] patch none` (GAP-38) | yes | control: F3's PATCH; F8's `[patch N here]` on a free channel |
 | Rename | `rename fixture N "…"` | yes | control: `[rename…]`, a name dialog |
 | Renumber | `fixture N number M` (generic property) | yes | control: `[number…]`, a dialog that refuses a taken number |
 | Limits | `fixture N [thru M] limits …`, `… limits pan\|tilt\|intensity none` (GAP-25), `… limits none` | yes | control: `[limit…]`, `[none]`, `[no limits]`, on the selection |
@@ -83,7 +83,8 @@ In short:
 | Change mode | `fixture N mode <mode>` (GAP-26) | yes | control: chips |
 | Change profile | `fixture N profile "<profile>" mode <mode>` (GAP-26) | yes | control: `[profile…]`, the picker, `[change]` |
 
-GAP-22 is still open: a parked value reads as "none" in F3's source column.
+GAP-22 is closed in busk: `FixtureOutput.source` says `park`. F3's source column still reads a
+parked value as "none", until the pending plan's Phase 12.
 
 ## Universes and routes
 
@@ -97,7 +98,7 @@ GAP-22 is still open: a parked value reads as "none" in F3's source column.
 | Add a route | `route add …` | yes | control: `[+ route…]`, a form per protocol |
 | Delete a route | `delete route <id>` (GAP-23) | yes | control: `[delete]`, after busk's question |
 | Disable, enable | `route <id> on\|off` (GAP-23) | yes | control: `[off]`, after busk's question, and `[on]` |
-| Change a route | none: delete it and add another | no | none |
+| Change a route | `route <id> change <what route add takes>` (GAP-37) | yes | prompt |
 
 **Corrections to the first version of this report,** found while planning the rig (2026-11-05):
 
@@ -199,12 +200,14 @@ Candidates for [engine-gaps.md](engine-gaps.md), if the TUI is to cover these:
 5. **Closed: an empty cue list** (GAP-33). `cuelist add N ["name"]` makes one.
 6. **Closed in part: deletes that cascade** (GAP-24, GAP-36). A fixture, universe, preset,
    group, cue list, playback and page each take `cascade`, and a plain `delete` of something in
-   use says so in one line. They still take one entity per line.
+   use says so in one line. Fixtures take `thru` (GAP-38). The others still take one entity per
+   line.
 7. **Closed: playback and cue list settings** (GAP-35). `help` and `expected()` name them, a
    closed set offers its values, and `<property> none` removes an optional one.
 8. **Closed: removing and switching a route** (GAP-23). This list first left it out: `route add`
    was the only route line, so none removed a route or switched one off.
-9. **A route** cannot be edited. To change one, delete it and add another.
+9. **Closed: editing a route** (GAP-37). `route <id> change <what route add takes>` does it in
+   one undo step, and keeps the id and whether it is on.
 
 ## What the TUI is missing
 

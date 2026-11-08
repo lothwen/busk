@@ -250,7 +250,13 @@ def test_the_show_again_when_what_fixture_add_takes_changes(
     mode = busk.FixtureModeInfo(name="3ch", footprint=3, elements=1)
     stub.fixture_profiles = (
         busk.FixtureProfileInfo(
-            name="Par", id="p-1", source="library", manufacturer="Acme", modes=(mode,)
+            name="Par",
+            id="p-1",
+            source="library",
+            manufacturer="Acme",
+            revision="1",
+            library_revision="1",
+            modes=(mode,),
         ),
     )
     event = events.until(lambda e: isinstance(e, ShowChanged) and bool(e.show.choices))
@@ -325,6 +331,25 @@ def out_snapshot(seq: int, intensity: float = 1.0) -> busk.OutputSnapshot:
         zoom=None, source={"intensity": "programmer"}, playback=None,
     )  # fmt: skip
     return busk.OutputSnapshot(seq=seq, time=seq / 100, fixtures=(element,))
+
+
+def test_a_parked_family_stays_driven_by_nothing_until_f3_reads_it(
+    running: tuple[Bridge, Events], stub: Stub
+) -> None:
+    """GAP-22 gives ``park``, and F3 reads it in the pending plan's Phase 12:
+    until then the model's four sources are all it may hold, or F3 would raise."""
+    bridge, events = running
+    parked = busk.FixtureOutput(
+        number=101, element=1, intensity=0.0, color=None, pan=None, tilt=None, zoom=None,
+        source={"intensity": "park", "color": "programmer"}, playback=None,
+    )  # fmt: skip
+    stub.output = busk.OutputSnapshot(seq=1, time=0.01, fixtures=(parked,))
+    bridge.watch(output=True, effects=False)
+    event = events.until(lambda e: isinstance(e, OutputChanged), "the output")
+    assert isinstance(event, OutputChanged)
+    element = event.output.element(101, 1)
+    assert element is not None
+    assert element.sources == (("intensity", "none"), ("color", "programmer"))
 
 
 def test_the_output_only_while_watched_and_only_when_it_changes(

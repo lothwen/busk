@@ -56,11 +56,13 @@ from types import FrameType
 from typing import Any, Final, Literal, cast
 
 from busk.commands.classes import command_class
+from busk.commands.types import Command
 from busk.console.parser import (
     HELP,
     Action,
     Context,
     Expected,
+    ImportProfile,
     Nothing,
     ParseError,
     Query,
@@ -82,7 +84,13 @@ from busk.model.effect import ColorLayer, EffectInstance, EffectLayer
 from busk.model.entry import TargetSpec
 from busk.model.show import Show
 from busk.session.ids import RandomIds
-from busk.session.library import EffectDefaults, EffectLibrary, ProfileLibrary, builtin_effects
+from busk.session.library import (
+    EffectDefaults,
+    EffectLibrary,
+    ProfileLibrary,
+    builtin_effects,
+    read_profile,
+)
 from busk.session.session import CommandResult, Session
 from busk.session.status import programmer_status
 
@@ -160,12 +168,19 @@ class FixtureProfileInfo:
     has no copy of: ``fixture add`` embeds it into the show first, and from
     then on it is the show's, with the same id. ``modes`` are its modes, in
     the profile's order.
+
+    ``revision`` is the revision listed, the show's for a profile the show
+    holds. ``library_revision`` is the profile library's for that id, ``None``
+    when the library has no such profile: where both are set and differ,
+    ``profile update "<name>"`` has something to do (GAP-39).
     """
 
     name: str
     id: str
     source: Literal["show", "library"]
     manufacturer: str
+    revision: str
+    library_revision: str | None
     modes: tuple[FixtureModeInfo, ...]
 
 
@@ -301,11 +316,14 @@ class Console:
             profile, embed = resolved
             if profile["id"] in found:
                 continue
+            known = self.library.get(profile["id"])
             found[profile["id"]] = FixtureProfileInfo(
                 name=name,
                 id=profile["id"],
                 source="library" if embed else "show",
                 manufacturer=profile["manufacturer"],
+                revision=profile["revision"],
+                library_revision=None if known is None else known["revision"],
                 modes=tuple(
                     FixtureModeInfo(
                         name=mode["name"],
@@ -368,6 +386,8 @@ class Console:
             return Reply(render_result(result), ok=result.ok)
         if isinstance(action, Source):
             return self._source(action.path)
+        if isinstance(action, ImportProfile):
+            return self._import_profile(action.path)
         if isinstance(action, Quit):
             self.quit_requested = True
             return Reply("", quit=True)
@@ -443,6 +463,27 @@ class Console:
         finally:
             self._depth -= 1
         return Reply("\n".join(written), ok=ok, quit=quit)
+
+    def _import_profile(self, path: Path) -> Reply:
+        """``profile import "<path>"`` (GAP-39): the file is read here, as
+        ``source`` reads its own, so the parser stays pure. A profile named
+        like one the show holds would not be found by name, so it is refused."""
+        profile, notes, problem = read_profile(path)
+        if profile is None:
+            return Reply(f"error: cannot import {str(path)!r}: {problem}", ok=False)
+        name, folded = profile["name"], profile["name"].casefold()
+        for held in self.session.show["profiles"]:
+            if held["id"] == profile["id"]:
+                return Reply(f"error: the show holds this profile as {held['name']!r}", ok=False)
+            if held["name"].casefold() == folded:
+                return Reply(f"error: the show has a profile named {held['name']!r}", ok=False)
+        command = {
+            "type": "BATCH",
+            "label": f"imported profile {name!r}",
+            "commands": [{"type": "ADD", "path": ["profiles"], "value": profile}],
+        }
+        result = self.session.submit(cast(Command, command))
+        return _join(*(f"note: {note}" for note in notes), render_result(result), ok=result.ok)
 
     # ------------------------------------------------------------ queries
 

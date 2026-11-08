@@ -82,7 +82,7 @@ from busk.compiler.cues import CompiledCue
 from busk.engine.fades import ContributionSet, distinct
 from busk.model.common import PlaybackId
 
-type OriginKind = Literal["programmer", "playback", "effect"]
+type OriginKind = Literal["programmer", "playback", "effect", "park"]
 
 
 @dataclass(frozen=True, slots=True)

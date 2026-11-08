@@ -130,11 +130,11 @@ class EngineSnapshot:
     outputEnabled: bool = True
 
 
-type OutputSource = Literal["programmer", "playback", "effect", "none"]
+type OutputSource = Literal["programmer", "playback", "effect", "park", "none"]
 """What drives an attribute in the output: the programmer (its values and its
 highlight), a playback (its cues, flash included), an effect (of a playback's
-cue or of the programmer), or nothing (the default, a ``--values`` frame, or
-park)."""
+cue or of the programmer), park (GAP-22), or nothing (the default or a
+``--values`` frame)."""
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -160,10 +160,11 @@ class FixtureOutput:
 
     ``source`` says what drives each family of attributes the element has
     (``"intensity"``, ``"position"``, ``"color"``, ``"beam"``, ``"focus"``,
-    ``"shutter"``): of the attributes of a family, the programmer wins, then
-    an effect, then a playback. ``playback`` is the number of the playback
-    whose cue or effect drives the intensity; ``None`` when it is the
-    programmer or nothing.
+    ``"shutter"``): of the attributes of a family, park wins (one parked
+    attribute makes it the family's source), then the programmer, then an
+    effect, then a playback. ``playback`` is the number of the playback whose
+    cue or effect drives the intensity; ``None`` when it is the programmer,
+    park or nothing.
     """
 
     number: int  # the fixture's number (101)

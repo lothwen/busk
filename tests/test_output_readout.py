@@ -280,13 +280,63 @@ def test_masters_and_blackout_scale_the_intensity_not_its_driver(offline: Offlin
     assert (par.intensity, par.source["intensity"]) == (0.0, "programmer")
 
 
-def test_park_is_nobodys_and_limits_clamp(offline: OfflineShow) -> None:
+def test_park_drives_what_it_holds_and_limits_clamp(offline: OfflineShow) -> None:
     run(offline, "sel fixture 201", "set intensity 80%", "park fixture 201 intensity 30%")
     par = of(offline.output, 201)
-    assert (par.intensity, par.source["intensity"], par.playback) == (0.3, "none", None)
+    assert (par.intensity, par.source["intensity"], par.playback) == (0.3, "park", None)
     run(offline, "fixture 101 limits tilt -10 10", "sel fixture 101", "set tilt 40")
     spot = of(offline.output, 101)
     assert (spot.tilt, spot.source["position"]) == (10.0, "programmer")
+
+
+def test_park_of_a_whole_family_says_park_and_leaves_the_others(offline: OfflineShow) -> None:
+    """GAP-22: every attribute of the family parked."""
+    run(offline, "sel fixture 201", "set intensity 80%", "park fixture 201 color 1 0 0")
+    par = of(offline.output, 201)
+    assert (par.source["color"], par.source["intensity"]) == ("park", "programmer")
+
+
+def test_one_parked_attribute_makes_the_family_parks(offline: OfflineShow) -> None:
+    """GAP-22: park outranks the programmer that holds the family's other attribute."""
+    run(offline, "sel fixture 101", "set pan 10", "set tilt 20", "park fixture 101 tilt 5")
+    spot = of(offline.output, 101)
+    assert (spot.pan, spot.tilt, spot.source["position"]) == (10.0, 5.0, "park")
+
+
+def test_unpark_gives_the_family_back(offline: OfflineShow) -> None:
+    run(offline, "sel fixture 101", "set pan 10", "set tilt 20", "park fixture 101 tilt 5")
+    run(offline, "unpark fixture 101 tilt")
+    assert of(offline.output, 101).source["position"] == "programmer"
+
+
+def test_park_takes_the_intensity_from_a_playback(offline: OfflineShow) -> None:
+    """GAP-22: ``playback`` stays ``None``, though a playback's cue holds the value."""
+    run(offline, "sel fixture 201", "set intensity 80%", 'record slot 1 "Warm"', "clear", "go 1")
+    running = of(offline.output, 201)
+    assert (running.source["intensity"], running.playback) == ("playback", 1)
+    run(offline, "park fixture 201 intensity 30%")
+    parked = of(offline.output, 201)
+    assert (parked.intensity, parked.source["intensity"], parked.playback) == (0.3, "park", None)
+
+
+def test_park_outranks_the_highlight_and_blackout_keeps_the_source(offline: OfflineShow) -> None:
+    run(offline, "sel fixture 201", "highlight on", "park fixture 201 intensity 30%")
+    assert of(offline.output, 201).source["intensity"] == "park"
+    run(offline, "blackout on")
+    par = of(offline.output, 201)
+    assert (par.intensity, par.source["intensity"]) == (0.0, "park")
+
+
+def test_park_on_one_cell_leaves_the_others(offline: OfflineShow) -> None:
+    run(offline, "sel fixture 301", "set color 1 0 0", "park 301.2 color 0 1 0")
+    assert of(offline.output, 301, 1).source["color"] == "programmer"
+    assert of(offline.output, 301, 2).source["color"] == "park"
+
+
+def test_a_parked_master_dimmer_is_what_every_cell_reads(offline: OfflineShow) -> None:
+    run(offline, "sel fixture 301", "set intensity 80%", "park 301.1 intensity 30%")
+    sources = [of(offline.output, 301, cell).source["intensity"] for cell in range(1, 5)]
+    assert sources == ["park"] * 4
 
 
 def test_the_highlight_is_the_programmers(offline: OfflineShow) -> None:

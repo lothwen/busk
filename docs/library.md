@@ -133,7 +133,7 @@ Reply(text='', ok=True, quit=False)
 
 `output` is the same tick read back per fixture element, in the show's units instead of DMX
 bytes: intensity, colour, pan, tilt and zoom after the masters and the safety stage, and
-what drives each family of attributes (`"programmer"`, `"playback"`, `"effect"` or
+what drives each family of attributes (`"programmer"`, `"playback"`, `"effect"`, `"park"` or
 `"none"`). It lists every element of every fixture by number, a bar's cells one by one:
 
 ```python
@@ -484,7 +484,7 @@ take `str` or `os.PathLike`.
 | `EffectSnapshot` | The effect instances one tick ran: `seq`, `time`, `effects` |
 | `EffectStatus` | One instance in it: `playback`, `cue`, `id` (where it is defined), `presence`, `size`, `hz`, `phase`, `wave` and `colors` (its next cycle, 20 samples) |
 | `EffectTemplateInfo` | One effect template `effect add` takes: `name` (as it takes it), `id`, `source` (`"show"` or `"library"`), `summary` (its layers in one line), `size`, `low`, `high`, `phase` (the library's defaults, or `None`) |
-| `FixtureProfileInfo` | One fixture profile `fixture add` takes: `name` (as it takes it), `id`, `source` (`"show"` or `"library"`), `manufacturer`, `modes` |
+| `FixtureProfileInfo` | One fixture profile `fixture add` takes: `name` (as it takes it), `id`, `source` (`"show"` or `"library"`), `manufacturer`, `revision`, `library_revision` (`None` when the library has no such profile; where the two differ, `profile update` has work), `modes` |
 | `FixtureModeInfo` | One mode of it: `name` (as `fixture add` takes it), `footprint` (the channels it takes), `elements` (how many) |
 | `Expected` | What `expected(line)` returns, about the word being typed at the end of the line: `words` (the keywords and names that may come there and that it starts), `values` (anything else, described), `runnable` (the line before it runs as it is), `error` (the mistake that stops it, or `None`), `start` (where that word starts) |
 | `ProgrammerStatus` | The programmer: `version`, `selection` (`(number, element)` pairs), `blind`, `highlight`, `fadeTime`, `values`, `effects` (as the show file holds them), `stopped` (the ids of the stopped effects) |

@@ -10,6 +10,15 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- `route <id> change <what route add takes>` edits a route in one undo step. It keeps the id and
+  whether the route is on.
+- `fixture N thru M patch U.A|none` places or unpatches a run of fixtures, each after the one
+  before by its footprint, and `delete fixture N thru M cascade` deletes one. Each is one undo step.
+- `profile import "<path>"` embeds an OFL `.json`, a `.gdtf` or a busk profile file in the show, in
+  one undo step.
+- `FixtureProfileInfo` has `revision` and `library_revision`, so a display can tell when `profile
+  update` has something to do.
+- `FixtureOutput.source` says `"park"` for a family that park holds, and `playback` is `None` then.
 - `delete preset <pool> N cascade`, `delete group N cascade`, `delete cuelist N cascade`, `delete
   playback N cascade` and `delete page N cascade`, each one undo step. What names the entity
   leaves it or goes with it, and the question says what would go and when a playback runs. A cue

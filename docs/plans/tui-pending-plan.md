@@ -392,16 +392,62 @@ Code: `_cmd_route`, `_cascade`, `_patch`, `_cmd_profile` in
    keeps the id and whether it is on, and refuses what `route add` refuses, an equal route
    included. Verify: every protocol; a change of protocol leaves none of the old keys; `undo`;
    under `busk run` with processes, the old sender closes and the new one sends.
+
+   **Done** (2026-11-08). As planned, in `_route_change`, sharing `_route_fields` with `route add`.
+   `SET` cannot replace a list element, so each key that differs is its own edit, as `profile update`
+   does. Which the user may veto:
+   - An sACN route that stays sACN keeps its priority, since no line sets one.
+   - A line that would change nothing is refused: `route r-1 already sends that`.
+   - It asks nothing. §1 names what asks, and a change leaves the universe sent.
 2. **GAP-38, several fixtures.** `delete fixture N thru M cascade`, and `fixture N thru M patch
    U.A|none`, laid out by footprint. One undo step each, and all or nothing. Verify: a gap in the
    numbers, a run past channel 512, `confirmation()` naming what goes, `undo`.
+
+   **Done** (2026-11-08). As planned, in `_patch` and `_delete_fixtures`. `fixture_cascade` is now
+   one walk over a set of ids, because two edits of one group would put back what the first took.
+   A test holds a span equal to its fixtures deleted one by one, on both shipped shows. Which the
+   user may veto:
+   - `thru` takes the fixtures the span holds, as every other `thru` does, so a hole in the numbers
+     leaves no hole in the channels.
+   - A plain `delete fixture N thru M` is not a line (`expected cascade`), so deleting a run always
+     asks.
+   - An overlap warns, as one fixture's does: the run is not refused for it.
 3. **GAP-39, profiles.** `profile import "<path>"` reads an OFL `.json` or a `.gdtf`, as
    `ProfileLibrary._load` tells them apart, and embeds the profile in one undo step. The file is
    read where `source` reads its own, so the parser stays pure. `FixtureProfileInfo` gains the
    show's revision and the library's. Verify: both formats; a file that fails; an id the show has;
    `undo`; the picker's data; a revision that differs and one that does not.
+
+   **Done** (2026-11-08). As planned: `read_profile` in `src/busk/session/library.py`, an
+   `ImportProfile` action, and `Console._import_profile`. `FixtureProfileInfo` gains `revision` and
+   `library_revision`. Which the user may veto:
+   - A busk profile `.json` imports too, since `_load` tells three forms apart.
+   - A name the show holds is refused as well as an id, in any case: `fixture add` would never find
+     it by name.
+   - An id the show holds is refused whatever its revision. No line replaces a show's copy from a
+     file: that stays `profile update`, from the library.
+   - The importer's notes print as `note:` lines before the reply.
 4. **GAP-22, parked values.** The fifth `OutputSource`, `"park"`, as its entry says. Verify: all
    of a family parked, one attribute of it, and `playback` staying `None`.
+
+   **Done** (2026-11-08). As planned, in `busk.engine.readout`: park is one more origin, ranked above
+   the programmer. Which the user may veto:
+   - One parked attribute makes the family `park`, as the entry reads, over a pan the programmer
+     holds.
+   - **An engine phase touched the TUI, by one expression.** F3's `_RANK` and `SOURCE_COLORS` know
+     four sources, so a parked fixture would raise on F3, and the club show parks two.
+     `busk_tui.bridge` turns `park` into `none`, which is what F3 showed, and Phase 12 takes it out.
+
+**Phase 5 checks** (2026-11-08). The whole suite: 5,513 passed and 1 skipped, in 3:23 with `uv run
+pytest -n 6`. `ruff check`, `ruff format --check` and `mypy src` clean. 40 mutations of the new
+code, all caught. The perf gate, for the bridge's one changed expression: 7 passed, no overruns. A
+real `busk run --state-dir …` with processes on the club show, with a unicast route added: `go 11`,
+then each new line and refusal at the prompt. Each route change closed the old sender and opened
+the new one, in both directions with `undo`. 0 command errors and 0 overruns. Under `busk run`, a
+route change, a patched and a deleted run and an import are in `tests/test_frontend.py`, and a
+parked value crosses the engine process there too. Docs: `docs/console.md`, `docs/library.md`,
+`docs/profiles.md`, the F3 note of `docs/tui/guide.md`, `busk help`, GAP-22 and GAP-37 to GAP-39 in
+`docs/dev/tui/engine-gaps.md`, the report's rows, "In short" and items 6 and 9, and `CHANGELOG.md`.
 
 ### Phase 6: F4 Cues, and F6's delete
 

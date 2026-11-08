@@ -15,6 +15,7 @@ cycle at a time: fake drivers, or the real ones on localhost (the
 from __future__ import annotations
 
 import copy
+import json
 import os
 import socket
 import sys
@@ -28,6 +29,8 @@ from typing import Any, Literal, NoReturn, cast
 import numpy as np
 import pytest
 
+from builders import APPENDIX_A, load_doc, show_of
+from busk import OfflineShow, new_show
 from busk.compiler.compile import CompiledUniverse, OutputLayout, compile_show
 from busk.engine.clock import FakeClock, MonotonicClock
 from busk.engine.link import LocalEngine
@@ -499,6 +502,28 @@ def test_the_route_lines_change_a_running_show_and_undo_takes_each_back(
         eventually(lambda: receiver.drain() != [])
 
 
+def test_a_changed_route_moves_what_a_running_show_sends(
+    three_routes: Show, receiver: Receiver
+) -> None:
+    """GAP-37. The same id with another value is another sender: the old one
+    says Stream_Terminated, the new one sends, and ``undo`` takes it back."""
+
+    def until_universe(wanted: int) -> tuple[bool, set[int]]:
+        terminated, seen = False, set()
+        while wanted not in seen:
+            packet = receiver.receive(5.0)
+            seen.add(packet.universe)
+            terminated = terminated or packet.terminated
+        return terminated, seen
+
+    with LiveShow(three_routes) as live:
+        until_universe(1)
+        assert live.execute("route r1 change 1 sacn 9 unicast 127.0.0.1").ok
+        assert until_universe(9)[0]  # universe 1's goodbye came first
+        assert live.execute("undo").ok
+        assert until_universe(1)[0]
+
+
 def test_a_live_show_gives_the_same_object_while_nothing_changed(three_routes: Show) -> None:
     doc = cast(dict[str, Any], three_routes)
     for route in doc["output"]["routes"]:
@@ -667,3 +692,177 @@ def test_the_console_process_keeps_the_routes_the_root_sent_last(
     finally:
         for sock in (control, root, link, engine):
             sock.close()
+
+
+# ------------------------------------------------- changing a route (GAP-37)
+
+UNICAST = {"kind": "unicast", "host": "10.0.0.7"}
+ROUTE_FORMS: dict[str, tuple[str, dict[str, Any]]] = {
+    "sacn": (
+        "sacn 7 unicast 10.0.0.7",
+        {"protocol": "sacn", "universe": 7, "priority": 100, "destination": UNICAST},
+    ),
+    "artnet": (
+        "artnet 1.2.3 unicast 10.0.0.7",
+        {
+            "protocol": "artnet",
+            "portAddress": {"net": 1, "subNet": 2, "universe": 3},
+            "destination": UNICAST,
+        },
+    ),
+    "dmxusb": (
+        "dmxusb enttecPro /dev/ttyUSB3 hz 30",
+        {
+            "protocol": "dmxUsb",
+            "device": {"driver": "enttecPro", "port": "/dev/ttyUSB3"},
+            "refreshHz": 30,
+        },
+    ),
+}
+
+
+def routed(*first: str) -> OfflineShow:
+    """Two universes, and a route of universe 1 from each ``route add`` tail."""
+    show = OfflineShow(new_show("Routes"))
+    for line in ('universe add 1 "Stage"', 'universe add 2 "Side"'):
+        assert show.execute(line).ok
+    for tail in first:
+        reply = show.execute(f"route add 1 {tail}")
+        assert reply.ok, reply.text
+    return show
+
+
+def body(show: OfflineShow) -> str:
+    """The show as a document, without the times of its ``meta``."""
+    return json.dumps({k: v for k, v in show.show.items() if k != "meta"}, sort_keys=True)
+
+
+def route_of(show: OfflineShow, k: int = 0) -> dict[str, Any]:
+    return cast(dict[str, Any], show.show["output"]["routes"][k])
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [(a, b) for a in ROUTE_FORMS for b in ROUTE_FORMS if a != b],
+)
+def test_a_route_takes_another_protocol_and_keeps_only_its_id_and_its_state(
+    first: str, second: str
+) -> None:
+    show = routed(ROUTE_FORMS[first][0])
+    old = route_of(show)
+    before = body(show)
+    reply = show.execute(f"route {old['id']} change 1 {ROUTE_FORMS[second][0]}")
+    assert (reply.ok, reply.text) == (True, f"changed route {old['id']}")
+    assert route_of(show) == {
+        "id": old["id"],
+        "universeId": old["universeId"],
+        "enabled": True,
+        **ROUTE_FORMS[second][1],
+    }
+    assert show.execute("undo").text == f"undid: changed route {old['id']}"
+    assert body(show) == before  # one undo step
+    assert show.execute("redo").ok
+    assert route_of(show)["protocol"] == ROUTE_FORMS[second][1]["protocol"]
+
+
+def test_a_route_moves_to_another_universe() -> None:
+    show = routed("sacn 1")
+    ident = route_of(show)["id"]
+    universes = {u["number"]: u["id"] for u in show.show["universes"]}
+    assert show.execute(f"route {ident} change 2 sacn 1").ok
+    assert route_of(show)["universeId"] == universes[2]
+
+
+def test_a_route_that_is_off_stays_off_and_keeps_its_place() -> None:
+    show = routed("sacn 1", "sacn 2", "sacn 3")
+    ident = route_of(show, 1)["id"]
+    assert show.execute(f"route {ident} off").ok
+    assert show.execute(f"route {ident} change 1 artnet 0.0.1").ok
+    assert route_of(show, 1)["id"] == ident
+    assert route_of(show, 1)["enabled"] is False
+    assert route_of(show, 1)["protocol"] == "artnet"
+
+
+def test_an_sacn_route_keeps_a_priority_no_line_can_say() -> None:
+    doc = load_doc(APPENDIX_A)
+    doc["output"]["routes"][0]["priority"] = 42
+    show = OfflineShow(show_of(doc))
+    assert show.execute("route r1 change 1 sacn 9").ok
+    assert route_of(show)["priority"] == 42
+    assert show.execute("route r1 change 1 artnet 0.0.1").ok
+    assert "priority" not in route_of(show)
+
+
+def test_a_change_asks_nothing() -> None:
+    show = routed("sacn 1")
+    assert show.confirmation(f"route {route_of(show)['id']} change 1 sacn 2") is None
+
+
+@pytest.mark.parametrize(
+    ("tail", "error"),
+    [
+        ("99 sacn 1", "no universe 99"),
+        ("1 sacn 0", "expected an sACN universe from 1 to 63999, got 0"),
+        ("1 dmx 1", "expected sacn or artnet or dmxusb, got 'dmx'"),
+        ("1 artnet 1.2", "expected an Art-Net port address as net.sub.universe, got '1.2'"),
+        (
+            "1 dmxusb enttecPro /dev/ttyUSB0 hz 41",
+            "expected a refresh rate from 1 to 40 Hz, got 41",
+        ),
+        ("1 sacn 2 extra", "unexpected 'extra'"),
+    ],
+)
+def test_a_change_refuses_what_route_add_refuses(tail: str, error: str) -> None:
+    show = routed("sacn 1")
+    before = body(show)
+    reply = show.execute(f"route {route_of(show)['id']} change {tail}")
+    assert (reply.ok, reply.text) == (False, f"error: {error}")
+    assert body(show) == before
+
+
+def test_a_change_to_what_it_already_sends_is_refused() -> None:
+    show = routed("sacn 1 unicast 10.0.0.1")
+    ident = route_of(show)["id"]
+    reply = show.execute(f"route {ident} change 1 sacn 1 unicast 10.0.0.1")
+    assert (reply.ok, reply.text) == (False, f"error: route {ident} already sends that")
+
+
+@pytest.mark.parametrize("off", [False, True], ids=["on", "off"])
+def test_a_change_to_what_another_route_sends_is_refused(off: bool) -> None:
+    """On or off, with any id, it sends the same, as ``route add`` holds."""
+    show = routed("sacn 1 unicast 10.0.0.1", "sacn 2 unicast 10.0.0.1")
+    other, ident = route_of(show)["id"], route_of(show, 1)["id"]
+    if off:
+        assert show.execute(f"route {other} off").ok
+    reply = show.execute(f"route {ident} change 1 sacn 1 unicast 10.0.0.1")
+    assert (reply.ok, reply.text) == (False, f"error: the same as route {other} of universe 1")
+
+
+def test_an_sacn_universe_another_universe_sends_is_refused_by_the_validator() -> None:
+    show = routed("sacn 5")
+    assert show.execute("route add 2 sacn 6").ok
+    ident = route_of(show, 1)["id"]
+    before = body(show)
+    reply = show.execute(f"route {ident} change 2 sacn 5")
+    assert not reply.ok
+    assert "sACN universe 5 is already sent by route" in reply.text
+    assert body(show) == before
+
+
+def test_tab_offers_change_and_then_what_route_add_takes() -> None:
+    show = routed("sacn 1")
+    ident = route_of(show)["id"]
+    assert show.expected(f"route {ident} ").words == ("on", "off", "change")
+    assert show.expected(f"route {ident} change ").values == ("a universe number",)
+    assert show.expected(f"route {ident} change 1 ").words == ("sacn", "artnet", "dmxusb")
+    assert show.expected(f"route {ident} change 1 sacn 2 ").runnable
+
+
+def test_a_changed_route_is_saved_and_reloaded(tmp_path: Path) -> None:
+    show = routed("sacn 1")
+    ident = route_of(show)["id"]
+    path = tmp_path / "routes.show"
+    assert show.execute(f"route {ident} change 1 artnet 0.0.1").ok
+    assert show.execute(f'save "{path}"').ok
+    loaded = load_show(path)[0]
+    assert loaded["output"]["routes"][0] == route_of(show)

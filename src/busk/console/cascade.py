@@ -3,6 +3,10 @@ the edits of one undo step, and the words for them. A pure function of the
 show, like the parser that calls it. The same walk gives the one line a plain
 ``delete`` of something in use is refused with.
 
+Fixtures leave everything that names them, in one walk however many there are
+(``thru``), so a group, a cue or a binding that names several gets one edit. A
+later edit would put back what an earlier one took.
+
 A fixture leaves everything that names it: every group's members, every
 preset's target values, every cue entry's targets and per-target values,
 every cue effect's and release's targets, every park entry and every
@@ -46,9 +50,10 @@ from busk.session.programmer import Programmer, split_slot_key
 
 type _Doc = Mapping[str, Any]
 """A part of the show document, or a command."""
-type _Change = Callable[[_Doc, str], _Doc | None]
-"""What an edit does to one item, given the id that leaves: the item as it
-was when it does not name the id, or ``None`` when nothing of it is left."""
+type _Change[T] = Callable[[_Doc, T], _Doc | None]
+"""What an edit does to one item, given what leaves (an id, or several): the
+item as it was when it does not name that, or ``None`` when nothing of it is
+left."""
 
 
 @dataclass(frozen=True)
@@ -67,23 +72,26 @@ class Cascade:
     """Why not even the cascade can run, ``None`` when it can."""
 
 
-def fixture_cascade(show: Show, fixture: _Doc, programmer: Programmer) -> Cascade:
-    """``fixture`` leaves ``show``. The question says when ``programmer`` holds it."""
-    ident = fixture["id"]
+def fixture_cascade(show: Show, fixtures: Sequence[_Doc], programmer: Programmer) -> Cascade:
+    """``fixtures``, in number order, leave ``show``. The question says when
+    ``programmer`` holds any."""
+    gone = {fixture["id"] for fixture in fixtures}
     commands: list[_Doc] = []
-    groups = _leave_groups(show, ident, commands)
-    presets = _leave_presets(show, ident, commands)
+    groups = _leave_groups(show, gone, commands)
+    presets = _leave_presets(show, gone, commands)
     changes = (("entries", _entry), ("effects", _targeted), ("releases", _targeted))
-    cues = _leave_cues(show, ident, commands, changes)
-    park = [entry for entry in show["park"] if entry["slot"]["target"]["fixtureId"] != ident]
+    cues = _leave_cues(show, gone, commands, changes)
+    park = [entry for entry in show["park"] if entry["slot"]["target"]["fixtureId"] not in gone]
     parked = len(show["park"]) - len(park)
     if parked:
         commands.append(_set(["park"], park))
-    bindings = _binding_edits(show, _fixture_command, ident)
+    bindings = _binding_edits(show, _fixture_command, gone)
     commands += bindings
-    commands.append(_delete(["fixtures", {"id": ident}]))
+    commands += [_delete(["fixtures", {"id": fixture["id"]}]) for fixture in fixtures]
 
-    subject = f"fixture {fixture['number']}"
+    several = len(fixtures) > 1
+    first, last = fixtures[0]["number"], fixtures[-1]["number"]
+    subject = f"{len(fixtures)} fixtures from {first} to {last}" if several else f"fixture {first}"
     others = [_count(parked, "parked value"), _count(len(bindings), "binding")]
     named = [_named("group", sorted(groups)), _named_presets(presets), _named("cue", cues), *others]
     counted = [
@@ -92,9 +100,13 @@ def fixture_cascade(show: Show, fixture: _Doc, programmer: Programmer) -> Cascad
         _count(len(cues), "cue"),
         *others,
     ]
-    question = f"Delete {subject}?{_sentence('It leaves ', named, '; ')}"
-    if _held(programmer, ident):
-        question += " The programmer holds it."
+    question = (
+        f"Delete {subject}?{_sentence('They leave ' if several else 'It leaves ', named, '; ')}"
+    )
+    held = _held(programmer)
+    count = sum(fixture["id"] in held for fixture in fixtures)
+    if count:
+        question += f" The programmer holds {f'{count} of them' if several else 'it'}."
     return Cascade(
         tuple(commands), _reply(subject, "left ", counted), question, _refused(subject, counted)
     )
@@ -242,14 +254,14 @@ def page_cascade(show: Show, page: _Doc) -> Cascade:
 # ------------------------------------------------------------- a fixture leaves
 
 
-def _leave_groups(show: Show, ident: str, commands: list[_Doc]) -> list[int]:
-    """Edit each group that has ``ident`` for a member; their numbers."""
+def _leave_groups(show: Show, gone: Collection[str], commands: list[_Doc]) -> list[int]:
+    """Edit each group with a member in ``gone``; their numbers."""
     numbers: list[int] = []
     for group in show["groups"]:
         members = group["members"]
         moved: dict[int, int] = {}  # a kept member's old position → its new one
         for k, member in enumerate(members):
-            if member["fixtureId"] != ident:
+            if member["fixtureId"] not in gone:
                 moved[k] = len(moved)
         if len(moved) == len(members):
             continue
@@ -262,15 +274,18 @@ def _leave_groups(show: Show, ident: str, commands: list[_Doc]) -> list[int]:
     return numbers
 
 
-def _leave_presets(show: Show, ident: str, commands: list[_Doc]) -> list[tuple[str, int]]:
-    """Edit each preset with a value for a target of ``ident``; their pools and numbers."""
+def _leave_presets(
+    show: Show, gone: Collection[str], commands: list[_Doc]
+) -> list[tuple[str, int]]:
+    """Edit each preset with a value for a target in ``gone``; their pools and numbers."""
     found: list[tuple[str, int]] = []
     for preset in show["presets"]:
         values = preset["values"]
         kept = [
             value
             for value in values
-            if value["scope"]["kind"] != "target" or value["scope"]["target"]["fixtureId"] != ident
+            if value["scope"]["kind"] != "target"
+            or value["scope"]["target"]["fixtureId"] not in gone
         ]
         if len(kept) < len(values):
             found.append((preset["pool"], preset["number"]))
@@ -278,8 +293,8 @@ def _leave_presets(show: Show, ident: str, commands: list[_Doc]) -> list[tuple[s
     return found
 
 
-def _leave_cues(
-    show: Show, ident: str, commands: list[_Doc], changes: Sequence[tuple[str, _Change]]
+def _leave_cues[T](
+    show: Show, ident: T, commands: list[_Doc], changes: Sequence[tuple[str, _Change[T]]]
 ) -> list[str]:
     """Edit each cue that ``changes`` change, each a key of the cue and what to
     do to its items; their numbers as ``L/C``."""
@@ -299,53 +314,53 @@ def _leave_cues(
     return found
 
 
-def _entry(entry: _Doc, ident: str) -> _Doc | None:
-    targeted = _targeted(entry, ident)
-    return None if targeted is None else _with(targeted, "value", _source(entry["value"], ident))
+def _entry(entry: _Doc, gone: Collection[str]) -> _Doc | None:
+    targeted = _targeted(entry, gone)
+    return None if targeted is None else _with(targeted, "value", _source(entry["value"], gone))
 
 
-def _targeted(item: _Doc, ident: str) -> _Doc | None:
-    """``item``, with ``targets``, left by ``ident``."""
-    return _with(item, "targets", _spec(item["targets"], ident))
+def _targeted(item: _Doc, gone: Collection[str]) -> _Doc | None:
+    """``item``, with ``targets``, left by the fixtures ``gone``."""
+    return _with(item, "targets", _spec(item["targets"], gone))
 
 
-def _spec(spec: _Doc, ident: str) -> _Doc | None:
+def _spec(spec: _Doc, gone: Collection[str]) -> _Doc | None:
     if spec["kind"] == "group":
         return spec  # it follows the group
-    refs = [ref for ref in spec["refs"] if ref["fixtureId"] != ident]
+    refs = [ref for ref in spec["refs"] if ref["fixtureId"] not in gone]
     if len(refs) == len(spec["refs"]):
         return spec
     return {**spec, "refs": refs} if refs else None
 
 
-def _source(source: _Doc, ident: str) -> _Doc | None:
+def _source(source: _Doc, gone: Collection[str]) -> _Doc | None:
     if source["kind"] != "perTarget":
         return source
     values = {
         key: value
         for key, value in source["values"].items()
-        if (ref := parse_target_key(key)) is None or ref["fixtureId"] != ident
+        if (ref := parse_target_key(key)) is None or ref["fixtureId"] not in gone
     }
     if len(values) == len(source["values"]):
         return source
     return {**source, "values": values} if values else None
 
 
-def _fixture_command(command: _Doc, ident: str) -> _Doc | None:
-    """A binding's command, left by ``ident``."""
+def _fixture_command(command: _Doc, gone: Collection[str]) -> _Doc | None:
+    """A binding's command, left by the fixtures ``gone``."""
     if command["type"] == "SELECT":
-        return _targeted(command, ident)
+        return _targeted(command, gone)
     if command["type"] == "ADD_EFFECT":
-        return _with(command, "effect", _targeted(command["effect"], ident))
+        return _with(command, "effect", _targeted(command["effect"], gone))
     if command["type"] == "SET_ATTRIBUTE":
-        return _with(command, "value", _source(command["value"], ident))
-    if command["type"] == "PATCH_FIXTURE" and command["fixtureId"] == ident:
+        return _with(command, "value", _source(command["value"], gone))
+    if command["type"] == "PATCH_FIXTURE" and command["fixtureId"] in gone:
         return None
     return command
 
 
-def _held(programmer: Programmer, ident: str) -> bool:
-    """Whether ``ident`` is selected, holds a value or is an effect's target."""
+def _held(programmer: Programmer) -> set[str]:
+    """The fixtures selected, holding a value or the target of an effect."""
     slots = (split_slot_key(key) for key in programmer.values)
     refs = [
         *programmer.selection,
@@ -357,7 +372,7 @@ def _held(programmer: Programmer, ident: str) -> bool:
             for ref in effect["targets"]["refs"]
         ),
     ]
-    return any(ref["fixtureId"] == ident for ref in refs)
+    return {ref["fixtureId"] for ref in refs}
 
 
 # ------------------------------------------------------------- a universe goes
@@ -433,7 +448,7 @@ def _off_group(item: _Doc, ident: str) -> _Doc | None:
     return None if _is_group(item["targets"], ident) else item
 
 
-def _group_command(masters: Collection[str]) -> _Change:
+def _group_command(masters: Collection[str]) -> _Change[str]:
     """What a binding's command does when a group and ``masters`` go."""
 
     def change(command: _Doc, ident: str) -> _Doc | None:
@@ -450,7 +465,7 @@ def _group_command(masters: Collection[str]) -> _Change:
 # -------------------------------------------------- a cue list, a playback goes
 
 
-def _playback_command(playbacks: Collection[str]) -> _Change:
+def _playback_command(playbacks: Collection[str]) -> _Change[str]:
     """What a binding's command does when ``playbacks`` go."""
 
     def change(command: _Doc, ident: str) -> _Doc | None:
@@ -459,7 +474,7 @@ def _playback_command(playbacks: Collection[str]) -> _Change:
     return change
 
 
-def _list_command(playbacks: Collection[str]) -> _Change:
+def _list_command(playbacks: Collection[str]) -> _Change[str]:
     """What a binding's command does when a cue list and ``playbacks`` go."""
     of_playbacks = _playback_command(playbacks)
 
@@ -472,7 +487,7 @@ def _list_command(playbacks: Collection[str]) -> _Change:
 
 
 def _leave_playbacks(
-    show: Show, gone: Sequence[str], change: _Change, ident: str, commands: list[_Doc]
+    show: Show, gone: Sequence[str], change: _Change[str], ident: str, commands: list[_Doc]
 ) -> tuple[list[int], int]:
     """Take ``gone`` off the pages and the bindings, ``change`` deciding for a
     binding's command, and delete them; the numbers of the pages they leave and
@@ -504,7 +519,7 @@ def _running(playbacks: Sequence[_Doc], running: Collection[str]) -> str:
 # -------------------------------------------------------------- a page goes
 
 
-def _page_command(number: int) -> _Change:
+def _page_command(number: int) -> _Change[str]:
     """What a binding's command does when page ``number`` goes."""
 
     def change(command: _Doc, ident: str) -> _Doc | None:
@@ -527,7 +542,7 @@ def _action_edits(show: Show, goes: Callable[[_Doc], bool]) -> list[_Doc]:
     ]
 
 
-def _binding_edits(show: Show, change: _Change, ident: str) -> list[_Doc]:
+def _binding_edits[T](show: Show, change: _Change[T], ident: T) -> list[_Doc]:
     """One edit per binding that ``change`` changes: it goes when nothing of
     its command is left."""
     edits: list[_Doc] = []
@@ -545,7 +560,7 @@ def _binding_edits(show: Show, change: _Change, ident: str) -> list[_Doc]:
     return edits
 
 
-def _batched(command: _Doc, change: _Change, ident: str) -> _Doc | None:
+def _batched[T](command: _Doc, change: _Change[T], ident: T) -> _Doc | None:
     """``change`` on ``command``, or on each command of a ``BATCH``."""
     if command["type"] != "BATCH":
         return change(command, ident)
@@ -555,7 +570,7 @@ def _batched(command: _Doc, change: _Change, ident: str) -> _Doc | None:
     return {**command, "commands": commands} if commands else None
 
 
-def _edited(items: Sequence[_Doc], change: _Change, ident: str) -> list[_Doc] | None:
+def _edited[T](items: Sequence[_Doc], change: _Change[T], ident: T) -> list[_Doc] | None:
     """What ``change`` leaves of ``items``, or ``None`` when it changes none."""
     kept = [after for item in items if (after := change(item, ident)) is not None]
     same = len(kept) == len(items) and all(a is b for a, b in zip(kept, items, strict=True))

@@ -99,7 +99,7 @@ EXPECTED: list[tuple[str, tuple[str, ...], tuple[str, ...], bool]] = [
      ("a property, e.g. name or timing.fadeIn",),
      False),
     ("fixture 101 thru ", (), ("a fixture number after thru",), False),
-    ("fixture 101 thru 102 ", ("limits", *ORIENTATION), (), False),
+    ("fixture 101 thru 102 ", ("patch", "limits", *ORIENTATION), (), False),
     ("fixture 101 orientation.invertPan ", ("true", "false"), (), False),
     ("fixture 101 thru 102 orientation.swapPanTilt ", ("true", "false"), (), False),
     ("fixture 101 orientation.panOffset ", (), ("an offset in degrees",), False),
@@ -167,7 +167,9 @@ EXPECTED: list[tuple[str, tuple[str, ...], tuple[str, ...], bool]] = [
                  "universe"), (), False),
     ("delete ", ("cue", "cuelist", "fixture", "group", "page", "playback", "preset", "route",
                  "universe"), (), False),
-    ("delete fixture 101 ", ("cascade",), (), False),
+    ("delete fixture 101 ", ("thru", "cascade"), (), False),
+    ("delete fixture 101 thru 102 ", ("cascade",), (), False),
+    ("delete fixture 101 thru 102 cascade ", (), (), True),
     ("delete fixture 101 cascade ", (), (), True),
     ("delete universe 1 ", ("cascade",), (), False),
     ("delete group 1 ", ("cascade",), (), False),
@@ -179,7 +181,7 @@ EXPECTED: list[tuple[str, tuple[str, ...], tuple[str, ...], bool]] = [
     ("delete route ", ("r1",), (), False),
     ("delete route r1 ", (), (), True),
     ("route ", ("add", "r1"), (), False),
-    ("route r1 ", ("on", "off"), (), False),
+    ("route r1 ", ("on", "off", "change"), (), False),
     ("route r1 off ", (), (), True),
     ("master ", ("add", '"Grand Master"', '"Speed 1"'), (), False),
     ("tap ", ('"Speed 1"',), (), True),
@@ -210,7 +212,9 @@ EXPECTED: list[tuple[str, tuple[str, ...], tuple[str, ...], bool]] = [
     ("cuelist add ", (), ("a cue list number",), False),
     ("cuelist add 5 ", (), ("a name in quotes",), True),
     ('cuelist add 5 "Mine" ', (), (), True),
-    ("profile ", ("update", '"Generic Spot 16ch"', '"RGB Par 3ch"'), (), False),
+    ("profile ", ("import", "update", '"Generic Spot 16ch"', '"RGB Par 3ch"'), (), False),
+    ("profile import ", (), ('a path in quotes, e.g. "fixtures/spot.gdtf"',), False),
+    ('profile import "spot.gdtf" ', (), (), True),
     ('profile "RGB Par 3ch" ', ("category",), (), False),
     ('profile "RGB Par 3ch" category ', (*PROFILE_CATEGORIES, "none"), (), False),
     ('profile "RGB Par 3ch" category par ', (), (), True),
@@ -274,8 +278,8 @@ def test_expected_changes_nothing() -> None:
     assert json.dumps(ctx.show, sort_keys=True) == before
 
 
-def test_only_limits_and_orientation_follow_a_fixture_range() -> None:
-    with pytest.raises(ParseError, match=r"^expected limits or orientation\.<key>$"):
+def test_only_patch_limits_and_orientation_follow_a_fixture_range() -> None:
+    with pytest.raises(ParseError, match=r"^expected patch, limits or orientation\.<key>$"):
         parse("fixture 101 thru 102", context())
 
 

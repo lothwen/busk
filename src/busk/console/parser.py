@@ -21,13 +21,13 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
     record slot [P.]S [only <family>…] [<merge>] ["name"]
     universe add N ["name"]
     fixture add N [thru M] "<profile>" mode <mode> [at U.A]
-    fixture N patch U.A | fixture N patch none
+    fixture N [thru M] patch U.A | fixture N [thru M] patch none
     fixture N mode <mode> | fixture N profile "<profile>" mode <mode>
     route add U sacn <universe> [unicast <host> | multicast <iface>]
     route add U artnet <net>.<sub>.<uni> [unicast <host>]
     route add U dmxusb enttecPro|dmxking <port> [hz N]
         (hz: the widget's output rate, 1 to 40, 40 by default)
-    route <id> on|off
+    route <id> on|off | route <id> change <what route add takes>
     surface add midi "<device>"
     surface add osc "<name>" [port N] [feedback <host>[:<port>]]
     surface add web "<name>" [port N] [on <host>]
@@ -48,6 +48,7 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
         <entity> = fixture N | group N | preset <pool> N | cuelist N | cue L/C
                  | playback N | page N | universe N | show
     delete <entity> cascade            (every entity above but cue and show)
+    delete fixture N thru M cascade
     cue L/C time <in>[/<out>] [delay <in>[/<out>]] [<curve>]
     cue L/C time <family> <fade> [delay <d>] [<curve>]
         <curve> = linear | easeIn | easeOut | easeInOut | snapStart | snapEnd
@@ -72,6 +73,7 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
         <location> = {"x": 0, "y": 0, "z": 0, "rx": 0, "ry": 0, "rz": 0}
     safety strobe <hz> | safety strobe off
     profile update "<name>" | profile "<name>" category <category>|none
+    profile import "<path>"            (an OFL .json, a .gdtf or a busk profile)
         <category> = par | spot | wash | beam | pixel | strobe | blinder | dimmer
                    | effect | fog | other
     tap ["<master>"] | bpm ["<master>"] <bpm>
@@ -211,6 +213,18 @@ stop a universe's output, so an interactive prompt asks first, as for
 ``output off``. A disabled route is not checked against the others, so
 ``on`` is refused where its sACN universe or port is taken by then.
 
+Changing a route (GAP-37). ``route <id> change`` takes what ``route add`` takes
+and replaces the route in one undo step. It keeps the id and whether the route
+is on, and an sACN route that stays sACN keeps its priority, which no line sets.
+It refuses what ``route add`` refuses, and what would change nothing.
+
+Several fixtures (GAP-38). ``fixture N thru M patch U.A`` lays out the fixtures
+of the span, in number order, each after the one before by its footprint, and
+``patch none`` unpatches them. ``delete fixture N thru M cascade`` is one walk.
+``thru`` takes the fixtures the span holds, as every ``thru`` does. Each line is
+one undo step, and refused whole if any fixture of it cannot go. A plain
+``delete fixture N thru M`` is not a line: it always needs ``cascade``.
+
 Deletes that cascade (GAP-24 and GAP-36, :mod:`busk.console.cascade`). A plain
 ``delete`` is refused in one line while anything uses what it deletes, counted
 from the walk the cascade makes. ``delete fixture N cascade`` takes the fixture
@@ -279,6 +293,12 @@ judges it, so a word outside a closed set is refused by its document path.
 ``<optional> none`` removes an optional property, refused when it is not set;
 in quotes, ``"none"`` is the word. ``chase none`` is refused on a list in chase
 mode, which needs them.
+
+Importing a profile (GAP-39). ``profile import "<path>"`` embeds the profile of
+a file in the show, in one undo step. It tells the formats apart as a library
+directory does. The parser only names the file, and :class:`Console
+<busk.console.console.Console>` reads it, as it reads a ``source`` file. A profile
+the show holds by id or by name is refused.
 
 Completion (Tab and ``?`` at the prompt, :mod:`busk.console.prompt`).
 :func:`expected` parses a line up to the word being typed. Where the line
@@ -364,6 +384,13 @@ class Source:
 
 
 @dataclass(frozen=True)
+class ImportProfile:
+    """Read the profile in the file at ``path`` and embed it in the show."""
+
+    path: Path
+
+
+@dataclass(frozen=True)
 class Quit:
     pass
 
@@ -373,7 +400,7 @@ class Nothing:
     """A blank line or a comment."""
 
 
-type Action = Submit | SubmitAll | Query | Save | Source | Quit | Nothing
+type Action = Submit | SubmitAll | Query | Save | Source | ImportProfile | Quit | Nothing
 
 
 class ParseError(Exception):
@@ -1665,12 +1692,16 @@ class _Parser:
     # output and surfaces
 
     def _cmd_route(self) -> Action:
-        """``route add …``, or ``route <id> on|off``: off asks first at a prompt."""
+        """``route add …``, ``route <id> change …``, or ``route <id> on|off``:
+        off asks first at a prompt."""
         token = self.take("add or a route id", "add", *self._route_ids())
         if token.lower == "add":
             return self._route_add()
         route = self._route(token.text)
-        on = self.expect("on", "off") == "on"
+        verb = self.expect("on", "off", "change")
+        if verb == "change":
+            return self._route_change(route)
+        on = verb == "on"
         self.done()
         path = ["output", "routes", {"id": route["id"]}, "enabled"]
         command = _labelled(
@@ -1681,12 +1712,41 @@ class _Parser:
         return Submit(command, confirm=question)
 
     def _route_add(self) -> Action:
+        route = self._route_fields(self._route_id(), True)
+        self._refuse_same_route(route)
+        return self.submit({"type": "ADD", "path": ["output", "routes"], "value": route})
+
+    def _route_change(self, old: Mapping[str, Any]) -> Action:
+        """``route <id> change <what route add takes>`` (GAP-37), as one undo
+        step: each key that differs is set, and each the new route lacks is
+        deleted, so another protocol leaves none of the old keys and the route
+        keeps its place. The id stays, and whether it is on. An sACN route that
+        stays sACN keeps its priority: no line sets one, so a change must not
+        lose it."""
+        route = self._route_fields(old["id"], old["enabled"])
+        self.done()
+        if route["protocol"] == "sacn" == old["protocol"]:
+            route["priority"] = old["priority"]
+        if route == old:
+            raise ParseError(f"route {old['id']} already sends that")
+        self._refuse_same_route(route)
+        path: EditPath = ["output", "routes", {"id": old["id"]}]
+        commands: list[dict[str, Any]] = [
+            {"type": "SET", "path": [*path, key], "value": value}
+            for key, value in route.items()
+            if old.get(key) != value
+        ]
+        commands += [{"type": "DELETE", "path": [*path, key]} for key in old if key not in route]
+        return Submit(_labelled(f"changed route {old['id']}", *commands))
+
+    def _route_fields(self, ident: str, enabled: bool) -> dict[str, Any]:
+        """What ``route add`` takes from the universe on, as a route ``ident``."""
         universe = self.by_number("universes", self.integer("a universe number"), "universe")
         protocol = self.expect("sacn", "artnet", "dmxusb")
         route: dict[str, Any] = {
-            "id": self._route_id(),
+            "id": ident,
             "universeId": universe["id"],
-            "enabled": True,
+            "enabled": enabled,
             "protocol": "dmxUsb" if protocol == "dmxusb" else protocol,
         }
         if protocol == "dmxusb":
@@ -1699,7 +1759,7 @@ class _Parser:
             if not 1 <= rate <= 40:
                 raise ParseError(f"expected a refresh rate from 1 to 40 Hz, got {rate:g}")
             route["refreshHz"] = rate
-            return self._add_route(route)
+            return route
         if protocol == "sacn":
             route["universe"] = self.integer("an sACN universe")
             if not 1 <= route["universe"] <= 63999:
@@ -1725,16 +1785,15 @@ class _Parser:
             route["destination"] = {"kind": where, "iface": self.take("an interface").text}
         else:
             route["destination"] = fallback
-        return self._add_route(route)
+        return route
 
-    def _add_route(self, route: dict[str, Any]) -> Action:
-        """Add ``route``, unless the universe has the same one: on or off,
+    def _refuse_same_route(self, route: Mapping[str, Any]) -> None:
+        """Refuse ``route`` if a route of the show sends the same: on or off,
         with any id, it sends the same."""
-        new = {key: value for key, value in route.items() if key not in ("id", "enabled")}
+        new = _route_sends(route)
         for other in self.show["output"]["routes"]:
-            if {key: value for key, value in other.items() if key not in ("id", "enabled")} == new:
+            if _route_sends(other) == new:
                 raise ParseError(f"the same as route {self._route_text(other)}")
-        return self.submit({"type": "ADD", "path": ["output", "routes"], "value": route})
 
     def _route_id(self) -> str:
         return self.ctx.ids.new("r", {r["id"] for r in self.show["output"]["routes"]})
@@ -2022,10 +2081,12 @@ class _Parser:
                     return self._no_location()
             thru = word == "thru"
             after = self.peek(3) if thru else following
+            if thru and after is not None and after.lower == "patch":
+                return self._patch()
             if after is not None and after.lower.startswith("orientation."):
                 return self._orientation()
             if thru or (after is not None and after.lower == "limits"):
-                return self._limits()  # N thru M comes only before limits and orientation
+                return self._limits()  # else N thru M comes only before limits and orientation
             if following is None and self.peek() is not None:  # fixture N: Tab offers these
                 self.offers += ("patch", "thru", "limits", "mode", "profile", "location",
                                 *_ORIENTATION_WORDS)  # fmt: skip
@@ -2344,17 +2405,40 @@ class _Parser:
         )
 
     def _patch(self) -> Action:
-        fixture = self.by_number("fixtures", self.integer("a fixture number"), "fixture")
+        """``fixture N [thru M] patch U.A|none``. Several are one undo step
+        (GAP-38), each placed after the one before by its footprint, in number
+        order, so the whole run must fit."""
+        start = self.k
+        fixtures = self.fixture_range()
+        span = f"fixture {self.typed(start)}"
         self.expect("patch")
-        if self.keyword("none"):
-            patch = None
-        else:
+        patches: list[dict[str, Any] | None] = [None] * len(fixtures)
+        label = f"unpatched {span}"
+        if not self.keyword("none"):
+            place = self.k
             universe, address = self._address()
-            profile = _by_id(self.show["profiles"], fixture["profileId"])
-            mode = _by_id(profile["modes"], fixture["modeId"])
-            _fits(f"fixture {fixture['number']}", address, mode["footprint"])
-            patch = {"universeId": universe, "address": address}
-        return self.submit({"type": "PATCH_FIXTURE", "fixtureId": fixture["id"], "patch": patch})
+            at = self.typed(place)
+            footprints = [self._footprint(fixture) for fixture in fixtures]
+            _fits(span, address, sum(footprints))
+            for k, footprint in enumerate(footprints):
+                patches[k] = {"universeId": universe, "address": address}
+                address += footprint
+            label = f"patched {span} at {at}, up to channel {address - 1}"
+        if len(fixtures) == 1:
+            return self.submit(
+                {"type": "PATCH_FIXTURE", "fixtureId": fixtures[0]["id"], "patch": patches[0]}
+            )
+        self.done()
+        commands = [
+            {"type": "PATCH_FIXTURE", "fixtureId": fixture["id"], "patch": patch}
+            for fixture, patch in zip(fixtures, patches, strict=True)
+        ]
+        return Submit(_labelled(label, *commands))
+
+    def _footprint(self, fixture: Mapping[str, Any]) -> int:
+        """The channels ``fixture``'s mode takes."""
+        profile = _by_id(self.show["profiles"], fixture["profileId"])
+        return cast(int, _by_id(profile["modes"], fixture["modeId"])["footprint"])
 
     def entity_path(self, head: str) -> EditPath:
         if head == "show":
@@ -2384,9 +2468,13 @@ class _Parser:
             return self._delete_route()
         if head not in _ENTITIES or head == "show":
             raise ParseError(f"cannot delete {head!r}")
+        if head == "fixture" and (token := self.peek(1)) is not None and token.lower == "thru":
+            return self._delete_fixtures()
         path = self.entity_path(head)
         if head == "cue":
             return self.submit({"type": "DELETE", "path": path})
+        if head == "fixture":
+            self.ending("thru")
         cascade = self._cascade(head, path)
         if self.keyword("cascade"):
             self.done()
@@ -2405,7 +2493,7 @@ class _Parser:
         collection = "presets" if head == "preset" else _COLLECTIONS[head][0]
         item = _element(show[collection], path)  # type: ignore[literal-required]
         if head == "fixture":
-            return fixture_cascade(show, item, self.ctx.programmer)
+            return fixture_cascade(show, [item], self.ctx.programmer)
         if head == "cuelist":
             return cue_list_cascade(show, item, running)
         if head == "playback":
@@ -2417,6 +2505,15 @@ class _Parser:
             "page": page_cascade,
         }
         return by_kind[head](show, item)
+
+    def _delete_fixtures(self) -> Action:
+        """``delete fixture N thru M cascade`` (GAP-38): one walk, one undo
+        step, and it asks first at a prompt."""
+        fixtures = self.fixture_range()
+        self.expect("cascade")
+        self.done()
+        cascade = fixture_cascade(self.show, fixtures, self.ctx.programmer)
+        return Submit(_labelled(cascade.label, *cascade.commands), confirm=cascade.question)
 
     def _delete_route(self) -> Action:
         """``delete route <id>``: asks first at a prompt, as ``output off`` does."""
@@ -2672,11 +2769,12 @@ class _Parser:
         start = self.k
         fixtures = self.fixture_range()
         span = f"fixture {self.typed(start)}"
-        if self.ending("limits", *_ORIENTATION_WORDS):  # fixture N thru M: Tab offers these
-            raise _Unfinished("expected limits or orientation.<key>")
+        # fixture N thru M: Tab offers these
+        if self.ending("patch", "limits", *_ORIENTATION_WORDS):
+            raise _Unfinished("expected patch, limits or orientation.<key>")
         if self.keyword("limits") is None:
             got = self.tokens[self.k].text
-            raise ParseError(f"expected limits or orientation.<key>, got {got!r}")
+            raise ParseError(f"expected patch, limits or orientation.<key>, got {got!r}")
         what = self.expect("pan", "tilt", "intensity", "none")
         if what == "none":
             self.done()
@@ -2781,6 +2879,10 @@ class _Parser:
         differs is set (or deleted), so the profile keeps its place in the
         show, and each of its fixtures records the new revision. The show's
         category stays: it takes the library's only when it has none."""
+        if self.keyword("import"):
+            token = self.take('a path in quotes, e.g. "fixtures/spot.gdtf"')
+            self.done()
+            return ImportProfile(Path(token.text))
         if not self.keyword("update"):
             return self._category()
         what = 'a profile name in quotes, e.g. "Generic Spot 16ch"'
@@ -2974,6 +3076,11 @@ def _element(items: Sequence[Any], path: EditPath) -> Mapping[str, Any]:
     names (the parser built the path, so it exists)."""
     selector = cast(Mapping[str, Any], path[-1])
     return cast(Mapping[str, Any], next(item for item in items if item["id"] == selector["id"]))
+
+
+def _route_sends(route: Mapping[str, Any]) -> dict[str, Any]:
+    """What ``route`` sends, and where: all of it but its id and whether it is on."""
+    return {key: value for key, value in route.items() if key not in ("id", "enabled")}
 
 
 def _fits(who: str, address: int, channels: int) -> None:

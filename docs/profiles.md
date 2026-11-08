@@ -54,6 +54,10 @@ directory) and print what each became. `--report` prints the notes: channels tha
 `control` channels held at a value (`Fog Type: no busk attribute (FogType); held at DMX
 0`), estimated speeds, skipped modes. A file that fails names why, and the run exits 1.
 
+To bring one file into a show that is open, `profile import "<path>"` at the console embeds it
+in the show, in one undo step, and prints the same notes. It also takes a busk profile file. It is
+refused if the show holds that profile, or a profile by that name.
+
 **OFL** (the [Open Fixture Library](https://open-fixture-library.org/)'s JSON) maps each
 capability type to a busk attribute.
 
