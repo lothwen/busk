@@ -303,7 +303,9 @@ def test_the_pane_cursor_reaches_the_rows_the_states_the_removes_and_the_templat
             "prog fx5 settings", "prog fx5 effect stop fx5", "prog fx5 effect remove fx5",
             "prog fx6 settings", "prog fx6 effect run fx6", "prog fx6 effect remove fx6",
             "clear",
-            'effect add "Circle"', 'effect add "Wave"', 'effect add "Mine"', 'effect add "Chase"',
+            'effect add "Circle"', "edit Circle", 'effect add "Wave"', "edit Wave",
+            'effect add "Mine"', "edit Mine", 'effect add "Chase"', "view Chase",
+            "+ template…",
         ]  # fmt: skip
         await pilot.press("tab", *["down"] * 9, "enter")
         assert app.cursor.active

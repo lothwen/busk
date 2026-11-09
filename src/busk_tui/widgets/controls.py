@@ -45,7 +45,10 @@ class RunLine(Message):
     replaces this one if it has not been sent yet. ``done`` is called with
     whether the line succeeded, once it has run (not for a line replaced
     before it was sent, nor for one cancelled). ``ask``: the TUI's own
-    question before the line (a delete), asked when the engine asks none."""
+    question before the line (a delete), asked when the engine asks none.
+    ``refused`` is called with busk's reply when the line is refused, for
+    a panel that says why (the log says it too). A widget above the one that
+    posted it may set it, as the message bubbles past."""
 
     def __init__(
         self,
@@ -54,6 +57,7 @@ class RunLine(Message):
         key: str | None = None,
         done: Callable[[bool], None] | None = None,
         ask: str | None = None,
+        refused: Callable[[str], None] | None = None,
     ) -> None:
         super().__init__()
         self.line = line
@@ -61,6 +65,7 @@ class RunLine(Message):
         self.key = key
         self.done = done
         self.ask = ask
+        self.refused = refused
 
 
 class FillPrompt(Message):

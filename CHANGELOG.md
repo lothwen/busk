@@ -10,6 +10,11 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- F5 edits effect templates from controls. `[+ template…]` makes one, and `[edit]` on a template
+  opens its TEMPLATE panel, with a row per layer: a wave layer's attribute, mode, waveform with its
+  parameters and phase offset, and a colour layer's blend and palette of colours and presets. Each
+  change is one line and one undo step, `[rename…]` and `[delete]` are there too, and a refusal
+  shows in the panel as well as the log. A library template opens read-only.
 - F5 edits an effect from controls. A click on a row opens its EFFECT panel, with the rate (in Hz or
   on a master's beat), direction, size, levels, phase, groups, blocks, wings, fade-in, and size and
   speed masters, each one control and one line. `✕` removes an effect from a cue, after a question,

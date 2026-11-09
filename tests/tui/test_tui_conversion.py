@@ -8,8 +8,10 @@ effects and the output with its sources."""
 from __future__ import annotations
 
 import copy
+import json
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -49,6 +51,7 @@ from busk_tui.model import (
     TemplateInfo,
 )
 from busk_tui.widgets.effect_panel import effect_settings
+from busk_tui.widgets.template_panel import NEW_COLOUR, NEW_WAVE, WAVES, layer_text
 
 TUPPER = Path(__file__).resolve().parents[2] / "examples" / "tupperdmx" / "tupper-demo.show"
 
@@ -684,12 +687,118 @@ def test_the_templates_effect_add_takes(club: busk.OfflineShow) -> None:
         ("Circle", "show"), ("Pulse", "show"), ("Wave", "show"), ("Rainbow", "show"),
         ("Chase", "library"), ("Saw", "library"), ("Sweep", "library"), ("Flicker", "library"),
     ]  # fmt: skip
-    assert templates[0] == TemplateInfo(
-        "Circle", "show", "pan add sine, tilt add sine +90°", size=20.0
-    )
+    circle = replace(templates[0], id="", layers=(), used_by=())
+    assert circle == TemplateInfo("Circle", "show", "pan add sine, tilt add sine +90°", size=20.0)
     assert (templates[2].low, templates[2].high) == (0.0, 1.0)
     assert templates[4].phase == (0.0, 360.0)
     assert show_model(club.show).templates == ()
+
+
+def test_a_template_carries_its_layers_and_what_uses_it(club: busk.OfflineShow) -> None:
+    by_name = {t.name: t for t in show_model(club.show, club.effect_templates).templates}
+    stored = {t["name"]: t for t in club.show["effects"]}
+    circle = by_name["Circle"]
+    assert circle.id == stored["Circle"]["id"]
+    assert circle.layers == tuple(stored["Circle"]["layers"])
+    assert circle.used_by == ((11, "1"),)
+    assert by_name["Pulse"].used_by == ((12, "1"), (20, "1"))
+    assert by_name["Rainbow"].used_by == ((9, "4"),)
+    assert by_name["Chase"].layers == ()  # only the library has it
+    assert by_name["Chase"].used_by == ()
+
+
+def test_a_cue_with_two_effects_of_a_template_is_named_once(club: busk.OfflineShow) -> None:
+    doc = copy.deepcopy(club.show)
+    cue_list = next(found for found in doc["cueLists"] if found["number"] == 11)
+    effects = cue_list["cues"][0]["effects"]
+    effects.append(effects[0] | {"id": "fx-twin"})
+    templates = show_model(doc, club.effect_templates).templates
+    assert {t.name: t.used_by for t in templates}["Circle"] == ((11, "1"),)
+
+
+def test_a_binding_that_adds_an_effect_is_counted(club: busk.OfflineShow) -> None:
+    doc = copy.deepcopy(club.show)
+    instance = next(
+        found
+        for cue_list in doc["cueLists"]
+        for cue in cue_list["cues"]
+        for found in cue["effects"]
+        if found["templateId"] == "ef-circle"
+    )
+    doc["bindings"].append(
+        {
+            "id": "b-fx",
+            "surfaceId": doc["surfaces"][0]["id"],
+            "input": {"kind": "midiNote", "channel": 16, "note": 99},
+            "action": {
+                "kind": "command",
+                "command": {"type": "ADD_EFFECT", "effect": instance},
+            },
+        }
+    )
+    templates = show_model(doc, club.effect_templates).templates
+    assert {t.name: t.bindings for t in templates}["Circle"] == 1
+    assert {t.name: t.bindings for t in templates}["Pulse"] == 0
+
+
+def test_a_layer_is_worded_as_busk_words_it_for_every_template(club: busk.OfflineShow) -> None:
+    for template in show_model(club.show, club.effect_templates).templates:
+        if template.source == "show":
+            assert ", ".join(layer_text(layer) for layer in template.layers) == template.summary
+
+
+def test_the_shows_templates_go_back_unchanged(show: busk.OfflineShow) -> None:
+    before = copy.deepcopy(show.show["effects"])
+    for template in show_model(show.show, show.effect_templates).templates:
+        if template.source == "show":
+            line = commands.effect_template_update(template.name, template.layers)
+            assert show.execute(line.text).ok
+    assert show.show["effects"] == before
+
+
+@pytest.mark.parametrize(
+    "layer",
+    [
+        pytest.param(NEW_WAVE | {"waveform": {"kind": kind} | WAVES[kind]}, id=kind)
+        for kind in sorted(WAVES)
+    ]
+    + [
+        pytest.param(NEW_COLOUR, id="colour"),
+        pytest.param(
+            NEW_COLOUR | {"palette": [{"r": 1.0, "g": 0.5, "b": 0.0, "w": 0.25, "uv": 0.5}]},
+            id="colour-with-extra-emitters",
+        ),
+        pytest.param(
+            NEW_COLOUR | {"palette": [{"r": 1.0, "g": 0.0, "b": 0.0}], "blend": "snap"},
+            id="colour-snap",
+        ),
+    ],
+)
+def test_every_kind_of_layer_goes_round_unchanged(
+    show: busk.OfflineShow, layer: dict[str, Any]
+) -> None:
+    """Into the show, out through the bridge, and back into the show."""
+
+    def stored() -> Any:  # JSON has no tuples, and the show keeps a point as one
+        found = next(found for found in show.show["effects"] if found["name"] == "T")
+        return json.loads(json.dumps(found["layers"]))
+
+    assert show.execute(commands.effect_template_add("T", [layer]).text).ok
+    assert stored() == [layer]
+    model = next(t for t in show_model(show.show, show.effect_templates).templates if t.name == "T")
+    assert json.loads(json.dumps(model.layers)) == [layer]
+    assert show.execute(commands.effect_template_update("T", model.layers).text).ok
+    assert stored() == [layer]
+
+
+def test_a_palette_preset_goes_round_by_its_id(show: busk.OfflineShow) -> None:
+    preset = next(found for found in show.show["presets"] if found["pool"] == "color")
+    layer = NEW_COLOUR | {"palette": [{"presetId": preset["id"]}]}
+    assert show.execute(commands.effect_template_add("T", [layer]).text).ok
+    model = show_model(show.show, show.effect_templates)
+    template = next(t for t in model.templates if t.name == "T")
+    assert template.layers == (layer,)
+    assert next(p for p in model.presets if p.name == preset["name"]).id == preset["id"]
 
 
 # ------------------------------------------------------------ F3, F8, F9

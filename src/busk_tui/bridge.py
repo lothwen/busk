@@ -88,6 +88,7 @@ from busk_tui.model import (
     GroupInfo,
     HealthChanged,
     HeldValue,
+    Layer,
     Limits,
     LiveChanged,
     LiveState,
@@ -743,6 +744,11 @@ def show_model(
     modes = _modes(doc)
     users = _preset_users(doc)
     palettes = _preset_palettes(doc)
+    layers: dict[str, tuple[Layer, ...]] = {
+        template["id"]: tuple(cast(Sequence[Layer], template["layers"]))
+        for template in doc["effects"]
+    }
+    template_cues, template_bindings = _template_users(doc)
     return ShowModel(
         title=doc["meta"]["title"],
         universes=tuple(UniverseView(u["number"], u["name"]) for u in doc["universes"]),
@@ -793,6 +799,7 @@ def show_model(
                 entries=tuple(preset_entry(stored, profiles, names) for stored in preset["values"]),
                 used_by=tuple(users.get(preset["id"], ())),
                 palettes=tuple(palettes.get(preset["id"], ())),
+                id=preset["id"],
             )
             for preset in doc["presets"]
         ),
@@ -809,6 +816,10 @@ def show_model(
                 low=template.low,
                 high=template.high,
                 phase=template.phase,
+                id=template.id,
+                layers=layers.get(template.id, ()),  # none for what only the library has
+                used_by=tuple(template_cues.get(template.id, ())),
+                bindings=template_bindings.get(template.id, 0),
             )
             for template in templates
         ),
@@ -1462,6 +1473,29 @@ def _preset_users(doc: Show) -> dict[str, list[tuple[int, str]]]:
                 if not found or found[-1] != cue_key:
                     found.append(cue_key)
     return users
+
+
+def _template_users(doc: Show) -> tuple[dict[str, list[tuple[int, str]]], dict[str, int]]:
+    """Each template's users, by its id: its cues, as (list number, cue
+    number), by list number and in cue order, and how many bindings add an
+    effect of it (what ``effect template delete`` refuses over, with the
+    programmer)."""
+    cues: dict[str, list[tuple[int, str]]] = {}
+    for cue_list in sorted(doc["cueLists"], key=lambda found: found["number"]):
+        for cue in cue_list["cues"]:
+            cue_key = (cue_list["number"], cue["number"])
+            for effect in cue["effects"]:
+                found = cues.setdefault(effect["templateId"], [])
+                if not found or found[-1] != cue_key:
+                    found.append(cue_key)
+    bindings: dict[str, int] = {}
+    for binding in doc["bindings"]:
+        action = cast(Mapping[str, Any], binding["action"])
+        command = action["command"] if action["kind"] == "command" else None
+        if command is not None and command["type"] == "ADD_EFFECT":
+            template = command["effect"]["templateId"]
+            bindings[template] = bindings.get(template, 0) + 1
+    return cues, bindings
 
 
 def _preset_palettes(doc: Show) -> dict[str, list[str]]:

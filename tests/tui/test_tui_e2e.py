@@ -7,7 +7,7 @@
   on the TupperDMX show records a colour from its picker and a beam preset
   from its option chips and bars; F4
   goes to a cue, and builds and deletes cues and lists from its controls, and
-  F5 adds, stops and removes an effect; F3 and F1's
+  F5 adds, stops and removes an effect and builds a template; F3 and F1's
   layouts A and C show the output, and select from it; F3's FIXTURE panel
   renames, renumbers and deletes a fixture, sets a profile's category, a
   fixture's mode, its limits, orientation and location, patches it, changes
@@ -30,6 +30,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from rich.text import Text
@@ -74,6 +75,7 @@ from busk_tui.widgets.preset_panel import Chosen
 from busk_tui.widgets.profile_picker import ProfileDialog
 from busk_tui.widgets.programmer import ProgrammerTable
 from busk_tui.widgets.route_dialog import RouteDialog
+from busk_tui.widgets.template_panel import NewTemplateDialog, TemplatePanel
 from busk_tui.widgets.tiles import PresetTile
 from sacn_receiver import Receiver
 
@@ -1361,6 +1363,60 @@ def test_f4_and_f6_build_and_delete_cues_and_lists_from_controls_on_the_real_eng
         drive(app, body)
     finally:
         bridge.stop()
+
+
+def test_f5_builds_a_template_from_controls(club_path: Path, tmp_path: Path) -> None:
+    """F5 makes a template, changes its layers, shows a refusal in the panel
+    and the log, renames and deletes it; and F5 names what uses Circle."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=5), standalone=True)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.live is not None and app.view.show is not None)
+        panel = app.query_one(TemplatePanel)
+        table = app.query_one(TemplateTable)
+
+        def layers() -> tuple[Any, ...]:
+            return () if panel.template is None else panel.template.layers
+
+        await tap(pilot, app.query_one("#templates-add"))
+        await until(pilot, lambda: isinstance(app.screen, NewTemplateDialog))
+        await answer_field(pilot, app, "Fresh")
+        await until(pilot, lambda: panel.display and "Fresh" in str(panel.border_title))
+        await tap_button(pilot, panel.attribute, "zoom")
+        await until(pilot, lambda: layers()[0]["attribute"] == "zoom")
+        await tap_button(pilot, panel.wave, "pulse")
+        await until(pilot, lambda: layers()[0]["waveform"]["kind"] == "pulse")
+        width = next(b for b in panel.query(ActionButton) if b.label == "width…")
+        await tap(pilot, width)
+        await answer_field(pilot, app, "0.9")  # width + attack + decay is past one cycle
+        await until(pilot, lambda: panel.refusal.display)
+        log = app.query_one(LogView).entries
+        assert any(kind == "error" and "at most 1" in text for kind, text in log)
+        assert "at most 1" in str(panel.refusal.content)
+        assert "effects[" not in str(panel.refusal.content)
+        assert layers()[0]["waveform"]["width"] == 0.25
+        await tap_button(pilot, panel.modes, "add")
+        await until(pilot, lambda: not panel.refusal.display)
+        rename = next(b for b in panel.query(ActionButton) if b.label == "rename…")
+        await tap(pilot, rename)
+        await answer_field(pilot, app, "Circle")  # the show has one
+        assert isinstance(app.screen, TextDialog)
+        await answer_field(pilot, app, "Again")
+        await until(pilot, lambda: "Again" in str(panel.border_title))
+        delete = next(b for b in panel.query(ActionButton) if b.label == "delete")
+        await tap(pilot, delete)
+        await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+        await pilot.press("y")
+        await until(pilot, lambda: not panel.display)
+        await click_cell(pilot, table, 0, "edit")
+        await until(pilot, lambda: panel.display)
+        assert "11/1" in str(panel.used.content)
+        assert panel.delete.inert
+
+    drive(app, body)
 
 
 def running_effect(app: BuskApp, playback: int | None, ident: str) -> EffectView | None:

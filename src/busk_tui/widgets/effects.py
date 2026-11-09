@@ -383,13 +383,15 @@ class TemplateTable(RowTable):
         Column("summary", "layers", 10, flex=True),
         Column("defaults", "defaults", 12, drop=2),
         Column("source", "from", 7, drop=1),
+        Column("edit", "", 6),
     )
 
 
 def template_cells(template: TemplateInfo) -> Cells:
     """A template: its name, its layers, the defaults the library gives an
-    instance (``size 20``, ``low 0 high 1``, ``phase 0 360``), and where it
-    is from (``show``, or ``library``: the show has no copy of it yet)."""
+    instance (``size 20``, ``low 0 high 1``, ``phase 0 360``), where it is
+    from (``show``, or ``library``: the show has no copy of it yet), and what
+    opens its panel: ``[edit]``, or ``[view]`` for one only the library has."""
     defaults = []
     if template.size is not None:
         defaults.append(f"size {template.size:g}")
@@ -402,4 +404,5 @@ def template_cells(template: TemplateInfo) -> Cells:
         "summary": cell(template.summary, colors.MID),
         "defaults": cell(" ".join(defaults), colors.DIM),
         "source": cell(template.source, colors.MID if template.source == "show" else colors.DIM),
+        "edit": cell("[edit]" if template.source == "show" else "[view]", colors.MID),
     }

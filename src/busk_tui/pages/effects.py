@@ -20,7 +20,10 @@ TEMPLATES lists every template ``effect add`` takes: the show's, then the
 library's the show has no copy of (``effect add`` copies one in), with the
 defaults the library gives an instance. A click adds one to the selection,
 with those defaults (``effect add "<name>"``; the spec's ``bpm x1 size 0.6``
-would invent values busk refuses).
+would invent values busk refuses). Its ``[edit]``, or ``[view]`` for one only
+the library has, opens the TEMPLATE panel
+(:mod:`busk_tui.widgets.template_panel`) in the same place, until its
+``[done]``. ``[+ template…]`` makes a new one, and opens it once the show has it.
 
 The page reads the running effects while it shows. Below 132 columns the
 templates go under the effects.
@@ -54,6 +57,7 @@ from busk_tui.widgets.effects import (
 )
 from busk_tui.widgets.panel import Panel
 from busk_tui.widgets.rows import RowTable
+from busk_tui.widgets.template_panel import FIRST_LAYERS, NewTemplateDialog, TemplatePanel
 
 SIDE_BY_SIDE: Final = 132
 """From this many columns the templates sit beside the effects."""
@@ -63,7 +67,7 @@ NO_EFFECTS: Final = 'no effects · select fixtures and click a template, or effe
 FOOTER: Final = (
     "state: a cue effect goes to its cue, or releases its playback while it runs · "
     "a programmer effect stops and runs again · ✕ removes it · any other click opens its "
-    "settings · a template adds one to the selection"
+    "settings · a template adds one to the selection, and its edit button opens its layers"
 )
 
 
@@ -79,6 +83,7 @@ class EffectsPage(Page):
     EffectsPage #effects-row.stacked {{ layout: vertical; }}
     EffectsPage #effects-row.stacked > Panel {{ width: 100%; margin-left: 0; }}
     EffectsPage #effects-clear {{ margin-top: 1; }}
+    EffectsPage #templates-add {{ margin-top: 1; }}
     EffectsPage #effects-footer {{ margin-top: 1; color: {colors.DIM}; }}
     EffectsPage #templates-header {{ margin-bottom: 1; }}
     """
@@ -91,11 +96,18 @@ class EffectsPage(Page):
         self.effects_panel = Panel("effects", id="effects-panel")
         self.templates_panel = Panel("templates", id="templates-panel")
         self.clear = ActionButton("clear", self.ask_clear, "danger", inert=True, id="effects-clear")
+        self.add_template = ActionButton(
+            "+ template…", self.ask_add_template, "go", id="templates-add"
+        )
         self.panel = EffectPanel(self.close_panel)
         self.panel.display = False
+        self.template_panel = TemplatePanel(self.close_panel)
+        self.template_panel.display = False
         self.rows: list[FxRow] = []
         self.shown_templates: tuple[TemplateInfo, ...] = ()
         self.chosen: tuple[str, str] | None = None  # the key of the effect the panel shows
+        self.chosen_template: str | None = None  # the id of the template the panel shows
+        self.wanted_template: str | None = None  # a new one's name, to open once the show has it
         self._view = View()
 
     def compose(self) -> ComposeResult:
@@ -107,7 +119,9 @@ class EffectsPage(Page):
             with self.templates_panel:
                 yield self.header
                 yield self.templates
+                yield self.add_template
             yield self.panel
+            yield self.template_panel
 
     def on_resize(self, event: events.Resize) -> None:
         self.query_one("#effects-row").set_class(event.size.width < SIDE_BY_SIDE, "stacked")
@@ -145,29 +159,51 @@ class EffectsPage(Page):
     def _chosen_index(self) -> int | None:
         return next((i for i, row in enumerate(self.rows) if row.key == self.chosen), None)
 
+    def _template_shown(self) -> TemplateInfo | None:
+        """The template the panel shows; a new one, as soon as the show has it."""
+        wanted = self.wanted_template
+        if wanted is not None:
+            for template in self.shown_templates:
+                if template.name == wanted and template.source == "show":
+                    self.chosen_template, self.wanted_template = template.id, None
+        return next((t for t in self.shown_templates if t.id == self.chosen_template), None)
+
     def _draw_panel(self) -> None:
-        """The chosen effect's panel in the templates' place, or, once the
-        effect is gone or the panel left, the templates."""
+        """The chosen effect's or template's panel in the templates' place,
+        or, once it is gone or the panel left, the templates."""
         index = self._chosen_index()
         row = None if index is None else self.rows[index]
         self.chosen = None if row is None else row.key
+        template = self._template_shown()
+        self.chosen_template = None if template is None else template.id
         self.panel.display = row is not None
-        self.templates_panel.display = row is None
+        self.template_panel.display = template is not None
+        self.templates_panel.display = row is None and template is None
         programmer = self._view.programmer
         selection = () if programmer is None else programmer.selection
         self.panel.show_view(row, self._view.show, selection)
+        self.template_panel.show_view(template, self._view.show, programmer, self._view.mode)
         self.effects.show(self.effects.rows, index)
 
     def open_panel(self, key: tuple[str, str]) -> None:
         """Choose an effect. Under the effects (below :data:`SIDE_BY_SIDE`
         columns), the panel scrolls into sight."""
-        self.chosen = key
+        self.chosen, self.chosen_template, self.wanted_template = key, None, None
         self._draw_panel()
         if self.size.width < SIDE_BY_SIDE:
             self.call_after_refresh(self.scroll_to_widget, self.panel, animate=False, top=True)
 
+    def open_template(self, template: TemplateInfo) -> None:
+        """Choose a template, as :meth:`open_panel` chooses an effect."""
+        self.chosen, self.chosen_template, self.wanted_template = None, template.id, None
+        self._draw_panel()
+        if self.size.width < SIDE_BY_SIDE:
+            self.call_after_refresh(
+                self.scroll_to_widget, self.template_panel, animate=False, top=True
+            )
+
     def close_panel(self) -> None:
-        self.chosen = None
+        self.chosen, self.chosen_template, self.wanted_template = None, None, None
         self._draw_panel()
 
     # -------------------------------------------------------- the lines
@@ -188,6 +224,24 @@ class EffectsPage(Page):
         question = f"Remove {count} programmer effect{'' if count == 1 else 's'}?"
         self.post_message(RunLine(commands.effect_clear(), ask=question))
 
+    def ask_add_template(self) -> None:
+        """``[+ template…]``: ``effect template add "Beat" [{…}]``, a name and
+        what its first layer is; once the show has it, its panel opens."""
+        taken = [found.name for found in self.shown_templates if found.source == "show"]
+
+        def given(found: tuple[str, str] | None) -> None:
+            if found is not None:
+                name, kind = found
+                line = commands.effect_template_add(name, [FIRST_LAYERS[kind]])
+                self.post_message(RunLine(line, done=partial(self._template_added, name)))
+
+        self.app.push_screen(NewTemplateDialog(taken), given)
+
+    def _template_added(self, name: str, ok: bool) -> None:
+        if ok:
+            self.chosen, self.chosen_template, self.wanted_template = None, None, name
+            self._draw_panel()
+
     def on_row_table_clicked(self, message: RowTable.Clicked) -> None:
         message.stop()
         if message.table is self.effects and message.row < len(self.rows):
@@ -200,7 +254,11 @@ class EffectsPage(Page):
             else:
                 self.open_panel(row.key)
         elif message.table is self.templates and message.row < len(self.shown_templates):
-            self.post_message(RunLine(commands.effect_add(self.shown_templates[message.row].name)))
+            template = self.shown_templates[message.row]
+            if message.cell == "edit":
+                self.open_template(template)
+            else:
+                self.post_message(RunLine(commands.effect_add(template.name)))
 
     # ------------------------------------------------------ pane cursor
 
@@ -227,11 +285,20 @@ class EffectsPage(Page):
             stops.append(Stop(Item("clear", action=self.ask_clear), self.clear))
         if self.chosen is not None:
             return stops + self.panel.stops()
+        if self.chosen_template is not None:
+            return stops + self.template_panel.stops()
         template_spots: list[tuple[int, str | None]] = []
         for index, template in enumerate(self.shown_templates):
             line = commands.effect_add(template.name)
             item = Item(line.text, line=line.text)
             stops.append(Stop(item, self.templates, len(template_spots)))
             template_spots.append((index, None))
+            word = "edit" if template.source == "show" else "view"
+            item = Item(f"{word} {template.name}", action=partial(self.open_template, template))
+            stops.append(Stop(item, self.templates, len(template_spots)))
+            template_spots.append((index, "edit"))
         self.templates.spots = template_spots
+        stops.append(
+            Stop(Item(self.add_template.label, action=self.ask_add_template), self.add_template)
+        )
         return stops

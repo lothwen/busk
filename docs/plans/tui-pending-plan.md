@@ -586,11 +586,55 @@ Needs GAP-31. Code: `src/busk_tui/pages/effects.py`, a new `widgets/template_pan
    parameters, phase offset and mode. A colour layer has its palette (colours or presets) and
    blend. `[+ template…]` builds the JSON for `effect template add`, and a change on a show
    template sends `effect template update`.
+
+   **Done** (2026-11-09). As planned: `TemplatePanel` and `NewTemplateDialog` in the new
+   `src/busk_tui/widgets/template_panel.py`, in the slot the EFFECT panel uses. `TemplateInfo.layers`
+   holds each layer as the show stores it, so what the panel does not edit (a colour's extra
+   emitters) goes back unchanged. Which the user may veto:
+   - **A new column, `[edit]`** (`[view]` for one only the library has), opens the panel. A click
+     anywhere else on a row still adds an effect, as before.
+   - **A new template starts with a layer**, since busk refuses one without: `intensity multiply
+     sine`, or a white colour layer. Its form asks which, and the panel opens once the show has it.
+   - A layer is chosen for the controls by a click on its row. There is no moving of a layer or a
+     palette entry: take it out and add it again.
+   - **A change of waveform resets its parameters** to where a new one starts (`duty` 0.5, and the
+     like): the old ones are of another shape.
+   - **A dialog refuses only what could not be sent** (a level outside 0 to 1, a name the show has).
+     What only busk can tell comes back as a refusal, such as a pulse longer than its cycle.
+   - The panel gives busk's reason **without the place in the document**, and the log the whole
+     reply, path included (§5, item 9).
+   - `+ preset` offers the colour pool only, a chip per preset. A palette's preset has no form.
+   - `TemplateInfo.id` and `PresetInfo.id` exist, as `MasterView.id` does: the panel stays on a
+     template through a rename, and a palette names a preset by id.
+   - Added to `RunLine`: `refused`, called with busk's reply when a line fails, which the plan did
+     not name. The panel sets it as each of its lines bubbles past.
 2. **`[rename…]` and `[delete]`.** Delete is grey while a template is used, and the panel names the
    users, as F6's did. A library template is read-only until the show holds a copy.
 
+   **Done** (2026-11-09). As planned. `[delete]` asks the TUI's question (§1) and is grey while a
+   cue, a binding or the programmer uses the template, counted as busk counts them. Which the user
+   may veto:
+   - **A name is checked against the show's templates only**, as busk's rule is: naming one after a
+     library template is allowed, and hides the library's.
+   - The programmer's use is found by template name: `ProgrammerStatus` names no template id in the
+     TUI's model.
+
 Verify: each waveform kind round-trips; both layer kinds; a refusal shows in the panel and the log;
 a name the show has.
+
+**Phase 8 checks** (2026-11-09). The whole suite: 5,838 passed and 1 skipped, in 4:47 with `uv run
+pytest -n 6`. `ruff check`, `ruff format --check` and `mypy src` clean. No change to `src/busk/` or
+the engine's tests. The five TUI test files the phase touched, 557 tests, pass on Textual 8.2.0. The
+perf gate on the final code: 7 passed, no overruns, F5 at +0.195 core. `tests/tui/test_tui_conversion.py`
+sends each waveform and both kinds of layer into a real show, through the bridge and back, unchanged.
+47 mutations of the new code: 39 caught at once, 7 needed a test of their own, which is in, and one
+was a condition that could do nothing, now gone. `tests/tui/test_tui_e2e.py` has a new test on the
+real engine. A real `busk-tui --state-dir …` under `busk run` on the club show, with real mouse
+clicks in a pty: at 150 columns, `go 11`, Circle's phase offset and a layer's waveform changed while
+it ran, an absolute layer on tilt refused with the reason in the panel and the log, the next line
+clearing it, `undo`, then `[+ template…]`, a colour layer, a preset chip, `[rename…]` and `[delete]`
+with its question; at 99 columns, the panel under the effects. No error in the log. Docs:
+`docs/tui/guide.md`, the report's rows, "In short" and "What the TUI is missing", and `CHANGELOG.md`.
 
 ### Phase 9: F1: the playback's own buttons
 

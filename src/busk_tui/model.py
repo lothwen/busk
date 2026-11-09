@@ -9,8 +9,9 @@ a fake bridge that implements :class:`BridgeLike` (``tests/tui/tui_fakes.py``).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Literal, Protocol
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from typing import Any, Literal, Protocol
 
 type Origin = Literal["typed", "ui", "internal"]
 """Who sent a line: typed at the prompt (echoed ``busk>``), run by a control
@@ -432,6 +433,12 @@ class CueListInfo:
     rate: ChaseRate | None = None  # the same settings as ``chase``, one by one
 
 
+type Layer = Mapping[str, Any]
+"""An effect layer as the show stores it, which is what ``effect template
+update`` takes back: the TUI keeps what it does not edit (a colour's extra
+emitters) by not reading it into fields of its own."""
+
+
 @dataclass(frozen=True, slots=True)
 class TemplateInfo:
     """An effect template ``effect add "<name>"`` takes (busk's
@@ -445,6 +452,10 @@ class TemplateInfo:
     low: float | None = None
     high: float | None = None
     phase: tuple[float, float] | None = None
+    id: str = ""  # stays through a rename
+    layers: tuple[Layer, ...] = field(default=(), hash=False)  # the show's only
+    used_by: tuple[tuple[int, str], ...] = ()  # the cues that hold an effect of it: (list, cue)
+    bindings: int = 0  # how many bindings add an effect of it
 
 
 type Summary = float | str | None
@@ -475,6 +486,7 @@ class PresetInfo:
     entries: tuple[PresetEntry, ...] = ()  # what it stores, in the order stored
     used_by: tuple[tuple[int, str], ...] = ()  # the cues that take it: (list, cue), in that order
     palettes: tuple[str, ...] = ()  # the effect templates whose colour palette takes it
+    id: str = ""  # as a colour palette takes it
 
 
 type Location = tuple[float, float, float, float, float, float]

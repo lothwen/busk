@@ -49,7 +49,7 @@ do can already be typed in the TUI. The tables below show how much the screens h
 | Presets | control (F6, colour chips) | control (F6's PRESET panel) | control | control (values, name, number) |
 | Effects in the programmer | control (F5, F1 B) | control | control | control (F5's EFFECT panel, stop, run) |
 | Effects in cues | control (F5) | control (via `record cue`) | control | control (F5's EFFECT panel) |
-| Effect templates | control (F5) | prompt (JSON) | prompt | prompt |
+| Effect templates | control (F5) | control (F5's `[+ template…]`) | control (F5's TEMPLATE panel) | control (F5's TEMPLATE panel) |
 | Playbacks, operating | control (F1) | n/a | n/a | control: fader, GO, ◂, FLASH; the playback's own buttons: prompt |
 | Playbacks, configuration | partial: not shown | prompt | prompt | prompt |
 
@@ -59,9 +59,9 @@ In short:
   function, band, exclusivity, flash, LTP mode and release time are on no screen.
 - **The TUI is a performance and programming frontend, and it edits the rig, the presets, the
   cue lists and the effects, but not the rest of a show yet.** F3, F8, F6, F4 and F5 show, add,
-  delete and update fixtures, universes, routes, presets, cues, cue lists and effects from controls
-  alone; a cue's timing, trigger and name are pre-fills. The rest, effect templates and a playback's
-  configuration, is typed at the prompt.
+  delete and update fixtures, universes, routes, presets, cues, cue lists, effects and effect
+  templates from controls alone; a cue's timing, trigger and name are pre-fills. The rest, a
+  playback's configuration, is typed at the prompt.
 - **busk has the lines the TUI needs.** Deleting several presets, cues or lists at once is all it
   still lacks (see [What busk is missing](#what-busk-is-missing)).
 
@@ -157,14 +157,14 @@ recorded into cues, and the templates both are made from.
 | Show | typed `ProgrammerStatus.effects`, `LiveShow.show`, `LiveShow.effects`, `LiveShow.effect_templates` | yes | control: F5 table (cue and programmer effects, their settings, live wave, state) and TEMPLATES; F1 B EFFECTS |
 | Add to the programmer | `effect add "<template>" [options…]` | yes | control: a template click on F5 (`effect add "<name>"`, the library's defaults); prompt for options |
 | Add to a cue | `record cue L/C` with effects in the programmer | yes | control: F4 `[record cue L]` |
-| Add a template | `effect template add "<name>" <JSON layers>` | yes | prompt |
+| Add a template | `effect template add "<name>" <JSON layers>` | yes | control: `[+ template…]` on F5, a name and what its first layer is; the panel then edits it |
 | Remove from the programmer | `effect remove <id>`, `effect clear` | yes | control: `✕` on F5; `[clear]`, after a question |
 | Remove from a cue | `cue L/C effect <id> remove` (GAP-32) | yes | control: `✕` on F5, after a question |
-| Delete a template | `effect template delete "<name>"` (GAP-31) | yes: refused while a cue, a binding or the programmer uses it, and for a template only the library has | prompt |
+| Delete a template | `effect template delete "<name>"` (GAP-31) | yes: refused while a cue, a binding or the programmer uses it, and for a template only the library has | control: `[delete]` on F5's TEMPLATE panel, after a question, grey while something uses it |
 | Stop, run (programmer) | `effect stop <id>`, `effect run <id>` | yes | control: state toggle on F5 and F1 B |
 | Change settings (programmer) | `effect add "<template>" id <id> …` replaces them | partial: the line takes its targets from the selection (GAP-41) | control: F5's EFFECT panel, while the selection is the effect's fixtures |
 | Change settings (cue) | `cue L/C effect <id> <prop> <value>` | partial: no line takes an optional setting away (GAP-41) | control: F5's EFFECT panel |
-| Change or rename a template | `effect template update "<name>" <JSON layers>`, `effect template rename "<name>" "<new name>"` (GAP-31) | yes: the show's own templates | prompt |
+| Change or rename a template | `effect template update "<name>" <JSON layers>`, `effect template rename "<name>" "<new name>"` (GAP-31) | yes: the show's own templates | control: F5's TEMPLATE panel, a control per setting of each layer, and `[rename…]` |
 
 ## Playbacks (buttons and faders)
 
@@ -215,7 +215,6 @@ host it:
 
 - **F1**: the playback's own buttons (`button N B on|off`) instead of the fixed GO, ◂ and
   FLASH; `record slot` on an empty slot.
-- **F5**: add, delete, rename and change a template.
 - **Playbacks**: no screen views or edits their configuration (buttons, fader function,
   band, exclusivity, flash, LTP mode, release time, page slots), and none adds or deletes one.
 

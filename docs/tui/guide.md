@@ -670,6 +670,34 @@ the selection the header names: `effect add "Circle"`, with those defaults; to c
 others, type the line (`effect add "Circle" bpm x 2 size 30`), or change the effect in its
 panel. A template you add with `effect template add` shows here at once.
 
+`[+ template…]`, under the table, makes a new one from controls: a name and whether its first
+layer is a wave or a colour. Once the show has it, its panel opens.
+
+**The TEMPLATE panel** opens with `[edit]` on a template's row, or `[view]` on one only the library
+has, in the place of the templates, until its `[done]`. A library template is read-only: it names
+its layers, and adding it to a selection copies it into the show, where it can change.
+
+A template of the show has a row per layer, as `list effects` words it (`pan add sine +90°`). A
+click on a row chooses that layer for the controls under the table, and `✕` takes it out; a
+template keeps its last layer. `[+ wave]` adds a wave layer, and `[+ colour]` a colour layer, of
+which a template has at most one. `[rename…]` renames it. `[delete]` deletes it, after a question,
+and is grey while a cue, a binding or the programmer uses it, which the panel names. Each change
+is one line and one undo step, `effect template update "<name>" <JSON layers>`, and a value left
+as it was sends nothing.
+
+- A **wave layer** has a chip for each attribute it can drive, its `mode` (`absolute`, `add`,
+  `multiply`) and its waveform, then what that waveform takes (`duty`; `width`, `attack` and
+  `decay`; `steps`, as `0 0.5 1`; `seed` and `smooth`; `points`, as `0 0, 0.5 1, 1 0`) and its
+  `[offset…]`, in degrees.
+- A **colour layer** has its `blend` and its palette. A click on a colour opens its form, `✕`
+  takes an entry out, `[+ colour…]` adds one, and a chip per colour preset adds that preset. A
+  palette keeps its last colour.
+
+A dialog refuses a value that could not be sent, such as a level outside 0 to 1, and a name the
+show has. What only busk can tell comes back as a refusal, such as a pulse longer than its cycle,
+or an absolute layer on pan for an effect with no levels: the reason shows in red in the panel until
+the next change, and the whole reply in the log.
+
 **The EFFECT panel** opens with a click on any part of a row but its state or `✕`, in the place of
 the templates, until its `[done]`. It names the effect's template and fixtures, and has one
 control per setting:
@@ -699,8 +727,8 @@ controls are grey and it says so, and `[its fixtures]` selects them. A stopped e
 stopped.
 
 The pane cursor stops on each row (Enter opens its panel), each state and `✕`, and `[clear]`,
-then each template, or the panel's controls while it is open. Below 132 columns the templates and
-the panel go under the effects.
+then each template and its `[edit]` or `[view]`, and `[+ template…]`, or a panel's controls while
+it is open. Below 132 columns the templates and the panels go under the effects.
 
 ## F6 Presets
 

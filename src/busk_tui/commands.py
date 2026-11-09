@@ -15,10 +15,10 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Literal
+from typing import Any, Literal
 
 
 @dataclass(frozen=True, slots=True)
@@ -245,6 +245,25 @@ def effect_add(template: str) -> Line:
 
 def effect_clear() -> Line:
     return Line("effect clear")
+
+
+def effect_template_add(name: str, layers: Sequence[Mapping[str, Any]]) -> Line:
+    """A new effect template: ``effect template add "Beat" [{…}]``."""
+    return Line(f"effect template add {quoted(name)} {json.dumps(list(layers))}")
+
+
+def effect_template_update(name: str, layers: Sequence[Mapping[str, Any]]) -> Line:
+    """A show template's layers, all of them, as the show stores them:
+    ``effect template update "Beat" [{…}]``."""
+    return Line(f"effect template update {quoted(name)} {json.dumps(list(layers))}")
+
+
+def effect_template_rename(name: str, new_name: str) -> Line:
+    return Line(f"effect template rename {quoted(name)} {quoted(new_name)}")
+
+
+def effect_template_delete(name: str) -> Line:
+    return Line(f"effect template delete {quoted(name)}")
 
 
 def effect_replace(template: str, effect: str, settings: Sequence[str]) -> Line:

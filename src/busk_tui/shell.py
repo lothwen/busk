@@ -162,6 +162,7 @@ class BuskApp(App[int]):
         self._quitting: int | None = None  # the ticket of "save and quit"'s save
         self._context_text = ""
         self._waiting: dict[int, Callable[[bool], None]] = {}  # ticket → what to call when done
+        self._refusals: dict[int, Callable[[str], None]] = {}  # ticket → who says why it failed
         self._keyed: dict[str, int] = {}  # key → the newest ticket with such a callback
 
     # ------------------------------------------------------------ layout
@@ -337,6 +338,7 @@ class BuskApp(App[int]):
 
     def _done(self, done: CommandDone) -> None:
         callback = self._waiting.pop(done.ticket, None)
+        refused = self._refusals.pop(done.ticket, None)
         if callback is not None:
             for key, ticket in list(self._keyed.items()):
                 if ticket == done.ticket:
@@ -358,6 +360,8 @@ class BuskApp(App[int]):
             lines = list(done.lines) or ["failed"]
             lines[0] = lines[0].removeprefix("error: ")  # busk's mark of a refused line
             self.log_view.add("error", "\n".join(lines))
+            if refused is not None:
+                refused("\n".join(lines))
         if done.quit:
             self.action_quit_dialog()
 
@@ -371,21 +375,23 @@ class BuskApp(App[int]):
         performance: bool = False,
         done: Callable[[bool], None] | None = None,
         ask: str | None = None,
+        refused: Callable[[str], None] | None = None,
     ) -> None:
         """Send ``line``: after the engine's question, if it asks one (not
         for a control's keyed moves), else after ``ask``, the TUI's own;
         echoed unless ``internal``. ``done`` is called with the line's
-        success once it has run."""
+        success once it has run, and ``refused`` with busk's reply if it was
+        refused."""
         question = None if key is not None else self.bridge.confirmation(line)
         if question is None:
             question = ask
         if question is None:
-            self._send(line, origin, key, performance, done)
+            self._send(line, origin, key, performance, done, refused)
             return
 
         def answered(yes: bool | None) -> None:
             if yes:
-                self._send(line, origin, key, performance, done)
+                self._send(line, origin, key, performance, done, refused)
             else:
                 self.log_view.add("info", f"cancelled: {line}")
 
@@ -398,10 +404,13 @@ class BuskApp(App[int]):
         key: str | None,
         performance: bool,
         done: Callable[[bool], None] | None = None,
+        refused: Callable[[str], None] | None = None,
     ) -> int:
         if origin != "internal":
             self.log_view.add("typed" if origin == "typed" else "ui", line)
         ticket = self.bridge.send(line, origin, key=key, performance=performance)
+        if refused is not None:
+            self._refusals[ticket] = refused
         if done is not None:
             if key is not None:  # a newer keyed line replaces the older if unsent: forget it
                 older = self._keyed.pop(key, None)
@@ -420,7 +429,13 @@ class BuskApp(App[int]):
         self._disarm()
         line = message.line
         self.run_line(
-            line.text, message.origin, message.key, line.performance, message.done, message.ask
+            line.text,
+            message.origin,
+            message.key,
+            line.performance,
+            message.done,
+            message.ask,
+            message.refused,
         )
 
     def on_fill_prompt(self, message: FillPrompt) -> None:

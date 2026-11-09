@@ -27,6 +27,12 @@ from busk_tui.widgets.chase_dialog import (
 from busk_tui.widgets.dialogs import check_cue, check_number, next_cue
 from busk_tui.widgets.fixture_panel import CATEGORIES
 from busk_tui.widgets.route_dialog import network_line, usb_line
+from busk_tui.widgets.template_panel import NEW_COLOUR, NEW_WAVE, WAVES
+
+NEW_WAVE_JSON = (
+    '[{"attribute": "intensity", "waveform": {"kind": "sine"}, '
+    '"phaseOffset": 0.0, "mode": "multiply"}]'
+)
 
 TUPPER = Path(__file__).resolve().parents[2] / "examples" / "tupperdmx" / "tupper-demo.show"
 
@@ -74,6 +80,26 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
         False,
     ),
     "effect clear": (commands.effect_clear(), "effect clear", False),
+    "effect template add": (
+        commands.effect_template_add("Beat", [NEW_WAVE]),
+        f'effect template add "Beat" {NEW_WAVE_JSON}',
+        False,
+    ),
+    "effect template update": (
+        commands.effect_template_update("Beat", [NEW_WAVE]),
+        f'effect template update "Beat" {NEW_WAVE_JSON}',
+        False,
+    ),
+    "effect template rename": (
+        commands.effect_template_rename("Beat", 'Say "hi"'),
+        r'effect template rename "Beat" "Say \"hi\""',
+        False,
+    ),
+    "effect template delete": (
+        commands.effect_template_delete('Say "hi"'),
+        r'effect template delete "Say \"hi\""',
+        False,
+    ),
     "cue effect number": (
         commands.cue_effect(9, "4", "rainbow", "size", "0.5"),
         "cue 9/4 effect rainbow size 0.5",
@@ -725,6 +751,40 @@ def test_the_chase_form_and_busk_agree_on_a_crossfade(
 ) -> None:
     assert (check_crossfade(text) is None) is ok
     assert show.execute(f"cuelist 9 chase hz 2 crossfade {text}").ok is ok
+
+
+def test_the_template_lines_do_what_they_say(show: busk.OfflineShow) -> None:
+    def template(name: str) -> Any:
+        return next(found for found in show.show["effects"] if found["name"] == name)
+
+    def run(*lines: Line) -> None:
+        for line in lines:
+            reply = show.execute(line.text)
+            assert reply.ok, (line.text, reply.text)
+
+    run(commands.effect_template_add('Say "hi"', [NEW_WAVE]))
+    assert template('Say "hi"')["layers"] == [NEW_WAVE]
+    run(commands.effect_template_update('Say "hi"', [NEW_WAVE, NEW_COLOUR]))
+    assert template('Say "hi"')["layers"] == [NEW_WAVE, NEW_COLOUR]
+    run(commands.effect_template_rename('Say "hi"', "Fresh"))
+    assert template("Fresh")["layers"] == [NEW_WAVE, NEW_COLOUR]
+    run(commands.effect_template_delete("Fresh"))
+    assert not any(found["name"] == "Fresh" for found in show.show["effects"])
+
+
+def test_a_layer_with_a_number_of_every_digit_reaches_busk(show: busk.OfflineShow) -> None:
+    layer = NEW_WAVE | {"waveform": {"kind": "square", "duty": 1e-7}, "phaseOffset": 1e22}
+    assert show.execute(commands.effect_template_add("Tiny", [layer]).text).ok
+    stored = next(found for found in show.show["effects"] if found["name"] == "Tiny")
+    assert stored["layers"] == [layer]
+
+
+@pytest.mark.parametrize("kind", sorted(WAVES))
+def test_every_waveform_as_the_panel_starts_it_is_one_busk_takes(
+    show: busk.OfflineShow, kind: str
+) -> None:
+    layer = NEW_WAVE | {"waveform": {"kind": kind} | WAVES[kind]}
+    assert show.execute(commands.effect_template_add("Wave of mine", [layer]).text).ok
 
 
 def test_the_cue_and_list_lines_do_what_they_say(show: busk.OfflineShow) -> None:
