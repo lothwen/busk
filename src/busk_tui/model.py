@@ -395,6 +395,19 @@ class PlaybackInfo:
     uiColor: Rgb | None  # its ``uiColor``, when it is one
     buttons: tuple[str, ...] = ()  # its own buttons' functions, in order
     gotoCue: str | None = None  # the cue its ``goto`` buttons go to
+    priority: int = 50  # its band
+    fader: str = "master"  # master, crossfade, rate, size, temp, none
+    ltpFaderMode: str = "threshold"  # followFader, threshold, ignoreFader
+    ltpThreshold: float = 0.02
+    autoStart: bool = True
+    autoRelease: bool = True
+    flashLevel: float = 1.0
+    flashLtp: bool = True  # a flash brings its LTP values too
+    flashBoost: int | None = None  # added to its band while it flashes
+    exclusivity: str | None = None
+    protectFromSwop: bool = False
+    releaseTime: float = 1.0
+    uiColorText: str | None = None  # ``uiColor`` as the show stores it, whatever it is
 
 
 @dataclass(frozen=True, slots=True)

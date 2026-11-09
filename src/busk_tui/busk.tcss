@@ -52,6 +52,17 @@ ModalScreen {
     width: 100%;
 }
 
+/* F1's edit mode: the PLAYBACK panel goes under the slots. */
+.narrow #playback-editor {
+    layout: vertical;
+}
+
+.narrow #playback-editor > #slots-panel,
+.narrow #playback-editor > #playback-panel {
+    width: 100%;
+    margin-left: 0;
+}
+
 /* F6: the PRESET panel goes under the pools. */
 .narrow #presets-body {
     layout: vertical;

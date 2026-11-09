@@ -580,6 +580,26 @@ def chase_settings(
     return Line(f"cuelist {cue_list} chase {rate} {direction}{fade}")
 
 
+# -------------------------------------------------------------- playbacks
+
+
+def rename_playback(playback: int, name: str) -> Line:
+    return Line(f"rename playback {playback} {quoted(name)}")
+
+
+def playback_setting(playback: int, prop: str, value: str) -> Line:
+    """One setting of a playback, ``value`` as busk reads it, JSON or a word:
+    ``playback 9 fader size``, ``playback 9 flash.level 0.5``, ``playback 9
+    number 30``, ``playback 9 cuelist 11``, ``playback 9 goto 4``; ``none``
+    takes an optional one away: ``playback 9 exclusivity none``."""
+    return Line(f"playback {playback} {prop} {value}")
+
+
+def playback_buttons(playback: int, functions: Sequence[str]) -> Line:
+    """All of a playback's buttons, in order: ``playback 9 buttons ["go", "flash"]``."""
+    return Line(f"playback {playback} buttons {json.dumps(list(functions))}")
+
+
 # ---------------------------------------------------------------- pre-fills
 # Lines put in the prompt for the operator to finish.
 

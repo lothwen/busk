@@ -515,7 +515,7 @@ def test_the_location_form_starts_from_the_fixtures_place_and_sends_a_change() -
         assert str(layout.edit_label.content) == "place fixture 301 Bar"  # the first unplaced
         bridge.events.append(ProgrammerChanged(programmer(selection=((101, 1),))))
         await settle(pilot, app)
-        item = app.current_page.items()[-4]  # the pane cursor reaches it, as a click does
+        item = app.current_page.items()[-5]  # the pane cursor reaches it, as a click does
         assert item.label == "[location…]"
         item.action()
         await pilot.pause()
@@ -647,7 +647,7 @@ def test_the_pane_cursor_reaches_each_layout_and_switches_them() -> None:
         assert labels[8:11] == ["gm ", 'master "FX" ', 'master "Washes" ']
         assert labels[11:13] == ['tap "Speed 1"', "blackout on"]
         assert labels[13:20] == [f"sel fixture {n}" for n in (201, 202, 203, 101, 102, 301, 401)]
-        assert labels[20:] == ["layout A console", "layout B stack", "layout C stage"]
+        assert labels[20:] == ["layout A console", "layout B stack", "layout C stage", "edit"]
         await pilot.press("tab", *["down"] * 22, "enter")  # layout C
         await pilot.pause()
         assert app.view.layout == "C"
@@ -659,7 +659,7 @@ def test_the_pane_cursor_reaches_each_layout_and_switches_them() -> None:
         labels = [item.line or item.prefill or item.label for item in items]
         assert labels[:3] == ["button 1 1 on", "button 2 1 on", "button 3 1 on"]
         assert "sel fixture 401" in labels
-        assert labels[-4] == "[location…]"
+        assert labels[-5] == "[location…]"
         await pilot.press("up", "up", "enter")  # layout A
         await pilot.pause()
         assert app.view.layout == "A"

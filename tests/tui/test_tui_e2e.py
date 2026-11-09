@@ -70,6 +70,7 @@ from busk_tui.widgets.fixturetable import FixtureTable
 from busk_tui.widgets.frame import StatusBar
 from busk_tui.widgets.log import LogView
 from busk_tui.widgets.options import LIT, OptionRow
+from busk_tui.widgets.playback_panel import CueListDialog, PlaybackEditor, PlaybackPanel
 from busk_tui.widgets.playbacks import PlaybackRow
 from busk_tui.widgets.preset_panel import Chosen
 from busk_tui.widgets.profile_picker import ProfileDialog
@@ -1707,6 +1708,115 @@ def test_f1_presses_a_playbacks_own_buttons_on_the_real_engine(
 
     try:
         drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_f1_edits_a_playback_from_controls_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """Edit mode: a chip, a dialog, a ``[none]``; a typed ``undo``, which redraws
+    the panel; a setting changed while the playback runs and its list kept;
+    another list once it has released; a new number; the strip it leaves."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(), standalone=True)
+
+    def info(number: int = 9) -> Any:
+        assert app.view.show is not None
+        return app.view.show.playback(number)
+
+    def state() -> Any:
+        assert app.view.live is not None
+        found = app.view.live.playback(9)
+        assert found is not None
+        return found
+
+    def panel() -> PlaybackPanel:
+        return app.query_one(PlaybackPanel)
+
+    async def body(pilot: Pilot[int]) -> None:
+        async def press(widget: Widget) -> None:
+            await pilot.pause(0.1)  # the panel has drawn what changed
+            await pilot.click(widget)
+
+        async def answer(button: ActionButton, text: str) -> None:
+            await press(button)
+            await pilot.pause(0.1)
+            assert isinstance(app.screen, TextDialog)
+            await answer_field(pilot, app, text)
+
+        await until(pilot, lambda: app.view.live is not None and info() is not None)
+        await pilot.pause(0.1)
+        await pilot.click("#busk-edit")
+        await until(pilot, lambda: bool(app.query_one(PlaybackEditor).tiles))
+        tile = next(
+            t
+            for t in app.query_one(PlaybackEditor).tiles
+            if t.info is not None and t.info.number == 9
+        )
+        await press(tile)
+        await until(pilot, lambda: app.view.playback == 9)
+        await until(pilot, lambda: panel().chosen() == info())
+
+        await tap_button(pilot, panel().strips["fader"], "size")
+        await until(pilot, lambda: info().fader == "size", timeout=2.0)
+        await answer(panel().settings["band"].buttons[0], "70")
+        await until(pilot, lambda: info().priority == 70, timeout=2.0)
+        await answer(panel().settings["flash level"].buttons[0], "75")
+        await until(pilot, lambda: info().flashLevel == 0.75, timeout=2.0)
+        assert info().exclusivity == "base"
+        await press(panel().settings["exclusive"].buttons[1])
+        await until(pilot, lambda: info().exclusivity is None, timeout=2.0)
+        await until(pilot, lambda: plain_of(panel().settings["exclusive"].value) == "none")
+
+        await pilot.press(*"undo", "enter")
+        await until(pilot, lambda: plain_of(panel().settings["exclusive"].value) == "base")
+        assert info().exclusivity == "base"
+
+        await pilot.press(*"go 9", "enter")
+        await until(pilot, lambda: state().state == "active")
+        await until(pilot, lambda: panel().settings["cue list"].buttons[0].inert)
+        assert panel().why.display
+        await answer(panel().settings["release"].buttons[0], "0")
+        await until(pilot, lambda: info().releaseTime == 0.0, timeout=2.0)
+        assert state().state == "active"
+        await pilot.press(*"release 9 0", "enter")
+        await until(pilot, lambda: state().state == "idle")
+        await until(pilot, lambda: not panel().settings["cue list"].buttons[0].inert)
+
+        await press(panel().settings["cue list"].buttons[0])
+        await pilot.pause(0.1)
+        dialog = app.screen
+        assert isinstance(dialog, CueListDialog)
+        options = [found.number for found in dialog.lists]
+        index = options.index(11)
+        highlighted = dialog.options.highlighted
+        assert highlighted is not None
+        keys = (
+            ["down"] * (index - highlighted)
+            if index > highlighted
+            else ["up"] * (highlighted - index)
+        )
+        await pilot.press(*keys, "enter")
+        await until(pilot, lambda: info().cueList == 11, timeout=2.0)
+
+        await press(panel().renumber)
+        await pilot.pause(0.1)
+        await answer_field(pilot, app, "77")
+        await until(pilot, lambda: app.view.playback == 77, timeout=2.0)
+        await until(pilot, lambda: panel().chosen() == info(77))
+        assert info(9) is None
+
+        await press(panel().done)
+        await until(pilot, lambda: app.query_one(StackLayout).display)
+        rows = {row.number: row for row in app.query_one(StackLayout).rows}
+        assert 77 in rows
+        assert 9 not in rows
+
+    try:
+        drive(app, body, size=(150, 70))
     finally:
         bridge.stop()
 

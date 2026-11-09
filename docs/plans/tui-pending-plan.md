@@ -698,13 +698,60 @@ pages of Phase 9, a new `widgets/playback_panel.py`, `PlaybackInfo` in `src/busk
 
 1. **Edit mode.** `[edit]` replaces the strips with a grid of the current page's slots, in every
    layout, so nothing performs while editing, as F3's table does.
+
+   **Done** (2026-11-09). As planned: `PlaybackEditor`, `SlotGrid` and `SlotTile` in the new
+   `src/busk_tui/widgets/playback_panel.py`, shown by `BuskPage.set_editing`. Which the user may veto:
+   - **The grid and the panel take the place of the whole layout**, its masters and tempo too, not
+     only of the strips: the panel needs the room.
+   - **The grid has every slot of the page, past `--faders`.** F1 caps its strips for the screen; a
+     playback past the cap would otherwise have no control at all.
+   - **The keys still perform.** Space, `[ ]` and PgUp act on the selected playback, as they do on
+     every page, F3's edit mode included. "Nothing performs" is the grid.
+   - **`[edit]` is the pane cursor's last stop**, so Tab still lands first on a playback's button.
+   - A click on an empty slot does nothing here. Phase 11 gives it `[new playback…]`.
 2. **A PLAYBACK panel** that shows everything `Playback` holds and edits each with one control:
    name, number, buttons, fader, band (`priority`), exclusivity, flash (level, LTP, boost), LTP
    mode and threshold, auto start and release, goto cue, swop protection, release time, colour, and
    the cue list (GAP-34's picker by number).
 
+   **Done** (2026-11-09). As planned: `PlaybackPanel` and `CueListDialog`, with `PlaybackInfo` holding
+   the rest of the show's playback. A chip per word for the closed sets, a dialog for the others, and
+   `[none]` on what can be left out. A test walks `Playback` and `PlaybackFlash`, so a new property
+   fails until it is on the panel or named as left out. Which the user may veto:
+   - **The panel follows the selected playback**, with no chosen one of its own, so ← → move it
+     too, and a tile's click is the click on `Pn` of the strips.
+   - **`notes` and `tags` are not on it.** The plan's list does not name them.
+   - **`[buttons…]` takes the functions as typed words**, in order, in one dialog, so that adding,
+     taking out and reordering are one line and one undo step. No words: no buttons.
+   - **Levels are in percent**, as every other level of the TUI, and go in the line as busk's 0 to 1.
+   - **The cue list's control is grey while the playback runs**, or is releasing, and the panel says
+     why, as busk refuses the line then. The other settings take effect while it runs.
+   - **A goto cue the new list lacks stays**, as Phase 3 left it: busk warns in the log.
+   - `[goto…]` takes a typed cue number of its list, and is grey on a list with no cues.
+   - `[colour…]` takes `#rrggbb`, the only form F1 can draw. Another word in the file shows as words.
+   - A key typed as `none` is a key of that name: only `[none]` removes one.
+   - A band and a flash boost take a sign, as busk does. `[number…]` starts at 1, as F3's does, though
+     busk takes a playback number below 1.
+
 Verify: every field, set and removed; the F-key and prompt still work in edit mode; `undo` redraws
 the panel; a playback that runs while it is edited.
+
+**Phase 10 checks** (2026-11-09). The whole suite: 6,004 passed and 1 skipped, in 6:18 with `uv run
+pytest -n 6`. `ruff check`, `ruff format --check` and `mypy src` clean. No change to `src/busk/` or
+the engine's tests. The five TUI test files the phase touched and the new test on the real engine in
+`tests/tui/test_tui_e2e.py`, 570 tests, pass on Textual 8.2.0. The perf gate on the final code: 7
+passed, no overruns, F1 B at +0.204 core, A at +0.229 and C at +0.222, on a loaded machine. Against
+the commit before this phase, four runs each, one after the other: B 0.179 before and 0.175 after, A
+0.191 before and 0.199 after. 49 mutations of the new code: 48 caught; the one that survived was a
+`float()` in the bridge that could do nothing, since busk's validation stores floats, and the three
+like it are gone. A real `busk-tui --state-dir …` under `busk run` on the club show, with real mouse
+clicks in a pty: at 150 columns in layout B, the grid and the panel, a tile, a fader chip, the band
+dialog, `go 9`, `[list…]` grey with its reason, `release 9 0`, the picker, `[buttons…]`, `[key…]`,
+`undo`, and `[done]` with the strip redrawn; at 99 columns in layout A, the panel under the grid and
+in sight after a click, a fader function changed while P9 ran, a new number while it ran, and `undo`
+of that number, with the selection following; at 150 columns in layout C, six buttons. No error in
+the log. Docs: `docs/tui/guide.md` with a section and a diagram, the report's rows, Summary, "In
+short" and "What the TUI is missing", and `CHANGELOG.md`.
 
 ### Phase 11: Adding and deleting playbacks, page slots
 
@@ -797,6 +844,9 @@ Left out because the five places do not name them. Say if any should join a phas
   2026-11-09.
 - `cue L/C effect <id> <prop> <value>` replies with a path too, and F5's EFFECT panel now puts that
   in the log. Found on 2026-11-09.
+- `playback N <prop> <value>` replies with a path too, and F1's PLAYBACK panel now puts that in the
+  log. `go` on a playback whose `gotoCue` its list lacks, after a change of list, was not checked.
+  Found on 2026-11-09.
 - `commands.effect_stop`, `effect_run` and `effect_remove` do not quote an id, so those controls
   fail on an effect id of two words, which only `id "my fx"` makes. `_rate_text` in the bridge does
   not escape a quote in a master's name. Found on 2026-11-09.
@@ -818,7 +868,7 @@ Left out because the five places do not name them. Say if any should join a phas
    - (b) A panel on F4, from the chosen list. Page slots would then need a home of their own.
    - (c) A new page on F11 or F12, which some terminals keep for themselves.
 
-   ANSWER:
+   ANSWER: (a), the recommended one (the user's standing word, 2026-11-09). Built in Phase 10.
 3. **What F1's strips show** (Phase 9). The report says the playback's own buttons replace the fixed
    GO, ◂ and FLASH. On the club show, 18 of 20 strips would then have no GO.
    - (a) Only the playback's own buttons, as the show is built. Layout C's one button is the first.

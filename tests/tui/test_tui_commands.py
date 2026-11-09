@@ -6,13 +6,14 @@ from __future__ import annotations
 
 import copy
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args, get_type_hints
 
 import pytest
 
 import busk
 from busk.commands.record import POOL_FAMILIES
 from busk.model.attributes import ATTRIBUTES
+from busk.model.playback import ButtonFunction, FaderFunction, Playback
 from busk.output import dmxusb
 from busk_tui import attributes, commands, config
 from busk_tui.bridge import show_model
@@ -26,6 +27,7 @@ from busk_tui.widgets.chase_dialog import (
 )
 from busk_tui.widgets.dialogs import check_cue, check_number, next_cue
 from busk_tui.widgets.fixture_panel import CATEGORIES
+from busk_tui.widgets.playback_panel import FADERS, FUNCTIONS, LTP_MODES, TOGGLES, TYPED
 from busk_tui.widgets.route_dialog import network_line, usb_line
 from busk_tui.widgets.template_panel import NEW_COLOUR, NEW_WAVE, WAVES
 
@@ -100,6 +102,21 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
     "effect template delete": (
         commands.effect_template_delete('Say "hi"'),
         r'effect template delete "Say \"hi\""',
+        False,
+    ),
+    "rename playback": (
+        commands.rename_playback(9, 'Say "hi"'),
+        r'rename playback 9 "Say \"hi\""',
+        False,
+    ),
+    "playback setting": (
+        commands.playback_setting(9, "fader", "size"),
+        "playback 9 fader size",
+        False,
+    ),
+    "playback buttons": (
+        commands.playback_buttons(9, ["go", "flash"]),
+        'playback 9 buttons ["go", "flash"]',
         False,
     ),
     "cue effect number": (
@@ -838,6 +855,97 @@ def test_the_cue_and_list_lines_do_what_they_say(show: busk.OfflineShow) -> None
     assert show.confirmation(commands.delete_cuelist(30).text) == 'Delete cue list 30 "Last"?'
     run(commands.delete_cuelist(30))
     assert 30 not in [found["number"] for found in show.show["cueLists"]]
+
+
+def test_the_playback_panels_words_are_busks() -> None:
+    assert get_args(FaderFunction.__value__) == FADERS
+    assert set(get_args(ButtonFunction.__value__)) == set(FUNCTIONS)
+    assert get_args(get_type_hints(Playback)["ltpFaderMode"]) == LTP_MODES
+
+
+def test_the_playback_panels_lines_do_what_they_say(show: busk.OfflineShow) -> None:
+    def stored() -> Any:
+        return next(found for found in show.show["playbacks"] if found["number"] == 9)
+
+    def run(line: Line) -> None:
+        reply = show.execute(line.text)
+        assert reply.ok, (line.text, reply.text)
+
+    def setting(prop: str, value: str) -> None:
+        run(commands.playback_setting(9, prop, value))
+
+    run(commands.rename_playback(9, "Hymn"))
+    assert stored()["name"] == "Hymn"
+    run(commands.playback_buttons(9, FUNCTIONS))
+    assert tuple(stored()["buttons"]) == FUNCTIONS
+    run(commands.playback_buttons(9, []))
+    assert stored()["buttons"] == []
+    for word in FADERS:
+        setting("fader", word)
+        assert stored()["fader"] == word
+    for word in LTP_MODES:
+        setting("ltpFaderMode", word)
+        assert stored()["ltpFaderMode"] == word
+    for prop, _ in TOGGLES.values():
+        keys = prop.split(".")
+        for value, expected in (("false", False), ("true", True)):
+            setting(prop, value)
+            holder = stored()
+            for key in keys:
+                holder = holder[key]
+            assert holder is expected
+    setting("goto", "2")
+    assert stored()["gotoCue"] == "2"
+    setting("gotoCue", "none")
+    assert "gotoCue" not in stored()
+    setting("cuelist", "11")
+    assert stored()["cueListId"] == next(
+        found["id"] for found in show.show["cueLists"] if found["number"] == 11
+    )
+    setting("number", "30")
+    assert [p["number"] for p in show.show["playbacks"] if p["name"] == "Hymn"] == [30]
+
+
+@pytest.mark.parametrize(
+    ("name", "text", "stored"),
+    [
+        ("band", "-5", -5),
+        ("exclusive", "wash 1", "wash 1"),
+        ("exclusive", "none", "none"),  # a key of that name, not its absence
+        ("exclusive", "2", "2"),
+        ("flash level", "14.3", 0.143),
+        ("flash boost", "-3", -3),
+        ("threshold", "100%", 1.0),
+        ("release", "0.125", 0.125),
+        ("colour", "#00ff80", "#00ff80"),
+    ],
+)
+def test_busk_stores_what_a_playback_dialog_sends(
+    show: busk.OfflineShow, name: str, text: str, stored: object
+) -> None:
+    typed = TYPED[name]
+    assert typed.check(text) is None
+    line = commands.playback_setting(9, typed.prop, typed.value(text))
+    reply = show.execute(line.text)
+    assert reply.ok, reply.text
+    holder = next(found for found in show.show["playbacks"] if found["number"] == 9)
+    for key in typed.prop.split("."):
+        holder = holder[key]
+    assert holder == stored
+
+
+@pytest.mark.parametrize("name", sorted(name for name, typed in TYPED.items() if typed.optional))
+def test_busk_takes_an_optional_setting_away(show: busk.OfflineShow, name: str) -> None:
+    typed = TYPED[name]
+    text = {"flash boost": "4", "colour": "#ff8000"}.get(name, "a key")
+    assert show.execute(commands.playback_setting(9, typed.prop, typed.value(text)).text).ok
+    drop = commands.playback_setting(9, typed.prop, "none")
+    reply = show.execute(drop.text)
+    assert reply.ok, reply.text
+    holder = next(found for found in show.show["playbacks"] if found["number"] == 9)
+    for key in typed.prop.split(".")[:-1]:
+        holder = holder[key]
+    assert typed.prop.split(".")[-1] not in holder
 
 
 def test_no_prefill_builder_is_left_unused() -> None:

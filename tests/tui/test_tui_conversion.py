@@ -76,6 +76,55 @@ def masters_by_id(show: busk.OfflineShow) -> dict[str, MasterView]:
     }
 
 
+def test_a_playbacks_settings_reach_the_model(show: busk.OfflineShow) -> None:
+    """Every field of the PLAYBACK panel, read from what the show stores."""
+    for line in (
+        "playback 9 priority 70",
+        "playback 9 fader crossfade",
+        "playback 9 ltpFaderMode followFader",
+        "playback 9 ltpThreshold 0.5",
+        "playback 9 autoStart false",
+        "playback 9 autoRelease false",
+        "playback 9 flash.level 0.25",
+        "playback 9 flash.includeLtp false",
+        "playback 9 flash.priorityBoost 5",
+        'playback 9 exclusivity "wash"',
+        "playback 9 protectFromSwop true",
+        "playback 9 releaseTime 2",
+        'playback 9 uiColor "#ff8000"',
+    ):
+        assert show.execute(line).ok, line
+    info = show_model(show.show).playback(9)
+    assert info is not None
+    assert (info.priority, info.fader, info.ltpFaderMode) == (70, "crossfade", "followFader")
+    assert (info.ltpThreshold, info.autoStart, info.autoRelease) == (0.5, False, False)
+    assert (info.flashLevel, info.flashLtp, info.flashBoost) == (0.25, False, 5)
+    assert (info.exclusivity, info.protectFromSwop, info.releaseTime) == ("wash", True, 2.0)
+    assert info.uiColorText == "#ff8000"
+    assert info.uiColor == (1.0, 128 / 255, 0.0)
+
+
+def test_a_new_playbacks_settings_reach_the_model_as_floats(show: busk.OfflineShow) -> None:
+    """``playback add`` stores whole numbers where the model has floats."""
+    assert show.execute("playback add 77 cuelist 9").ok
+    info = show_model(show.show).playback(77)
+    assert info is not None
+    assert (info.flashLevel, info.releaseTime) == (1.0, 1.0)
+    assert isinstance(info.flashLevel, float)
+    assert isinstance(info.releaseTime, float)
+    assert info.flashBoost is None
+    assert info.exclusivity is None
+    assert info.uiColorText is None
+
+
+def test_a_colour_that_is_only_a_word_stays_a_word(show: busk.OfflineShow) -> None:
+    assert show.execute('playback 9 uiColor "red"').ok
+    info = show_model(show.show).playback(9)
+    assert info is not None
+    assert info.uiColor is None
+    assert info.uiColorText == "red"
+
+
 def test_the_show_model_has_what_f1_and_f7_show(club: busk.OfflineShow) -> None:
     model = show_model(club.show)
     assert model.pages[0] == PageInfo(1, "Main", tuple(range(1, 14)))

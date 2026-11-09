@@ -11,6 +11,10 @@ The playbacks are the slots of the engine's current page, at most
 The selected playback (Space, ``[ ]``, ``P1`` in the prompt) is one of
 them: ← → step through them, and when the page changes, the selection
 moves to the playback in the same slot.
+
+``[edit]`` puts a grid of the page's slots and the PLAYBACK panel in place of
+the layout, whichever it is (:mod:`busk_tui.widgets.playback_panel`); ``[done]``
+gives it back. The grid shows every slot of the page, past ``faders`` too.
 """
 
 from __future__ import annotations
@@ -22,6 +26,7 @@ from typing import Final
 from rich.style import Style
 from rich.text import Text
 from textual.app import ComposeResult
+from textual.containers import Horizontal
 from textual.message import Message
 from textual.widget import Widget
 
@@ -34,7 +39,9 @@ from busk_tui.pages.base import ALL_PARTS, Page, Part, View
 from busk_tui.pages.busk_console import ConsoleLayout
 from busk_tui.pages.busk_stack import StackLayout
 from busk_tui.pages.busk_stage import StageLayout
-from busk_tui.widgets.controls import MARKED
+from busk_tui.widgets.controls import MARKED, ActionButton
+from busk_tui.widgets.playback_panel import PlaybackEditor
+from busk_tui.widgets.playbacks import PlaybackRow
 
 LAYOUTS: Final[tuple[tuple[Layout, str], ...]] = (("A", "console"), ("B", "stack"), ("C", "stage"))
 
@@ -50,10 +57,10 @@ def shown_page(show: ShowModel | None, live: LiveState | None) -> PageInfo | Non
     return next((page for page in show.pages if page.number == current), show.pages[0])
 
 
-def visible_slots(show: ShowModel | None, live: LiveState | None, cap: int) -> Slots:
+def visible_slots(show: ShowModel | None, live: LiveState | None, cap: int | None) -> Slots:
     """F1's slots: the playback number in each slot of the current page
-    (``None``: empty), at most ``cap``; without pages, the playbacks by
-    number."""
+    (``None``: empty), at most ``cap`` (``None``: all); without pages, the
+    playbacks by number."""
     if show is None:
         return ()
     page = shown_page(show, live)
@@ -88,7 +95,7 @@ def step(selected: int, slots: Sequence[int | None], by: int) -> int:
 class BuskHeader(Widget):
     """``page 1 Main · slots 1–13 · sel 101 thru 102``, and the layouts."""
 
-    DEFAULT_CSS = "BuskHeader { height: 1; margin-bottom: 1; }"
+    DEFAULT_CSS = "BuskHeader { height: 1; width: 1fr; }"
 
     def __init__(self) -> None:
         super().__init__()
@@ -161,6 +168,11 @@ class BuskHeader(Widget):
 class BuskPage(Page):
     """F1 (see the module docs)."""
 
+    DEFAULT_CSS = """
+    BuskPage #busk-head { height: 1; margin-bottom: 1; }
+    BuskPage #busk-edit { margin-left: 2; }
+    """
+
     class LayoutChosen(Message):
         """The operator chose a layout with the pane cursor."""
 
@@ -177,6 +189,11 @@ class BuskPage(Page):
         for layout in (self.console, self.stack, self.stage):
             layout.display = False  # until the first view says which
         self.shown: Layout | None = None
+        self.edit = ActionButton("edit", self.toggle_edit, id="busk-edit")
+        self.editor = PlaybackEditor(self.leave_edit)
+        self.editor.display = False
+        self.editing = False
+        self.view: View | None = None
 
     @property
     def shown_layout(self) -> ConsoleLayout | StackLayout | StageLayout:
@@ -186,27 +203,71 @@ class BuskPage(Page):
         return self.stage if self.shown == "C" else self.stack
 
     def compose(self) -> ComposeResult:
-        yield self.header
+        with Horizontal(id="busk-head"):
+            yield self.header
+            yield self.edit
         yield self.console
         yield self.stack
         yield self.stage
+        yield self.editor
 
     def watches(self, view: View) -> tuple[bool, bool]:
-        """B shows the running effects, A and C the output."""
+        """B shows the running effects, A and C the output; edit mode neither."""
+        if self.editing:
+            return False, False
         return (False, True) if view.layout == "B" else (True, False)
 
     def update_view(self, view: View, changed: frozenset[Part]) -> None:
+        self.view = view
         if view.layout != self.shown:
             self.shown = view.layout
-            for letter, layout in (("A", self.console), ("B", self.stack), ("C", self.stage)):
-                layout.display = letter == view.layout
+            self._show_layout()
             self.header.show_layout(view.layout)
             changed = ALL_PARTS
-        slots = visible_slots(view.show, view.live, view.faders)
+        slots = visible_slots(view.show, view.live, None if self.editing else view.faders)
         if changed & {"show", "live", "programmer"}:
             self.header.show(view, slots)
         page = shown_page(view.show, view.live)
-        self.shown_layout.update_view(view, changed, slots, None if page is None else page.number)
+        if not self.editing:
+            number = None if page is None else page.number
+            self.shown_layout.update_view(view, changed, slots, number)
+        elif changed & {"show", "live", "playback"}:
+            self.editor.show_view(view.show, view.live, slots, page, view.playback, view.mode)
+
+    def _show_layout(self) -> None:
+        for letter, layout in (("A", self.console), ("B", self.stack), ("C", self.stage)):
+            layout.display = letter == self.shown and not self.editing
+
+    # ---------------------------------------------------------- edit mode
+
+    def toggle_edit(self) -> None:
+        self.set_editing(not self.editing)
+
+    def leave_edit(self) -> None:
+        self.set_editing(False)
+
+    def set_editing(self, on: bool) -> None:
+        """The grid and the PLAYBACK panel in the layout's place, or back."""
+        self.editing = on
+        self.editor.display = on
+        self._show_layout()
+        if on:
+            self.edit.change(label="edit ●", intent="record", reverse=True)
+        else:
+            self.edit.change(label="edit", intent="neutral", reverse=False)
+        self.post_message(Page.WatchesChanged(self))
+        if self.view is not None:
+            self.update_view(self.view, ALL_PARTS)
+
+    def on_playback_row_chosen(self, message: PlaybackRow.Chosen) -> None:
+        """A click on a slot: under the grid (below 100 columns), the panel
+        scrolls into sight. The app selects the playback."""
+        if self.editing and self.screen.has_class("narrow"):
+            self.call_after_refresh(
+                self.scroll_to_widget, self.editor.panel, animate=False, top=True
+            )
+
+    # -------------------------------------------------------- pane cursor
 
     def stops(self) -> list[Stop]:
         layouts = [
@@ -217,7 +278,8 @@ class BuskPage(Page):
             )
             for index, (letter, name) in enumerate(LAYOUTS)
         ]
-        return self.shown_layout.stops() + layouts
+        body = self.editor.stops() if self.editing else self.shown_layout.stops()
+        return [*body, *layouts, Stop(Item("edit", action=self.toggle_edit), self.edit)]
 
     def choose_layout(self, layout: Layout) -> None:
         self.post_message(self.LayoutChosen(layout))

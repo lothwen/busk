@@ -51,17 +51,17 @@ do can already be typed in the TUI. The tables below show how much the screens h
 | Effects in cues | control (F5) | control (via `record cue`) | control | control (F5's EFFECT panel) |
 | Effect templates | control (F5) | control (F5's `[+ template…]`) | control (F5's TEMPLATE panel) | control (F5's TEMPLATE panel) |
 | Playbacks, operating | control (F1) | n/a | n/a | control: the fader and the playback's own buttons |
-| Playbacks, configuration | partial: not shown | prompt | prompt | prompt |
+| Playbacks, configuration | control (F1's PLAYBACK panel) | prompt | prompt | control (F1's PLAYBACK panel) |
 
 In short:
 
-- **SHOW is covered** for all of them except a playback's configuration: its fader function,
-  band, exclusivity, flash settings, LTP mode and release time are on no screen.
+- **SHOW is covered** for all of them.
 - **The TUI is a performance and programming frontend, and it edits the rig, the presets, the
   cue lists and the effects, but not the rest of a show yet.** F3, F8, F6, F4 and F5 show, add,
   delete and update fixtures, universes, routes, presets, cues, cue lists, effects and effect
-  templates from controls alone; a cue's timing, trigger and name are pre-fills. The rest, a
-  playback's configuration, is typed at the prompt.
+  templates from controls alone; a cue's timing, trigger and name are pre-fills. F1's PLAYBACK panel edits a
+  playback's configuration; adding and deleting one, and placing it on a page, is typed at the
+  prompt.
 - **busk has the lines the TUI needs.** Deleting several presets, cues or lists at once is all it
   still lacks (see [What busk is missing](#what-busk-is-missing)).
 
@@ -171,7 +171,7 @@ recorded into cues, and the templates both are made from.
 | Operation | busk line | Engine | TUI |
 |---|---|---|---|
 | Show live state | typed `PlaybackStatus` (state, level, fader function, flash, cue, next, chase, colour) | yes | control: F1 shows the current page's playbacks with level, cue, next, colour and a fader tag (`xfade`, `rate`, `size`, `temp`, `no fader`); F4 names the playbacks that run a list |
-| Show configuration | `LiveShow.show`; `list playbacks` | yes | partial: F1 draws the buttons. No screen shows the band, exclusivity, flash settings, LTP mode or release time, and the TUI's `PlaybackInfo` reads only number, name, cue list, `uiColor`, buttons and `gotoCue` |
+| Show configuration | `LiveShow.show`; `list playbacks` | yes | control: F1's PLAYBACK panel, every property but `notes` and `tags` |
 | Fader | `fader N <level>` | yes | control: drag, wheel, `[ ]` |
 | GO, BACK, go to a cue | `go N`, `back N`, `goto N <cue>` | yes | control: F1's own buttons and Space; F4 buttons and cue rows |
 | Flash | `flash N on\|off` | yes | control: F1's `flash` and `swop` buttons, held |
@@ -180,10 +180,10 @@ recorded into cues, and the templates both are made from.
 | Add | `playback add N cuelist L [at [P.]S] ["name"]` (GAP-34); `record slot [P.]S` makes one with a new cue list and its cue 1 | yes | control: F1's `[record]` on an empty slot, `record slot P.S`; prompt: `playback add` |
 | Delete | `delete playback N cascade` (GAP-36), `delete playback N` | yes: its cue list stays. A plain `delete` is refused in one line while a page slot holds it | prompt |
 | Place on a page | `page P slot S playback N`, `page P slot S clear`, `page add N` | yes | prompt |
-| Buttons, fader function | `playback N buttons ["go", "flash", "release"]`, `playback N fader rate` | yes: `help` and `?` name them (GAP-35) | prompt |
-| Band, exclusivity, flash, LTP, release time, colour | `playback N priority 60`, `… exclusivity wash`, `… flash.level 0.5`, `… ltpFaderMode followFader`, `… releaseTime 2`, `… uiColor "#ff8800"`, `<optional> none` | yes: as above | prompt |
-| Rename, renumber | `rename playback N "…"`, `playback N number M` | yes | prompt |
-| Run another cue list | `playback N cuelist L` (GAP-34) | yes: refused while it runs | prompt |
+| Buttons, fader function | `playback N buttons ["go", "flash", "release"]`, `playback N fader rate` | yes: `help` and `?` name them (GAP-35) | control: F1's PLAYBACK panel, `[buttons…]` and a chip per function |
+| Band, exclusivity, flash, LTP, release time, colour | `playback N priority 60`, `… exclusivity wash`, `… flash.level 0.5`, `… ltpFaderMode followFader`, `… releaseTime 2`, `… uiColor "#ff8800"`, `<optional> none` | yes: as above | control: F1's PLAYBACK panel, a chip or a dialog per setting, and `[none]` |
+| Rename, renumber | `rename playback N "…"`, `playback N number M` | yes | control: F1's PLAYBACK panel |
+| Run another cue list | `playback N cuelist L` (GAP-34) | yes: refused while it runs | control: F1's PLAYBACK panel, a picker, grey while it runs |
 
 ## What busk is missing
 
@@ -212,9 +212,7 @@ Candidates for [engine-gaps.md](engine-gaps.md), if the TUI is to cover these:
 
 busk has the line for all of these, but no screen offers it:
 
-- **Playbacks**: no screen edits their configuration (buttons, fader function, band,
-  exclusivity, flash, LTP mode, release time, page slots) or shows more of it than F1's buttons,
-  and none deletes one or makes one on a list that exists.
+- **Playbacks**: no screen deletes one, makes one on a list that exists, or places one on a page.
 
 ## Side findings
 

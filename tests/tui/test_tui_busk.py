@@ -979,7 +979,7 @@ def test_the_pane_cursor_reaches_every_control() -> None:
             'tap "Speed 1"', 'bpm "Speed 1" 119', 'bpm "Speed 1" 121',
             "gm ", 'master "FX" ', 'master "Washes" ', "blackout on",
             "sel group 1", "sel group 2", "preset color 1", "preset color 2",
-            "layout A console", "layout B stack", "layout C stage",
+            "layout A console", "layout B stack", "layout C stage", "edit",
         ]  # fmt: skip
         await pilot.press("tab", "down", "down", "down")  # P2's second button
         await pilot.press("enter", "enter")

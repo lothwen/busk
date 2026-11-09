@@ -10,6 +10,10 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- F1 edits a playback from controls. `[edit]` puts a grid of the page's slots and a PLAYBACK panel in
+  place of the layout: its name and number, cue list, buttons, fader, band, exclusivity, flash level,
+  LTP and boost, LTP mode and threshold, auto start and release, goto cue, swop protection, release
+  time and colour, each one control and one line. The grid performs nothing.
 - F1's strips have each playback's own buttons, in place of the fixed GO, ◂ and FLASH: one per entry
   of its `buttons`, labelled by function, in all three layouts (layout C has room for the first).
   Each runs `button N B on`, `flash` and `swop` are held while the mouse button is down, and one

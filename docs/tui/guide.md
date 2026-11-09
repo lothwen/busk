@@ -144,10 +144,10 @@ same lines: **B, the stack** (the default, below), **A, the console** (vertical 
 the rig's live output) and **C, the stage** (the rig from above, in its live colours). Click
 one in the header (`layout A console B stack C stage`), or start with `--layout A`; the TUI
 remembers the one you chose last. The pane cursor stops on the three after the page's other
-controls.
+controls. `[edit]`, at the right of the header, opens [edit mode](#edit-mode-and-the-playback-panel).
 
 ```
- page 1 Main · slots 1–13 · sel 101 thru 102                                              layout   A console    B stack    C stage
+ page 1 Main · slots 1–13 · sel 101 thru 102                                     layout   A console    B stack    C stage   [edit]
 
  ┌─ PLAYBACKS ────────────────────────────────────────────────────────────────────────────┐┌─ TEMPO · Speed 1 ────────────────────┐
  │ #   name            level                         cue → next                           ││ ▀█  ▀▀█ █▀█   █▀█  ● ● ● ●           │
@@ -207,6 +207,75 @@ programmer effect it runs `effect stop fx5`, and `[off]` runs `effect run fx5`.
 1`; a preset with more than one colour is a grey `░░`).
 
 Below 100 columns the right column goes under the playbacks.
+
+### Edit mode and the PLAYBACK panel
+
+`[edit]`, at the right of the header, turns edit mode on (`[edit ●]`), in any layout. A grid of the
+page's slots and the PLAYBACK panel take the layout's place until `[done]`, at the end of the panel,
+or `[edit ●]` again. Nothing on the grid performs: a click selects a playback.
+
+```
+ page 1 Main · slots 1–13 · sel none                                       layout   A console    B stack    C stage   [edit ●]
+
+ ┌─ SLOTS · page 1 Main ──────────────────────────────────────────────────────┐ ┌─ PLAYBACK · P9 Song ─────────────────────────────┐
+ │ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐    │ │ [rename…] [number…]                              │
+ │ │ 1          P1 │ │ 2          P2 │ │ 3          P3 │ │ 4          P4 │    │ │                                                  │
+ │ │ Warm          │ │ Cool          │ │ Blue          │ │ Red           │    │ │ cue list     9 Song            [list…]           │
+ │ └───────────────┘ └───────────────┘ └───────────────┘ └───────────────┘    │ │ buttons      go back release   [buttons…]        │
+ │ …                                                                          │ │              goto                                │
+ └────────────────────────────────────────────────────────────────────────────┘ │ fader        [master] [crossfade] [rate] [size]  │
+                                                                                │              [temp] [none]                       │
+                                                                                │ band         50                [band…]           │
+                                                                                │ exclusive    base              [key…] [none]     │
+                                                                                │ flash level  100%              [level…]          │
+                                                                                │ flash LTP    [on] [off]                          │
+                                                                                │ flash boost  none              [boost…]          │
+                                                                                │ LTP mode     [followFader] [threshold]           │
+                                                                                │              [ignoreFader]                       │
+                                                                                │ threshold    2%                [level…]          │
+                                                                                │ auto start   [on] [off]                          │
+                                                                                │ auto release [on] [off]                          │
+                                                                                │ goto cue     4                 [goto…] [none]    │
+                                                                                │ swop protect [on] [off]                          │
+                                                                                │ release      3 s               [time…]           │
+                                                                                │ colour       none              [colour…]         │
+                                                                                │                                                  │
+                                                                                │ [done]                                           │
+                                                                                └──────────────────────────────────────────────────┘
+```
+
+**The grid** has a tile for every slot of the page F1 is on, past `--faders` too; a show with no
+pages has its playbacks by number. PgUp and PgDn change the page, as they do outside edit mode.
+
+**The panel** shows the selected playback: click a tile, or use ← → on an empty prompt. Each
+setting is one control and one line, so one undo step. A value left as it was sends nothing.
+
+| Row | Control | Line |
+|---|---|---|
+| `[rename…]`, `[number…]` | a dialog each | `rename playback 9 "Song"`, `playback 9 number 30`. The selection follows the number |
+| cue list | `[list…]`, a picker | `playback 9 cuelist 11`. Grey while the playback runs, and the panel says why: release it first |
+| buttons | `[buttons…]`: the functions as words, in order, a space between | `playback 9 buttons ["go", "flash"]`. No words: no buttons. `none` keeps a place |
+| fader | a chip each | `playback 9 fader size` |
+| band | `[band…]`, a whole number, of any sign | `playback 9 priority 70` |
+| exclusive | `[key…]`, `[none]` | `playback 9 exclusivity "wash"`, `playback 9 exclusivity none` |
+| flash level | `[level…]`, in percent | `playback 9 flash.level 0.75` |
+| flash LTP | `[on]`, `[off]` | `playback 9 flash.includeLtp false` |
+| flash boost | `[boost…]`, `[none]` | `playback 9 flash.priorityBoost 5` |
+| LTP mode | a chip each | `playback 9 ltpFaderMode followFader` |
+| threshold | `[level…]`, in percent | `playback 9 ltpThreshold 0.05` |
+| auto start, auto release | `[on]`, `[off]` | `playback 9 autoStart false` |
+| goto cue | `[goto…]`, a cue of its list, `[none]` | `playback 9 goto 4`, `playback 9 gotoCue none` |
+| swop protect | `[on]`, `[off]` | `playback 9 protectFromSwop true` |
+| release | `[time…]`, in seconds | `playback 9 releaseTime 2` |
+| colour | `[colour…]`, as `#rrggbb`, `[none]` | `playback 9 uiColor "#ff8000"` |
+
+`[none]` shows on what has a value to take away. Changing the cue list leaves a goto cue the new
+list lacks: busk warns in the log, and `[goto…]` sets another.
+
+The F-keys, the prompt and `undo` work as anywhere, and so do Space, `[ ]` and the other keys of an
+empty prompt: they act on the selected playback as they do on every page. The pane cursor stops on
+each tile (Enter selects it), the panel's controls, `[done]`, the layouts and `[edit]`. Below 100
+columns the panel goes under the grid, and a click on a tile scrolls to it.
 
 ### Layout A: console
 
