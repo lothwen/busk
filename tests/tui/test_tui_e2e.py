@@ -1631,6 +1631,86 @@ def test_layouts_a_and_c_show_the_real_output(club_path: Path, tmp_path: Path) -
         bridge.stop()
 
 
+def test_f1_presses_a_playbacks_own_buttons_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """Toggle, a held flash and release on P1; P9's goto; a select button
+    typed at the prompt, which redraws the strip; ``[record]`` on page 2's
+    empty slot, grey until the programmer holds something."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(), standalone=True)
+
+    def row_of(number: int | None) -> PlaybackRow | None:
+        rows = app.query_one(StackLayout).rows
+        return next((row for row in rows if row.number == number), None)
+
+    def strip(number: int | None) -> PlaybackRow:
+        row = row_of(number)
+        assert row is not None
+        return row
+
+    def view(number: int) -> Any:
+        assert app.view.live is not None
+        found = app.view.live.playback(number)
+        assert found is not None
+        return found
+
+    def labels(number: int) -> list[str]:
+        return [plain_of(button) for button in strip(number).buttons]
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.view.live is not None and row_of(1) is not None)
+        await pilot.pause(0.1)
+        assert labels(1) == ["[TG]", "[FL]", "[RL]"]
+        toggle, flash, release = strip(1).buttons
+        await pilot.click(toggle)
+        await until(pilot, lambda: view(1).state == "active")
+        await pilot.mouse_down(flash)
+        await until(pilot, lambda: view(1).flash)
+        await pilot.mouse_up(flash)
+        await until(pilot, lambda: not view(1).flash)
+        await pilot.click(release)
+        await until(pilot, lambda: view(1).state != "active")
+
+        assert labels(9) == ["[GO]", "[◂]", "[RL]", "[GT]"]
+        await pilot.click(strip(9).buttons[3])
+        await until(pilot, lambda: view(9).cue == "4")
+
+        await pilot.press("space")  # P1 has no go button, and Space still goes
+        await until(pilot, lambda: view(1).state == "active")
+
+        await pilot.press(*'playback 9 buttons ["select"]', "enter")
+        await until(pilot, lambda: labels(9) == ["[SL]"], timeout=1.0)
+        await pilot.pause(0.1)
+        await pilot.click(strip(9).buttons[0])
+        await until(pilot, lambda: bool(app.programmer and app.programmer.selection))
+
+        await pilot.press("pagedown")
+        await until(pilot, lambda: row_of(None) is not None, timeout=1.0)
+        record = strip(None).record
+        assert record is not None
+        assert record.inert  # a selection is nothing to record
+        await pilot.press(*"sel group 2", "enter", *"set intensity 40%", "enter")
+        await until(pilot, lambda: not record.inert, timeout=1.0)
+        assert record.line.text == "record slot 2.7"
+        await pilot.pause(0.1)
+        await pilot.click(record)
+        await until(pilot, lambda: row_of(None) is None, timeout=2.0)
+        assert app.view.show is not None
+        page = next(p for p in app.view.show.pages if p.number == 2)
+        number = page.slots[6]
+        assert number is not None
+        await until(pilot, lambda: row_of(number) is not None, timeout=1.0)
+        assert labels(number) == ["[TG]", "[FL]"]
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
 def test_f1_c_places_a_fixture_through_its_form_on_the_real_engine(
     club_path: Path, tmp_path: Path
 ) -> None:

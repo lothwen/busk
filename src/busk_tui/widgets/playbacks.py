@@ -2,22 +2,27 @@
 
 A row (layout B) shows one slot of the current page: ``Pn``, the name, the
 level as a bar in the current cue's colour, the level, the cue and the next
-one (or a chase's rate and direction), and ``[GO] [◂] [FL]``. The bar sets
-the fader (``fader N p%``, a click, a drag or the wheel), GO and ◂ run ``go
-N`` and ``back N``, and FLASH is held while the mouse button is down
-(``flash N on``, then ``flash N off``). A click on ``Pn`` or the name
-selects the playback for Space and ``[ ]``. An empty slot shows ``·`` and
-``—``. A compact row (layout C) has ``Pn``, the name, the bar, the level and
-``[GO]``.
+one (or a chase's rate and direction), and the playback's own buttons, one
+per entry of its ``buttons``, labelled by function (:data:`LABELS`). The bar
+sets the fader (``fader N p%``, a click, a drag or the wheel). A button runs
+``button N B on``, ``B`` counted from 1, so a ``none`` keeps its place; a
+``flash`` or a ``swop`` is held while the mouse button is down (``button N B
+on``, then ``button N B off``). A click on ``Pn`` or the name selects the
+playback for Space and ``[ ]``. An empty slot shows ``·``, ``—`` and
+``[record]`` (``record slot P.S``), grey with nothing to record. A compact
+row (layout C) has ``Pn``, the name, the bar, the level and the first button.
 
 A column (layout A) has the same, top to bottom: ``Pn``, the name, where it
-is in its list (``2/5``, ``chase 4``), a vertical fader, the level, ``[GO]
-[◂]`` and ``[FLASH]``.
+is in its list (``2/5``, ``chase 4``), a vertical fader, the level and the
+buttons, two to a line.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from functools import partial
+from itertools import batched
+from math import ceil
 from typing import Final
 
 from rich.text import Text
@@ -29,9 +34,16 @@ from textual.widgets import Static
 
 from busk_tui import colors, commands
 from busk_tui.colors import ColorMode
-from busk_tui.model import CueListInfo, PlaybackInfo, PlaybackView
+from busk_tui.model import (
+    CueListInfo,
+    PlaybackInfo,
+    PlaybackView,
+    ProgrammerModel,
+    ShowModel,
+)
+from busk_tui.nav import Item, Stop
 from busk_tui.widgets.bars import HBar
-from busk_tui.widgets.controls import CommandButton, RunLine
+from busk_tui.widgets.controls import CommandButton, Intent, RunLine, ShowHint
 from busk_tui.widgets.vfader import ROWS, VFader
 
 FADER_TAGS: Final = {
@@ -45,10 +57,56 @@ FADER_TAGS: Final = {
 
 LEVEL_COLORS: Final = {"active": colors.FG, "releasing": colors.AMBER}  # idle: dim
 
+LABELS: Final = {
+    "go": "GO",
+    "back": "◂",
+    "goto": "GT",
+    "flash": "FL",
+    "swop": "SW",
+    "toggle": "TG",
+    "release": "RL",
+    "select": "SL",
+    "none": "—",
+}
+"""A button's label, by function: two cells at most, so that any two fit
+side by side, with no gap, in a column 8 cells wide inside its border: the
+grid can make a column one cell narrower than it asks for while the page's
+scrollbar comes and goes."""
+
+HINTS: Final = {
+    "go": "go: the next cue",
+    "back": "back: the cue before",
+    "goto": "goto: the playback's goto cue",
+    "flash": "flash: on while held",
+    "swop": "swop: flash while held, and the other playbacks' intensity out",
+    "toggle": "toggle: starts it, or releases it",
+    "release": "release: back to what is underneath",
+    "select": "select: its fixtures, in the programmer",
+}
+"""What the mouse on a button shows in the hint row: the labels are short."""
+
+HELD: Final = frozenset({"flash", "swop"})
+"""The functions that act on both edges, so a click would be too short."""
+
+STARTS: Final = frozenset({"go", "toggle"})
+"""The functions that start the playback."""
+
+RECORD_HINT: Final = "a new playback on this slot, from the programmer"
+
+type OwnButton = tuple[str, str | None]
+"""One of a playback's buttons: its function, and why a press would do
+nothing (``None``: it does something)."""
+
+type Built = tuple[tuple[int | None, ...], tuple[tuple[OwnButton, ...], ...], int | None]
+"""What a layout's strips were built from: the slots, their buttons, the page."""
+
+COLUMN_LINES: Final = 2
+"""The lines of buttons a column has room for, whatever it holds."""
+
 COLUMNS = """
     .pb-label { width: 4; }
     .pb-name { width: 16; padding-right: 1; text-wrap: nowrap; text-overflow: ellipsis; }
-    .pb-bar { width: 3fr; min-width: 12; }
+    .pb-bar { width: 3fr; min-width: 8; }
     .pb-level { width: 5; text-align: right; padding-right: 1; }
     .pb-cue { width: 2fr; text-wrap: nowrap; text-overflow: ellipsis; }
     .pb-buttons { width: 14; }
@@ -59,6 +117,8 @@ COMPACT = """
     PlaybackRow.-compact > .pb-name { width: 13; }
     PlaybackRow.-compact > .pb-bar { width: 1fr; min-width: 6; }
     PlaybackRow.-compact > .pb-buttons { width: 5; }
+    PlaybackRow.-compact.-empty > .pb-bar { min-width: 5; }
+    PlaybackRow.-compact.-empty > .pb-buttons { width: 9; }
 """
 """A compact row's columns (layout C)."""
 
@@ -119,16 +179,48 @@ def position_text(view: PlaybackView, cue_list: CueListInfo | None) -> Text:
     return Text(f"{position}/{view.cueCount}", style=colors.FG)
 
 
-class FlashButton(Static):
-    """``[FL]``: ``flash N on`` while the mouse button is down on it, ``flash
-    N off`` when it comes up or the pointer leaves. Lit while held, here or
-    elsewhere (a surface, a flash this TUI held before it restarted)."""
+def own_buttons(show: ShowModel | None, number: int | None) -> tuple[OwnButton, ...]:
+    """Playback ``number``'s buttons, each with why it would do nothing (see
+    :func:`_idle_reason`); none for an empty slot."""
+    info = None if show is None or number is None else show.playback(number)
+    if show is None or info is None:
+        return ()
+    cue_list = show.cue_list(info.cueList)
+    has_cues = cue_list is not None and bool(cue_list.cues)
+    return tuple((name, _idle_reason(name, info, has_cues)) for name in info.buttons)
 
-    DEFAULT_CSS = "FlashButton { width: auto; height: 1; }"
 
-    def __init__(self, number: int, label: str = "FL") -> None:
+def _idle_reason(function: str, info: PlaybackInfo, has_cues: bool) -> str | None:
+    """Why a press of ``function`` would do nothing: ``none``; a ``goto`` with
+    no ``gotoCue``; what starts a list with no cues, which ``button`` would
+    mark active on no cue, where ``go`` is refused."""
+    if function == "none":
+        return "no function"
+    if function == "goto" and info.gotoCue is None:
+        return "goto: this playback has no goto cue"
+    if function in STARTS and not has_cues:
+        return f"{function}: its cue list has no cues"
+    return None
+
+
+def strip_width(controls: Sequence[CommandButton | HeldButton]) -> int:
+    """The cells ``controls`` take in a row: ``[label]`` and the margin before."""
+    return sum(len(control.label) + 3 for control in controls)
+
+
+class HeldButton(Static):
+    """``[FL]``, ``[SW]``: ``button N B on`` while the mouse button is down on
+    it, ``button N B off`` when it comes up or the pointer leaves. Lit while
+    held, here or elsewhere (a surface, a flash this TUI held before it
+    restarted)."""
+
+    DEFAULT_CSS = "HeldButton { width: auto; height: 1; }"
+
+    def __init__(self, number: int, index: int, label: str, hint: str) -> None:
         self.number = number
-        self.label = f"[{label}]"
+        self.index = index
+        self.label = label
+        self.hint = hint
         self.held = False
         self.lit = False
         super().__init__(self._text())
@@ -140,8 +232,14 @@ class FlashButton(Static):
 
     def _text(self) -> Text:
         if self.held or self.lit:
-            return Text(self.label, style=f"bold {colors.BG} on {colors.AMBER}")
-        return Text(self.label, style=colors.AMBER)
+            return Text(f"[{self.label}]", style=f"bold {colors.BG} on {colors.AMBER}")
+        return Text(f"[{self.label}]", style=colors.AMBER)
+
+    def _run_line(self, on: bool) -> RunLine:
+        return RunLine(commands.button(self.number, self.index, on))
+
+    def on_enter(self, event: events.Enter) -> None:
+        self.post_message(ShowHint(self.hint))
 
     def on_mouse_down(self, event: events.MouseDown) -> None:
         event.stop()
@@ -149,24 +247,60 @@ class FlashButton(Static):
             self.held = True
             self.capture_mouse()
             self.update(self._text())
-            self.post_message(RunLine(commands.flash(self.number, True)))
+            self.post_message(self._run_line(True))
 
     def on_mouse_up(self, event: events.MouseUp) -> None:
         event.stop()
         self._let_go()
 
     def on_leave(self, event: events.Leave) -> None:
+        self.post_message(ShowHint(None))
         self._let_go()
 
     def on_click(self, event: events.Click) -> None:
         event.stop()
+
+    def on_unmount(self) -> None:
+        """The strip went with the button held (another page, an edit of its
+        buttons): the release has nowhere else to come from."""
+        if self.held:
+            self.held = False
+            self.release_mouse()
+            self.app.post_message(self._run_line(False))
 
     def _let_go(self) -> None:
         if self.held:
             self.held = False
             self.release_mouse()
             self.update(self._text())
-            self.post_message(RunLine(commands.flash(self.number, False)))
+            self.post_message(self._run_line(False))
+
+
+type StripControl = CommandButton | HeldButton
+
+
+def own_controls(number: int, own: Sequence[OwnButton]) -> list[StripControl]:
+    """A control per button of playback ``number``."""
+    controls: list[StripControl] = []
+    for index, (function, idle) in enumerate(own, start=1):
+        label = LABELS[function]
+        if function in HELD:
+            controls.append(HeldButton(number, index, label, HINTS[function]))
+            continue
+        line = commands.button(number, index, True, programmer=function == "select")
+        intent: Intent = "go" if function in STARTS else "neutral"
+        hint = idle if idle is not None else HINTS[function]
+        controls.append(CommandButton(label, line, intent, inert=idle is not None, hint=hint))
+    return controls
+
+
+def record_button(page: int | None, slot: int) -> CommandButton | None:
+    """``[record]`` for an empty slot of ``page``, grey until
+    :func:`show_recordable` says otherwise."""
+    if page is None:
+        return None
+    line = commands.record_slot(page, slot)
+    return CommandButton("record", line, "record", inert=True, hint=RECORD_HINT)
 
 
 class PlaybackRow(Horizontal):
@@ -178,7 +312,7 @@ class PlaybackRow(Horizontal):
     PlaybackRow {{ height: 1; }}
     PlaybackRow.-selected {{ background: {colors.BAR}; }}
     PlaybackRow > .pb-buttons {{ height: 1; }}
-    PlaybackRow CommandButton, PlaybackRow FlashButton {{ margin-left: 1; }}
+    PlaybackRow CommandButton, PlaybackRow HeldButton {{ margin-left: 1; }}
     {COLUMNS}
     {COMPACT}
     """
@@ -190,8 +324,18 @@ class PlaybackRow(Horizontal):
             super().__init__()
             self.number = number
 
-    def __init__(self, slot: int, number: int | None, *, compact: bool = False) -> None:
-        super().__init__(classes="-compact" if compact else None)
+    def __init__(
+        self,
+        slot: int,
+        number: int | None,
+        own: Sequence[OwnButton] = (),
+        *,
+        page: int | None = None,
+        compact: bool = False,
+    ) -> None:
+        super().__init__(
+            classes=f"{'-compact' if compact else ''} {'-empty' if number is None else ''}"
+        )
         self.slot = slot
         self.number = number
         self.compact = compact
@@ -205,16 +349,12 @@ class PlaybackRow(Horizontal):
         self.bar = HBar(command=command, key=f"fader:{number}", classes="pb-bar")
         self.level = Static("", classes="pb-level")
         self.cue = Static("", classes="pb-cue")
-        self.buttons: list[CommandButton] = []
-        self.flash: FlashButton | None = None
-        if number is not None and compact:
-            self.buttons = [CommandButton("GO", commands.go(number), "go")]
-        elif number is not None:
-            self.buttons = [
-                CommandButton("GO", commands.go(number), "go"),
-                CommandButton("◂", commands.back(number)),
-            ]
-            self.flash = FlashButton(number)
+        self.record = None if number is not None else record_button(page, slot)
+        self.buttons: list[StripControl] = [] if self.record is None else [self.record]
+        if number is not None:
+            self.buttons = own_controls(number, own[:1] if compact else own)
+        self.held = [button for button in self.buttons if isinstance(button, HeldButton)]
+        self.box = Horizontal(*self.buttons, classes="pb-buttons")
 
     def compose(self) -> ComposeResult:
         yield self.label
@@ -223,10 +363,7 @@ class PlaybackRow(Horizontal):
         yield self.level
         if not self.compact:
             yield self.cue
-        with Horizontal(classes="pb-buttons"):
-            yield from self.buttons
-            if self.flash is not None:
-                yield self.flash
+        yield self.box
 
     def show(
         self,
@@ -266,8 +403,8 @@ class PlaybackRow(Horizontal):
         )
         if not self.compact:
             self.cue.update(Text() if view is None else cue_text(view, cue_list), layout=False)
-        if self.flash is not None:
-            self.flash.show(view is not None and view.flash)
+        for button in self.held:
+            button.show(view is not None and view.flash)
 
     def on_click(self, event: events.Click) -> None:
         widget = event.widget
@@ -286,13 +423,17 @@ class PlaybackHeader(Horizontal):
     {COLUMNS}
     """
 
+    def __init__(self) -> None:
+        super().__init__()
+        self.buttons = Static("", classes="pb-buttons")
+
     def compose(self) -> ComposeResult:
         yield Static("#", classes="pb-label")
         yield Static("name", classes="pb-name")
         yield Static("level", classes="pb-bar")
         yield Static("", classes="pb-level")
         yield Static("cue → next", classes="pb-cue")
-        yield Static("", classes="pb-buttons")
+        yield self.buttons
 
 
 class PlaybackColumn(Vertical):
@@ -309,11 +450,16 @@ class PlaybackColumn(Vertical):
     }}
     PlaybackColumn > .pbc-center {{ width: 100%; height: 1; align-horizontal: center; }}
     PlaybackColumn > .pbc-fader {{ height: {ROWS}; }}
-    PlaybackColumn > .pbc-buttons > CommandButton {{ margin-left: 1; }}
-    PlaybackColumn > .pbc-buttons > CommandButton:first-child {{ margin-left: 0; }}
     """
 
-    def __init__(self, slot: int, number: int | None) -> None:
+    def __init__(
+        self,
+        slot: int,
+        number: int | None,
+        own: Sequence[OwnButton] = (),
+        *,
+        page: int | None = None,
+    ) -> None:
         super().__init__()
         self.slot = slot
         self.number = number
@@ -329,14 +475,11 @@ class PlaybackColumn(Vertical):
         command = None if number is None else partial(commands.fader, number)
         self.fader = VFader(command=command, key=f"fader:{number}")
         self.level = Static("", classes="pbc-text")
-        self.buttons: list[CommandButton] = []
-        self.flash: FlashButton | None = None
+        self.record = None if number is not None else record_button(page, slot)
+        self.buttons: list[StripControl] = [] if self.record is None else [self.record]
         if number is not None:
-            self.buttons = [
-                CommandButton("GO", commands.go(number), "go"),
-                CommandButton("◂", commands.back(number)),
-            ]
-            self.flash = FlashButton(number, "FLASH")
+            self.buttons = own_controls(number, own)
+        self.held = [button for button in self.buttons if isinstance(button, HeldButton)]
 
     def compose(self) -> ComposeResult:
         yield self.label
@@ -345,11 +488,9 @@ class PlaybackColumn(Vertical):
         with Horizontal(classes="pbc-center pbc-fader"):  # Textual centres children as a group
             yield self.fader
         yield self.level
-        with Horizontal(classes="pbc-center pbc-buttons"):
-            yield from self.buttons
-        if self.flash is not None:
-            with Horizontal(classes="pbc-center"):
-                yield self.flash
+        for line in batched(self.buttons, 2):
+            with Horizontal(classes="pbc-center pbc-buttons"):
+                yield from line
 
     def show(
         self,
@@ -383,8 +524,8 @@ class PlaybackColumn(Vertical):
         if view is not None and view.fader in FADER_TAGS and not no_fader:
             text.append(f" {FADER_TAGS[view.fader]}", style=colors.DIM)
         self.level.update(text, layout=False)
-        if self.flash is not None:
-            self.flash.show(view is not None and view.flash)
+        for button in self.held:
+            button.show(view is not None and view.flash)
 
     def on_click(self, event: events.Click) -> None:
         widget = event.widget
@@ -393,3 +534,39 @@ class PlaybackColumn(Vertical):
         if widget.has_class("pbc-label") or widget.has_class("pbc-name"):
             event.stop()
             self.post_message(PlaybackRow.Chosen(self.number))
+
+
+def fit_buttons(rows: Sequence[PlaybackRow], header: PlaybackHeader) -> None:
+    """Make the buttons' column as wide as the widest row's, in every row and
+    the header, so that the bars line up."""
+    width = max((strip_width(row.buttons) for row in rows), default=0)
+    for row in rows:
+        row.box.styles.width = width
+    header.buttons.styles.width = width
+
+
+def column_height(own: Iterable[Sequence[OwnButton]]) -> int:
+    """How tall the columns are: room for the most buttons any of them has."""
+    lines = max((ceil(len(buttons) / 2) for buttons in own), default=0)
+    return ROWS + 6 + max(COLUMN_LINES, lines)
+
+
+def show_recordable(
+    strips: Iterable[PlaybackRow | PlaybackColumn], programmer: ProgrammerModel | None
+) -> None:
+    """``[record]`` on each empty slot: grey with nothing to record."""
+    recordable = programmer is not None and programmer.recordable()
+    for strip in strips:
+        if strip.record is not None:
+            strip.record.change(inert=not recordable)
+
+
+def button_stops(strips: Iterable[PlaybackRow | PlaybackColumn]) -> list[Stop]:
+    """Where the pane cursor stops on the strips: every button a press runs.
+    A held button has no key to hold it."""
+    return [
+        Stop(Item(button.line.text, line=button.line.text), button)
+        for strip in strips
+        for button in strip.buttons
+        if isinstance(button, CommandButton) and not button.inert
+    ]

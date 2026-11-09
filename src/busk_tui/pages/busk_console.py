@@ -12,8 +12,8 @@ pan``), the colour chips, the bars of the grand, size and group masters,
 and the tempo row (the first speed master, TAP, B.O.).
 
 PLAYBACKS, below: a column per slot of the current page, with a vertical
-fader in the current cue's colour, ``[GO] [◂]`` and ``[FLASH]``, as many to a
-line as fit, at least 11 cells each. Below 100 columns OUTPUT and
+fader in the current cue's colour and the playback's own buttons, as many
+to a line as fit, at least 11 cells each. Below 100 columns OUTPUT and
 PROGRAMMER go one under the other.
 """
 
@@ -38,7 +38,7 @@ from busk_tui.model import (
     ProgrammerModel,
     ShowModel,
 )
-from busk_tui.nav import Item, Stop
+from busk_tui.nav import Stop
 from busk_tui.pages.base import Part, View
 from busk_tui.pages.busk_stack import BAR_MASTERS
 from busk_tui.widgets.controls import ButtonStrip
@@ -46,7 +46,14 @@ from busk_tui.widgets.fixture_palette import FixturePalette, Spot, centred, elem
 from busk_tui.widgets.fixturetable import by_fixture
 from busk_tui.widgets.masters import MasterBars
 from busk_tui.widgets.panel import Panel
-from busk_tui.widgets.playbacks import PlaybackColumn
+from busk_tui.widgets.playbacks import (
+    Built,
+    PlaybackColumn,
+    button_stops,
+    column_height,
+    own_buttons,
+    show_recordable,
+)
 from busk_tui.widgets.quick import color_chips, strip_stops
 from busk_tui.widgets.tempo import TempoRow, beats_of, first_speed, speed_of
 from busk_tui.widgets.vfader import ROWS
@@ -229,7 +236,7 @@ class ConsoleLayout(Vertical):
 
     def __init__(self) -> None:
         super().__init__()
-        self.slots: tuple[int | None, ...] | None = None
+        self.built: Built | None = None
         self.columns: list[PlaybackColumn] = []
         self.grid = OutputGrid(id="console-grid")
         self.selection = Static("", id="console-selection")
@@ -258,14 +265,17 @@ class ConsoleLayout(Vertical):
             yield self.column_box
 
     def update_view(
-        self, view: View, changed: frozenset[Part], slots: tuple[int | None, ...]
+        self,
+        view: View,
+        changed: frozenset[Part],
+        slots: tuple[int | None, ...],
+        page: int | None,
     ) -> None:
         show, live = view.show, view.live
-        if slots != self.slots:
-            self.slots = slots
-            self.columns = [PlaybackColumn(index + 1, number) for index, number in enumerate(slots)]
-            self.column_box.remove_children()
-            self.column_box.mount_all(self.columns)
+        if changed & {"show", "live"}:
+            self._build_columns(view, slots, page)
+        if "programmer" in changed:
+            show_recordable(self.columns, view.programmer)
         if changed & {"show", "live", "playback"}:
             for column in self.columns:
                 if column.number is None:
@@ -288,6 +298,23 @@ class ConsoleLayout(Vertical):
                 self.tempo.show(None if name is None else speed_of(live, name), live.blackout)
         if changed & {"live", "beats"} and self.tempo is not None and self.tempo.master is not None:
             self.tempo.show_beats(beats_of(live, view.beats, self.tempo.master.name))
+
+    def _build_columns(self, view: View, slots: tuple[int | None, ...], page: int | None) -> None:
+        own = tuple(own_buttons(view.show, number) for number in slots)
+        if (slots, own, page) == self.built:
+            return
+        self.built = (slots, own, page)
+        self.columns = [
+            PlaybackColumn(index + 1, number, buttons, page=page)
+            for index, (number, buttons) in enumerate(zip(slots, own, strict=True))
+        ]
+        height = column_height(own)
+        for column in self.columns:
+            column.styles.height = height
+        self.column_box.styles.grid_rows = str(height)
+        self.column_box.remove_children()
+        self.column_box.mount_all(self.columns)
+        show_recordable(self.columns, view.programmer)
 
     def _show_programmer(self, view: View) -> None:
         show, programmer = view.show, view.programmer
@@ -313,10 +340,7 @@ class ConsoleLayout(Vertical):
         self.tempo_box.mount(self.tempo)
 
     def stops(self) -> list[Stop]:
-        stops: list[Stop] = []
-        for column in self.columns:
-            for button in column.buttons:
-                stops.append(Stop(Item(button.line.text, line=button.line.text), button))
+        stops = button_stops(self.columns)
         stops += strip_stops(self.chips)
         stops += self.bars.stops()
         if self.tempo is not None:

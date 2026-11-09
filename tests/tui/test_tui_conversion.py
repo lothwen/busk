@@ -552,6 +552,15 @@ def test_the_output(show: busk.OfflineShow) -> None:
 # ---------------------------------------------------------- F4 and F5
 
 
+def test_a_playbacks_own_buttons_and_goto_cue_as_stored(club: busk.OfflineShow) -> None:
+    model = show_model(club.show)
+    song, warm = model.playback(9), model.playback(1)
+    assert song is not None
+    assert (song.buttons, song.gotoCue) == (("go", "back", "release", "goto"), "4")
+    assert warm is not None
+    assert (warm.buttons, warm.gotoCue) == (("toggle", "flash", "release"), None)
+
+
 def test_cues_with_their_timing_triggers_and_entries_as_stored(club: busk.OfflineShow) -> None:
     model = show_model(club.show)
     song = model.cue_list(9)

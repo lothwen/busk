@@ -52,6 +52,8 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
     "fader": (commands.fader(3, 0.72), "fader 3 72%", True),
     "flash on": (commands.flash(3, True), "flash 3 on", True),
     "flash off": (commands.flash(3, False), "flash 3 off", True),
+    "button on": (commands.button(9, 1, True), "button 9 1 on", True),
+    "button off": (commands.button(9, 1, False), "button 9 1 off", True),
     "gm": (commands.gm(0.8), "gm 80%", True),
     "master": (commands.master("Wash level", 0.4), 'master "Wash level" 40%', True),
     "blackout on": (commands.blackout(True), "blackout on", True),
@@ -132,6 +134,7 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
     ),
     "sel targets, one": (commands.sel_targets("101"), "sel fixture 101", False),
     "goto": (commands.goto(9, "3"), "goto 9 3", True),
+    "record slot": (commands.record_slot(2, 7), "record slot 2.7", False),
     "record cue": (commands.record_cue(9), "record cue 9", False),
     "record cue at": (
         commands.record_cue(9, "2.5", name='The "Bridge"'),
@@ -522,6 +525,17 @@ def test_the_beat_rate_as_a_cue_effect_takes_it() -> None:
     assert commands.rate_json(None, "m-1", "0.5") == (
         '{"kind": "bpm", "masterId": "m-1", "multiplier": 0.5}'
     )
+
+
+def test_the_press_of_a_select_button_is_a_programmer_line(show: busk.OfflineShow) -> None:
+    """busk runs it as ``SELECT_PLAYBACK``, not as a performance line, so the
+    UI keeps it in order with the other programmer lines."""
+    line = commands.button(9, 1, True, programmer=True)
+    assert (line.text, line.performance) == ("button 9 1 on", False)
+    assert show.execute('playback 9 buttons ["select"]').ok
+    reply = show.execute(line.text)
+    assert reply.ok, reply.text
+    assert "selected" in reply.text
 
 
 def test_a_rate_in_words() -> None:

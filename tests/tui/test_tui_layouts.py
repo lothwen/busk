@@ -8,6 +8,7 @@ Headless, with a fake bridge."""
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -27,8 +28,11 @@ from busk_tui.model import (
     LiveChanged,
     OutputChanged,
     OutputModel,
+    PageInfo,
+    PageView,
     ProfileInfo,
     ProgrammerChanged,
+    ShowChanged,
     ShowModel,
 )
 from busk_tui.pages.busk import BuskHeader, BuskPage
@@ -53,7 +57,7 @@ from busk_tui.widgets.fixture_palette import UNLIT, element_cells, select_line
 from busk_tui.widgets.log import LogView
 from busk_tui.widgets.playbacks import PlaybackColumn, PlaybackRow
 from busk_tui.widgets.tempo import TempoRow
-from busk_tui.widgets.vfader import VFader, fader_text
+from busk_tui.widgets.vfader import ROWS, VFader, fader_text
 
 HEAD_A = FixtureInfo(101, 1, "Spot 1", "Spot", location=(-2.0, -1.0, 5.0, 0, 0, 0))
 HEAD_B = FixtureInfo(102, 1, "Spot 2", "Spot", location=(2.0, -1.04, 5.0, 0, 0, 0))
@@ -290,17 +294,16 @@ def test_the_playback_columns() -> None:
         assert chase.fader.color == colors.swatch((1.0, 0.5, 0.0), 1.0, mode)  # its uiColor
         assert str(empty.label.content) == "·"
         assert str(empty.name_text.content) == "—"
-        assert empty.buttons == []
-        assert empty.flash is None
+        assert empty.buttons == [empty.record]
+        assert empty.held == []
         await pilot.click(song.buttons[0])
         await pilot.click(song.buttons[1])
-        assert sent(bridge) == [("go 2", "ui"), ("back 2", "ui")]
-        flash = song.flash
-        assert flash is not None
-        assert str(flash.content) == "[FLASH]"
+        assert sent(bridge) == [("button 2 1 on", "ui"), ("button 2 2 on", "ui")]
+        flash = song.held[0]
+        assert str(flash.content) == "[FL]"
         await pilot.mouse_down(flash)
         await pilot.mouse_up(flash)
-        assert sent(bridge)[-2:] == [("flash 2 on", "ui"), ("flash 2 off", "ui")]
+        assert sent(bridge)[-2:] == [("button 2 3 on", "ui"), ("button 2 3 off", "ui")]
         await pilot.click(song.label)
         assert app.view.playback == 2
         assert song.has_class("-selected")
@@ -546,13 +549,13 @@ def test_compact_rows_masters_and_quick() -> None:
         first = rows[1]
         assert first.compact
         assert first.has_class("-selected")
-        assert [b.line.text for b in first.buttons] == ["go 1"]
-        assert first.flash is None
+        assert [b.line.text for b in first.buttons] == ["button 1 1 on"]
+        assert first.held == []
         assert not first.cue.is_mounted
         assert str(first.level.content) == "80"
         assert first.bar.color == colors.swatch((1.0, 0.75, 0.45), 1.0, app.view.mode)
         await pilot.click(rows[2].buttons[0])
-        assert sent(bridge) == [("go 2", "ui")]
+        assert sent(bridge) == [("button 2 1 on", "ui")]
         assert [bar.label for bar in layout.bars.bars] == ["GM", "FX", "Washes"]
         assert [b.line.text for b in layout.groups.buttons] == ["sel group 1", "sel group 2"]
         assert [b.shift.text for b in layout.groups.buttons if b.shift] == [
@@ -632,7 +635,14 @@ def test_the_pane_cursor_reaches_each_layout_and_switches_them() -> None:
         await settle(pilot, app)
         items = app.current_page.items()
         labels = [item.line or item.prefill or item.label for item in items]
-        assert labels[:6] == ["go 1", "back 1", "go 2", "back 2", "go 3", "back 3"]
+        assert labels[:6] == [
+            "button 1 1 on",
+            "button 1 3 on",
+            "button 2 1 on",
+            "button 2 2 on",
+            "button 3 1 on",
+            "button 3 2 on",
+        ]
         assert labels[6:8] == ["preset color 1", "preset color 2"]
         assert labels[8:11] == ["gm ", 'master "FX" ', 'master "Washes" ']
         assert labels[11:13] == ['tap "Speed 1"', "blackout on"]
@@ -647,7 +657,7 @@ def test_the_pane_cursor_reaches_each_layout_and_switches_them() -> None:
         assert app.query_one(BuskHeader).marked == 2
         items = app.current_page.items()
         labels = [item.line or item.prefill or item.label for item in items]
-        assert labels[:3] == ["go 1", "go 2", "go 3"]
+        assert labels[:3] == ["button 1 1 on", "button 2 1 on", "button 3 1 on"]
         assert "sel fixture 401" in labels
         assert labels[-4] == "[location…]"
         await pilot.press("up", "up", "enter")  # layout A
@@ -734,7 +744,242 @@ def test_rows_in_b_are_untouched_by_the_compact_ones() -> None:
         row = next(r for r in app.query_one(StackLayout).rows if r.number == 1)
         assert not row.compact
         assert row.cue.is_mounted
-        assert row.flash is not None
+        assert len(row.held) == 1
         assert isinstance(row, PlaybackRow)
 
     drive(app, body)
+
+
+# ----------------------------------------------------------- the strips by layout
+
+
+def own_set(number: int, *buttons: str) -> ShowModel:
+    """:func:`rig` with playback ``number``'s buttons replaced."""
+    base = rig()
+    return rig(
+        playbacks=tuple(
+            replace(info, buttons=buttons) if info.number == number else info
+            for info in base.playbacks
+        )
+    )
+
+
+def holding() -> Any:
+    return programmer(values=(HeldValue(101, 1, "intensity", 0.5, None),), fixtures=1)
+
+
+def strips(app: BuskApp) -> dict[int | None, PlaybackRow | PlaybackColumn]:
+    layout = app.query_one(BuskPage).shown_layout
+    shown = layout.columns if isinstance(layout, ConsoleLayout) else layout.rows
+    return {strip.number: strip for strip in shown}
+
+
+@pytest.mark.parametrize("layout", ["A", "B", "C"])
+def test_a_strip_follows_an_edit_of_its_buttons_and_nothing_else(layout: config.Layout) -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge, layout=layout)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started_on(bridge)
+        await settle(pilot, app)
+        before = strips(app)[2]
+        bridge.events.append(ShowChanged(rig(title="Renamed")))
+        await settle(pilot, app)
+        assert strips(app)[2] is before  # nothing the strip is built from changed
+        bridge.events.append(ShowChanged(own_set(2, "release", "go")))
+        await settle(pilot, app)
+        await pilot.pause()
+        after = strips(app)[2]
+        assert after is not before
+        assert str(after.buttons[0].content) == "[RL]"
+        await pilot.click(after.buttons[0])
+        assert sent(bridge)[-1] == ("button 2 1 on", "ui")
+
+    drive(app, body, size=(150, 48))
+
+
+def test_layout_c_has_the_first_button_only() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge, layout="C")
+
+    async def body(pilot: Pilot[int]) -> None:
+        started_on(bridge, own_set(2, "flash", "go"))
+        await settle(pilot, app)
+        row = strips(app)[2]
+        assert [str(b.content) for b in row.buttons] == ["[FL]"]
+        assert len(row.held) == 1
+        await pilot.mouse_down(row.held[0])
+        await pilot.mouse_up(row.held[0])
+        assert sent(bridge) == [("button 2 1 on", "ui"), ("button 2 1 off", "ui")]
+
+    drive(app, body, size=(150, 48))
+
+
+def test_layout_c_with_a_first_button_that_does_nothing() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge, layout="C")
+
+    async def body(pilot: Pilot[int]) -> None:
+        started_on(bridge, own_set(2, "none", "go"))
+        await settle(pilot, app)
+        assert "button 2 1 on" not in [item.line for item in app.current_page.items()]
+
+    drive(app, body, size=(150, 48))
+
+
+@pytest.mark.parametrize("layout", ["A", "C"])
+def test_record_on_an_empty_slot_fits_at_100_columns(layout: config.Layout) -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge, layout=layout)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started_on(bridge)
+        bridge.events.append(
+            ProgrammerChanged(programmer(values=(HeldValue(101, 1, "intensity", 0.5, None),)))
+        )
+        await settle(pilot, app)
+        strip = strips(app)[None]
+        record = strip.record
+        assert record is not None
+        room = strip.content_region if layout == "A" else strip.parent.content_region  # type: ignore[union-attr]
+        assert record.region.width == 8
+        assert room.contains_region(record.region)
+        await pilot.click(record)
+        assert sent(bridge) == [("record slot 1.4", "ui")]
+
+    drive(app, body, size=(100, 60))
+
+
+@pytest.mark.parametrize("layout", ["A", "B", "C"])
+def test_record_lights_when_the_programmer_fills(layout: config.Layout) -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge, layout=layout)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started_on(bridge)
+        await settle(pilot, app)
+        record = strips(app)[None].record
+        assert record is not None
+        assert record.inert
+        bridge.events.append(ProgrammerChanged(holding()))
+        await settle(pilot, app)
+        assert not record.inert
+
+    drive(app, body, size=(150, 48))
+
+
+@pytest.mark.parametrize("layout", ["A", "B", "C"])
+def test_a_new_page_starts_its_record_by_what_the_programmer_holds(layout: config.Layout) -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge, layout=layout)
+    pages = (PageInfo(1, "Main", (1, None)), PageInfo(2, "Washes", (1, None, None)))
+
+    async def body(pilot: Pilot[int]) -> None:
+        started_on(bridge, rig(pages=pages))
+        bridge.events.append(ProgrammerChanged(holding()))
+        await settle(pilot, app)
+        bridge.events.append(LiveChanged(live(seq=2, page=PageView(2, "Washes"))))
+        await settle(pilot, app)
+        await pilot.pause()
+        record = strips(app)[None].record
+        assert record is not None
+        assert not record.inert
+        assert record.line.text == "record slot 2.3"  # the last of the two empty slots
+
+    drive(app, body, size=(150, 48))
+
+
+@pytest.mark.parametrize("layout", ["A", "B", "C"])
+def test_record_names_the_page_it_shows_when_two_pages_look_alike(layout: config.Layout) -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge, layout=layout)
+    pages = (PageInfo(1, "Main", (1, None)), PageInfo(2, "Washes", (1, None)))
+
+    async def body(pilot: Pilot[int]) -> None:
+        started_on(bridge, rig(pages=pages))
+        await settle(pilot, app)
+        bridge.events.append(LiveChanged(live(seq=2, page=PageView(2, "Washes"))))
+        await settle(pilot, app)
+        await pilot.pause()
+        record = strips(app)[None].record
+        assert record is not None
+        assert record.line.text == "record slot 2.2"
+
+    drive(app, body, size=(150, 48))
+
+
+def test_a_column_lights_its_held_buttons() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge, layout="A")
+
+    async def body(pilot: Pilot[int]) -> None:
+        started_on(bridge)
+        await settle(pilot, app)
+        held = strips(app)[2].held[0]
+        assert not held.lit
+        bridge.events.append(LiveChanged(live(seq=2, playbacks=(playback(2, "Song", flash=True),))))
+        await settle(pilot, app)
+        assert held.lit
+
+    drive(app, body, size=(150, 48))
+
+
+def test_two_buttons_fit_a_column_the_grid_made_narrow() -> None:
+    """A column 10 cells wide, 8 inside its border, as the grid can make one
+    while the page's scrollbar comes and goes."""
+    bridge = FakeBridge()
+    app = make_app(bridge, layout="A")
+
+    async def body(pilot: Pilot[int]) -> None:
+        started_on(bridge)
+        await settle(pilot, app)
+        grid = app.query_one("#console-columns")
+        grid.styles.grid_size_columns = 4
+        grid.styles.grid_columns = "10 11 11 11"
+        await pilot.pause()
+        column = strips(app)[1]
+        assert column.region.width == 10
+        assert all(column.content_region.contains_region(b.region) for b in column.buttons)
+
+    drive(app, body, size=(100, 60))
+
+
+def test_columns_put_two_buttons_on_a_line() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge, layout="A")
+
+    async def body(pilot: Pilot[int]) -> None:
+        started_on(bridge, own_set(2, "go", "back", "release", "goto"))
+        await settle(pilot, app)
+        column = strips(app)[2]
+        y = [button.region.y for button in column.buttons]
+        assert y[0] == y[1]
+        assert y[2] == y[3]
+        assert y[2] == y[0] + 1
+        assert all(column.region.contains_region(b.region) for b in column.buttons)
+        assert column.region.height == ROWS + 8
+
+    drive(app, body, size=(100, 60))
+
+
+@pytest.mark.parametrize(
+    "buttons",
+    [
+        ("go", "back", "release", "goto", "toggle"),  # five: the odd one still has a line
+        ("go", "back", "release", "goto", "toggle", "select"),
+    ],
+)
+def test_columns_grow_for_a_playback_with_many_buttons(buttons: tuple[str, ...]) -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge, layout="A")
+
+    async def body(pilot: Pilot[int]) -> None:
+        started_on(bridge, own_set(2, *buttons))
+        await settle(pilot, app)
+        column = strips(app)[2]
+        assert all(column.region.contains_region(b.region) for b in column.buttons)
+        heights = {strip.region.height for strip in strips(app).values()}
+        assert heights == {ROWS + 9}
+        assert len({strip.region.y for strip in strips(app).values()}) == 1
+
+    drive(app, body, size=(100, 60))

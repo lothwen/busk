@@ -4,7 +4,8 @@ column (tempo, masters, effects, selection). Headless, with a fake bridge."""
 
 from __future__ import annotations
 
-from typing import Any
+from dataclasses import replace
+from typing import Any, get_args
 
 import pytest
 from rich.text import Text
@@ -22,6 +23,7 @@ from tui_fakes import (
     show_model,
 )
 
+from busk.model.playback import ButtonFunction
 from busk_tui import colors
 from busk_tui.formats import selection_text
 from busk_tui.model import (
@@ -33,6 +35,7 @@ from busk_tui.model import (
     EffectView,
     FixtureInfo,
     GroupInfo,
+    HeldValue,
     LiveChanged,
     MasterLevel,
     MasterView,
@@ -47,11 +50,21 @@ from busk_tui.model import (
 )
 from busk_tui.pages.busk import BuskHeader, follow, step, visible_slots
 from busk_tui.shell import BuskApp
-from busk_tui.widgets.controls import ButtonStrip
+from busk_tui.widgets.controls import ButtonStrip, CommandButton
 from busk_tui.widgets.effects import EffectRow, effect_lines, sparkline
 from busk_tui.widgets.log import LogView
 from busk_tui.widgets.masters import BlackoutButton, MasterBar
-from busk_tui.widgets.playbacks import PlaybackRow, cue_text, playback_color
+from busk_tui.widgets.playbacks import (
+    HINTS,
+    LABELS,
+    PlaybackHeader,
+    PlaybackRow,
+    cue_text,
+    own_buttons,
+    own_controls,
+    playback_color,
+)
+from busk_tui.widgets.prompt import HintRow
 from busk_tui.widgets.tempo import Tempo
 
 SONG = CueListInfo(
@@ -75,10 +88,10 @@ def club(**changes: Any) -> ShowModel:
     parts: dict[str, Any] = {
         "pages": (PageInfo(1, "Main", (1, 2, 3, None)), PageInfo(2, "Washes", (4, 1))),
         "playbacks": (
-            PlaybackInfo(1, "Warm", 1, None),
-            PlaybackInfo(2, "Song", 2, None),
-            PlaybackInfo(3, "Chase", 3, (1.0, 0.5, 0.0)),
-            PlaybackInfo(4, "Wash", 4, None),
+            PlaybackInfo(1, "Warm", 1, None, ("toggle", "flash", "release")),
+            PlaybackInfo(2, "Song", 2, None, ("go", "back", "flash")),
+            PlaybackInfo(3, "Chase", 3, (1.0, 0.5, 0.0), ("go", "back", "swop")),
+            PlaybackInfo(4, "Wash", 4, None, ("toggle", "flash")),
         ),
         "cueLists": (
             CueListInfo(1, "Warm", "sequence", None, (CueInfo("1", "Warm", ()),)),
@@ -267,8 +280,8 @@ def test_rows_from_the_live_state() -> None:
         assert plain(chase.cue) == "chase 2 Step 2 bpm x 1 bounce"
         assert chase.bar.color == colors.swatch((1.0, 0.5, 0.0), 1.0, app.view.mode)
         assert (plain(empty.label), plain(empty.name_text)) == ("·", "—")
-        assert empty.buttons == []
-        assert empty.flash is None
+        assert empty.buttons == [empty.record]
+        assert empty.held == []
         header = app.query_one(BuskHeader).left.plain
         assert header == "page 1 Main · slots 1–4 · sel none"
 
@@ -314,8 +327,7 @@ def test_a_held_flash_shows_lit() -> None:
     async def body(pilot: Pilot[int]) -> None:
         started(bridge)
         await settle(pilot, app)
-        flash = rows(app)[2].flash
-        assert flash is not None
+        flash = rows(app)[2].held[0]
         assert not flash.lit
         bridge.events.append(LiveChanged(live(seq=2, playbacks=(playback(2, "Song", flash=True),))))
         await settle(pilot, app)
@@ -417,7 +429,7 @@ def test_the_keys_type_while_the_prompt_has_text() -> None:
 # ---------------------------------------------------------- mouse controls
 
 
-def test_go_back_and_a_click_on_pn() -> None:
+def test_own_buttons_and_a_click_on_pn() -> None:
     bridge = FakeBridge()
     app = make_app(bridge)
 
@@ -427,7 +439,10 @@ def test_go_back_and_a_click_on_pn() -> None:
         song = rows(app)[2]
         await pilot.click(song.buttons[0])
         await pilot.click(song.buttons[1])
-        assert sent(bridge) == [("go 2", "ui", None, True), ("back 2", "ui", None, True)]
+        assert sent(bridge) == [
+            ("button 2 1 on", "ui", None, True),
+            ("button 2 2 on", "ui", None, True),
+        ]
         await pilot.click(song.label)
         assert app.playback == 2
 
@@ -460,23 +475,330 @@ def test_a_fader_drag_is_sent_as_it_moves_and_logged_on_release() -> None:
     drive(app, body)
 
 
-def test_flash_is_held_while_the_button_is_down() -> None:
+def test_a_swop_is_held_while_the_button_is_down() -> None:
     bridge = FakeBridge()
     app = make_app(bridge)
 
     async def body(pilot: Pilot[int]) -> None:
         started(bridge)
         await settle(pilot, app)
-        flash = rows(app)[3].flash
-        assert flash is not None
-        await pilot.mouse_down(flash)
-        assert flash.held
-        assert sent(bridge) == [("flash 3 on", "ui", None, True)]
-        await pilot.mouse_up(flash)
-        assert not flash.held
-        assert sent(bridge) == [("flash 3 on", "ui", None, True), ("flash 3 off", "ui", None, True)]
+        swop = rows(app)[3].held[0]
+        assert plain(swop) == "[SW]"
+        await pilot.mouse_down(swop)
+        assert swop.held
+        assert sent(bridge) == [("button 3 3 on", "ui", None, True)]
+        await pilot.mouse_up(swop)
+        assert not swop.held
+        assert sent(bridge) == [
+            ("button 3 3 on", "ui", None, True),
+            ("button 3 3 off", "ui", None, True),
+        ]
 
     drive(app, body)
+
+
+# ------------------------------------------------ the playback's own buttons
+
+
+def own(number: int, *buttons: str, goto: str | None = None) -> PlaybackInfo:
+    """Playback ``number`` of :func:`club` with ``buttons``."""
+    base = next(info for info in club().playbacks if info.number == number)
+    return replace(base, buttons=buttons, gotoCue=goto)
+
+
+def with_buttons(*changed: PlaybackInfo, **changes: Any) -> ShowModel:
+    """:func:`club` with some of its playbacks replaced."""
+    numbers = {info.number for info in changed}
+    kept = tuple(info for info in club().playbacks if info.number not in numbers)
+    playbacks = tuple(sorted((*kept, *changed), key=lambda info: info.number))
+    return club(playbacks=playbacks, **changes)
+
+
+def test_every_function_of_the_model_has_a_label_and_a_hint() -> None:
+    functions = set(get_args(ButtonFunction.__value__))
+    assert set(LABELS) == functions
+    assert set(HINTS) == functions - {"none"}
+    assert all(len(label) <= 2 for label in LABELS.values())  # two fit a column, see LABELS
+
+
+@pytest.mark.parametrize(
+    ("functions", "labels"),
+    [  # every set the club show has
+        (("toggle", "flash", "release"), ["[TG]", "[FL]", "[RL]"]),
+        (("toggle", "flash"), ["[TG]", "[FL]"]),
+        (("toggle", "swop", "release"), ["[TG]", "[SW]", "[RL]"]),
+        (("go", "back", "release"), ["[GO]", "[◂]", "[RL]"]),
+        (("go", "back", "release", "goto"), ["[GO]", "[◂]", "[RL]", "[GT]"]),
+    ],
+)
+def test_a_row_has_the_playbacks_own_buttons(functions: tuple[str, ...], labels: list[str]) -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge, show=with_buttons(own(2, *functions, goto="2")))
+        await settle(pilot, app)
+        row = rows(app)[2]
+        assert [plain(button) for button in row.buttons] == labels
+        for left, right in zip(row.buttons, row.buttons[1:], strict=False):
+            assert right.region.x == left.region.right + 1  # a cell between two
+        expected = []
+        for index, (button, function) in enumerate(zip(row.buttons, functions, strict=True), 1):
+            if function in ("flash", "swop"):
+                await pilot.mouse_down(button)
+                await pilot.mouse_up(button)
+                expected += [f"button 2 {index} on", f"button 2 {index} off"]
+            else:
+                await pilot.click(button)
+                expected.append(f"button 2 {index} on")
+        assert [line for line, *_ in sent(bridge)] == expected
+
+    drive(app, body)
+
+
+def test_a_none_keeps_its_place_and_does_nothing() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge, show=with_buttons(own(2, "none", "release")))
+        await settle(pilot, app)
+        blank, release = rows(app)[2].buttons
+        assert plain(blank) == "[—]"
+        assert isinstance(blank, CommandButton)
+        assert blank.inert
+        await pilot.click(blank)
+        await pilot.click(release)
+        assert [line for line, *_ in sent(bridge)] == ["button 2 2 on"]
+        lines = [item.line for item in app.current_page.items()]
+        assert "button 2 1 on" not in lines
+        assert "button 2 2 on" in lines
+
+    drive(app, body)
+
+
+def test_a_select_press_goes_in_order_with_the_programmer_lines() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge, show=with_buttons(own(2, "select", "go")))
+        await settle(pilot, app)
+        select, go = rows(app)[2].buttons
+        await pilot.click(select)
+        await pilot.click(go)
+        assert sent(bridge) == [
+            ("button 2 1 on", "ui", None, False),
+            ("button 2 2 on", "ui", None, True),
+        ]
+
+    drive(app, body)
+
+
+def test_a_goto_is_grey_without_a_goto_cue() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge, show=with_buttons(own(2, "goto"), own(1, "goto", goto="1")))
+        await settle(pilot, app)
+        idle, live_goto = rows(app)[2].buttons[0], rows(app)[1].buttons[0]
+        assert isinstance(idle, CommandButton)
+        assert isinstance(live_goto, CommandButton)
+        assert idle.inert
+        assert "no goto cue" in str(idle.hint)
+        assert not live_goto.inert
+        await pilot.click(idle)
+        await pilot.click(live_goto)
+        assert [line for line, *_ in sent(bridge)] == ["button 1 1 on"]
+
+    drive(app, body)
+
+
+def test_what_starts_a_list_with_no_cues_is_grey() -> None:
+    """``go`` is refused there, but ``button`` would mark it active on no cue."""
+    show = with_buttons(
+        own(2, "go", "toggle", "back", "flash", "release"),
+        cueLists=(*club().cueLists[:1], replace(SONG, cues=()), *club().cueLists[2:]),
+    )
+    assert own_buttons(show, 2) == (
+        ("go", "go: its cue list has no cues"),
+        ("toggle", "toggle: its cue list has no cues"),
+        ("back", None),
+        ("flash", None),
+        ("release", None),
+    )
+
+
+def test_what_starts_the_playback_is_green_and_the_rest_neutral() -> None:
+    controls = own_controls(2, [(name, None) for name in ("go", "toggle", "back", "release")])
+    assert [control.intent for control in controls if isinstance(control, CommandButton)] == [
+        "go",
+        "go",
+        "neutral",
+        "neutral",
+    ]
+
+
+def test_own_buttons_of_nothing() -> None:
+    assert own_buttons(None, 1) == ()
+    assert own_buttons(club(), None) == ()
+    assert own_buttons(club(), 99) == ()
+
+
+def test_a_held_button_shows_lit_and_says_what_it_is() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        row = rows(app)[3]
+        swop = row.held[0]
+        await pilot.hover(swop)
+        await pilot.pause()
+        assert plain(app.query_one(HintRow)) == HINTS["swop"]
+        await pilot.hover(row.label)
+        await pilot.pause()
+        assert plain(app.query_one(HintRow)) != HINTS["swop"]
+        bridge.events.append(
+            LiveChanged(live(seq=2, playbacks=(playback(3, "Chase", flash=True),)))
+        )
+        await settle(pilot, app)
+        assert swop.lit
+
+    drive(app, body)
+
+
+def test_a_held_button_lets_go_when_its_strip_goes() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        swop = rows(app)[3].held[0]
+        await pilot.mouse_down(swop)
+        assert sent(bridge) == [("button 3 3 on", "ui", None, True)]
+        bridge.events.append(LiveChanged(live(seq=2, page=PageView(2, "Washes"))))
+        await settle(pilot, app)
+        await pilot.pause()
+        assert sent(bridge)[-1] == ("button 3 3 off", "ui", None, True)
+        assert app.mouse_captured is None
+
+    drive(app, body)
+
+
+def test_letting_go_of_a_held_button_is_sent_once() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        swop = rows(app)[3].held[0]
+        await pilot.mouse_down(swop)
+        await pilot.mouse_up(swop)
+        bridge.events.append(LiveChanged(live(seq=2, page=PageView(2, "Washes"))))
+        await settle(pilot, app)
+        await pilot.pause()
+        assert [line for line, *_ in sent(bridge)] == ["button 3 3 on", "button 3 3 off"]
+
+    drive(app, body)
+
+
+def test_the_buttons_column_is_as_wide_as_its_widest_row() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge, show=with_buttons(own(2, "go", "back", "release", "goto", goto="1")))
+        await settle(pilot, app)
+        shown = rows(app)
+        widths = {row.box.region.width for row in shown.values()}
+        assert widths == {19}
+        header = app.query_one(PlaybackHeader)
+        assert header.buttons.region.width == 19
+        assert header.buttons.region.x == shown[2].box.region.x
+        assert len({row.bar.region.x for row in shown.values()}) == 1
+
+    drive(app, body, size=(150, 40))
+
+
+def test_four_buttons_fit_a_row_at_100_columns() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge, show=with_buttons(own(2, "go", "back", "release", "goto", goto="1")))
+        await settle(pilot, app)
+        panel = app.query_one("#playbacks").content_region
+        row = rows(app)[2]
+        assert len(row.buttons) == 4
+        assert all(panel.contains_region(button.region) for button in row.buttons)
+
+    drive(app, body, size=(100, 40))
+
+
+def test_space_and_the_brackets_work_on_a_strip_with_no_go() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge, show=with_buttons(own(1, "toggle", "release")))
+        await settle(pilot, app)
+        await pilot.press("space", "right_square_bracket")
+        assert [line for line, *_ in sent(bridge)] == ["go 1", "fader 1 85%"]
+
+    drive(app, body)
+
+
+# -------------------------------------------------------------- an empty slot
+
+
+def holding() -> Any:
+    return programmer(values=(HeldValue(101, 1, "intensity", 0.5, None),), fixtures=1)
+
+
+def test_record_on_an_empty_slot_is_grey_until_there_is_something_to_record() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        record = rows(app)[-4].record
+        assert record is not None
+        assert plain(record) == "[record]"
+        assert record.inert
+        assert "record slot 1.4" not in [item.line for item in app.current_page.items()]
+        await pilot.click(record)
+        assert sent(bridge) == []
+        bridge.events.append(ProgrammerChanged(holding()))
+        await settle(pilot, app)
+        assert not record.inert
+        assert "record slot 1.4" in [item.line for item in app.current_page.items()]
+        await pilot.click(record)
+        assert sent(bridge) == [("record slot 1.4", "ui", None, False)]
+        bridge.events.append(ProgrammerChanged(programmer(version=3)))
+        await settle(pilot, app)
+        assert record.inert
+
+    drive(app, body)
+
+
+def test_a_stopped_effect_is_nothing_to_record() -> None:
+    fx = EffectInfo("fx1", "Circle")
+    assert not programmer(effects=(fx,), stopped=frozenset({"fx1"})).recordable()
+    assert programmer(effects=(fx,)).recordable()
+    assert not programmer().recordable()
+    assert holding().recordable()
+
+
+def test_a_slot_in_a_show_with_no_pages_has_no_record() -> None:
+    row = PlaybackRow(1, None)
+    assert row.record is None
+    assert row.buttons == []
 
 
 # ------------------------------------------------------------ right column
@@ -652,16 +974,17 @@ def test_the_pane_cursor_reaches_every_control() -> None:
         await settle(pilot, app)
         labels = [item.line or item.prefill or item.label for item in app.current_page.items()]
         assert labels == [
-            "go 1", "back 1", "go 2", "back 2", "go 3", "back 3",
+            "button 1 1 on", "button 1 3 on", "button 2 1 on", "button 2 2 on",
+            "button 3 1 on", "button 3 2 on",
             'tap "Speed 1"', 'bpm "Speed 1" 119', 'bpm "Speed 1" 121',
             "gm ", 'master "FX" ', 'master "Washes" ', "blackout on",
             "sel group 1", "sel group 2", "preset color 1", "preset color 2",
             "layout A console", "layout B stack", "layout C stage",
         ]  # fmt: skip
-        await pilot.press("tab", "down", "down", "down")  # back 2
+        await pilot.press("tab", "down", "down", "down")  # P2's second button
         await pilot.press("enter", "enter")
         assert app.cursor.active  # a line runs and the cursor stays
-        assert [line for line, *_ in sent(bridge)] == ["back 2", "back 2"]
+        assert [line for line, *_ in sent(bridge)] == ["button 2 2 on", "button 2 2 on"]
         await pilot.press(*["down"] * 6, "enter")  # gm: a line to finish
         assert not app.cursor.active
         assert app.prompt.value == "gm "

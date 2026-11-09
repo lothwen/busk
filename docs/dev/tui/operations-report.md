@@ -50,13 +50,13 @@ do can already be typed in the TUI. The tables below show how much the screens h
 | Effects in the programmer | control (F5, F1 B) | control | control | control (F5's EFFECT panel, stop, run) |
 | Effects in cues | control (F5) | control (via `record cue`) | control | control (F5's EFFECT panel) |
 | Effect templates | control (F5) | control (F5's `[+ template…]`) | control (F5's TEMPLATE panel) | control (F5's TEMPLATE panel) |
-| Playbacks, operating | control (F1) | n/a | n/a | control: fader, GO, ◂, FLASH; the playback's own buttons: prompt |
+| Playbacks, operating | control (F1) | n/a | n/a | control: the fader and the playback's own buttons |
 | Playbacks, configuration | partial: not shown | prompt | prompt | prompt |
 
 In short:
 
-- **SHOW is covered** for all of them except a playback's configuration: its buttons, fader
-  function, band, exclusivity, flash, LTP mode and release time are on no screen.
+- **SHOW is covered** for all of them except a playback's configuration: its fader function,
+  band, exclusivity, flash settings, LTP mode and release time are on no screen.
 - **The TUI is a performance and programming frontend, and it edits the rig, the presets, the
   cue lists and the effects, but not the rest of a show yet.** F3, F8, F6, F4 and F5 show, add,
   delete and update fixtures, universes, routes, presets, cues, cue lists, effects and effect
@@ -171,13 +171,13 @@ recorded into cues, and the templates both are made from.
 | Operation | busk line | Engine | TUI |
 |---|---|---|---|
 | Show live state | typed `PlaybackStatus` (state, level, fader function, flash, cue, next, chase, colour) | yes | control: F1 shows the current page's playbacks with level, cue, next, colour and a fader tag (`xfade`, `rate`, `size`, `temp`, `no fader`); F4 names the playbacks that run a list |
-| Show configuration | `LiveShow.show`; `list playbacks` | yes | none: no screen shows buttons, band, exclusivity, flash, LTP mode or release time. The TUI's `PlaybackInfo` reads only number, name, cue list and `uiColor` |
+| Show configuration | `LiveShow.show`; `list playbacks` | yes | partial: F1 draws the buttons. No screen shows the band, exclusivity, flash settings, LTP mode or release time, and the TUI's `PlaybackInfo` reads only number, name, cue list, `uiColor`, buttons and `gotoCue` |
 | Fader | `fader N <level>` | yes | control: drag, wheel, `[ ]` |
-| GO, BACK, go to a cue | `go N`, `back N`, `goto N <cue>` | yes | control: F1 GO and ◂; F4 buttons and cue rows |
-| Flash | `flash N on\|off` | yes | control: FLASH, held |
-| Release | `release N [<s>]`, `release all` | yes | control: F5 state click (cue effects), F7 `release all`; prompt for one playback |
-| The playback's own buttons | `button N B on\|off`, `toggle N` (GAP-04) | yes | prompt. Every strip shows GO, ◂ and FLASH whatever the playback's `buttons` are, so a `toggle`, `release`, `select` or `swop` button cannot be pressed from F1 |
-| Add | `playback add N cuelist L [at [P.]S] ["name"]` (GAP-34); `record slot [P.]S` makes one with a new cue list and its cue 1 | yes | prompt |
+| GO, BACK, go to a cue | `go N`, `back N`, `goto N <cue>` | yes | control: F1's own buttons and Space; F4 buttons and cue rows |
+| Flash | `flash N on\|off` | yes | control: F1's `flash` and `swop` buttons, held |
+| Release | `release N [<s>]`, `release all` | yes | control: F1's `release` button; F5 state click (cue effects); F7 `release all` |
+| The playback's own buttons | `button N B on\|off`, `toggle N` (GAP-04) | yes | control: F1, in all three layouts: one per entry of `buttons`, labelled by function. Layout C has room for the first. A button that would do nothing is grey |
+| Add | `playback add N cuelist L [at [P.]S] ["name"]` (GAP-34); `record slot [P.]S` makes one with a new cue list and its cue 1 | yes | control: F1's `[record]` on an empty slot, `record slot P.S`; prompt: `playback add` |
 | Delete | `delete playback N cascade` (GAP-36), `delete playback N` | yes: its cue list stays. A plain `delete` is refused in one line while a page slot holds it | prompt |
 | Place on a page | `page P slot S playback N`, `page P slot S clear`, `page add N` | yes | prompt |
 | Buttons, fader function | `playback N buttons ["go", "flash", "release"]`, `playback N fader rate` | yes: `help` and `?` name them (GAP-35) | prompt |
@@ -210,13 +210,11 @@ Candidates for [engine-gaps.md](engine-gaps.md), if the TUI is to cover these:
 
 ## What the TUI is missing
 
-busk has the line for all of these, but no screen offers it. Grouped by the screen that would
-host it:
+busk has the line for all of these, but no screen offers it:
 
-- **F1**: the playback's own buttons (`button N B on|off`) instead of the fixed GO, ◂ and
-  FLASH; `record slot` on an empty slot.
-- **Playbacks**: no screen views or edits their configuration (buttons, fader function,
-  band, exclusivity, flash, LTP mode, release time, page slots), and none adds or deletes one.
+- **Playbacks**: no screen edits their configuration (buttons, fader function, band,
+  exclusivity, flash, LTP mode, release time, page slots) or shows more of it than F1's buttons,
+  and none deletes one or makes one on a list that exists.
 
 ## Side findings
 

@@ -645,10 +645,51 @@ Q3 decides what the strips show. Code: `src/busk_tui/widgets/playbacks.py`, `src
 1. **The strips draw `buttons`**, in layouts A, B and C: one per entry, labelled by function. Each
    sends `button N B on|off`, `B` counted from 1, so a `none` keeps its place. `flash` and `swop`
    are held, as FLASH is today. The compact row of layout C follows Q3.
+
+   **Done** (2026-11-09). As planned, under Q3's (a): `own_buttons`, `own_controls` and `HeldButton`
+   in `src/busk_tui/widgets/playbacks.py`, `commands.button`, and `PlaybackInfo.buttons` and
+   `gotoCue`. A strip is rebuilt only when what it is built from changes. Which the user may veto:
+   - **The labels are two cells:** `GO`, `◂`, `GT`, `FL`, `SW`, `TG`, `RL`, `SL` and `—`, so that two
+     fit a column. The hint row names the function under the mouse.
+   - **A button that would do nothing is grey**, which the plan did not name: a `none`, a `goto` with
+     no `gotoCue`, and `go` or `toggle` on a list with no cues. That last is Phase 2's warning:
+     `button N B on` marks the playback active on no cue, where `go N` is refused. The prompt and a
+     bound control can still do it.
+   - **In a column, two buttons have no gap between them** (`[TG][FL]`). With a gap they need 9 cells
+     inside the border, and the grid can leave a column with 8 as the page's scrollbar comes and
+     goes, which a real run found.
+   - **A `select` press is not sent as a performance line**, though `button` is one: busk runs it as
+     `SELECT_PLAYBACK`, so it stays in order with the programmer's lines and is undoable.
+   - **A press-only button sends only `on`.** `off` does nothing there, and would fill the log.
+   - **A held button lets go when its strip goes** (another page, an edit of its buttons), which the
+     plan did not name. Before, a `flash N on` stayed on after a page change under a held mouse.
+   - A held button has no pane-cursor stop, as FLASH had none. It has no key to hold it.
+   - A `toggle` is not lit while the playback runs: the name and the cue column say so.
+   - B's button column is as wide as the page's widest row, and the bar can go down to 8 cells, from
+     12, so that four buttons fit at 100 columns. Five or more can clip from 100 to about 109.
+   - A column grows a line for every two buttons past four, and all of them take the tallest's height.
 2. **`[record]` on an empty slot**: `record slot [P.]S`, grey with an empty programmer.
+
+   **Done** (2026-11-09). As planned, as `record slot P.S`, naming the page the strip shows, which a
+   page change cannot move under the click. `ProgrammerModel.recordable`, moved from F4, decides the
+   grey, so a stopped effect is nothing to record here as well. Which the user may veto:
+   - The column gets 9 cells on a compact row with an empty slot, and that row's bar goes down to 5.
 
 Verify: all the club show's button sets; `select` and `goto`; hold and release with the mouse;
 Space and `[ ]` unchanged; the perf gate on F1 in all three layouts.
+
+**Phase 9 checks** (2026-11-09). The whole suite: 5,886 passed and 1 skipped, in 4:50 with `uv run
+pytest -n 6`. `ruff check`, `ruff format --check` and `mypy src` clean. No change to `src/busk/` or
+the engine's tests. The five TUI test files the phase touched, 490 tests, and the new test on the
+real engine in `tests/tui/test_tui_e2e.py` pass on Textual 8.2.0. The perf gate on the final code: 7
+passed, no overruns, F1 B at +0.176 core, A at +0.179 and C at +0.212. 54 mutations of the new code:
+52 caught at once, and two of layout CSS needed a tighter test, which is in. A real `busk-tui
+--state-dir …` under `busk run` on the club show, with real mouse presses in a pty, at 150 and 99
+columns: `[TG]`, a held `[FL]` lit and let go, `[RL]`, `[GT]`, Space on a playback with no go button,
+an edit of the buttons that redrew the strip, `[SL]`, `undo`, a grey `[record]` sending nothing and a
+live one recording slot 2.7, a held `[SW]` let go by a page change, a held `[FL]` in layout A's column
+and layout C's one button, with no error in the log. Docs: `docs/tui/guide.md` with its three F1
+diagrams, the report's rows, "In short" and "What the TUI is missing", and `CHANGELOG.md`.
 
 ### Phase 10: Playback configuration
 
@@ -784,7 +825,7 @@ Left out because the five places do not name them. Say if any should join a phas
      **Recommended:** the strip then matches the show, and Space still goes.
    - (b) The playback's own, with GO kept where it has none.
 
-   ANSWER:
+   ANSWER: (a), the recommended one (the user's standing word, 2026-11-09). Built in Phase 9.
 4. **A split patch** (Phase 14). The spec does not say what a split element's channel offsets are
    relative to, and no shipped show has one.
    - (a) Leave it out until a rig needs it, and drop Phase 14. **Recommended.**

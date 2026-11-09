@@ -276,13 +276,9 @@ class CuesPage(Page):
         return [view.number for view in views if view is not None and view.cue == cue]
 
     def recordable(self) -> bool:
-        """Whether the programmer has what ``record cue`` takes: a value, or
-        an effect that runs (busk does not record a stopped one)."""
+        """Whether the programmer has what ``record cue`` takes."""
         programmer = self._view.programmer
-        if programmer is None:
-            return False
-        running = any(effect.id not in programmer.stopped for effect in programmer.effects)
-        return bool(programmer.values) or running
+        return programmer is not None and programmer.recordable()
 
     # ------------------------------------------------------------- draw
 

@@ -14,7 +14,7 @@ AUDIENCE, and ``[location…]`` opens the form of the six values for the first
 selected fixture (else the first without a place), as F3's FIXTURE panel
 does. A click selects, a Shift-click adds or takes out.
 
-The right column: compact PLAYBACKS (``Pn``, name, bar, level, ``[GO]``),
+The right column: compact PLAYBACKS (``Pn``, name, bar, level, its first button),
 MASTERS (the grand, size and group masters, and the tempo row), QUICK
 (group buttons, colour chips). Below 100 columns it goes under the stage.
 """
@@ -41,7 +41,7 @@ from busk_tui.model import (
     ProgrammerModel,
     ShowModel,
 )
-from busk_tui.nav import Item, Stop
+from busk_tui.nav import Stop
 from busk_tui.pages.base import Part, View
 from busk_tui.pages.busk_stack import BAR_MASTERS
 from busk_tui.widgets.controls import ButtonStrip, StripButton, button_label
@@ -50,7 +50,13 @@ from busk_tui.widgets.fixturetable import COLOR_CELLS, by_fixture
 from busk_tui.widgets.location_form import open_location_form
 from busk_tui.widgets.masters import MasterBars
 from busk_tui.widgets.panel import Panel
-from busk_tui.widgets.playbacks import PlaybackRow
+from busk_tui.widgets.playbacks import (
+    Built,
+    PlaybackRow,
+    button_stops,
+    own_buttons,
+    show_recordable,
+)
 from busk_tui.widgets.quick import color_chips, group_buttons, strip_stops
 from busk_tui.widgets.tempo import TempoRow, beats_of, first_speed, speed_of
 
@@ -325,7 +331,7 @@ class StageLayout(Horizontal):
 
     def __init__(self) -> None:
         super().__init__()
-        self.slots: tuple[int | None, ...] | None = None
+        self.built: Built | None = None
         self.rows: list[PlaybackRow] = []
         self.plot = StagePlot(id="stage-plot")
         self.edit_label = Static("", id="stage-edit-label")
@@ -355,16 +361,17 @@ class StageLayout(Horizontal):
                 yield self.chips
 
     def update_view(
-        self, view: View, changed: frozenset[Part], slots: tuple[int | None, ...]
+        self,
+        view: View,
+        changed: frozenset[Part],
+        slots: tuple[int | None, ...],
+        page: int | None,
     ) -> None:
         show, live = view.show, view.live
-        if slots != self.slots:
-            self.slots = slots
-            self.rows = [
-                PlaybackRow(index + 1, number, compact=True) for index, number in enumerate(slots)
-            ]
-            self.rows_box.remove_children()
-            self.rows_box.mount_all(self.rows)
+        if changed & {"show", "live"}:
+            self._build_rows(view, slots, page)
+        if "programmer" in changed:
+            show_recordable(self.rows, view.programmer)
         if changed & {"show", "live", "playback"}:
             for row in self.rows:
                 if row.number is None:
@@ -389,6 +396,19 @@ class StageLayout(Horizontal):
                 self.tempo.show(None if name is None else speed_of(live, name), live.blackout)
         if changed & {"live", "beats"} and self.tempo is not None and self.tempo.master is not None:
             self.tempo.show_beats(beats_of(live, view.beats, self.tempo.master.name))
+
+    def _build_rows(self, view: View, slots: tuple[int | None, ...], page: int | None) -> None:
+        own = tuple(own_buttons(view.show, number) for number in slots)
+        if (slots, own, page) == self.built:
+            return
+        self.built = (slots, own, page)
+        self.rows = [
+            PlaybackRow(index + 1, number, buttons, page=page, compact=True)
+            for index, (number, buttons) in enumerate(zip(slots, own, strict=True))
+        ]
+        self.rows_box.remove_children()
+        self.rows_box.mount_all(self.rows)
+        show_recordable(self.rows, view.programmer)
 
     def _show_edits(self) -> None:
         fixture = self.plot.edited()
@@ -421,10 +441,7 @@ class StageLayout(Horizontal):
         self.tempo_box.mount(self.tempo)
 
     def stops(self) -> list[Stop]:
-        stops: list[Stop] = []
-        for row in self.rows:
-            for button in row.buttons:
-                stops.append(Stop(Item(button.line.text, line=button.line.text), button))
+        stops = button_stops(self.rows)
         stops += self.bars.stops()
         if self.tempo is not None:
             stops += self.tempo.stops()

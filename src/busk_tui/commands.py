@@ -97,6 +97,13 @@ def flash(playback: int, on: bool) -> Line:
     return Line(f"flash {playback} {'on' if on else 'off'}", performance=True)
 
 
+def button(playback: int, index: int, on: bool, *, programmer: bool = False) -> Line:
+    """Press or let go of one of a playback's own buttons, counted from 1:
+    ``button 9 3 on``. ``programmer``: the press of a ``select`` button, which
+    busk runs as a programmer line, so it stays in order with the others."""
+    return Line(f"button {playback} {index} {'on' if on else 'off'}", performance=not programmer)
+
+
 def gm(level: float) -> Line:
     return Line(f"gm {percent(level)}", performance=True)
 
@@ -489,6 +496,11 @@ def route_on(route: str, on: bool) -> Line:
 
 
 # ------------------------------------------------------------------- cues
+
+
+def record_slot(page: int, slot: int) -> Line:
+    """The programmer as a new playback on an empty slot: ``record slot 2.7``."""
+    return Line(f"record slot {page}.{slot}")
 
 
 def record_cue(

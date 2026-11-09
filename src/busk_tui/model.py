@@ -220,6 +220,11 @@ class ProgrammerModel:
     values: tuple[HeldValue, ...] = ()  # in the order the programmer holds them
     options: tuple[tuple[str, tuple[str, ...]], ...] = ()  # (attribute, options), registry order
 
+    def recordable(self) -> bool:
+        """Whether it has what a cue records: a value, or an effect that runs
+        (busk does not record a stopped one)."""
+        return bool(self.values) or any(e.id not in self.stopped for e in self.effects)
+
     def offered(self, attribute: str) -> tuple[str, ...]:
         """The options the selection offers for the discrete ``attribute``
         (``open``, ``breakup`` …); none when no selected element takes it."""
@@ -388,6 +393,8 @@ class PlaybackInfo:
     name: str
     cueList: int  # the number of the cue list it runs
     uiColor: Rgb | None  # its ``uiColor``, when it is one
+    buttons: tuple[str, ...] = ()  # its own buttons' functions, in order
+    gotoCue: str | None = None  # the cue its ``goto`` buttons go to
 
 
 @dataclass(frozen=True, slots=True)

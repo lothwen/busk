@@ -10,6 +10,11 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- F1's strips have each playback's own buttons, in place of the fixed GO, ◂ and FLASH: one per entry
+  of its `buttons`, labelled by function, in all three layouts (layout C has room for the first).
+  Each runs `button N B on`, `flash` and `swop` are held while the mouse button is down, and one
+  that would do nothing is grey. `[record]`, on an empty slot, runs `record slot P.S`. Space still
+  runs `go` on the selected playback.
 - F5 edits effect templates from controls. `[+ template…]` makes one, and `[edit]` on a template
   opens its TEMPLATE panel, with a row per layer: a wave layer's attribute, mode, waveform with its
   parameters and phase offset, and a colour layer's blend and palette of colours and presets. Each

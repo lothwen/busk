@@ -769,6 +769,8 @@ def show_model(
                         name=playback["name"],
                         cueList=lists.get(playback["cueListId"], 0),
                         uiColor=_hex_color(playback.get("uiColor")),
+                        buttons=tuple(playback["buttons"]),
+                        gotoCue=playback.get("gotoCue"),
                     )
                     for playback in doc["playbacks"]
                 ),

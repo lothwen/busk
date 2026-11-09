@@ -150,16 +150,16 @@ controls.
  page 1 Main · slots 1–13 · sel 101 thru 102                                              layout   A console    B stack    C stage
 
  ┌─ PLAYBACKS ────────────────────────────────────────────────────────────────────────────┐┌─ TEMPO · Speed 1 ────────────────────┐
- │ #   name            level                            cue → next                        ││ ▀█  ▀▀█ █▀█   █▀█  ● ● ● ●           │
- │ P1  Warm            ██████████████████████▍░░░░░  80 —/1 → Warm          [GO] [◂] [FL] ││  █  █▀▀ █ █   █ █                    │
- │ P2  Cool            ░░░░░░░░░░░░░░░░░░░░░░░░░░░░   0 —/1 → Cool          [GO] [◂] [FL] ││ ▀▀▀ ▀▀▀ ▀▀▀ ▀ ▀▀▀  [TAP] [−] [+]     │
+ │ #   name            level                         cue → next                           ││ ▀█  ▀▀█ █▀█   █▀█  ● ● ● ●           │
+ │ P1  Warm            ████████████████████░░░░░  80 —/1 → Warm        [TG] [FL] [RL]     ││  █  █▀▀ █ █   █ █                    │
+ │ P2  Cool            ░░░░░░░░░░░░░░░░░░░░░░░░░   0 —/1 → Cool        [TG] [FL] [RL]     ││ ▀▀▀ ▀▀▀ ▀▀▀ ▀ ▀▀▀  [TAP] [−] [+]     │
  │ …                                                                                      │└──────────────────────────────────────┘
- │ P8  Panic no fader  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░   — —/1 → Panic         [GO] [◂] [FL] │┌─ MASTERS ────────────────────────────┐
- │ P9  Song            ███████████████████▋░░░░░░░░  70 3/5 Pre → Chorus    [GO] [◂] [FL] ││ GM       ██████████████████████  100 │
- │ P10 Chase           ██████████████░░░░░░░░░░░░░░  50 chase 4 Cue 4 bpm … [GO] [◂] [FL] ││ FX       ██████████████████████  100 │
- │ P11 Circle size     ████████████████████████████ 100 1/1 Circle          [GO] [◂] [FL] ││ Wash lev…██████████████████████  100 │
- │ P12 Pulse size      ░░░░░░░░░░░░░░░░░░░░░░░░░░░░   0 —/1 → Pulse         [GO] [◂] [FL] ││                           [BLACKOUT] │
- │ P13 Bar wave size   ░░░░░░░░░░░░░░░░░░░░░░░░░░░░   0 —/1 → Bar wave      [GO] [◂] [FL] │└──────────────────────────────────────┘
+ │ P8  Panic no fader  ░░░░░░░░░░░░░░░░░░░░░░░░░   — —/1 → Panic       [TG] [FL] [RL]     │┌─ MASTERS ────────────────────────────┐
+ │ P9  Song            █████████████████▌░░░░░░░  70 3/5 Pre → Chorus  [GO] [◂] [RL] [GT] ││ GM       ██████████████████████  100 │
+ │ P10 Chase           ████████████▌░░░░░░░░░░░░  50 chase 4 Cue 4 bp… [TG] [FL]          ││ FX       ██████████████████████  100 │
+ │ P11 Circle size     █████████████████████████ 100 1/1 Circle        [TG] [FL]          ││ Wash lev…██████████████████████  100 │
+ │ P12 Pulse size      ░░░░░░░░░░░░░░░░░░░░░░░░░   0 —/1 → Pulse       [TG] [FL]          ││                           [BLACKOUT] │
+ │ P13 Bar wave size   ░░░░░░░░░░░░░░░░░░░░░░░░░   0 —/1 → Bar wave    [TG] [FL]          │└──────────────────────────────────────┘
  └────────────────────────────────────────────────────────────────────────────────────────┘┌─ EFFECTS ────────────────────────────┐
                                                                                            │ P11 fx1   Circle ██▇▇▅▃▂▁▁▂▃▄▇ [RUN] │
                                                                                            └──────────────────────────────────────┘
@@ -177,9 +177,18 @@ chase. A name in white is a playback that runs; the level turns amber while it r
 
 - Click or drag the bar to set the fader (`fader 9 72%`, logged once, when you let go); the
   mouse wheel steps it 5 % (not logged).
-- `[GO]` and `[◂]` run `go N` and `back N`. GO leaves the fader where it is.
-- `[FL]` is held while the mouse button is down on it: `flash N on`, then `flash N off`. It is
-  lit while a flash is held on the playback, from here or from a surface.
+- The buttons at the end of the row are the playback's own, one for each entry of its `buttons`,
+  in order: `[GO]` go, `[◂]` back, `[GT]` goto, `[TG]` toggle, `[RL]` release, `[SL]` select,
+  `[FL]` flash, `[SW]` swop and `[—]` none. The hint row names the one under the mouse. A click
+  runs `button N B on`, counting from 1, so a `none` keeps its place. GO leaves the fader where it
+  is. A button that would do nothing is grey: `[—]`, a `[GT]` with no goto cue, and `[GO]` or
+  `[TG]` on a list with no cues.
+- `[FL]` and `[SW]` are held while the mouse button is down on them: `button N B on`, then `button
+  N B off`. They are lit while a flash is held on the playback, from here or from a surface. A
+  strip that goes while one is held (another page, say) lets go of it.
+- `[record]`, on an empty slot, records the programmer as a new playback there (`record slot
+  2.7`). It is grey while the programmer has nothing to record.
+- Space runs `go` on the selected playback whatever buttons it has.
 - A click on `P9` (or the name) selects the playback for Space and `[ ]`; it is drawn on a
   lighter row, and the prompt says `P9`. ← → select the next one; after a page change the
   selection moves to the playback in the same slot.
@@ -232,8 +241,8 @@ Below 100 columns the right column goes under the playbacks.
  │ │  ████   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ████   ││  ████   ││  ░░░░   ││   ░░░░   │ │
  │ │  ████   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ░░░░   ││  ████   ││  ████   ││  ░░░░   ││   ░░░░   │ │
  │ │   80    ││    0    ││    0    ││    0    ││    0    ││    0    ││    0    ││    —    ││    0    ││   50    ││100 size ││ 0 size  ││  0 size  │ │
- │ │[GO] [◂] ││[GO] [◂] ││[GO] [◂] ││[GO] [◂] ││[GO] [◂] ││[GO] [◂] ││[GO] [◂] ││[GO] [◂] ││[GO] [◂] ││[GO] [◂] ││[GO] [◂] ││[GO] [◂] ││ [GO] [◂] │ │
- │ │ [FLASH] ││ [FLASH] ││ [FLASH] ││ [FLASH] ││ [FLASH] ││ [FLASH] ││ [FLASH] ││ [FLASH] ││ [FLASH] ││ [FLASH] ││ [FLASH] ││ [FLASH] ││ [FLASH]  │ │
+ │ │[TG][FL] ││[TG][FL] ││[TG][FL] ││[TG][FL] ││[TG][FL] ││[TG][FL] ││[TG][FL] ││[TG][FL] ││[GO][◂]  ││[TG][FL] ││[TG][FL] ││[TG][FL] ││ [TG][FL] │ │
+ │ │  [RL]   ││  [RL]   ││  [RL]   ││  [RL]   ││  [RL]   ││  [RL]   ││  [RL]   ││  [RL]   ││[RL][GT] ││         ││         ││         ││          │ │
  │ └─────────┘└─────────┘└─────────┘└─────────┘└─────────┘└─────────┘└─────────┘└─────────┘└─────────┘└─────────┘└─────────┘└─────────┘└──────────┘ │
  └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -254,8 +263,8 @@ and `[B.O.]` (blackout on, and off again while it is lit).
 **PLAYBACKS** is a column per slot, as many to a line as fit: the number, the name, where it
 is in its list (`2/5`, `chase 4`, `—/5` while idle), its fader (ten rows, in the colour of
 its current cue), the level (with `size`, `rate`, `xfade` or `temp` when the fader is not a
-level), `[GO] [◂]` and `[FLASH]`. Click or drag the fader to set it (logged once, when you
-let go), or use the wheel (5 %, not logged); FLASH is held while the mouse button is down.
+level) and its own buttons, two to a line, as in [layout B](#f1-busk). Click or drag the fader to
+set it (logged once, when you let go), or use the wheel (5 %, not logged).
 The selected playback has a cyan border. Below 100 columns PROGRAMMER goes under OUTPUT.
 
 ### Layout C: stage
@@ -264,19 +273,19 @@ The selected playback has a cyan border. Below 100 columns PROGRAMMER goes under
  page 1 Main · slots 1–13 · sel 101 thru 102                                                                layout   A console    B stack    C stage
 
  ┌─ STAGE · click selects, Shift-click adds ────────────────────────────────────────────────────────────────┐┌─ PLAYBACKS ──────────────────────────┐
- │ y -1.0    ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄   ◆   ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄   ◆   ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ││ P1  Warm         ███████▎░  80  [GO] │
- │ z 5.0                       101                                                    102                   ││ P2  Cool         ░░░░░░░░░   0  [GO] │
- │                            ↑ 10°                                                  ↑ 1°                   ││ P3  Blue         ░░░░░░░░░   0  [GO] │
- │                                                                                                          ││ P4  Red          ░░░░░░░░░   0  [GO] │
- │ y 1.0     ┄┄┄┄ ■ ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ■ ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ■ ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ■ ┄┄┄┄┄ ││ P5  Green        ░░░░░░░░░   0  [GO] │
- │ z 4.0         201                         202                        203                        204      ││ P6  Audience     ░░░░░░░░░   0  [GO] │
- │                                                                                                          ││ P7  Centre       ░░░░░░░░░   0  [GO] │
- │           · · · · · · · · · · · · · · · · · · · · ·  AUDIENCE  · · · · · · · · · · · · · · · · · · · · · ││ P8  Panic no fa… ░░░░░░░░░   —  [GO] │
+ │ y -1.0    ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄   ◆   ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄   ◆   ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ││ P1  Warm         ███████▎░  80  [TG] │
+ │ z 5.0                       101                                                    102                   ││ P2  Cool         ░░░░░░░░░   0  [TG] │
+ │                            ↑ 10°                                                  ↑ 1°                   ││ P3  Blue         ░░░░░░░░░   0  [TG] │
+ │                                                                                                          ││ P4  Red          ░░░░░░░░░   0  [TG] │
+ │ y 1.0     ┄┄┄┄ ■ ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ■ ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ■ ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ■ ┄┄┄┄┄ ││ P5  Green        ░░░░░░░░░   0  [TG] │
+ │ z 4.0         201                         202                        203                        204      ││ P6  Audience     ░░░░░░░░░   0  [TG] │
+ │                                                                                                          ││ P7  Centre       ░░░░░░░░░   0  [TG] │
+ │           · · · · · · · · · · · · · · · · · · · · ·  AUDIENCE  · · · · · · · · · · · · · · · · · · · · · ││ P8  Panic no fa… ░░░░░░░░░   —  [TG] │
  │                                                                                                          ││ P9  Song         ░░░░░░░░░   0  [GO] │
- │ no place  ████████████                                                                                   ││ P10 Chase        ████▌░░░░  50  [GO] │
- │               301                                                                                        ││ P11 Circle size  █████████ 100  [GO] │
- │                                                                                                          ││ P12 Pulse size   ░░░░░░░░░   0  [GO] │
- │ place fixture 101 Spot 101 [location…]                                                                   ││ P13 Bar wave si… ░░░░░░░░░   0  [GO] │
+ │ no place  ████████████                                                                                   ││ P10 Chase        ████▌░░░░  50  [TG] │
+ │               301                                                                                        ││ P11 Circle size  █████████ 100  [TG] │
+ │                                                                                                          ││ P12 Pulse size   ░░░░░░░░░   0  [TG] │
+ │ place fixture 101 Spot 101 [location…]                                                                   ││ P13 Bar wave si… ░░░░░░░░░   0  [TG] │
  └──────────────────────────────────────────────────────────────────────────────────────────────────────────┘└──────────────────────────────────────┘
                                                                                                              ┌─ MASTERS ────────────────────────────┐
                                                                                                              │ GM       ██████████████████████  100 │
@@ -304,9 +313,9 @@ opens the form F3 uses, of the six values (`x`, `y`, `z` in metres, `rx`, `ry`, 
 starting at the fixture's place when it has one, for the first selected fixture (else the first
 without a place): select a fixture, click it, type its place. Clicks select as in OUTPUT.
 
-The right column has the playbacks as compact rows (`[GO]` only), MASTERS with the tempo
-row, and QUICK (the group buttons and colour chips). Below 100 columns it goes under the
-stage.
+The right column has the playbacks as compact rows (the first of their buttons only), MASTERS
+with the tempo row, and QUICK (the group buttons and colour chips). Below 100 columns it goes
+under the stage.
 
 ## F2 Program
 

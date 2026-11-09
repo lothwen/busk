@@ -28,7 +28,7 @@ from textual.widget import Widget
 from busk_tui import colors
 from busk_tui.config import Layout
 from busk_tui.formats import selection_text
-from busk_tui.model import LiveState, ShowModel
+from busk_tui.model import LiveState, PageInfo, ShowModel
 from busk_tui.nav import Item, Stop
 from busk_tui.pages.base import ALL_PARTS, Page, Part, View
 from busk_tui.pages.busk_console import ConsoleLayout
@@ -41,16 +41,24 @@ LAYOUTS: Final[tuple[tuple[Layout, str], ...]] = (("A", "console"), ("B", "stack
 type Slots = tuple[int | None, ...]
 
 
+def shown_page(show: ShowModel | None, live: LiveState | None) -> PageInfo | None:
+    """The page F1 shows: the engine's current one, else the first; ``None``
+    in a show with no pages."""
+    if show is None or not show.pages:
+        return None
+    current = None if live is None or live.page is None else live.page.number
+    return next((page for page in show.pages if page.number == current), show.pages[0])
+
+
 def visible_slots(show: ShowModel | None, live: LiveState | None, cap: int) -> Slots:
     """F1's slots: the playback number in each slot of the current page
     (``None``: empty), at most ``cap``; without pages, the playbacks by
     number."""
     if show is None:
         return ()
-    if not show.pages:
+    page = shown_page(show, live)
+    if page is None:
         return tuple(playback.number for playback in show.playbacks)[:cap]
-    current = None if live is None or live.page is None else live.page.number
-    page = next((page for page in show.pages if page.number == current), show.pages[0])
     return page.slots[:cap]
 
 
@@ -197,7 +205,8 @@ class BuskPage(Page):
         slots = visible_slots(view.show, view.live, view.faders)
         if changed & {"show", "live", "programmer"}:
             self.header.show(view, slots)
-        self.shown_layout.update_view(view, changed, slots)
+        page = shown_page(view.show, view.live)
+        self.shown_layout.update_view(view, changed, slots, None if page is None else page.number)
 
     def stops(self) -> list[Stop]:
         layouts = [

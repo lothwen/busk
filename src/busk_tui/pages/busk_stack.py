@@ -23,7 +23,15 @@ from busk_tui.widgets.controls import ButtonStrip
 from busk_tui.widgets.effects import EffectList, effect_lines
 from busk_tui.widgets.masters import BlackoutButton, MasterBar, master_item
 from busk_tui.widgets.panel import Panel
-from busk_tui.widgets.playbacks import PlaybackHeader, PlaybackRow
+from busk_tui.widgets.playbacks import (
+    Built,
+    PlaybackHeader,
+    PlaybackRow,
+    button_stops,
+    fit_buttons,
+    own_buttons,
+    show_recordable,
+)
 from busk_tui.widgets.quick import color_chips, group_buttons, strip_stops
 from busk_tui.widgets.tempo import Tempo
 
@@ -47,8 +55,9 @@ class StackLayout(Horizontal):
 
     def __init__(self) -> None:
         super().__init__()
-        self.slots: tuple[int | None, ...] | None = None
+        self.built: Built | None = None
         self.rows: list[PlaybackRow] = []
+        self.header = PlaybackHeader()
         self.tempo: Tempo | None = None
         self.tempo_for: tuple[MasterView | None] | None = (
             None  # the speed master TEMPO was built for
@@ -67,7 +76,7 @@ class StackLayout(Horizontal):
 
     def compose(self) -> ComposeResult:
         with Panel("playbacks", id="playbacks"):
-            yield PlaybackHeader()
+            yield self.header
             yield self.rows_box
         with Vertical(id="busk-side"):
             yield self.tempo_panel
@@ -83,14 +92,17 @@ class StackLayout(Horizontal):
                 yield self.chips
 
     def update_view(
-        self, view: View, changed: frozenset[Part], slots: tuple[int | None, ...]
+        self,
+        view: View,
+        changed: frozenset[Part],
+        slots: tuple[int | None, ...],
+        page: int | None,
     ) -> None:
         show, live = view.show, view.live
-        if slots != self.slots:
-            self.slots = slots
-            self.rows = [PlaybackRow(index + 1, number) for index, number in enumerate(slots)]
-            self.rows_box.remove_children()
-            self.rows_box.mount_all(self.rows)
+        if changed & {"show", "live"}:
+            self._build_rows(view, slots, page)
+        if "programmer" in changed:
+            show_recordable(self.rows, view.programmer)
         if changed & {"show", "live", "playback"}:
             for row in self.rows:
                 if row.number is None:
@@ -121,6 +133,20 @@ class StackLayout(Horizontal):
             self.effects.show(effect_lines(show, view.programmer, view.effects), view.mode)
         if changed & {"show", "programmer"}:
             self._show_selection(view)
+
+    def _build_rows(self, view: View, slots: tuple[int | None, ...], page: int | None) -> None:
+        own = tuple(own_buttons(view.show, number) for number in slots)
+        if (slots, own, page) == self.built:
+            return
+        self.built = (slots, own, page)
+        self.rows = [
+            PlaybackRow(index + 1, number, buttons, page=page)
+            for index, (number, buttons) in enumerate(zip(slots, own, strict=True))
+        ]
+        fit_buttons(self.rows, self.header)
+        self.rows_box.remove_children()
+        self.rows_box.mount_all(self.rows)
+        show_recordable(self.rows, view.programmer)
 
     def _build_tempo(self, view: View) -> None:
         show = view.show
@@ -168,10 +194,7 @@ class StackLayout(Horizontal):
         self.chips.show(color_chips(() if show is None else show.presets, view.mode))
 
     def stops(self) -> list[Stop]:
-        stops: list[Stop] = []
-        for row in self.rows:
-            for button in row.buttons:
-                stops.append(Stop(Item(button.line.text, line=button.line.text), button))
+        stops = button_stops(self.rows)
         if self.tempo is not None:
             stops += self.tempo.stops()
         stops += [Stop(master_item(bar.master), bar) for bar in self.bars]
