@@ -656,17 +656,51 @@ colour cycle), and its state:
   (`release 11`). An effect that tracks on into later cues stays on the cue that holds it.
 - On a programmer effect, `[RUN]` stops it (`effect stop fx5`: it stays in the programmer
   but does not run, and `record cue` leaves it out) and `[off]` runs it again (`effect run
-  fx5`). `✕` removes it (`effect remove fx5`).
+  fx5`).
+
+`✕` removes the effect. A programmer effect goes at once (`effect remove fx5`). A cue's effect goes
+after a question, which says when it is running (`cue 9/4 effect rainbow remove`), and its cue
+stays. `[clear]`, under the table, removes every programmer effect after a question (`effect
+clear`). It is grey while the programmer holds none.
 
 **TEMPLATES** lists every template `effect add` takes: the show's, then the effect library's
 the show has no copy of yet (`library`: adding one copies it into the show), with the
 defaults the library gives it (`size 20`, `low 0 high 1`, `phase 0 360`). A click adds one to
 the selection the header names: `effect add "Circle"`, with those defaults; to choose
-others, type the line (`effect add "Circle" bpm x 2 size 30`). A template you add with
-`effect template add` shows here at once.
+others, type the line (`effect add "Circle" bpm x 2 size 30`), or change the effect in its
+panel. A template you add with `effect template add` shows here at once.
 
-The pane cursor stops on each state and `✕`, then each template. Below 132 columns the
-templates go under the effects.
+**The EFFECT panel** opens with a click on any part of a row but its state or `✕`, in the place of
+the templates, until its `[done]`. It names the effect's template and fixtures, and has one
+control per setting:
+
+- `[rate…]`: a form, in hertz or on a speed master's beat, with the master when the show has
+  several, and a multiplier.
+- `direction`: a chip for each way.
+- `[size…]`, `[phase…]`, `[groups…]`, `[blocks…]`, `[wings…]` and `[fade-in…]`: a dialog that
+  starts at the value. `[none]`, beside a fade-in, takes it away: the effect then comes in over
+  its cue's time, or the programmer's fade time, where a fade-in of 0 snaps in.
+- The two levels of an absolute effect: `[low…]` and `[high…]` on a cue's effect, and `[levels…]`,
+  the two together, on a programmer effect.
+- `size master` and `speed master`: a chip per master, and `[none]`. A speed master does nothing
+  for an effect on a master's beat, and the panel says so.
+
+Each change is one line and one undo step, and a value left as it was sends nothing. A change to an
+effect that runs shows at once.
+
+A cue's effect changes by its property: `cue 9/4 effect rainbow size 0.5`. The reply names the
+property by its place in the show. No line takes a setting away from a cue's effect, so its
+`[none]` is grey while it has a master or a fade-in.
+
+A programmer effect has no such line, so a change restates the whole effect, each other setting as
+it is: `effect add "Circle" id fx5 hz 2 forward size 15 …`. That line takes its fixtures from the
+selection. So while the selection is not the effect's fixtures, in their order, the panel's
+controls are grey and it says so, and `[its fixtures]` selects them. A stopped effect stays
+stopped.
+
+The pane cursor stops on each row (Enter opens its panel), each state and `✕`, and `[clear]`,
+then each template, or the panel's controls while it is open. Below 132 columns the templates and
+the panel go under the effects.
 
 ## F6 Presets
 

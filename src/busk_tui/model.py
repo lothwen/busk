@@ -154,6 +154,17 @@ class Targets:
 
 
 @dataclass(frozen=True, slots=True)
+class ChaseRate:
+    """A chase's or an effect's rate and direction, to fill the form that edits
+    them."""
+
+    hz: float | None  # its rate in Hz; None: a speed master's beat
+    master: str | None  # that master's name, when the show has several
+    multiplier: float
+    direction: str  # forward, reverse, bounce, random
+
+
+@dataclass(frozen=True, slots=True)
 class EffectInfo:
     """An effect instance as the show or the programmer holds it: a cue's
     and the programmer's are made alike, with the settings ``effect add``
@@ -171,6 +182,10 @@ class EffectInfo:
     groups: int = 1
     blocks: int = 1
     wings: int = 1
+    pace: ChaseRate = ChaseRate(1.0, None, 1.0, "forward")  # ``rate``, one value at a time
+    fadeIn: float | None = None  # the seconds its size takes to come in
+    sizeMaster: str | None = None  # a size master's name
+    speedMaster: str | None = None  # a speed master's name
 
 
 @dataclass(frozen=True, slots=True)
@@ -354,6 +369,7 @@ class MasterView:
     kind: str  # grand, group, size, speed, fadeTime
     group: GroupInfo | None  # a group master's group
     steps: tuple[float, ...]  # a speed master's multiplier steps
+    id: str = ""  # as a cue effect's sizeMasterId, speedMasterId and rate take it
 
 
 @dataclass(frozen=True, slots=True)
@@ -402,16 +418,6 @@ class CueInfo:
     trigger: str = "go"  # go, follow, wait
     delay: float = 0.0  # a follow's or a wait's delay
     values: tuple[StoredValue, ...] = ()  # its value entries, in the order stored
-
-
-@dataclass(frozen=True, slots=True)
-class ChaseRate:
-    """A chase's rate and direction, to fill the form that edits them."""
-
-    hz: float | None  # its rate in Hz; None: a speed master's beat
-    master: str | None  # that master's name, when the show has several
-    multiplier: float
-    direction: str  # forward, reverse, bounce, random
 
 
 @dataclass(frozen=True, slots=True)

@@ -8,12 +8,13 @@ effects and the output with its sources."""
 from __future__ import annotations
 
 import copy
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 import busk
-from busk_tui import attributes
+from busk_tui import attributes, commands
 from busk_tui.bridge import (
     effects_model,
     fixture_info,
@@ -26,6 +27,7 @@ from busk_tui.bridge import (
     show_model,
     surface_views,
 )
+from busk_tui.formats import selection_text
 from busk_tui.model import (
     ChaseRate,
     EffectInfo,
@@ -46,6 +48,7 @@ from busk_tui.model import (
     Targets,
     TemplateInfo,
 )
+from busk_tui.widgets.effect_panel import effect_settings
 
 TUPPER = Path(__file__).resolve().parents[2] / "examples" / "tupperdmx" / "tupper-demo.show"
 
@@ -88,7 +91,7 @@ def test_the_show_model_has_what_f1_and_f7_show(club: busk.OfflineShow) -> None:
     assert chase is not None
     assert (chase.mode, chase.chase) == ("chase", "bpm x 1 bounce")
     assert chase.rate == ChaseRate(None, None, 1.0, "bounce")
-    assert model.masters == (
+    assert tuple(replace(master, id="") for master in model.masters) == (
         MasterView("Grand Master", "grand", None, ()),
         MasterView("Speed 1", "speed", None, (0.25, 0.5, 1.0, 2.0, 4.0)),
         MasterView("FX", "size", None, ()),
@@ -210,10 +213,147 @@ def test_the_programmer_lists_its_effects_and_the_stopped(show: busk.OfflineShow
             Targets(elements=((101, 1), (102, 1))),
             rate="bpm x 1",
             size=20.0,
+            pace=ChaseRate(None, None, 1.0, "forward"),
         ),
     )
     assert model.stopped == frozenset({effect_id})
     assert model.selection == ((101, 1), (102, 1))
+
+
+def test_an_effect_has_what_its_panel_edits(show: busk.OfflineShow) -> None:
+    """Its rate one value at a time, its fade-in, and its masters by name,
+    even with one master of the kind, as ``sizemaster`` takes them."""
+    assert show.execute("sel group 1").ok
+    line = (
+        'effect add "Circle" id fx5 hz 2 reverse fadein 1.5 sizemaster "FX" speedmaster "Speed 1"'
+    )
+    assert show.execute(line).ok
+    effect = programmer_model(show.programmer, show.show).effects[0]
+    assert effect.pace == ChaseRate(2.0, None, 1.0, "reverse")
+    assert effect.fadeIn == 1.5
+    assert (effect.sizeMaster, effect.speedMaster) == ("FX", "Speed 1")
+    assert show.execute('master add speed "Speed 2"').ok
+    assert show.execute('effect add "Circle" id fx6 bpm "Speed 2" x 0.5').ok
+    effect = programmer_model(show.programmer, show.show).effects[1]
+    assert effect.pace == ChaseRate(None, "Speed 2", 0.5, "forward")
+    assert (effect.fadeIn, effect.sizeMaster, effect.speedMaster) == (None, None, None)
+    ids = {master.name: master.id for master in show_model(show.show).masters}
+    by_name = {master["name"]: master["id"] for master in show.show["masters"]}
+    assert ids == by_name
+
+
+def restate(show: busk.OfflineShow, index: int = 0) -> str:
+    """The line the EFFECT panel would send to change nothing, on what the
+    bridge reads of the programmer's effect ``index``."""
+    info = programmer_model(show.programmer, show.show).effects[index]
+    words = [word for word in effect_settings(info).values() if word is not None]
+    return commands.effect_replace(info.template, info.id, words).text
+
+
+@pytest.mark.parametrize(
+    "settings",
+    [
+        "hz 0.1234567891 bounce size 1.5 phase -90 90.5 groups 2 blocks 3 wings 4",
+        "hz 0.00001 size 0.00001",  # busk reads no exponent
+        "bpm x 0.125 reverse size 0 phase 0 360",
+        "bpm x 1 low -1.25 high 0.00001",
+        'hz 2 fadein 1.5 sizemaster "FX" speedmaster "Speed 1"',
+        "hz 2 fadein 0",
+    ],
+)
+def test_restating_a_programmer_effect_changes_nothing(
+    show: busk.OfflineShow, settings: str
+) -> None:
+    """Through the bridge's reading, the panel's words and busk's parser, back
+    to the same document: an unchanged setting stays."""
+    assert show.execute("sel group 1").ok
+    assert show.execute(f'effect add "Circle" id fx5 {settings}').ok
+    before = copy.deepcopy(show.programmer.effects[0])
+    reply = show.execute(restate(show))
+    assert reply.ok, reply.text
+    assert show.programmer.effects[0] == before
+
+
+def test_restating_keeps_a_named_speed_master_and_a_stopped_effect(
+    show: busk.OfflineShow,
+) -> None:
+    assert show.execute('master add speed "Speed 2"').ok
+    assert show.execute("sel group 1").ok
+    assert show.execute('effect add "Circle" id fx5 bpm "Speed 2" x 0.5').ok
+    assert show.execute("effect stop fx5").ok
+    before = copy.deepcopy(show.programmer.effects[0])
+    assert show.execute(restate(show)).ok
+    assert show.programmer.effects[0] == before
+    assert show.programmer.stopped == frozenset({"fx5"})
+
+
+def test_a_library_template_is_found_again_when_restated(show: busk.OfflineShow) -> None:
+    """``Chase`` comes from the library, and ``effect add`` copied it in."""
+    assert show.execute("sel group 1").ok
+    assert show.execute('effect add "Chase" id fx5').ok
+    before = copy.deepcopy(show.programmer.effects[0])
+    assert show.execute(restate(show)).ok
+    assert show.programmer.effects[0] == before
+
+
+def test_its_fixtures_are_selected_again_as_they_were(show: busk.OfflineShow) -> None:
+    """``[its fixtures]``: whole fixtures, elements, runs, and an order of
+    its own, all back as the targets the effect has."""
+    for line in (
+        "sel fixture 301",
+        "sel fixture 301.1 thru 301.4, fixture 101",
+        "sel fixture 301.2, fixture 301.1",
+        "sel fixture 102, fixture 101",
+    ):
+        assert show.execute(line).ok
+        assert show.execute('effect add "Circle" id fx5').ok
+        info = programmer_model(show.programmer, show.show).effects[0]
+        assert show.execute("sel none").ok
+        fixtures = show_model(show.show).fixtures
+        again = commands.sel_targets(selection_text(info.targets.elements, fixtures))
+        assert show.execute(again.text).ok
+        assert programmer_model(show.programmer, show.show).selection == info.targets.elements
+
+
+@pytest.mark.parametrize(
+    ("prop", "value", "stored"),
+    [
+        ("size", "0.5", ("size", 0.5)),
+        ("size", "0.00001", ("size", 0.00001)),
+        ("direction", "reverse", ("direction", "reverse")),
+        ("low", "-0.25", ("low", -0.25)),
+        ("high", "0.75", ("high", 0.75)),
+        ("groups", "3", ("groups", 3)),
+        ("blocks", "2", ("blocks", 2)),
+        ("wings", "4", ("wings", 4)),
+        ("sizeFadeIn", "1.5", ("sizeFadeIn", 1.5)),
+        ("phase", commands.phase_json("-10", "20.5"), ("phase", {"start": -10, "end": 20.5})),
+        ("rate", commands.rate_json("2", "", "1"), ("rate", {"kind": "hz", "value": 2})),
+    ],
+)
+def test_busk_stores_what_the_panel_sends_for_a_cue_effect(
+    show: busk.OfflineShow, prop: str, value: str, stored: tuple[str, object]
+) -> None:
+    reply = show.execute(commands.cue_effect(9, "4", "rainbow", prop, value).text)
+    assert reply.ok, reply.text
+    effect = show.show["cueLists"][8]["cues"][3]["effects"][0]
+    assert effect[stored[0]] == stored[1]
+
+
+def test_busk_takes_a_cue_effect_on_a_master_by_its_id(show: busk.OfflineShow) -> None:
+    masters = {master.name: master.id for master in show_model(show.show).masters}
+    speed, size = masters["Speed 1"], masters["FX"]
+    lines = (
+        ("rate", commands.rate_json(None, speed, "0.5")),
+        ("speedMasterId", commands.quoted(speed)),
+        ("sizeMasterId", commands.quoted(size)),
+    )
+    for prop, value in lines:
+        reply = show.execute(commands.cue_effect(9, "4", "rainbow", prop, value).text)
+        assert reply.ok, reply.text
+    info = show_model(show.show).cue_list(9).cues[3].effects[0]  # type: ignore[union-attr]
+    assert info.pace == ChaseRate(None, None, 0.5, "forward")
+    assert (info.speedMaster, info.sizeMaster) == ("Speed 1", "FX")
 
 
 def test_the_running_effects(show: busk.OfflineShow) -> None:
@@ -439,6 +579,7 @@ def test_cues_with_their_timing_triggers_and_entries_as_stored(club: busk.Offlin
             Targets(group=GroupInfo(3, "Bar")),
             rate="hz 0.25",
             phase=(0.0, 360.0),
+            pace=ChaseRate(0.25, None, 1.0, "forward"),
         ),
     )
     chase = model.cue_list(10)

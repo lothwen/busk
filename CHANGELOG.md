@@ -10,6 +10,10 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- F5 edits an effect from controls. A click on a row opens its EFFECT panel, with the rate (in Hz or
+  on a master's beat), direction, size, levels, phase, groups, blocks, wings, fade-in, and size and
+  speed masters, each one control and one line. `✕` removes an effect from a cue, after a question,
+  and `[clear]` removes every programmer effect.
 - F4 edits cue lists from controls. A cue's row has `[release…]`, `[record at…]`, `[merge]`,
   `[replace]`, `[remove]` and `[delete]`, and a list's row has a tracking toggle, `[chase…]` (a form
   for the rate, master, multiplier, direction and crossfade), `[rename…]` and `[delete]`.

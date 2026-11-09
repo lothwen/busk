@@ -691,6 +691,7 @@ class _Names:
     fixtures: dict[str, int]  # fixture id → number
     presets: dict[str, tuple[str, Rgb | None]]  # preset id → name, and the colour it gives
     speeds: dict[str, str]  # speed master id → name; empty with one speed master
+    masters: dict[str, str]  # master id → name
 
     @classmethod
     def of(cls, doc: Show) -> _Names:
@@ -706,6 +707,7 @@ class _Names:
                 for preset in doc["presets"]
             },
             speeds={master["id"]: master["name"] for master in speeds} if len(speeds) > 1 else {},
+            masters={master["id"]: master["name"] for master in doc["masters"]},
         )
 
 
@@ -958,7 +960,7 @@ def master_view(master: Mapping[str, Any], groups: dict[str, GroupInfo]) -> Mast
     """A master of the document; ``groups``: the document's, by id."""
     group = groups.get(master["groupId"]) if master["kind"] == "group" else None
     steps = tuple(master["multiplierSteps"]) if master["kind"] == "speed" else ()
-    return MasterView(master["name"], master["kind"], group, steps)
+    return MasterView(master["name"], master["kind"], group, steps, master["id"])
 
 
 def effect_info(effect: Mapping[str, Any], names: _Names) -> EffectInfo:
@@ -977,6 +979,10 @@ def effect_info(effect: Mapping[str, Any], names: _Names) -> EffectInfo:
         groups=effect["groups"],
         blocks=effect["blocks"],
         wings=effect["wings"],
+        pace=_chase_rate(effect, names),
+        fadeIn=float(effect["sizeFadeIn"]) if "sizeFadeIn" in effect else None,
+        sizeMaster=names.masters.get(effect.get("sizeMasterId", "")),
+        speedMaster=names.masters.get(effect.get("speedMasterId", "")),
     )
 
 
@@ -1364,7 +1370,7 @@ def _chase_text(chase: Mapping[str, Any], names: _Names) -> str:
 
 
 def _chase_rate(chase: Mapping[str, Any], names: _Names) -> ChaseRate:
-    """The settings ``_chase_text`` words, one by one."""
+    """The settings ``_chase_text`` words, one by one, of a chase or an effect."""
     rate, direction = chase["rate"], chase["direction"]
     if rate["kind"] == "hz":
         return ChaseRate(float(rate["value"]), None, 1.0, direction)

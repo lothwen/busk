@@ -7,10 +7,14 @@ EFFECTS has a row per effect a cue holds and per programmer effect
 ``hz 0.25 bounce``: forward is left out), its rate now in Hz while it runs,
 size (or an absolute layer's ``low–high``), phase, wings (with ``g3 b2``,
 its groups and blocks, when they are not 1), a sparkline of its next cycle,
-its state and, for a programmer effect, ``✕``. A click on the state: a programmer effect stops
-or runs again (``effect stop|run <id>``); a cue effect that runs releases
-its playback (``release N``), one that does not goes to its cue (``goto N
-C``) on the playback that runs its list. ``✕`` runs ``effect remove <id>``.
+its state and ``✕``. A click on the state: a programmer effect stops or runs
+again (``effect stop|run <id>``); a cue effect that runs releases its playback
+(``release N``), one that does not goes to its cue (``goto N C``) on the
+playback that runs its list. ``✕`` runs ``effect remove <id>``, or for a cue's
+effect ``cue L/C effect <id> remove``, after the TUI's own question. A click
+anywhere else on a row chooses it, and opens the EFFECT panel
+(:mod:`busk_tui.widgets.effect_panel`) in the place of the templates, until its
+``[done]``. ``[clear]`` runs ``effect clear``, after the same kind of question.
 
 TEMPLATES lists every template ``effect add`` takes: the show's, then the
 library's the show has no copy of (``effect add`` copies one in), with the
@@ -24,6 +28,7 @@ templates go under the effects.
 
 from __future__ import annotations
 
+from functools import partial
 from typing import ClassVar, Final
 
 from rich.text import Text
@@ -37,7 +42,8 @@ from busk_tui.formats import selection_text
 from busk_tui.model import TemplateInfo
 from busk_tui.nav import Item, Stop
 from busk_tui.pages.base import Page, Part, View
-from busk_tui.widgets.controls import RunLine
+from busk_tui.widgets.controls import ActionButton, RunLine
+from busk_tui.widgets.effect_panel import EffectPanel
 from busk_tui.widgets.effects import (
     EffectTable,
     FxRow,
@@ -56,8 +62,8 @@ NO_EFFECTS: Final = 'no effects · select fixtures and click a template, or effe
 
 FOOTER: Final = (
     "state: a cue effect goes to its cue, or releases its playback while it runs · "
-    "a programmer effect stops and runs again · ✕ removes it · a template adds one to the "
-    "selection"
+    "a programmer effect stops and runs again · ✕ removes it · any other click opens its "
+    "settings · a template adds one to the selection"
 )
 
 
@@ -71,7 +77,8 @@ class EffectsPage(Page):
     EffectsPage #effects-panel {{ width: 5fr; }}
     EffectsPage #templates-panel {{ width: 2fr; min-width: 36; }}
     EffectsPage #effects-row.stacked {{ layout: vertical; }}
-    EffectsPage #effects-row.stacked > Panel {{ width: 100%; }}
+    EffectsPage #effects-row.stacked > Panel {{ width: 100%; margin-left: 0; }}
+    EffectsPage #effects-clear {{ margin-top: 1; }}
     EffectsPage #effects-footer {{ margin-top: 1; color: {colors.DIM}; }}
     EffectsPage #templates-header {{ margin-bottom: 1; }}
     """
@@ -82,27 +89,38 @@ class EffectsPage(Page):
         self.templates = TemplateTable(Text("no templates", style=colors.DIM), id="template-table")
         self.header = Static("", id="templates-header")
         self.effects_panel = Panel("effects", id="effects-panel")
+        self.templates_panel = Panel("templates", id="templates-panel")
+        self.clear = ActionButton("clear", self.ask_clear, "danger", inert=True, id="effects-clear")
+        self.panel = EffectPanel(self.close_panel)
+        self.panel.display = False
         self.rows: list[FxRow] = []
         self.shown_templates: tuple[TemplateInfo, ...] = ()
+        self.chosen: tuple[str, str] | None = None  # the key of the effect the panel shows
+        self._view = View()
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="effects-row"):
             with self.effects_panel:
                 yield self.effects
+                yield self.clear
                 yield Static(FOOTER, id="effects-footer")
-            with Panel("templates", id="templates-panel"):
+            with self.templates_panel:
                 yield self.header
                 yield self.templates
+            yield self.panel
 
     def on_resize(self, event: events.Resize) -> None:
         self.query_one("#effects-row").set_class(event.size.width < SIDE_BY_SIDE, "stacked")
 
     def update_view(self, view: View, changed: frozenset[Part]) -> None:
+        self._view = view
         show, programmer = view.show, view.programmer
         if changed & {"show", "programmer", "effects"}:
             self.rows = effect_rows(show, programmer, view.effects)
-            self.effects.show([fx_cells(row, show, view.mode) for row in self.rows])
-            in_cues = sum(1 for row in self.rows if row.remove is None)
+            self.effects.show(
+                [fx_cells(row, show, view.mode) for row in self.rows], self._chosen_index()
+            )
+            in_cues = sum(1 for row in self.rows if row.cue is not None)
             meta = f"{in_cues} in cues · {len(self.rows) - in_cues} in the programmer"
             self.effects_panel.set_title("effects", meta)
         if "show" in changed:
@@ -119,29 +137,96 @@ class EffectsPage(Page):
                 text.append("nothing: select fixtures first", style=colors.DIM)
             if text != self.header.content:
                 self.header.update(text)
+            self.clear.change(inert=programmer is None or not programmer.effects)
+            self._draw_panel()
+
+    # -------------------------------------------------------- the panel
+
+    def _chosen_index(self) -> int | None:
+        return next((i for i, row in enumerate(self.rows) if row.key == self.chosen), None)
+
+    def _draw_panel(self) -> None:
+        """The chosen effect's panel in the templates' place, or, once the
+        effect is gone or the panel left, the templates."""
+        index = self._chosen_index()
+        row = None if index is None else self.rows[index]
+        self.chosen = None if row is None else row.key
+        self.panel.display = row is not None
+        self.templates_panel.display = row is None
+        programmer = self._view.programmer
+        selection = () if programmer is None else programmer.selection
+        self.panel.show_view(row, self._view.show, selection)
+        self.effects.show(self.effects.rows, index)
+
+    def open_panel(self, key: tuple[str, str]) -> None:
+        """Choose an effect. Under the effects (below :data:`SIDE_BY_SIDE`
+        columns), the panel scrolls into sight."""
+        self.chosen = key
+        self._draw_panel()
+        if self.size.width < SIDE_BY_SIDE:
+            self.call_after_refresh(self.scroll_to_widget, self.panel, animate=False, top=True)
+
+    def close_panel(self) -> None:
+        self.chosen = None
+        self._draw_panel()
+
+    # -------------------------------------------------------- the lines
+
+    def ask_remove(self, row: FxRow) -> None:
+        """``✕``: a programmer effect goes at once, a cue's after a question."""
+        question = None
+        if row.cue is not None:
+            question = f"Remove effect {row.info.id} from cue {row.owner}?"
+            if row.live is not None:
+                question += " It is running, and will stop at once."
+        self.post_message(RunLine(row.remove, ask=question))
+
+    def ask_clear(self) -> None:
+        """``[clear]``: every programmer effect, stopped ones too."""
+        programmer = self._view.programmer
+        count = 0 if programmer is None else len(programmer.effects)
+        question = f"Remove {count} programmer effect{'' if count == 1 else 's'}?"
+        self.post_message(RunLine(commands.effect_clear(), ask=question))
 
     def on_row_table_clicked(self, message: RowTable.Clicked) -> None:
         message.stop()
         if message.table is self.effects and message.row < len(self.rows):
             row = self.rows[message.row]
-            if message.cell == "state" and row.toggle is not None:
-                self.post_message(RunLine(row.toggle))
-            elif message.cell == "remove" and row.remove is not None:
-                self.post_message(RunLine(row.remove))
+            if message.cell == "state":
+                if row.toggle is not None:
+                    self.post_message(RunLine(row.toggle))
+            elif message.cell == "remove":
+                self.ask_remove(row)
+            else:
+                self.open_panel(row.key)
         elif message.table is self.templates and message.row < len(self.shown_templates):
             self.post_message(RunLine(commands.effect_add(self.shown_templates[message.row].name)))
+
+    # ------------------------------------------------------ pane cursor
 
     def stops(self) -> list[Stop]:
         stops: list[Stop] = []
         spots: list[tuple[int, str | None]] = []
         for index, row in enumerate(self.rows):
+            label = f"{row.owner} {row.info.id} settings"
+            item = Item(label, action=partial(self.open_panel, row.key))
+            stops.append(Stop(item, self.effects, len(spots)))
+            spots.append((index, "id"))
             for name, line in (("state", row.toggle), ("remove", row.remove)):
                 if line is None:
                     continue
                 label = f"{row.owner} {row.info.id} {line.text}"
-                stops.append(Stop(Item(label, line=line.text), self.effects, len(spots)))
+                if name == "remove" and row.cue is not None:
+                    item = Item(label, action=partial(self.ask_remove, row))
+                else:
+                    item = Item(label, line=line.text)
+                stops.append(Stop(item, self.effects, len(spots)))
                 spots.append((index, name))
         self.effects.spots = spots
+        if not self.clear.inert:
+            stops.append(Stop(Item("clear", action=self.ask_clear), self.clear))
+        if self.chosen is not None:
+            return stops + self.panel.stops()
         template_spots: list[tuple[int, str | None]] = []
         for index, template in enumerate(self.shown_templates):
             line = commands.effect_add(template.name)

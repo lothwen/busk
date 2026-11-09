@@ -17,6 +17,7 @@ import json
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Literal
 
 
@@ -61,6 +62,12 @@ def number(value: float) -> str:
     """A number as busk reads it, to two decimals at most: ``120``, ``120.5``.
     Every digit is written: busk reads no exponent (``1e+06``)."""
     return f"{value:.2f}".rstrip("0").rstrip(".")
+
+
+def exact(value: float) -> str:
+    """A number with every digit it holds, in plain decimals: ``120``,
+    ``0.00001``. :func:`number` rounds, and busk reads no exponent."""
+    return format(Decimal(repr(value)), "f").removesuffix(".0")
 
 
 # ------------------------------------------------------------- performance
@@ -140,6 +147,12 @@ def sel_fixture(fixture: int, *, add: bool = False, remove: bool = False) -> Lin
     fixture 101``."""
     change = "+ " if add else "- " if remove else ""
     return Line(f"sel {change}fixture {fixture}")
+
+
+def sel_targets(compressed: str) -> Line:
+    """Elements as :func:`~busk_tui.formats.selection_text` writes them, in
+    their order: ``sel fixture 101 thru 102, fixture 301.2``."""
+    return Line("sel " + ", ".join(f"fixture {part}" for part in compressed.split(", ")))
 
 
 def sel_fixtures(fixtures: Sequence[int], *, add: bool = False) -> Line:
@@ -228,6 +241,49 @@ def effect_add(template: str) -> Line:
     """A programmer effect on the selection, with the template's defaults:
     ``effect add "Circle"``."""
     return Line(f"effect add {quoted(template)}")
+
+
+def effect_clear() -> Line:
+    return Line("effect clear")
+
+
+def effect_replace(template: str, effect: str, settings: Sequence[str]) -> Line:
+    """Programmer effect ``effect``, restated with its ``settings`` as ``effect
+    add`` words them: ``effect add "Circle" id fx5 hz 2 reverse size 15``. It
+    goes on the selection, whatever it was on."""
+    return Line(" ".join(["effect", "add", quoted(template), "id", word(effect), *settings]))
+
+
+def effect_rate(hz: str | None, master: str | None, multiplier: str) -> str:
+    """A rate as ``effect add`` and ``cuelist N chase`` take it: ``hz 2``, else
+    on a speed master's beat: ``bpm x 0.5``, ``bpm "Speed 2" x 2`` (no
+    ``master``: the show's only one, which busk finds)."""
+    if hz is not None:
+        return f"hz {hz}"
+    return "bpm " + ("" if master is None else f"{quoted(master)} ") + f"x {multiplier}"
+
+
+def cue_effect(cue_list: int, cue: str, effect: str, prop: str, value: str) -> Line:
+    """One property of a cue's effect: ``cue 9/4 effect rainbow size 0.5``,
+    ``value`` as busk reads it, JSON or a word."""
+    return Line(f"cue {cue_list}/{cue} effect {word(effect)} {prop} {value}")
+
+
+def cue_effect_remove(cue_list: int, cue: str, effect: str) -> Line:
+    return Line(f"cue {cue_list}/{cue} effect {word(effect)} remove")
+
+
+def rate_json(hz: str | None, master_id: str, multiplier: str) -> str:
+    """A rate as a cue effect's ``rate`` takes it: ``{"kind": "hz", "value": 2}``,
+    else ``{"kind": "bpm", "masterId": "m-1", "multiplier": 0.5}``."""
+    if hz is not None:
+        return f'{{"kind": "hz", "value": {hz}}}'
+    return f'{{"kind": "bpm", "masterId": {quoted(master_id)}, "multiplier": {multiplier}}}'
+
+
+def phase_json(start: str, end: str) -> str:
+    """A phase as a cue effect's ``phase`` takes it: ``{"start": 0, "end": 180}``."""
+    return f'{{"start": {start}, "end": {end}}}'
 
 
 # ---------------------------------------------------------------- presets
@@ -488,11 +544,8 @@ def chase_settings(
     rounded: ``hz``: ``cuelist 9 chase hz 2 bounce crossfade 0.5``; else on a
     speed master's beat: ``cuelist 9 chase bpm "Speed 2" x 0.5 forward`` (no
     ``master``: the show's only one, which busk finds)."""
-    if hz is not None:
-        rate = f"hz {hz}"
-    else:
-        rate = "bpm " + ("" if master is None else f"{quoted(master)} ") + f"x {multiplier}"
     fade = f" crossfade {crossfade}" if float(crossfade) else ""
+    rate = effect_rate(hz, master, multiplier)
     return Line(f"cuelist {cue_list} chase {rate} {direction}{fade}")
 
 

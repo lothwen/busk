@@ -527,11 +527,56 @@ Needs GAP-32. Code: `src/busk_tui/pages/effects.py`, `src/busk_tui/widgets/effec
    low and high, phase, groups, blocks, wings, fade-in, size and speed masters. One control per
    field, one line per change. A programmer effect sends `effect add "<template>" id <id> …`, with
    every setting restated. A cue effect sends `cue L/C effect <id> <prop> <value>`.
+
+   **Done** (2026-11-09). As planned: `EffectPanel` in the new `src/busk_tui/widgets/effect_panel.py`,
+   opened by a click anywhere on a row but its state or `✕`. Its rate form is `RateDialog`, the rate
+   half of `ChaseDialog`, now in `widgets/chase_dialog.py`. Which the user may veto:
+   - **`effect add … id` takes its targets from the selection**, which the plan did not name. A
+     restated effect would move to whatever is selected, and is refused with nothing selected. So a
+     programmer effect changes only while the selection is its fixtures, in their order. Otherwise
+     the panel is grey and says so, and `[its fixtures]` selects them. This and the next are GAP-41
+     in `docs/dev/tui/engine-gaps.md`.
+   - **No line takes an optional setting away from a cue's effect.** `[none]` for a master or a
+     fade-in is grey there, and the levels only change.
+   - The panel takes the templates' place until `[done]`, and goes under the effects below 132
+     columns.
+   - A programmer effect has one `[levels…]` form, since `effect add` takes the two together. A
+     cue's has `[low…]` and `[high…]`, a line each. No control removes levels.
+   - A fade-in has a `[none]`, which the plan did not name: a fade-in of 0 snaps in, and without
+     one an effect comes in over its cue's time.
+   - A value left as it was sends nothing. Numbers go in the line with every digit and no exponent
+     (`commands.exact`), since `:g` rounds and busk reads no exponent.
+   - The panel says when a speed master does nothing, on a beat rate. The validator only warns, at
+     load.
+   - `MasterView` has an `id`, as `RouteView` has: a cue effect's `rate`, `sizeMasterId` and
+     `speedMasterId` name a master by id. It shows only in the line sent.
 2. **`✕` on a cue effect** (`cue L/C effect <id> remove`, with `ask`) and **`[clear]`** (`effect
    clear`, with `ask`).
 
+   **Done** (2026-11-09). As planned: `✕` is on every row, and `[clear]` is under the table. Which
+   the user may veto:
+   - The question for a cue's effect says when it runs: `It is running, and will stop at once.` The
+     effect goes and the cue stays active.
+   - `[clear]` is grey while the programmer holds no effect.
+
 Verify: an unchanged field stays in the restated line; a bpm effect and an Hz one; a change while
 the effect runs; the wave redraw stays within the perf gate.
+
+**Phase 7 checks** (2026-11-09). The whole suite: 5,711 passed and 1 skipped, in 3:59 with `uv run
+pytest -n 6`. `ruff check`, `ruff format --check` and `mypy src` clean. No change to `src/busk/` or
+the engine's tests. The five TUI test files the phase touched, 468 tests, pass on Textual 8.2.0. The
+perf gate on the final code: 7 passed, no overruns, F5 at +0.186 core. An earlier run failed once at
++0.2503 on a page not recorded, and its rerun passed. F5 alone, five runs each: +0.176 before this
+phase, +0.184 after it, +0.193 with the panel open. `tests/tui/test_tui_conversion.py` restates
+effects on the real parser and gets an equal document, and runs each line a cue effect's controls
+send. 79 mutations of the new code: 74 caught; of the five that survived, three were code that could
+not run, now gone, and two needed a test of their own, which is in. `tests/tui/test_tui_e2e.py` has
+two new tests on the real engine. A real `busk-tui --state-dir …` under `busk run` on the club show,
+with real mouse clicks in a pty: at 150 columns, `go 11`, the size and direction of the running
+effect, `✕` with its question and `undo`, a programmer effect restated, a grey panel with another
+selection, `[its fixtures]` and `[clear]`; at 99 columns, the panel under the effects and two
+changes. No error in the log. Docs: `docs/tui/guide.md`, the report's rows, Summary, "In short" and
+side finding, GAP-41, and `CHANGELOG.md`.
 
 ### Phase 8: F5: the template editor
 
@@ -665,6 +710,11 @@ Left out because the five places do not name them. Say if any should join a phas
   (`deleted cueLists[8].cues[1]`), `cue L/C release`, `cuelist N tracking`, `rename cuelist` and
   `cuelist N chase`. The refusals are in words; these are the answers to lines that worked. Found on
   2026-11-09.
+- `cue L/C effect <id> <prop> <value>` replies with a path too, and F5's EFFECT panel now puts that
+  in the log. Found on 2026-11-09.
+- `commands.effect_stop`, `effect_run` and `effect_remove` do not quote an id, so those controls
+  fail on an effect id of two words, which only `id "my fx"` makes. `_rate_text` in the bridge does
+  not escape a quote in a master's name. Found on 2026-11-09.
 
 ## 8. Questions
 

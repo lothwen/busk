@@ -98,6 +98,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-37](#gap-37-editing-a-route) Editing a route | action | nice-to-have | F8 | **done** 2026-11-08 |
 | [GAP-38](#gap-38-several-fixtures-in-one-line) Several fixtures in one line | action | nice-to-have | F3 | **done** 2026-11-08 |
 | [GAP-39](#gap-39-importing-a-profile-and-its-revisions) Importing a profile, and its revisions | action, read | nice-to-have | F3 | **done** 2026-11-08 |
+| [GAP-41](#gap-41-editing-an-effect-in-place) Editing an effect in place | action | nice-to-have | F5 | open |
 
 ---
 
@@ -2556,3 +2557,33 @@ What it settles:
   library's copy the same way. They are required fields, so a stub must set them.
 
 Tests: `tests/test_fixture_profiles.py`, and `busk run` with processes in `tests/test_frontend.py`.
+
+## GAP-41: Editing an effect in place
+
+**Status:** open.
+
+Found while building F5's EFFECT panel (`docs/plans/tui-pending-plan.md`, Phase 7, 2026-11-09).
+GAP-40 is kept for the split patch of that plan's Phase 14.
+
+**Needed by:** F5's EFFECT panel.
+
+**Today:** two things are missing.
+
+- No line changes one setting of a programmer effect. `effect add "<template>" id <id> …` replaces
+  the whole effect, and takes its targets from the selection, so a restated effect moves to whatever
+  is selected, and is refused when nothing is. A programmer effect on a group, or with one level of
+  the two, which a binding's `ADD_EFFECT` can make, has no `effect add` line at all.
+- No line takes an optional property away from a cue's effect. `cue L/C effect <id> <prop> none`
+  and `… null` are refused by document path, so `sizeFadeIn`, `sizeMasterId`, `speedMasterId`,
+  `low` and `high` can be set and changed, and never removed.
+
+**Engine should provide:** `effect <id> <prop> <value>` for a programmer effect, which keeps its
+targets, and `<prop> none` for the optional properties of `cue L/C effect <id>`, as GAP-25 and
+GAP-35 did for a fixture's limits and for a playback's and a cue list's properties.
+
+**Priority:** nice-to-have.
+
+**TUI until then:** while the selection is not a programmer effect's fixtures, in their order, the
+panel's controls are grey and `[its fixtures]` selects them. A programmer effect no `effect add`
+line can say stays grey. On a cue's effect, `[none]` is grey while it has a master or a fade-in,
+and the levels only change.

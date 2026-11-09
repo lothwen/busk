@@ -63,6 +63,48 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
     "effect run": (commands.effect_run("fx5"), "effect run fx5", False),
     "effect remove": (commands.effect_remove("fx5"), "effect remove fx5", False),
     "effect add": (commands.effect_add("Chase"), 'effect add "Chase"', False),
+    "effect replace": (
+        commands.effect_replace("Circle", "fx5", ["hz 2", "reverse", "size 15"]),
+        'effect add "Circle" id fx5 hz 2 reverse size 15',
+        False,
+    ),
+    "effect replace, an id of two words": (
+        commands.effect_replace("Circle", "my fx", ["hz 2"]),
+        'effect add "Circle" id "my fx" hz 2',
+        False,
+    ),
+    "effect clear": (commands.effect_clear(), "effect clear", False),
+    "cue effect number": (
+        commands.cue_effect(9, "4", "rainbow", "size", "0.5"),
+        "cue 9/4 effect rainbow size 0.5",
+        False,
+    ),
+    "cue effect word": (
+        commands.cue_effect(9, "4", "rainbow", "direction", "bounce"),
+        "cue 9/4 effect rainbow direction bounce",
+        False,
+    ),
+    "cue effect rate in hz": (
+        commands.cue_effect(9, "4", "rainbow", "rate", commands.rate_json("2", "", "1")),
+        'cue 9/4 effect rainbow rate {"kind": "hz", "value": 2}',
+        False,
+    ),
+    "cue effect phase": (
+        commands.cue_effect(9, "4", "rainbow", "phase", commands.phase_json("-10", "20.5")),
+        'cue 9/4 effect rainbow phase {"start": -10, "end": 20.5}',
+        False,
+    ),
+    "cue effect remove": (
+        commands.cue_effect_remove(9, "4", "rainbow"),
+        "cue 9/4 effect rainbow remove",
+        False,
+    ),
+    "sel targets": (
+        commands.sel_targets("101 thru 102, 301.2"),
+        "sel fixture 101 thru 102, fixture 301.2",
+        False,
+    ),
+    "sel targets, one": (commands.sel_targets("101"), "sel fixture 101", False),
     "goto": (commands.goto(9, "3"), "goto 9 3", True),
     "record cue": (commands.record_cue(9), "record cue 9", False),
     "record cue at": (
@@ -432,6 +474,34 @@ def test_each_builder_is_marked_as_busk_runs_it(name: str) -> None:
     assert line.performance is performance
     first = line.text.split()[0]
     assert (first in PERFORMANCE_WORDS) is performance
+
+
+@pytest.mark.parametrize(
+    ("value", "text"),
+    [
+        (120.0, "120"),
+        (0.0, "0"),
+        (-0.5, "-0.5"),
+        (1e-05, "0.00001"),
+        (1e22, "10000000000000000000000"),
+        (0.1234567891, "0.1234567891"),
+    ],
+)
+def test_exact_writes_every_digit_and_no_exponent(value: float, text: str) -> None:
+    assert commands.exact(value) == text
+    assert float(commands.exact(value)) == value
+
+
+def test_the_beat_rate_as_a_cue_effect_takes_it() -> None:
+    assert commands.rate_json(None, "m-1", "0.5") == (
+        '{"kind": "bpm", "masterId": "m-1", "multiplier": 0.5}'
+    )
+
+
+def test_a_rate_in_words() -> None:
+    assert commands.effect_rate("2", None, "1") == "hz 2"
+    assert commands.effect_rate(None, None, "0.5") == "bpm x 0.5"
+    assert commands.effect_rate(None, "Speed 2", "2") == 'bpm "Speed 2" x 2'
 
 
 def test_busk_accepts_every_builders_line(show: busk.OfflineShow) -> None:

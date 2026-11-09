@@ -104,17 +104,20 @@ def heading(title: str, spans: Sequence[tuple[int, int]], count: int) -> Text:
     return text
 
 
-def chips(words: Sequence[str], lit: str, line: Callable[[str], Line]) -> list[StripButton]:
+def chips(words: Sequence[str], lit: str, line: Callable[[str], Line | None]) -> list[StripButton]:
     """A chip per word, each running ``line(word)``. The ``lit`` one is reversed
-    and runs nothing: busk would spend an undo step on it, or refuse it."""
+    and runs nothing: busk would spend an undo step on it, or refuse it. A word
+    with no line is grey, and runs nothing either."""
     buttons = []
     for word in words:
+        found = None if word == lit else line(word)
         label = Text()
-        label.append(f"[{word}]", style=LIT if word == lit else colors.MID)
-        if word == lit:
+        style = LIT if word == lit else colors.BORDER if found is None else colors.MID
+        label.append(f"[{word}]", style=style)
+        if found is None:
             buttons.append(StripButton(label, Line(""), note=True))
         else:
-            buttons.append(StripButton(label, line(word)))
+            buttons.append(StripButton(label, found))
     return buttons
 
 
@@ -208,14 +211,14 @@ class Setting(Horizontal):
         super().__init__(Static(name, classes="fp-name"), self.value, *buttons)
 
     def stops(self, name: str) -> list[Stop]:
-        """A stop per button shown, each with a label of its own (the pane
-        cursor finds its place again by the label)."""
+        """A stop per button shown and not grey, each with a label of its own
+        (the pane cursor finds its place again by the label)."""
         if not self.display:
             return []
         return [
             Stop(Item(f"{name} {button.label}", action=button.action), button)
             for button in self.buttons
-            if button.display
+            if button.display and not button.inert
         ]
 
 

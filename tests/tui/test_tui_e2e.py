@@ -31,6 +31,7 @@ from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
 from rich.text import Text
 from textual import events
 from textual.pilot import Pilot
@@ -44,7 +45,7 @@ from builders import show as show_doc
 from busk_tui import attributes, colors, commands, config
 from busk_tui.bridge import Bridge
 from busk_tui.commands import Line, percent
-from busk_tui.model import CueListInfo, FixtureInfo, Orientation
+from busk_tui.model import CueListInfo, EffectInfo, EffectView, FixtureInfo, Orientation
 from busk_tui.pages.busk_console import OutputGrid
 from busk_tui.pages.busk_stack import StackLayout
 from busk_tui.pages.busk_stage import StageLayout, StagePlot
@@ -57,10 +58,11 @@ from busk_tui.shell import BuskApp
 from busk_tui.widgets.bars import HBar
 from busk_tui.widgets.chase_dialog import ChaseDialog
 from busk_tui.widgets.colorpicker import cell_color, rgb_of
-from busk_tui.widgets.controls import ButtonStrip
+from busk_tui.widgets.controls import ActionButton, ButtonStrip
 from busk_tui.widgets.cuetable import CueTable
 from busk_tui.widgets.dialogs import ConfirmDialog, FormDialog, TextDialog
 from busk_tui.widgets.dmxmap import DmxMap
+from busk_tui.widgets.effect_panel import EffectPanel, EffectRateDialog
 from busk_tui.widgets.effects import EffectTable, TemplateTable
 from busk_tui.widgets.encoders import EncoderBar, EncoderRow
 from busk_tui.widgets.fixturetable import FixtureTable
@@ -1354,6 +1356,148 @@ def test_f4_and_f6_build_and_delete_cues_and_lists_from_controls_on_the_real_eng
         await until(pilot, lambda: not blue_gone())
         errors = [text for kind, text in app.query_one(LogView).entries if kind == "error"]
         assert errors == []
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def running_effect(app: BuskApp, playback: int | None, ident: str) -> EffectView | None:
+    effects = app.view.effects
+    found = () if effects is None else effects.effects
+    return next((e for e in found if e.playback == playback and e.id == ident), None)
+
+
+async def answer_field(pilot: Pilot[int], app: BuskApp, text: str) -> None:
+    """Give the open dialog's first field ``text``, and press Enter."""
+    await until(pilot, lambda: bool(app.screen.query(Input)))
+    app.screen.query_one(Input).value = text
+    await pilot.press("enter")
+
+
+def test_f5_changes_a_running_cue_effect_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """While its cue runs, a cue effect's size and rate change at once, and
+    ``undo`` puts them back. ``✕`` asks, the effect leaves, the cue stays, and
+    ``undo`` brings it back."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=5), standalone=True)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.live is not None and app.view.show is not None)
+        table, panel = app.query_one(EffectTable), app.query_one(EffectPanel)
+        await pilot.press(*"go 11", "enter")
+        await until(pilot, lambda: app.live.playback(11).state == "active")  # type: ignore[union-attr]
+        await pilot.press(*"fader 11 100%", "enter")
+
+        def fx1() -> EffectView | None:
+            return running_effect(app, 11, "fx1")
+
+        await until(pilot, lambda: fx1() is not None and fx1().size == 15)  # type: ignore[union-attr]
+        await until(pilot, lambda: fx1().presence == 1.0)  # type: ignore[union-attr]
+        hz = fx1().hz  # type: ignore[union-attr]
+        row = column(table, "id").index("fx1")
+        await click_cell(pilot, table, row, "template")
+        await until(pilot, lambda: panel.display)
+        size = next(b for b in panel.query(ActionButton) if b.label == "size…")
+        await tap(pilot, size)
+        await until(pilot, lambda: isinstance(app.screen, TextDialog))
+        await answer_field(pilot, app, "30")
+        await until(pilot, lambda: fx1() is not None and fx1().size == 30)  # type: ignore[union-attr]
+        assert ("ui", "cue 11/1 effect fx1 size 30") in app.query_one(LogView).entries
+
+        await tap(pilot, next(b for b in panel.query(ActionButton) if b.label == "rate…"))
+        await until(pilot, lambda: isinstance(app.screen, EffectRateDialog))
+        dialog = app.screen
+        assert isinstance(dialog, EffectRateDialog)
+        assert dialog.kind.chosen == "bpm"
+        dialog.multiplier.value = "1"
+        dialog.action_ok()
+        await until(pilot, lambda: fx1() is not None and fx1().hz == pytest.approx(hz * 2))  # type: ignore[union-attr]
+        assert plain_of(panel.rate.value) == "bpm x 1"
+
+        await pilot.press(*"undo", "enter")
+        await until(pilot, lambda: fx1() is not None and fx1().hz == pytest.approx(hz))  # type: ignore[union-attr]
+        await until(pilot, lambda: plain_of(panel.rate.value) == "bpm x 0.5")
+        await pilot.press(*"undo", "enter")
+        await until(pilot, lambda: fx1() is not None and fx1().size == 15)  # type: ignore[union-attr]
+
+        await click_cell(pilot, table, row, "remove")
+        await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+        assert isinstance(app.screen, ConfirmDialog)
+        assert "It is running" in app.screen.question
+        await pilot.press("y")
+        await until(pilot, lambda: "fx1" not in column(table, "id"))
+        await until(pilot, lambda: not panel.display)
+        assert app.live.playback(11).state == "active"  # type: ignore[union-attr]
+        await pilot.press(*"undo", "enter")
+        await until(pilot, lambda: "fx1" in column(table, "id"))
+        assert not [line for kind, line in app.query_one(LogView).entries if kind == "error"]
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_f5_restates_a_programmer_effect_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """A change leaves the effect on its fixtures, running. With another
+    selection nothing can move it; ``[its fixtures]`` comes back to them. The
+    number busk stores is the number typed. ``[clear]`` asks."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=5), standalone=True)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.live is not None and app.view.show is not None)
+        table, panel = app.query_one(EffectTable), app.query_one(EffectPanel)
+        await pilot.press(*"sel group 1", "enter")
+        await until(pilot, lambda: bool(app.programmer and app.programmer.selection))
+        await pilot.press(*'effect add "Circle" id fx5 size 15', "enter")
+        await until(pilot, lambda: bool(app.programmer and app.programmer.effects))
+        targets = app.programmer.effects[0].targets  # type: ignore[union-attr]
+
+        def effect() -> EffectInfo:
+            assert app.programmer is not None
+            return app.programmer.effects[0]
+
+        await until(pilot, lambda: column(table, "id")[-1:] == ["fx5"])
+        row = len(table.rows) - 1
+        await click_cell(pilot, table, row, "template")
+        await until(pilot, lambda: panel.display)
+        size = next(b for b in panel.query(ActionButton) if b.label == "size…")
+        await tap(pilot, size)
+        await answer_field(pilot, app, "0.00001")
+        await until(pilot, lambda: effect().size == 0.00001)  # busk reads no exponent
+        await tap_button(pilot, panel.direction, "bounce")
+        await until(pilot, lambda: effect().direction == "bounce")
+        assert effect().size == 0.00001  # the unchanged setting stayed
+        assert effect().targets == targets
+        await until(pilot, lambda: running_effect(app, None, "fx5") is not None)
+
+        await pilot.press(*"sel fixture 301", "enter")
+        await until(pilot, lambda: panel.why.display)
+        assert size.inert
+        assert effect().targets == targets
+        await tap(pilot, panel.its)
+        await until(pilot, lambda: not panel.why.display)
+        assert app.programmer.selection == targets.elements  # type: ignore[union-attr]
+        assert not size.inert
+
+        clear = app.query_one("#effects-clear", ActionButton)
+        await tap(pilot, clear)
+        await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+        await pilot.press("y")
+        await until(pilot, lambda: not app.programmer or not app.programmer.effects)
+        await until(pilot, lambda: not panel.display)
+        assert not [line for kind, line in app.query_one(LogView).entries if kind == "error"]
 
     try:
         drive(app, body)

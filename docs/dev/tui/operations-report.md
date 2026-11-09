@@ -47,8 +47,8 @@ do can already be typed in the TUI. The tables below show how much the screens h
 | Cues | control (F4) | control | control | control (values, releases); pre-fill (timing, trigger, name) |
 | Cue lists | control (F4) | control | control (cascades) | control; renumber: prompt |
 | Presets | control (F6, colour chips) | control (F6's PRESET panel) | control | control (values, name, number) |
-| Effects in the programmer | control (F5, F1 B) | control | control | control (stop, run); prompt (settings) |
-| Effects in cues | control (F5) | control (via `record cue`) | prompt | prompt |
+| Effects in the programmer | control (F5, F1 B) | control | control | control (F5's EFFECT panel, stop, run) |
+| Effects in cues | control (F5) | control (via `record cue`) | control | control (F5's EFFECT panel) |
 | Effect templates | control (F5) | prompt (JSON) | prompt | prompt |
 | Playbacks, operating | control (F1) | n/a | n/a | control: fader, GO, ◂, FLASH; the playback's own buttons: prompt |
 | Playbacks, configuration | partial: not shown | prompt | prompt | prompt |
@@ -57,12 +57,11 @@ In short:
 
 - **SHOW is covered** for all of them except a playback's configuration: its buttons, fader
   function, band, exclusivity, flash, LTP mode and release time are on no screen.
-- **The TUI is a performance and programming frontend, and it edits the rig, the presets and
-  the cue lists, but not the rest of a show yet.** F3, F8, F6 and F4 show, add, delete and update
-  fixtures, universes, routes, presets, cues and cue lists from controls alone; a cue's timing,
-  trigger and name are pre-fills. Beyond them, nothing can be deleted from a screen except a
-  programmer effect (`✕`), and ADD has controls only for programmer effects. The rest is typed at
-  the prompt.
+- **The TUI is a performance and programming frontend, and it edits the rig, the presets, the
+  cue lists and the effects, but not the rest of a show yet.** F3, F8, F6, F4 and F5 show, add,
+  delete and update fixtures, universes, routes, presets, cues, cue lists and effects from controls
+  alone; a cue's timing, trigger and name are pre-fills. The rest, effect templates and a playback's
+  configuration, is typed at the prompt.
 - **busk has the lines the TUI needs.** Deleting several presets, cues or lists at once is all it
   still lacks (see [What busk is missing](#what-busk-is-missing)).
 
@@ -159,12 +158,12 @@ recorded into cues, and the templates both are made from.
 | Add to the programmer | `effect add "<template>" [options…]` | yes | control: a template click on F5 (`effect add "<name>"`, the library's defaults); prompt for options |
 | Add to a cue | `record cue L/C` with effects in the programmer | yes | control: F4 `[record cue L]` |
 | Add a template | `effect template add "<name>" <JSON layers>` | yes | prompt |
-| Remove from the programmer | `effect remove <id>`, `effect clear` | yes | control: `✕` on F5; prompt for `effect clear` |
-| Remove from a cue | `cue L/C effect <id> remove` (GAP-32) | yes | prompt |
+| Remove from the programmer | `effect remove <id>`, `effect clear` | yes | control: `✕` on F5; `[clear]`, after a question |
+| Remove from a cue | `cue L/C effect <id> remove` (GAP-32) | yes | control: `✕` on F5, after a question |
 | Delete a template | `effect template delete "<name>"` (GAP-31) | yes: refused while a cue, a binding or the programmer uses it, and for a template only the library has | prompt |
 | Stop, run (programmer) | `effect stop <id>`, `effect run <id>` | yes | control: state toggle on F5 and F1 B |
-| Change settings (programmer) | `effect add "<template>" id <id> …` replaces them | yes | prompt |
-| Change settings (cue) | `cue L/C effect <id> <prop> <value>` | yes | prompt |
+| Change settings (programmer) | `effect add "<template>" id <id> …` replaces them | partial: the line takes its targets from the selection (GAP-41) | control: F5's EFFECT panel, while the selection is the effect's fixtures |
+| Change settings (cue) | `cue L/C effect <id> <prop> <value>` | partial: no line takes an optional setting away (GAP-41) | control: F5's EFFECT panel |
 | Change or rename a template | `effect template update "<name>" <JSON layers>`, `effect template rename "<name>" "<new name>"` (GAP-31) | yes: the show's own templates | prompt |
 
 ## Playbacks (buttons and faders)
@@ -216,9 +215,7 @@ host it:
 
 - **F1**: the playback's own buttons (`button N B on|off`) instead of the fixed GO, ◂ and
   FLASH; `record slot` on an empty slot.
-- **F5**: edit an effect's settings (programmer: `effect add … id <id>`; cue: `cue L/C
-  effect`); remove one effect from a cue; `effect clear`; add, delete, rename and change a
-  template.
+- **F5**: add, delete, rename and change a template.
 - **Playbacks**: no screen views or edits their configuration (buttons, fader function,
   band, exclusivity, flash, LTP mode, release time, page slots), and none adds or deletes one.
 
@@ -227,5 +224,6 @@ host it:
 - `LiveShow.confirmation()` asks before every `delete … cascade`, `delete route <id>` and
   `route <id> off`, so F3's and F8's controls show busk's question. It asks nothing before
   any other `delete`, a `record … replace` or `effect clear`. They are undo steps. A TUI control
-  there would rely on `undo`, unless the TUI asks first itself. F6's `[delete]` and F4's cue
-  `[delete]`, `[replace]` and `[remove]` ask first (`RunLine.ask`).
+  there would rely on `undo`, unless the TUI asks first itself. F6's `[delete]`, F4's cue
+  `[delete]`, `[replace]` and `[remove]`, and F5's `✕` on a cue's effect and `[clear]` ask first
+  (`RunLine.ask`).

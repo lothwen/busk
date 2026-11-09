@@ -249,17 +249,23 @@ class EffectList(Vertical):
 
 @dataclass(frozen=True, slots=True)
 class FxRow:
-    """One row of F5's table: a cue's effect (``owner`` ``9/4``) or the
-    programmer's (``prog``); ``live``, its status while it runs; ``toggle``,
-    the line its state runs (``None``: no playback runs its list);
-    ``remove``, a programmer effect's ``effect remove``."""
+    """One row of F5's table: a cue's effect (``owner`` ``9/4``, ``cue`` ``(9,
+    "4")``) or the programmer's (``prog``, ``cue`` ``None``); ``live``, its
+    status while it runs; ``toggle``, the line its state runs (``None``: no
+    playback runs its list); ``remove``, the line ``✕`` runs."""
 
     owner: str
     info: EffectInfo
     running: bool  # it runs, or (the programmer's) is not stopped
     live: EffectView | None
     toggle: Line | None
-    remove: Line | None
+    remove: Line
+    cue: tuple[int, str] | None = None
+
+    @property
+    def key(self) -> tuple[str, str]:
+        """Which effect it is, from one read of the show to the next."""
+        return (self.owner, self.info.id)
 
 
 def effect_rows(
@@ -286,8 +292,10 @@ def effect_rows(
                     toggle = commands.release(live.playback)
                 elif runs:
                     toggle = commands.goto(runs[0], cue.number)
+                where = (cue_list.number, cue.number)
+                remove = commands.cue_effect_remove(*where, info.id)
                 owner = f"{cue_list.number}/{cue.number}"
-                rows.append(FxRow(owner, info, live is not None, live, toggle, None))
+                rows.append(FxRow(owner, info, live is not None, live, toggle, remove, where))
     stopped = frozenset[str]() if programmer is None else programmer.stopped
     for info in () if programmer is None else programmer.effects:
         live = next((e for e in running if e.playback is None and e.id == info.id), None)
@@ -355,7 +363,7 @@ def fx_cells(row: FxRow, show: ShowModel | None, mode: ColorMode) -> Cells:
         "wings": cell(wings, colors.FG),
         "wave": sparkline(wave, hues, live is not None and row.running, mode),
         "state": state,
-        "remove": cell("✕" if row.remove is not None else "", colors.RED),
+        "remove": cell("✕", colors.RED),
     }
 
 
