@@ -4,9 +4,10 @@ preset chosen in edit mode, or a new one to record.
 * Nothing chosen: how to choose one.
 * A preset of the show: ``[rename…]`` and ``[number…]``, each a dialog and
   then one line (``rename preset color 2 "…"``, ``preset color 2 number
-  9``); ``[delete]``, after a question, and inert while cues or effect
-  palettes take the preset; what it HOLDS, a line per stored value; and
-  the cues that use it.
+  9``); ``[delete]``, after a question: the TUI's for a preset nothing
+  uses, busk's for one in use, which goes out of the cues and effect
+  palettes that take it (``delete preset color 2 cascade``); what it HOLDS,
+  a line per stored value; and the cues that use it.
 * A new preset (the ``+ record`` tile): its number, which ``[−]`` ``[+]``
   step over the pool's free numbers and ``[number…]`` types, and its name
   (``[name…]``). These send nothing.
@@ -219,7 +220,7 @@ def use_text(preset: PresetInfo, show: ShowModel) -> Text:
         return Text("used by no cue", style=colors.DIM)
     text = Text("used by ", style=colors.DIM)
     text.append(" · ".join(parts), style=colors.AMBER)
-    text.append("\nto delete it, take it out of those first", style=colors.DIM)
+    text.append("\ndelete takes it out of those too", style=colors.DIM)
     return text
 
 
@@ -431,7 +432,6 @@ class PresetPanel(VerticalScroll):
             title = f'PRESET · {preset.pool} {preset.number} "{preset.name}"'
             _put(self.holds, holds_text(preset, show.fixtures, self.mode))
             _put(self.use, use_text(preset, show))
-            self.delete.change(inert=bool(preset.used_by or preset.palettes))
         else:
             title = "PRESET"
         if str(self.border_title) != title:
@@ -675,10 +675,12 @@ class PresetPanel(VerticalScroll):
         self.app.push_screen(dialog, given)
 
     def ask_delete(self) -> None:
-        """``[delete]``: ``delete preset <pool> N``, after the TUI's question,
-        which says when the programmer refers to the preset."""
+        """``[delete]``. A preset in use: ``delete preset <pool> N cascade``,
+        after busk's question, which names the cues it leaves. Else ``delete
+        preset <pool> N``, after the TUI's question, which says when the
+        programmer refers to the preset."""
         preset = self.preset()
-        if preset is None or preset.used_by or preset.palettes:
+        if preset is None:
             return
         key = (preset.pool, preset.number)
         question = f'Delete preset {preset.pool} {preset.number} "{preset.name}"?'
@@ -696,8 +698,9 @@ class PresetPanel(VerticalScroll):
             if ok and self.chosen == chosen:
                 self._choose(None)
 
-        line = commands.delete_preset(preset.pool, preset.number)
-        self.post_message(RunLine(line, done=deleted, ask=question))
+        in_use = bool(preset.used_by or preset.palettes)
+        line = commands.delete_preset(preset.pool, preset.number, cascade=in_use)
+        self.post_message(RunLine(line, done=deleted, ask=None if in_use else question))
 
     def _something_to_record(self, pool: str) -> bool:
         return bool(attributes.records(pool, self.programmer).attributes)
@@ -760,9 +763,8 @@ class PresetPanel(VerticalScroll):
             stops += [
                 Stop(Item("rename…", action=self.ask_name), self.rename),
                 Stop(Item("number…", action=self.ask_number), self.renumber),
+                Stop(Item("delete", action=self.ask_delete), self.delete),
             ]
-            if not self.delete.inert:
-                stops.append(Stop(Item("delete", action=self.ask_delete), self.delete))
         if self.editing():
             for scope, lit in self.scopes.items():
                 item = Item(f"scope {scope}", action=partial(self.set_scope, scope))

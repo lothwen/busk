@@ -6,7 +6,8 @@
   program it; F6's PRESET panel records presets and changes them, and
   on the TupperDMX show records a colour from its picker and a beam preset
   from its option chips and bars; F4
-  goes to a cue, and F5 adds, stops and removes an effect; F3 and F1's
+  goes to a cue, and builds and deletes cues and lists from its controls, and
+  F5 adds, stops and removes an effect; F3 and F1's
   layouts A and C show the output, and select from it; F3's FIXTURE panel
   renames, renumbers and deletes a fixture, sets a profile's category, a
   fixture's mode, its limits, orientation and location, patches it, changes
@@ -30,9 +31,11 @@ from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 
+from rich.text import Text
 from textual import events
 from textual.pilot import Pilot
 from textual.widget import Widget
+from textual.widgets import Input
 from tui_fakes import Stub, click_cell, column, drive
 
 import busk
@@ -41,16 +44,18 @@ from builders import show as show_doc
 from busk_tui import attributes, colors, commands, config
 from busk_tui.bridge import Bridge
 from busk_tui.commands import Line, percent
-from busk_tui.model import FixtureInfo, Orientation
+from busk_tui.model import CueListInfo, FixtureInfo, Orientation
 from busk_tui.pages.busk_console import OutputGrid
 from busk_tui.pages.busk_stack import StackLayout
 from busk_tui.pages.busk_stage import StageLayout, StagePlot
+from busk_tui.pages.cues import CuesPage
 from busk_tui.pages.fixtures import FixturesPage
 from busk_tui.pages.patch import PatchPage, RoutesTable, UniverseTable
 from busk_tui.pages.presets import PresetsPage
 from busk_tui.pages.program import EncoderPanel
 from busk_tui.shell import BuskApp
 from busk_tui.widgets.bars import HBar
+from busk_tui.widgets.chase_dialog import ChaseDialog
 from busk_tui.widgets.colorpicker import cell_color, rgb_of
 from busk_tui.widgets.controls import ButtonStrip
 from busk_tui.widgets.cuetable import CueTable
@@ -71,6 +76,12 @@ from busk_tui.widgets.tiles import PresetTile
 from sacn_receiver import Receiver
 
 WAIT_S = 15.0
+
+
+def plain_of(widget: Widget) -> str:
+    """The text a ``Static`` shows."""
+    content = widget.content  # type: ignore[attr-defined]
+    return content.plain if isinstance(content, Text) else str(content)
 
 
 async def until(pilot: Pilot[int], test: Callable[[], bool], timeout: float = WAIT_S) -> None:
@@ -1217,6 +1228,132 @@ def test_f4_and_f5_run_cues_and_effects_on_the_real_engine(club_path: Path, tmp_
         log = app.query_one(LogView).entries
         assert ("ui", 'effect add "Circle"') in log
         assert any(kind == "ui" and line.startswith("effect stop ") for kind, line in log)
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_f4_and_f6_build_and_delete_cues_and_lists_from_controls_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """F4 from controls alone: a new list, a cue at a number, merged into and
+    released, tracking, a chase from its form, a rename, the cue and the list
+    deleted after their questions. F6's ``[delete]`` of a preset in use leaves
+    the cues that took it."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=4), standalone=True)
+
+    def cue_list() -> CueListInfo | None:
+        return None if app.view.show is None else app.view.show.cue_list(30)
+
+    async def form(pilot: Pilot[int], *values: str) -> None:
+        dialog = app.screen
+        assert isinstance(dialog, FormDialog)
+        for field, value in zip(dialog.inputs, values, strict=True):
+            field.value = value
+        await pilot.press("enter")
+
+    def blue_gone() -> bool:
+        assert app.view.show is not None
+        return all((p.pool, p.number) != ("color", 1) for p in app.view.show.presets)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.live is not None and app.view.show is not None)
+        page = app.query_one(CuesPage)
+        await until(pilot, lambda: page.list is not None)
+        await tap_button(pilot, page.list_add, "+ list…")
+        await until(pilot, lambda: isinstance(app.screen, FormDialog))
+        await form(pilot, "30", "Encore")
+        await until(pilot, lambda: cue_list() is not None and page.list == 30)
+        assert page.edits.buttons[0].note  # nothing to record yet: [record at…] is grey
+
+        await pilot.press(*"sel group 1", "enter")
+        await pilot.press(*"set intensity 50%", "enter")
+        await until(pilot, page.recordable)
+        await tap_button(pilot, page.edits, "record at…")
+        await until(pilot, lambda: isinstance(app.screen, FormDialog))
+        await form(pilot, "2.5", "Bridge")
+        cues = app.query_one(CueTable)
+        await until(pilot, lambda: column(cues, "cue") == ["30/2.5"])
+        await until(pilot, lambda: page.cue == "2.5")
+        assert plain_of(page.edit_label) == "edit cue 30/2.5 Bridge"
+
+        await tap_button(pilot, page.edits, "merge")
+        await tap_button(pilot, page.edits, "release…")
+        await until(pilot, lambda: isinstance(app.screen, FormDialog))
+        await form(pilot, "group 2", "intensity")
+        await tap_button(pilot, page.list_edits, "tracking on")
+        await until(pilot, lambda: cue_list() is not None and cue_list().tracking)  # type: ignore[union-attr]
+        log = app.query_one(LogView).entries
+        await until(pilot, lambda: ("ui", "cue 30/2.5 release group 2 only intensity") in log)
+        assert ("ui", "record cue 30/2.5 merge") in log
+
+        await tap_button(pilot, page.list_edits, "chase…")
+        await until(pilot, lambda: isinstance(app.screen, ChaseDialog))
+        dialog = app.screen
+        assert isinstance(dialog, ChaseDialog)
+        dialog.kind.pick("hz")
+        dialog.hz.value = "4"
+        dialog.direction.pick("bounce")
+        dialog.crossfade.value = "0.25"
+        await pilot.press("enter")
+        await until(pilot, lambda: cue_list() is not None and cue_list().mode == "chase")  # type: ignore[union-attr]
+        assert cue_list().chase == "hz 4 bounce"  # type: ignore[union-attr]
+        assert cue_list().crossfade == 0.25  # type: ignore[union-attr]
+
+        await tap_button(pilot, page.list_edits, "rename…")
+        await until(pilot, lambda: isinstance(app.screen, TextDialog))
+        renamed = app.screen
+        assert isinstance(renamed, TextDialog)
+        renamed.query_one(Input).value = "Last"
+        await pilot.press("enter")
+        await until(pilot, lambda: cue_list() is not None and cue_list().name == "Last")  # type: ignore[union-attr]
+
+        await tap_button(pilot, page.edits, "delete")
+        await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+        question = app.screen
+        assert isinstance(question, ConfirmDialog)
+        assert question.question == 'Delete cue 30/2.5 "Bridge"?'
+        await pilot.press("y")
+        await until(pilot, lambda: cue_list() is not None and cue_list().cues == ())  # type: ignore[union-attr]
+
+        await tap_button(pilot, page.list_edits, "delete")
+        await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+        question = app.screen
+        assert isinstance(question, ConfirmDialog)
+        assert question.question == 'Delete cue list 30 "Last"?'
+        await pilot.press("y")
+        await until(pilot, lambda: cue_list() is None and page.list is not None)
+        assert app.view.show is not None
+        assert app.view.show.cue_list(page.list) is not None
+
+        await pilot.press("f6")
+        await pilot.pause()
+        presets = app.query_one(PresetsPage)
+        blue = next(t for t in presets.tiles if t.pool == "color" and t.number == 1)
+        presets.choose(blue)
+        await pilot.pause()
+        assert presets.panel.preset() is not None
+        users = presets.panel.preset().used_by  # type: ignore[union-attr]
+        assert users
+        presets.panel.delete.scroll_visible(animate=False)
+        await pilot.pause()
+        await pilot.click(presets.panel.delete)
+        await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+        question = app.screen
+        assert isinstance(question, ConfirmDialog)
+        assert " It leaves cues " in question.question
+        await pilot.press("y")
+        await until(pilot, blue_gone)
+        assert presets.panel.chosen is None
+        await pilot.press(*"undo", "enter")
+        await until(pilot, lambda: not blue_gone())
+        errors = [text for kind, text in app.query_one(LogView).entries if kind == "error"]
+        assert errors == []
 
     try:
         drive(app, body)

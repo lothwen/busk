@@ -9,6 +9,7 @@ All are modal: while one is open, its keys are the only ones.
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Callable, Collection, Sequence
 from typing import ClassVar, Final, Literal
 
@@ -29,6 +30,9 @@ QUIT_CHOICES: dict[str, QuitChoice] = {"save": "save", "quit": "quit", "cancel":
 
 MAX_DIGITS: Final = 300
 """The most digits busk reads in a row, past which it refuses a line."""
+
+CUE_NUMBER: Final = re.compile(rf"[0-9]{{1,{MAX_DIGITS}}}(?:\.[0-9]{{1,{MAX_DIGITS}}})?")
+"""A cue number as busk reads one: ``3``, ``2.5``."""
 
 
 def check_name(renaming: bool) -> Callable[[str], str | None]:
@@ -55,6 +59,34 @@ def check_number(taken: Collection[int], own: int | None) -> Callable[[str], str
         return None
 
     return check
+
+
+def cue_key(text: str) -> tuple[int, ...] | None:
+    """A cue number as busk compares them (``02.5`` is ``2.5``, and ``2.50``
+    is another cue); ``None`` if it is not one."""
+    if CUE_NUMBER.fullmatch(text) is None:
+        return None
+    return tuple(int(part) for part in text.split("."))
+
+
+def check_cue(taken: Collection[str]) -> Callable[[str], str | None]:
+    """A cue number dialog's check: a cue number that none of ``taken`` is."""
+    keys = {cue_key(number) for number in taken}
+
+    def check(text: str) -> str | None:
+        number = text.strip()
+        key = cue_key(number)
+        if key is None:
+            return "a cue number, such as 3 or 2.5"
+        return f"cue {number} exists" if key in keys else None
+
+    return check
+
+
+def next_cue(taken: Sequence[str]) -> str:
+    """What a new cue starts at: as busk's ``record cue L``, the next whole
+    number after the last of ``taken`` (in cue order), else 1."""
+    return str(int(taken[-1].split(".")[0]) + 1) if taken else "1"
 
 
 def read_whole(text: str) -> int | None:

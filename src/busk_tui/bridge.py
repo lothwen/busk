@@ -67,6 +67,7 @@ from busk_tui.model import (
     BindingInfo,
     BridgeEvent,
     Busy,
+    ChaseRate,
     CommandDone,
     Completion,
     Components,
@@ -775,6 +776,7 @@ def show_model(
                 cues=tuple(cue_info(cue, names) for cue in cue_list["cues"]),
                 crossfade=cue_list["chase"]["crossfade"] if "chase" in cue_list else 0.0,
                 tracking=cue_list["tracking"],
+                rate=None if "chase" not in cue_list else _chase_rate(cue_list["chase"], names),
             )
             for cue_list in doc["cueLists"]
         ),
@@ -1359,6 +1361,14 @@ def session_from_info(text: str) -> SessionState | None:
 def _chase_text(chase: Mapping[str, Any], names: _Names) -> str:
     """A chase's rate and direction as ``cuelist N chase`` takes them."""
     return f"{_rate_text(chase['rate'], names)} {chase['direction']}"
+
+
+def _chase_rate(chase: Mapping[str, Any], names: _Names) -> ChaseRate:
+    """The settings ``_chase_text`` words, one by one."""
+    rate, direction = chase["rate"], chase["direction"]
+    if rate["kind"] == "hz":
+        return ChaseRate(float(rate["value"]), None, 1.0, direction)
+    return ChaseRate(None, names.speeds.get(rate["masterId"]), float(rate["multiplier"]), direction)
 
 
 def _rate_text(rate: Mapping[str, Any], names: _Names) -> str:

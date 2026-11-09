@@ -462,14 +462,60 @@ Needs GAP-33 and GAP-36. Code: `src/busk_tui/pages/cues.py`, `src/busk_tui/comma
    - `[record at…]`: a number and a name, `record cue L/C ["name"]`. A taken number is refused in
      the dialog.
    - `[release…]`: targets and attributes, `cue L/C release <targets> [only …]`.
+
+   **Done** (2026-11-09). As planned, on the edit row of `src/busk_tui/pages/cues.py`, and busk takes
+   every line (the contract test). Which the user may veto:
+   - `[record at…]` is grey with an empty programmer too, which the plan named only for the three
+     writes. busk refuses every `record cue` then. "Empty" is no value and no effect that runs,
+     since busk does not record a stopped one. `[record cue L]` keeps its old look.
+   - On a list with no cues the row is only `[record at…]`.
+   - **`[delete]`'s question says when a playback is on the cue**: `P9 is on it, and will leave it at
+     once.` The engine moves the playback to another cue the moment the cue goes.
+   - `[record at…]` starts at the next whole number after the last cue, as `record cue L` picks, and
+     the new cue becomes the chosen one. `check_cue` compares numbers as busk does: `02.5` is `2.5`,
+     and `2.50` is another cue.
+   - `[release…]` starts at the selection. The dialog checks only that targets were typed: what
+     only busk can read, such as a word it does not take, is refused in the log, as for a route.
+   - The label can take at most 40% of the row, so a very long name leaves the buttons reachable.
 2. **A list's controls:** `[+ list…]` in CUELISTS (`cuelist add`), `[rename…]`, `[delete]` (`delete
    cuelist N cascade`, busk's question), a tracking toggle, and `[chase…]`: a form for the rate,
    master, multiplier, direction and crossfade.
+
+   **Done** (2026-11-09). As planned. The form is `ChaseDialog` in the new
+   `src/busk_tui/widgets/chase_dialog.py`, and `CueListInfo.rate` (`ChaseRate`) holds the settings
+   it starts at. `PickRow` takes where it starts. Which the user may veto:
+   - The list's controls have a row of their own, `list 9 Song`, so `[rename…]` and `[delete]` are
+     not read as the cue's.
+   - The toggle reads `[tracking on]` or `[tracking off]`, what a click does, as F6's `[blind on]`.
+   - `[+ list…]` shows the new list once it has run.
+   - `[chase…]` also makes the list a chase, since the line does. A show with no speed master offers
+     Hz alone, and the master row shows only with several.
+   - The form's numbers go in the line as typed, so `0.125` is not rounded as `commands.number`
+     would. It refuses a sign, `%` and an exponent, which a number field does not need.
 3. **F6's `[delete]`** sends `delete preset … cascade` on a preset in use. The panel still names
    what uses it.
 
+   **Done** (2026-11-09). As planned, in `PresetPanel.ask_delete`: busk's question for a preset in
+   use, the TUI's own, with its note about the programmer, for one nothing uses. The panel's second
+   line now reads `delete takes it out of those too`. Which the user may veto:
+   - **A preset only a binding names is still sent plainly**, so busk refuses it in one line (`…: add
+     cascade`) and the operator types the cascade. `PresetInfo` knows cues and palettes, not bindings.
+   - A palette's last colour is not greyed: the TUI cannot tell. busk refuses it in the log, and
+     the preset stays chosen.
+
 Verify: each line as sent; grey states; at 99 columns the strips wrap; the pane cursor reaches each
 new control; a deleted list or cue leaves F4 on a list that exists.
+
+**Phase 6 checks** (2026-11-09). The whole suite: 5,591 passed and 1 skipped, in 3:31 with `uv run
+pytest -n 6`. `ruff check`, `ruff format --check` and `mypy src` clean. No change to `src/busk/` or
+the engine's tests. The four TUI test files the phase touched, 386 tests, and the new test on the
+real engine in `tests/tui/test_tui_e2e.py` pass on Textual 8.2.0. The perf gate: 7 passed, no
+overruns, F4 at +0.139 core. 54 mutations of the new code, all caught; three needed a test of their
+own, which is in. A real `busk-tui --state-dir …` under `busk run` on the club show, at 150 and 99
+columns: `go 9` twice, the forms of `[record at…]` and `[chase…]`, `[delete]` of the cue P9 was on
+with its question, `[delete]` of the running list with busk's, F6's `[delete]` of Blue with busk's,
+and `undo`, with no error in the log. Docs: `docs/tui/guide.md`, the report's rows, Summary, "In
+short" and side finding, and `CHANGELOG.md`.
 
 ### Phase 7: F5: an effect's settings
 
@@ -615,6 +661,10 @@ Left out because the five places do not name them. Say if any should join a phas
 - Deleting several presets, cues or lists in one line.
 - `route add 1 artnet 200.0.0` still prints a path (net above 127, sub-net or universe above 15),
   like the sACN universe Phase 1 fixed. Phase 1 named only sACN. Found on 2026-11-08.
+- Some replies still print a path, and F4's controls now put them in the log: `delete cue L/C`
+  (`deleted cueLists[8].cues[1]`), `cue L/C release`, `cuelist N tracking`, `rename cuelist` and
+  `cuelist N chase`. The refusals are in words; these are the answers to lines that worked. Found on
+  2026-11-09.
 
 ## 8. Questions
 

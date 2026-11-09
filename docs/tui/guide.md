@@ -544,8 +544,8 @@ that; there, a click scrolls down to it.
 
 ## F4 Cues
 
-Every cue list, and the cues of one: go to a cue, record one, switch a list between sequence
-and chase, and edit a cue's timing at the prompt.
+Every cue list, and the cues of one: go to a cue, record, re-record and delete cues, make and
+delete lists, set a list's tracking and chase, and edit a cue's timing at the prompt.
 
 ```
  ┌─ CUELISTS ─────────────────────────┐┌─ CUELIST 9 · Song ────────────────────────────────────────────────────────────────────┐
@@ -556,10 +556,12 @@ and chase, and edit a cue's timing at the prompt.
  │  10 Chase          chase    4 P10  ││   9/2    Verse          2, position 4 —      linear    —      —      70%        …     │
  │   …                                ││ ▶ 9/3    Pre            1/3           —      linear    —      8      100%, 30%  …     │
  │  20 Fast pulse     seq      1 P20  ││   9/4    Chorus         0.5/2         —      linear    —      —      100%, 100% …     │
- └────────────────────────────────────┘│   9/5    Outro          6             —      linear    4      —      20%        …     │
-                                       │                                                                                       │
-                                       │ [GO] [BACK] [record cue 9] [cuelist 9 chase bpm x 1]                                  │
+ │                                    ││   9/5    Outro          6             —      linear    4      —      20%        …     │
+ │ [+ list…]                          ││                                                                                       │
+ └────────────────────────────────────┘│ [GO] [BACK] [record cue 9] [cuelist 9 chase bpm x 1]                                  │
+                                       │ list 9 Song [tracking off] [chase…] [rename…] [delete]                                │
                                        │ edit cue 9/3 Pre [time…] [delay…] [curve…] [go…] [follow…] [wait…] [rename…]          │
+                                       │                  [release…] [record at…] [merge] [replace] [remove] [delete]          │
                                        └───────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -591,9 +593,41 @@ cue` stores a spread), with the colour's swatch; then the ids of its effects.
   chase bpm x 1`, or the chase settings the list had before) or back to a sequence
   (`cuelist 10 sequence`).
 
+**The `list` row** acts on the list shown:
+
+- `[tracking on]` and `[tracking off]` send `cuelist 9 tracking true` and `false`.
+- `[chase…]` opens a form: the rate in Hz or on a speed master's beat (which master, when the
+  show has several, and a multiplier), the direction and the crossfade. It starts at the
+  settings the list keeps. Sending it makes the list a chase: `cuelist 9 chase hz 2 bounce
+  crossfade 0.5`, one undo step.
+- `[rename…]` is a name dialog.
+- `[delete]` sends `delete cuelist 9 cascade`, after busk's question, which names the playbacks
+  that go with the list and the pages they leave, and says when one is running: `Delete cue list
+  9 "Song" and playback 9? It leaves pages 1, 2.` One `undo` brings it all back.
+
+`[+ list…]`, under CUELISTS, asks for a number and a name (`cuelist add 30 "Encore"`), refuses a
+number that is taken, and shows the new list.
+
+**The `edit` row** acts on the chosen cue. After the pre-fills:
+
+- `[release…]` asks for targets, as busk reads them (`group 1`, `101 thru 104`), starting at the
+  selection, and attributes, none for all of them: `cue 9/3 release group 1 only pan tilt`.
+- `[record at…]` asks for a number and a name, and records the programmer as a new cue there:
+  `record cue 9/2.5 "Bridge"`. `2.5` goes between 2 and 3. A cue that exists is refused in the
+  dialog. The new cue becomes the chosen one.
+- `[merge]`, `[replace]` and `[remove]` re-record the cue from the programmer: `record cue 9/3
+  merge`. `merge` adds to what the cue holds, `replace` swaps it for the programmer's values, and
+  `remove` takes out the attributes the programmer holds. The last two ask first.
+- `[delete]` sends `delete cue 9/3`, after a question. When a playback is on that cue the question
+  says so, since the playback leaves it at once.
+
+`[record at…]`, `[merge]`, `[replace]` and `[remove]` are grey while the programmer has nothing
+to record: no value, and no effect that runs. A list with no cues offers only `[record at…]`.
+
 With the pane cursor (Tab on an empty prompt) the cues come first: Enter goes to one and
-chooses it. Then the buttons and the edits, then the lists: Enter on a list shows it, and
-its cues come first again. Below 100 columns the chosen list goes over the list of lists.
+chooses it. Then the buttons and the two rows, then the lists: Enter on a list shows it, and
+its cues come first again. `[+ list…]` is last. Below 100 columns the chosen list goes over the
+list of lists.
 
 ## F5 Effects
 
@@ -739,9 +773,10 @@ while blind is on.
 
 - `[rename…]` and `[number…]`, each a dialog, then one line (`rename preset color 2 "…"`,
   `preset color 2 number 9`). The number dialog lists the numbers taken and refuses them;
-- `[delete]`, after a question (busk asks none). It is grey while cues or effect palettes use
-  the preset: the panel names them (`used by cue 4/1, 10/1–10/4`), and they must stop using
-  it first;
+- `[delete]`, after a question. The panel names what uses the preset (`used by cue 4/1,
+  10/1–10/4`). A preset in use goes out of those cues and effect palettes too: `delete preset
+  color 2 cascade`, after busk's question, which names the cues it leaves. The cues stay, with
+  what is left, and busk refuses when the preset is a palette's last colour;
 - HOLDS: each value it stores, then its scope and where (`pan  -30°  target 101`). A line too
   long for the panel ends in `…`: a long profile name is cut, never the value.
 
@@ -920,14 +955,16 @@ columns BINDINGS goes under SURFACES.
 
 A line busk asks about first, such as `output off`, opens a dialog with busk's question.
 The line runs only on **y**; **n**, Enter or Esc cancel it (`cancelled` in the log). F3's and
-F8's `[delete]` and F8's `[off]` are such lines. F6's `[delete]` asks the TUI's own question the
-same way.
+F8's `[delete]`, F8's `[off]`, F4's `[delete]` of a list and F6's `[delete]` of a preset in use are
+such lines. F4's `[delete]` of a cue, `[replace]` and `[remove]`, and F6's `[delete]` of a preset
+nothing uses, ask the TUI's own question the same way.
 
 A name or a number (`[rename…]`, `[number…]`, `[address…]`, `[offset…]`) is typed in a small
 dialog: Enter takes it, Esc cancels. What it refuses shows in red, and the dialog stays open.
-A form of several fields (`[limit…]`, `[location…]`, `[+ universe…]`, `[+ route…]`) works the same
-way: Tab moves between the fields, and Enter, in any of them, takes the form. In `[+ route…]`,
-Tab also reaches the chips, and ← → move them.
+A form of several fields (`[limit…]`, `[location…]`, `[+ universe…]`, `[+ route…]`, `[+ list…]`,
+`[record at…]`, `[release…]`, `[chase…]`) works the same way: Tab moves between the fields, and
+Enter, in any of them, takes the form. In `[+ route…]` and `[chase…]`, Tab also reaches the chips,
+and ← → move them.
 
 **The profile picker** (F3's `[profile…]` and `[choose…]`) lists what `fixture add` takes: the
 show's own profiles first, marked `●`, then the library's, with the maker, the name, and the modes

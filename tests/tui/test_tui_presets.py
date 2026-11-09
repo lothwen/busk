@@ -458,7 +458,7 @@ def test_what_a_preset_holds_and_the_cues_that_use_it(club: busk.OfflineShow) ->
         ]
         assert plain(panel(app).use).splitlines() == [
             "used by cue 4/1, 10/1–10/4, 15/1, 18/2",
-            "to delete it, take it out of those first",
+            "delete takes it out of those too",
         ]
         page(app).choose(tile(app, "position", 1))
         await pilot.pause()
@@ -565,21 +565,91 @@ def test_rename_and_renumber_through_a_dialog(club: busk.OfflineShow) -> None:
     drive(app, body)
 
 
-def test_delete_is_inert_while_cues_use_it_and_asks_first(club: busk.OfflineShow) -> None:
+def test_delete_of_a_preset_in_use_cascades_after_busks_question(club: busk.OfflineShow) -> None:
     bridge, app = club_app(club)
+    bridge.show = club
 
     async def body(pilot: Pilot[int]) -> None:
         bridge.events.append(ShowChanged(unused(club)))
         await settle(pilot, app)
         page(app).choose(tile(app, "color", 2))
         await pilot.pause()
-        assert panel(app).delete.inert
+        assert not panel(app).delete.inert
+        assert "delete" in [stop.item.label for stop in panel(app).stops()]
+        assert plain(panel(app).use).splitlines()[0].startswith("used by cue ")  # still named
         await pilot.click(panel(app).delete)
-        assert not isinstance(app.screen, ConfirmDialog)
-        assert "delete" not in [stop.item.label for stop in panel(app).stops()]
+        await pilot.pause()
+        dialog = app.screen
+        assert isinstance(dialog, ConfirmDialog)
+        assert dialog.question == club.confirmation("delete preset color 2 cascade")
+        assert " It leaves cues " in dialog.question
+        await pilot.press("n")
+        await pilot.pause()
+        assert bridge.lines() == []
+        assert ("info", "cancelled: delete preset color 2 cascade") in (
+            app.query_one(LogView).entries
+        )
+        await pilot.click(panel(app).delete)
+        await pilot.pause()
+        await pilot.press("y")
+        await pilot.pause()
+        assert bridge.lines() == ["delete preset color 2 cascade"]
+        await settle(pilot, app)  # done: back to "click a tile"
+        assert panel(app).chosen is None
+
+    drive(app, body)
+
+
+def test_delete_of_a_preset_only_a_palette_takes_cascades(club: busk.OfflineShow) -> None:
+    bridge, app = club_app(club)
+    show = unused(club)
+    presets = tuple(
+        replace(preset, palettes=("Solid",)) if preset.number == 5 else preset
+        for preset in show.presets
+    )
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events.append(ShowChanged(ShowModel(**{**_fields(show), "presets": presets})))
+        await settle(pilot, app)
         page(app).choose(tile(app, "color", 5))
         await pilot.pause()
-        assert not panel(app).delete.inert
+        assert plain(panel(app).use).splitlines() == [
+            "used by effect Solid",
+            "delete takes it out of those too",
+        ]
+        await pilot.click(panel(app).delete)
+        await pilot.pause()
+        assert bridge.lines() == ["delete preset color 5 cascade"]
+
+    drive(app, body)
+
+
+def test_a_refused_cascade_keeps_the_preset_and_says_why(club: busk.OfflineShow) -> None:
+    line = "delete preset color 2 cascade"
+    bridge, app = club_app(club)
+    bridge.replies[line] = Reply(ok=False, text="error: preset color 2 is the last colour")
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events.append(ShowChanged(unused(club)))
+        await settle(pilot, app)
+        page(app).choose(tile(app, "color", 2))
+        await pilot.pause()
+        await pilot.click(panel(app).delete)
+        await settle(pilot, app)
+        assert panel(app).chosen == Chosen("color", 2)
+        assert ("error", "preset color 2 is the last colour") in app.query_one(LogView).entries
+
+    drive(app, body)
+
+
+def test_delete_of_a_preset_nothing_uses_asks_the_tuis_question(club: busk.OfflineShow) -> None:
+    bridge, app = club_app(club)
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events.append(ShowChanged(unused(club)))
+        await settle(pilot, app)
+        page(app).choose(tile(app, "color", 5))
+        await pilot.pause()
         assert plain(panel(app).use) == "used by no cue"
         await pilot.click(panel(app).delete)
         dialog = app.screen
@@ -709,7 +779,7 @@ def test_the_pane_cursor_in_edit_mode(club: busk.OfflineShow) -> None:
             rows += [f"color.{component}", *[f"set color.{component} by {s}5%" for s in ("-", "")]]
         chips = [button.line.text for button in chip_buttons("256")]  # the field: mouse only
         bottom = ["preset color 2", "clear", "blind on", "done"]  # nothing to merge: inert
-        red = ["rename…", "number…", *scopes, *groups, its, *chips, *rows, *bottom]  # delete: inert
+        red = ["rename…", "number…", "delete", *scopes, *groups, its, *chips, *rows, *bottom]
         assert [item.label for item in page(app).items()][-len(red) :] == red
         page(app).choose(tile(app, "color", 5))
         labels = [item.label for item in page(app).items()]

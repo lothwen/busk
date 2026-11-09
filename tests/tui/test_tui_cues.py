@@ -9,28 +9,37 @@ from typing import Any
 
 from rich.text import Text
 from textual.pilot import Pilot
+from textual.widgets import Input
 from tui_fakes import (
     FakeBridge,
+    Reply,
     click_cell,
     column,
     drive,
     live_state,
     make_app,
     playback,
+    programmer,
     settle,
     show_model,
 )
 
+from busk_tui import colors
 from busk_tui.formats import delay_text, stored_text, time_text
 from busk_tui.model import (
+    ChaseRate,
+    CommandDone,
     CueInfo,
     CueListInfo,
     EffectInfo,
     FixtureInfo,
     GroupInfo,
+    HeldValue,
     LiveChanged,
+    MasterView,
     PageInfo,
     PlaybackInfo,
+    ProgrammerChanged,
     ShowChanged,
     ShowModel,
     StoredValue,
@@ -38,8 +47,11 @@ from busk_tui.model import (
 )
 from busk_tui.pages.cues import CuesPage, meta_text
 from busk_tui.shell import BuskApp
+from busk_tui.widgets.chase_dialog import ChaseDialog
 from busk_tui.widgets.controls import ButtonStrip
 from busk_tui.widgets.cuetable import CueListTable, CueTable, cue_cells
+from busk_tui.widgets.dialogs import ConfirmDialog, FormDialog, TextDialog
+from busk_tui.widgets.log import LogView
 
 HEADS = Targets(group=GroupInfo(1, "Heads"))
 WASHES = Targets(group=GroupInfo(2, "Washes"))
@@ -118,8 +130,17 @@ CHASE = CueListInfo(
     "bpm x 1 bounce",
     (CueInfo("1", "Step 1", ()), CueInfo("2", "Step 2", ())),
     crossfade=0.25,
+    rate=ChaseRate(None, None, 1.0, "bounce"),
 )
-LOOP = CueListInfo(11, "Loop", "sequence", "hz 2 forward", (CueInfo("1", "Go", ()),), crossfade=0.5)
+LOOP = CueListInfo(
+    11,
+    "Loop",
+    "sequence",
+    "hz 2 forward",
+    (CueInfo("1", "Go", ()),),
+    crossfade=0.5,
+    rate=ChaseRate(2.0, None, 1.0, "forward"),
+)
 SPARE = CueListInfo(
     21, "Spare", "sequence", None, (CueInfo("1", "One", ()), CueInfo("2", "Two", ()))
 )
@@ -169,6 +190,19 @@ def page(app: BuskApp) -> CuesPage:
 def plain(widget: Any) -> str:
     rendered = widget.content if hasattr(widget, "content") else widget.render()
     return rendered.plain if isinstance(rendered, Text) else str(rendered)
+
+
+def words(strip: ButtonStrip) -> str:
+    """What a strip shows, however it wraps."""
+    return " ".join(strip.render().plain.split("\n"))
+
+
+def held(**changes: Any) -> ProgrammerChanged:
+    """The programmer holds a value on 101, and 101 and 102 are selected."""
+    value = HeldValue(101, 1, "intensity", 0.5, None)
+    parts: dict[str, Any] = {"values": (value,), "selection": ((101, 1), (102, 1)), "fixtures": 1}
+    parts.update(changes)
+    return ProgrammerChanged(programmer(**parts))
 
 
 async def click_label(pilot: Pilot[int], strip: ButtonStrip, label: str) -> None:
@@ -314,8 +348,9 @@ def test_the_edits_prefill_the_chosen_cue() -> None:
         await settle(pilot, app)
         assert plain(app.query_one("#cue-edit-label")) == "edit cue 9/2 Verse"
         edits = app.query_one("#cue-edits", ButtonStrip)
-        assert edits.render().plain == (
+        assert words(edits) == (
             "[time…] [delay…] [curve…] [go…] [follow…] [wait…] [rename…]"
+            " [release…] [record at…] [merge] [replace] [remove] [delete]"
         )
         await click_label(pilot, edits, "go…")
         assert app.prompt.value == "cue 9/2 go"
@@ -415,15 +450,17 @@ def test_the_pane_cursor_goes_to_cues_then_buttons_edits_and_lists() -> None:
         assert [(i.line or i.prefill or i.label) for i in items] == [
             "goto 9 1", "goto 9 2", "goto 9 3", "goto 9 4",
             "go 9", "back 9", "record cue 9", "cuelist 9 chase bpm x 1",
+            "cuelist 9 tracking false", "[chase…]", "[rename…]", "delete cuelist 9 cascade",
             "cue 9/2 time ", "cue 9/2 time 2 delay ", "cue 9/2 time 2 ", "cue 9/2 go",
-            "cue 9/2 follow ", "cue 9/2 wait ", 'rename cue 9/2 "',
+            "cue 9/2 follow ", "cue 9/2 wait ", 'rename cue 9/2 "', "[release…]", "[delete]",
             "cuelist 9 Song", "cuelist 10 Chase", "cuelist 11 Loop", "cuelist 21 Spare",
+            "[+ list…]",
         ]  # fmt: skip
         await pilot.press("tab", "down", "down", "enter")  # cue 3: goes, and is chosen
         assert app.cursor.active
         assert [s.line for s in bridge.sent] == ["goto 9 3"]
         assert plain(app.query_one("#cue-edit-label")) == "edit cue 9/3 Pre"
-        await pilot.press(*["down"] * 14, "enter")  # list 10: chosen, the cursor stays
+        await pilot.press(*["down"] * 20, "enter")  # list 10: chosen, the cursor stays
         await settle(pilot, app)
         assert app.cursor.active
         assert app.query_one(CueListTable).chosen == 1
@@ -431,7 +468,7 @@ def test_the_pane_cursor_goes_to_cues_then_buttons_edits_and_lists() -> None:
         # the cues of list 10 come first now: the cursor reaches them
         labels = [(i.line or i.label) for i in app.current_page.items()]
         assert labels[:2] == ["goto 10 1", "goto 10 2"]
-        await pilot.press(*["up"] * 30, "enter")
+        await pilot.press(*["up"] * 40, "enter")
         assert bridge.sent[-1].line == "goto 10 1"
 
     drive(app, body)
@@ -455,6 +492,809 @@ def test_an_empty_show_and_an_empty_list() -> None:
         )
 
     drive(app, body)
+
+
+# ------------------------------------------------------- a cue's controls
+
+
+def test_what_records_is_grey_with_nothing_to_record() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        edits = app.query_one("#cue-edits", ButtonStrip)
+        gone = ["[record at…]", "[merge]", "[replace]", "[remove]"]
+        shown = {button.label.plain: button for button in edits.buttons}
+        for label in gone:
+            assert shown[label].note, label  # no click, no pane cursor
+            assert shown[label].label.style == colors.BORDER, label
+        items = [i.line or i.label for i in app.current_page.items()]
+        assert not set(gone) & set(items)
+        await click_label(pilot, edits, "merge")
+        await click_label(pilot, edits, "record at…")
+        assert bridge.sent == []
+        assert not isinstance(app.screen, FormDialog)
+
+        bridge.events.append(held())
+        await settle(pilot, app)
+        shown = {button.label.plain: button for button in edits.buttons}
+        assert not any(shown[label].note for label in gone)
+
+        bridge.events.append(held(values=(), effects=(EffectInfo("fx1", "Rainbow", WASHES),)))
+        await settle(pilot, app)
+        assert not edits.buttons[-2].note  # an effect that runs records
+        bridge.events.append(
+            held(
+                values=(),
+                effects=(EffectInfo("fx1", "Rainbow", WASHES),),
+                stopped=frozenset(("fx1",)),
+            )
+        )
+        await settle(pilot, app)
+        assert edits.buttons[-2].note  # a stopped one does not
+
+    drive(app, body)
+
+
+def test_merge_runs_and_replace_and_remove_ask_first() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        bridge.events.append(held())
+        await settle(pilot, app)
+        edits = app.query_one("#cue-edits", ButtonStrip)
+        await click_label(pilot, edits, "merge")
+        assert [(s.line, s.origin) for s in bridge.sent] == [("record cue 9/2 merge", "ui")]
+        for label, question, line in (
+            (
+                "replace",
+                'Replace what cue 9/2 "Verse" holds with the programmer?',
+                "record cue 9/2 replace",
+            ),
+            (
+                "remove",
+                'Remove the programmer\'s attributes from cue 9/2 "Verse"?',
+                "record cue 9/2 remove",
+            ),
+        ):
+            bridge.sent.clear()
+            await click_label(pilot, edits, label)
+            await pilot.pause()
+            dialog = app.screen
+            assert isinstance(dialog, ConfirmDialog)
+            assert dialog.question == question
+            await pilot.press("n")
+            await pilot.pause()
+            assert bridge.sent == []
+            assert ("info", f"cancelled: {line}") in app.query_one(LogView).entries
+            await click_label(pilot, edits, label)
+            await pilot.pause()
+            await pilot.press("y")
+            await pilot.pause()
+            assert bridge.lines() == [line]
+
+    drive(app, body)
+
+
+def test_delete_asks_and_says_when_a_playback_is_on_the_cue() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        edits = app.query_one("#cue-edits", ButtonStrip)
+        await click_label(pilot, edits, "delete")  # P9 is on cue 2
+        await pilot.pause()
+        dialog = app.screen
+        assert isinstance(dialog, ConfirmDialog)
+        assert dialog.question.splitlines() == [
+            'Delete cue 9/2 "Verse"?',
+            "P9 is on it, and will leave it at once.",
+        ]
+        await pilot.press("n")
+        await pilot.pause()
+        assert bridge.sent == []
+        await click_cell(pilot, app.query_one(CueTable), 3, "time")  # cue 4, no name: chosen
+        await pilot.press("escape")
+        await click_label(pilot, edits, "delete")
+        await pilot.pause()
+        dialog = app.screen
+        assert isinstance(dialog, ConfirmDialog)
+        assert dialog.question == "Delete cue 9/4?"
+        await pilot.press("y")
+        await pilot.pause()
+        assert [(s.line, s.origin) for s in bridge.sent] == [("delete cue 9/4", "ui")]
+
+    drive(app, body)
+
+
+def test_two_playbacks_on_the_cue_are_both_named() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        bridge.events.append(
+            LiveChanged(
+                live(
+                    seq=2,
+                    playbacks=(
+                        playback(11, "Loop", state="active", cue="1"),
+                        playback(12, "Loop 2", state="active", cue="1"),
+                    ),
+                )
+            )
+        )
+        page(app).choose_list(11)
+        await settle(pilot, app)
+        await click_label(pilot, app.query_one("#cue-edits", ButtonStrip), "delete")
+        await pilot.pause()
+        dialog = app.screen
+        assert isinstance(dialog, ConfirmDialog)
+        assert dialog.question.splitlines()[1] == "P11, P12 are on it, and will leave it at once."
+
+    drive(app, body)
+
+
+def test_record_at_refuses_a_cue_that_exists_and_chooses_the_new_one() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        bridge.events.append(held())
+        await settle(pilot, app)
+        edits = app.query_one("#cue-edits", ButtonStrip)
+        await click_label(pilot, edits, "record at…")
+        await pilot.pause()
+        dialog = app.screen
+        assert isinstance(dialog, FormDialog)
+        assert [field.value for field in dialog.inputs] == ["5", ""]  # after the last, as busk
+        for typed, problem in (
+            ("3", "cue 3 exists"),
+            ("03", "cue 03 exists"),
+            ("two", "a cue number, such as 3 or 2.5"),
+            ("", "a cue number, such as 3 or 2.5"),
+            ("1.2.3", "a cue number, such as 3 or 2.5"),
+        ):
+            dialog.inputs[0].value = typed
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.screen is dialog, typed
+            assert str(dialog.error.render()) == problem
+        assert bridge.sent == []
+        dialog.inputs[0].value = " 2.5 "
+        dialog.inputs[1].value = ' The "Bridge" '
+        await pilot.press("enter")
+        await pilot.pause()
+        assert bridge.lines() == [r'''record cue 9/2.5 "The \"Bridge\""''']
+        await settle(pilot, app)
+        added = CueInfo("2.5", "The Bridge", ())
+        with_it = (*SONG.cues[:2], added, *SONG.cues[2:])
+        bridge.events.append(
+            ShowChanged(cues_show(cueLists=(CueListInfo(9, "Song", "sequence", None, with_it),)))
+        )
+        await settle(pilot, app)
+        assert app.query_one(CueTable).chosen == 2
+        assert plain(app.query_one("#cue-edit-label")) == "edit cue 9/2.5 The Bridge"
+
+    drive(app, body)
+
+
+def test_record_at_without_a_name_and_on_a_list_with_no_cues() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+    empty = CueListInfo(5, "Empty", "sequence", None, ())
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events.append(ShowChanged(show_model(cueLists=(empty,))))
+        bridge.events.append(held())
+        await settle(pilot, app)
+        edits = app.query_one("#cue-edits", ButtonStrip)
+        assert edits.render().plain == "[record at…]"
+        assert plain(app.query_one("#cue-edit-label")) == ""
+        await click_label(pilot, edits, "record at…")
+        await pilot.pause()
+        dialog = app.screen
+        assert isinstance(dialog, FormDialog)
+        assert dialog.inputs[0].value == "1"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert bridge.lines() == ["record cue 5/1"]
+
+    drive(app, body)
+
+
+def test_a_refused_record_at_chooses_nothing() -> None:
+    bridge = FakeBridge(replies={"record cue 9/7": Reply(ok=False, text="error: no")})
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        bridge.events.append(held())
+        await settle(pilot, app)
+        await click_label(pilot, app.query_one("#cue-edits", ButtonStrip), "record at…")
+        await pilot.pause()
+        dialog = app.screen
+        assert isinstance(dialog, FormDialog)
+        dialog.inputs[0].value = "7"
+        await pilot.press("enter")
+        await settle(pilot, app)
+        assert page(app).cue is None
+        assert ("error", "no") in app.query_one(LogView).entries
+
+    drive(app, body)
+
+
+def test_a_record_at_that_runs_after_another_list_was_chosen_chooses_nothing() -> None:
+    bridge = FakeBridge(auto_reply=False)
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        bridge.events.append(held())
+        await settle(pilot, app)
+        await click_label(pilot, app.query_one("#cue-edits", ButtonStrip), "record at…")
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        sent = bridge.sent[-1]
+        assert sent.line == "record cue 9/5"
+        page(app).choose_list(10)
+        bridge.events.append(
+            CommandDone(
+                ticket=sent.ticket,
+                line=sent.line,
+                origin="ui",
+                ok=True,
+                lines=(),
+                seconds=0.0,
+                quit=False,
+            )
+        )
+        await settle(pilot, app)
+        assert page(app).list == 10
+        assert page(app).cue is None
+
+    drive(app, body)
+
+
+def test_release_takes_targets_and_attributes() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        bridge.events.append(held())
+        await settle(pilot, app)
+        edits = app.query_one("#cue-edits", ButtonStrip)
+        await click_label(pilot, edits, "release…")
+        await pilot.pause()
+        dialog = app.screen
+        assert isinstance(dialog, FormDialog)
+        assert [field.value for field in dialog.inputs] == ["101 thru 102", ""]  # the selection
+        await pilot.press("enter")
+        await pilot.pause()
+        assert bridge.lines() == ["cue 9/2 release 101 thru 102"]
+        bridge.sent.clear()
+        await click_label(pilot, edits, "release…")
+        await pilot.pause()
+        dialog = app.screen
+        assert isinstance(dialog, FormDialog)
+        dialog.inputs[0].value = "   "
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.screen is dialog
+        assert str(dialog.error.render()) == "the targets: group 1, or 101 thru 104"
+        dialog.inputs[0].value = " group 1 "
+        dialog.inputs[1].value = " pan  tilt "
+        await pilot.press("enter")
+        await pilot.pause()
+        assert bridge.lines() == ["cue 9/2 release group 1 only pan tilt"]
+
+    drive(app, body)
+
+
+def test_release_starts_empty_with_nothing_selected() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        await click_label(pilot, app.query_one("#cue-edits", ButtonStrip), "release…")
+        await pilot.pause()
+        dialog = app.screen
+        assert isinstance(dialog, FormDialog)
+        assert dialog.inputs[0].value == ""
+        await pilot.press("escape")
+        await pilot.pause()
+        assert bridge.sent == []
+
+    drive(app, body)
+
+
+# ------------------------------------------------------ a list's controls
+
+
+def test_the_list_row_says_what_it_acts_on() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        assert plain(app.query_one("#cue-list-label")) == "list 9 Song"
+        strip = app.query_one("#cue-list-edits", ButtonStrip)
+        assert words(strip) == "[tracking off] [chase…] [rename…] [delete]"
+        await click_label(pilot, strip, "tracking off")
+        assert bridge.lines() == ["cuelist 9 tracking false"]
+        page(app).choose_list(10)  # a list without tracking
+        await settle(pilot, app)
+        assert words(strip) == "[tracking on] [chase…] [rename…] [delete]"
+        await click_label(pilot, strip, "tracking on")
+        assert bridge.lines() == ["cuelist 9 tracking false", "cuelist 10 tracking true"]
+
+    drive(app, body)
+
+
+def test_a_new_list_refuses_a_number_taken_and_shows() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        add = page(app).list_add
+        assert add.render().plain == "[+ list…]"
+        await click_label(pilot, add, "+ list…")
+        await pilot.pause()
+        dialog = app.screen
+        assert isinstance(dialog, FormDialog)
+        assert [field.value for field in dialog.inputs] == ["22", ""]  # the highest plus one
+        assert "taken: 9–11, 21" in str(dialog.query(".note").first().render())
+        dialog.inputs[0].value = "10"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.screen is dialog
+        assert str(dialog.error.render()) == "10 is taken"
+        dialog.inputs[0].value = "30"
+        dialog.inputs[1].value = " Encore "
+        await pilot.press("enter")
+        await pilot.pause()
+        assert bridge.lines() == ['cuelist add 30 "Encore"']
+        added = CueListInfo(30, "Encore", "sequence", None, ())
+        bridge.events.append(ShowChanged(cues_show(cueLists=(SONG, CHASE, LOOP, SPARE, added))))
+        await settle(pilot, app)
+        assert page(app).list == 30
+        assert str(page(app).panel.border_title) == "CUELIST 30 · Encore"
+
+    drive(app, body)
+
+
+def test_a_refused_new_list_stays_on_the_list_shown() -> None:
+    bridge = FakeBridge(replies={"cuelist add 22": Reply(ok=False, text="error: no")})
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        await click_label(pilot, page(app).list_add, "+ list…")
+        await pilot.pause()
+        await pilot.press("enter")
+        await settle(pilot, app)
+        assert bridge.lines() == ["cuelist add 22"]
+        assert page(app).list == 9
+        assert ("error", "no") in app.query_one(LogView).entries
+
+    drive(app, body)
+
+
+def test_a_new_list_without_a_name_and_the_first_of_a_show() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events.append(ShowChanged(show_model()))
+        await settle(pilot, app)
+        await click_label(pilot, page(app).list_add, "+ list…")
+        await pilot.pause()
+        dialog = app.screen
+        assert isinstance(dialog, FormDialog)
+        assert dialog.inputs[0].value == "1"
+        assert "taken" not in str(dialog.query(".note").first().render())
+        await pilot.press("enter")
+        await pilot.pause()
+        assert bridge.lines() == ["cuelist add 1"]
+
+    drive(app, body)
+
+
+def test_rename_a_list() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        strip = app.query_one("#cue-list-edits", ButtonStrip)
+        await click_label(pilot, strip, "rename…")
+        await pilot.pause()
+        dialog = app.screen
+        assert isinstance(dialog, TextDialog)
+        assert dialog.query_one(Input).value == "Song"
+        await pilot.press("enter")  # unchanged: nothing to send
+        await pilot.pause()
+        assert bridge.sent == []
+        await click_label(pilot, strip, "rename…")
+        await pilot.pause()
+        dialog = app.screen
+        assert isinstance(dialog, TextDialog)
+        dialog.query_one(Input).value = "   "
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.screen is dialog
+        dialog.query_one(Input).value = ' My "Song" '
+        await pilot.press("enter")
+        await pilot.pause()
+        assert bridge.lines() == [r'''rename cuelist 9 "My \"Song\""''']
+
+    drive(app, body)
+
+
+def test_delete_a_list_sends_the_cascade_after_busks_question(club: Any) -> None:
+    bridge = FakeBridge(show=club)
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        strip = app.query_one("#cue-list-edits", ButtonStrip)
+        await click_label(pilot, strip, "delete")
+        await pilot.pause()
+        dialog = app.screen
+        assert isinstance(dialog, ConfirmDialog)
+        assert dialog.question == club.confirmation("delete cuelist 9 cascade")
+        assert dialog.question.startswith('Delete cue list 9 "Song" and playback 9?')
+        await pilot.press("n")
+        await pilot.pause()
+        assert bridge.sent == []
+        await click_label(pilot, strip, "delete")
+        await pilot.pause()
+        await pilot.press("y")
+        await pilot.pause()
+        assert bridge.lines() == ["delete cuelist 9 cascade"]
+
+    drive(app, body)
+
+
+def test_a_deleted_list_or_cue_leaves_f4_on_what_exists() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        cues = app.query_one(CueTable)
+        await click_cell(pilot, cues, 3, "name")  # cue 4: chosen
+        await settle(pilot, app)
+        assert plain(app.query_one("#cue-edit-label")) == "edit cue 9/4"
+        without = (SONG.cues[0], SONG.cues[1], SONG.cues[2])
+        shorter = CueListInfo(9, "Song", "sequence", None, without, tracking=True)
+        bridge.events.append(ShowChanged(cues_show(cueLists=(shorter, CHASE, LOOP, SPARE))))
+        await settle(pilot, app)
+        assert column(cues, "cue") == ["9/1", "9/2", "9/3"]
+        assert cues.chosen == 1  # the chosen cue went: the one P9 is on
+        assert plain(app.query_one("#cue-edit-label")) == "edit cue 9/2 Verse"
+
+        gone = cues_show(
+            cueLists=(CHASE, LOOP, SPARE),
+            playbacks=tuple(p for p in cues_show().playbacks if p.number != 9),
+        )
+        bridge.events.append(ShowChanged(gone))
+        await settle(pilot, app)
+        assert page(app).list == 10
+        assert str(page(app).panel.border_title) == "CUELIST 10 · Chase"
+
+        bridge.events.append(ShowChanged(cues_show(cueLists=(), playbacks=())))
+        await settle(pilot, app)
+        assert page(app).list is None
+        assert not page(app).panel.display
+        assert [i.line or i.label for i in app.current_page.items()] == ["[+ list…]"]
+
+    drive(app, body)
+
+
+# ----------------------------------------------------------- the chase form
+
+
+def with_speeds(*names: str) -> ShowModel:
+    return cues_show(
+        masters=(
+            MasterView("Grand Master", "grand", None, ()),
+            *(MasterView(name, "speed", None, ()) for name in names),
+        )
+    )
+
+
+async def open_chase(pilot: Pilot[int], app: BuskApp, bridge: FakeBridge) -> ChaseDialog:
+    await click_label(pilot, app.query_one("#cue-list-edits", ButtonStrip), "chase…")
+    await pilot.pause()
+    dialog = app.screen
+    assert isinstance(dialog, ChaseDialog)
+    return dialog
+
+
+def test_the_chase_form_starts_at_the_settings_the_list_keeps() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events += [ShowChanged(with_speeds("Speed 1")), LiveChanged(live())]
+        await settle(pilot, app)
+        page(app).choose_list(10)  # a beat, bouncing, crossfade 0.25
+        await settle(pilot, app)
+        dialog = await open_chase(pilot, app, bridge)
+        assert dialog.kind.chosen == "bpm"
+        assert dialog.direction.chosen == "bounce"
+        assert (dialog.multiplier.value, dialog.crossfade.value) == ("1", "0.25")
+        assert not dialog.hz_row.display
+        assert dialog.multiplier_row.display
+        assert dialog.master_row is None  # one speed master: busk finds it
+        await pilot.press("enter")
+        await pilot.pause()
+        assert bridge.lines() == ["cuelist 10 chase bpm x 1 bounce crossfade 0.25"]
+        page(app).choose_list(11)  # Hz, kept while it is a sequence
+        await settle(pilot, app)
+        dialog = await open_chase(pilot, app, bridge)
+        assert (dialog.kind.chosen, dialog.hz.value, dialog.crossfade.value) == ("hz", "2", "0.5")
+        assert dialog.hz_row.display
+        assert not dialog.multiplier_row.display
+        await pilot.press("enter")
+        await pilot.pause()
+        assert bridge.lines()[-1] == "cuelist 11 chase hz 2 forward crossfade 0.5"
+
+    drive(app, body)
+
+
+def test_the_chase_form_on_a_list_with_no_settings_sends_each_field() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events += [ShowChanged(with_speeds("Speed 1")), LiveChanged(live())]
+        await settle(pilot, app)
+        dialog = await open_chase(pilot, app, bridge)  # Song: no chase settings
+        assert dialog.kind.chosen == "bpm"
+        assert dialog.direction.chosen == "forward"
+        assert (dialog.hz.value, dialog.multiplier.value, dialog.crossfade.value) == ("2", "1", "0")
+        dialog.multiplier.value = "0.125"
+        dialog.direction.pick("reverse")
+        dialog.crossfade.value = "0.125"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert bridge.lines() == ["cuelist 9 chase bpm x 0.125 reverse crossfade 0.125"]
+
+        dialog = await open_chase(pilot, app, bridge)
+        dialog.kind.pick("hz")
+        await pilot.pause()
+        dialog.hz.value = "4"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert bridge.lines()[-1] == "cuelist 9 chase hz 4 forward"
+
+    drive(app, body)
+
+
+def test_the_chase_form_names_a_master_when_the_show_has_several() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+    two = CueListInfo(
+        9,
+        "Song",
+        "chase",
+        'bpm "Speed 2" x 2 forward',
+        (),
+        rate=ChaseRate(None, "Speed 2", 2.0, "forward"),
+    )
+
+    async def body(pilot: Pilot[int]) -> None:
+        show = cues_show(
+            cueLists=(two,),
+            masters=(
+                MasterView("Speed 1", "speed", None, ()),
+                MasterView("Speed 2", "speed", None, ()),
+            ),
+        )
+        bridge.events += [ShowChanged(show), LiveChanged(live())]
+        await settle(pilot, app)
+        dialog = await open_chase(pilot, app, bridge)
+        assert dialog.master is not None
+        assert dialog.master.chosen == "Speed 2"
+        assert dialog.master_row is not None
+        assert dialog.master_row.display
+        dialog.master.pick("Speed 1")
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        assert bridge.lines() == ['cuelist 9 chase bpm "Speed 1" x 2 forward']
+        dialog = await open_chase(pilot, app, bridge)
+        dialog.kind.pick("hz")
+        await pilot.pause()
+        assert dialog.master_row is not None
+        assert not dialog.master_row.display
+
+    drive(app, body)
+
+
+def test_the_chase_form_offers_hz_alone_without_a_speed_master() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events += [ShowChanged(with_speeds()), LiveChanged(live())]
+        await settle(pilot, app)
+        dialog = await open_chase(pilot, app, bridge)
+        assert list(dialog.kind.labels) == ["hz"]
+        assert dialog.kind.chosen == "hz"
+        assert dialog.hz_row.display
+        await pilot.press("enter")
+        await pilot.pause()
+        assert bridge.lines() == ["cuelist 9 chase hz 2 forward"]
+
+    drive(app, body)
+
+
+def test_the_chase_form_says_what_is_wrong_and_stays() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events += [ShowChanged(with_speeds("Speed 1")), LiveChanged(live())]
+        await settle(pilot, app)
+        dialog = await open_chase(pilot, app, bridge)
+        for field, typed, problem in (
+            (dialog.multiplier, "0", "a multiplier above 0"),
+            (dialog.multiplier, "-1", "a multiplier above 0"),
+            (dialog.multiplier, "1e3", "a multiplier above 0"),
+            (dialog.multiplier, "", "a multiplier above 0"),
+        ):
+            field.value = typed
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.screen is dialog
+            assert str(dialog.error.render()) == problem
+        dialog.multiplier.value = "1"
+        for typed in ("1.5", "x", "50%"):
+            dialog.crossfade.value = typed
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.screen is dialog
+            assert str(dialog.error.render()) == "a crossfade from 0 to 1"
+        dialog.crossfade.value = "0"
+        dialog.kind.pick("hz")
+        await pilot.pause()
+        assert str(dialog.error.render()) == ""  # it may have been of a field that went
+        for typed in ("0", ".", ""):
+            dialog.hz.value = typed
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.screen is dialog
+            assert str(dialog.error.render()) == "a rate above 0 Hz"
+        await pilot.press("escape")
+        await pilot.pause()
+        assert bridge.sent == []
+
+    drive(app, body)
+
+
+def test_tab_reaches_the_chase_forms_chips() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events += [ShowChanged(with_speeds("Speed 1")), LiveChanged(live())]
+        await settle(pilot, app)
+        dialog = await open_chase(pilot, app, bridge)
+        assert dialog.focused is dialog.kind
+        await pilot.press("left")
+        await pilot.pause()
+        assert dialog.kind.chosen == "hz"
+        assert dialog.hz_row.display
+        await pilot.press("tab", "tab")  # Hz, then the direction
+        assert dialog.focused is dialog.direction
+        await pilot.press("right")
+        await pilot.pause()
+        assert dialog.direction.chosen == "reverse"
+
+    drive(app, body)
+
+
+# ----------------------------------------------------- reach and widths
+
+
+def test_the_pane_cursor_reaches_each_control_and_takes_it() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        bridge.events.append(held())
+        await settle(pilot, app)
+        items = app.current_page.items()
+        labels = [i.line or i.prefill or i.label for i in items]
+        for label in (
+            "cuelist 9 tracking false", "[chase…]", "[rename…]", "delete cuelist 9 cascade",
+            "[release…]", "[record at…]", "record cue 9/2 merge", "[replace]", "[remove]",
+            "[delete]", "[+ list…]",
+        ):  # fmt: skip
+            assert label in labels, label
+        for label, dialog_type in (
+            ("[record at…]", FormDialog),
+            ("[release…]", FormDialog),
+            ("[+ list…]", FormDialog),
+            ("[rename…]", TextDialog),
+            ("[chase…]", ChaseDialog),
+            ("[replace]", ConfirmDialog),
+            ("[remove]", ConfirmDialog),
+            ("[delete]", ConfirmDialog),
+        ):
+            before = [i.line or i.prefill or i.label for i in app.current_page.items()]
+            await pilot.press("tab", *["down"] * before.index(label), "enter")
+            await pilot.pause()
+            assert isinstance(app.screen, dialog_type), label
+            await pilot.press("escape")
+            await pilot.pause()
+            await pilot.press("escape")  # the prompt has the keyboard again
+            await pilot.pause()
+        assert bridge.sent == []
+
+    drive(app, body)
+
+
+def test_at_99_columns_the_strips_wrap_and_every_button_shows() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        bridge.events.append(held())
+        await settle(pilot, app)
+        edits = app.query_one("#cue-edits", ButtonStrip)
+        lines = edits.lines(edits.size.width)
+        assert len(lines) >= 2
+        assert all(line.cell_len <= edits.size.width for line in lines)
+        shown = " ".join(line.plain for line in lines)
+        for label in ("[time…]", "[release…]", "[record at…]", "[merge]", "[replace]", "[remove]"):
+            assert label in shown, label
+        await click_label(pilot, edits, "delete")  # on the row it wrapped to
+        await pilot.pause()
+        assert isinstance(app.screen, ConfirmDialog)
+
+    drive(app, body, size=(99, 40))
+
+
+def test_a_long_name_leaves_room_for_the_buttons() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+    long = "L" * 400
+    song = CueListInfo(9, long, "sequence", None, (CueInfo("1", long, ()),))
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events += [ShowChanged(cues_show(cueLists=(song,))), LiveChanged(live())]
+        await settle(pilot, app)
+        for strip in ("#cue-edits", "#cue-list-edits"):
+            found = app.query_one(strip, ButtonStrip)
+            assert found.size.width >= 30, strip
+            assert "[delete]" in found.render().plain, strip
+
+    drive(app, body, size=(99, 40))
 
 
 def test_stacked_below_100_columns_the_chosen_list_comes_first() -> None:

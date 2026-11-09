@@ -113,8 +113,8 @@ def ways(protocol: str) -> dict[str, str]:
 
 
 class PickRow(ButtonStrip, can_focus=True):
-    """One of ``labels``, as chips: a click moves ``chosen``, and so do ← →
-    while it has the focus."""
+    """One of ``labels``, as chips (``chosen``: where it starts, else the
+    first): a click moves ``chosen``, and so do ← → while it has the focus."""
 
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("left", "step(-1)", "Previous", show=False),
@@ -124,10 +124,10 @@ class PickRow(ButtonStrip, can_focus=True):
     class Picked(Message):
         """``chosen`` moved."""
 
-    def __init__(self, labels: Mapping[str, str]) -> None:
+    def __init__(self, labels: Mapping[str, str], chosen: str | None = None) -> None:
         super().__init__()
         self.labels = labels
-        self.chosen = next(iter(labels))
+        self.chosen = next(iter(labels)) if chosen is None else chosen
         self._picks = cache(lambda key: partial(self.pick, key))
         self._draw()
 

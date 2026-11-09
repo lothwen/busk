@@ -18,7 +18,13 @@ from busk_tui import attributes, commands, config
 from busk_tui.bridge import show_model
 from busk_tui.commands import Line
 from busk_tui.widgets import route_dialog
-from busk_tui.widgets.dialogs import check_number
+from busk_tui.widgets.chase_dialog import (
+    DIRECTIONS,
+    check_crossfade,
+    check_multiplier,
+    check_rate,
+)
+from busk_tui.widgets.dialogs import check_cue, check_number, next_cue
 from busk_tui.widgets.fixture_panel import CATEGORIES
 from busk_tui.widgets.route_dialog import network_line, usb_line
 
@@ -59,6 +65,68 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
     "effect add": (commands.effect_add("Chase"), 'effect add "Chase"', False),
     "goto": (commands.goto(9, "3"), "goto 9 3", True),
     "record cue": (commands.record_cue(9), "record cue 9", False),
+    "record cue at": (
+        commands.record_cue(9, "2.5", name='The "Bridge"'),
+        r'''record cue 9/2.5 "The \"Bridge\""''',
+        False,
+    ),
+    "record cue at, busk names it": (commands.record_cue(9, "2.6"), "record cue 9/2.6", False),
+    "record cue merge": (commands.record_cue(9, "2.5", "merge"), "record cue 9/2.5 merge", False),
+    "record cue replace": (
+        commands.record_cue(9, "2.5", "replace"),
+        "record cue 9/2.5 replace",
+        False,
+    ),
+    "record cue remove": (
+        commands.record_cue(9, "2.5", "remove"),
+        "record cue 9/2.5 remove",
+        False,
+    ),
+    "delete cue": (commands.delete_cue(9, "2.6"), "delete cue 9/2.6", False),
+    "cue release": (
+        commands.cue_release(9, "1", "group 1", ("pan", "tilt")),
+        "cue 9/1 release group 1 only pan tilt",
+        False,
+    ),
+    "cue release, every attribute": (
+        commands.cue_release(9, "1", "101 thru 102, 201"),
+        "cue 9/1 release 101 thru 102, 201",
+        False,
+    ),
+    "cuelist add": (
+        commands.cuelist_add(30, 'The "Encore"'),
+        r'''cuelist add 30 "The \"Encore\""''',
+        False,
+    ),
+    "cuelist add, busk names it": (commands.cuelist_add(31), "cuelist add 31", False),
+    "rename cuelist": (commands.rename_cuelist(30, "Encore"), 'rename cuelist 30 "Encore"', False),
+    "cuelist tracking on": (commands.cuelist_tracking(30, True), "cuelist 30 tracking true", False),
+    "cuelist tracking off": (
+        commands.cuelist_tracking(30, False),
+        "cuelist 30 tracking false",
+        False,
+    ),
+    "chase hz": (
+        commands.chase_settings(30, hz="0.125", direction="bounce", crossfade="0.5"),
+        "cuelist 30 chase hz 0.125 bounce crossfade 0.5",
+        False,
+    ),
+    "chase beat": (
+        commands.chase_settings(30, multiplier="0.125", direction="random"),
+        "cuelist 30 chase bpm x 0.125 random",
+        False,
+    ),
+    "chase master": (
+        commands.chase_settings(30, master="Speed 1", multiplier="2"),
+        'cuelist 30 chase bpm "Speed 1" x 2 forward',
+        False,
+    ),
+    "delete cuelist": (commands.delete_cuelist(30), "delete cuelist 30 cascade", False),
+    "delete preset cascade": (
+        commands.delete_preset("color", 4, cascade=True),
+        "delete preset color 4 cascade",
+        False,
+    ),
     "cuelist chase": (commands.cuelist_chase(9), "cuelist 9 chase bpm x 1", False),
     "cuelist chase kept": (
         commands.cuelist_chase(10, "bpm x 1 bounce", 0.25),
@@ -538,6 +606,94 @@ def test_the_route_forms_host_and_port_are_only_not_empty() -> None:
 def test_the_category_chips_are_what_busk_takes(club: busk.OfflineShow) -> None:
     words = club.expected('profile "Generic Spot 16ch" category ').words
     assert sorted(CATEGORIES) == sorted(words)
+
+
+@pytest.mark.parametrize(
+    "text", ["7", "2.5", "02", "2.50", "0", "2.", ".5", "1.2.3", "a", "-1", "²", "٣", "9" * 301]
+)
+def test_a_cue_form_and_busk_agree_on_a_cue_number(show: busk.OfflineShow, text: str) -> None:
+    assert show.execute("sel group 1").ok
+    assert show.execute("set intensity 50%").ok
+    taken = [cue["number"] for cue in show.show["cueLists"][8]["cues"]]
+    assert taken == ["1", "2", "3", "4", "5"]
+    problem = check_cue(taken)(text)
+    assert show.execute(f"record cue 9/{text}").ok is (problem is None), problem
+
+
+def test_a_cue_form_says_what_comes_after_the_last_as_busk_does(show: busk.OfflineShow) -> None:
+    assert show.execute("sel group 1").ok
+    assert show.execute("set intensity 50%").ok
+    assert show.execute("record cue 9/5.5").ok
+    numbers = [cue["number"] for cue in show.show["cueLists"][8]["cues"]]
+    assert show.execute("record cue 9").ok
+    assert show.show["cueLists"][8]["cues"][-1]["number"] == next_cue(numbers) == "6"
+    assert next_cue([]) == "1"
+
+
+def test_the_chase_forms_words_are_busks(show: busk.OfflineShow) -> None:
+    assert set(DIRECTIONS) <= set(show.expected("cuelist 9 chase hz 2 ").words)
+
+
+@pytest.mark.parametrize("text", ["2", "0.125", ".5", "2.", "120"])
+def test_what_the_chase_form_passes_as_a_rate_busk_takes(show: busk.OfflineShow, text: str) -> None:
+    assert check_rate(text) is None
+    assert check_multiplier(text) is None
+    assert show.execute(f"cuelist 9 chase hz {text}").ok
+    assert show.execute(f"cuelist 9 chase bpm x {text}").ok
+
+
+@pytest.mark.parametrize("text", ["0", "-1", "abc", "", "9" * 301])
+def test_a_rate_the_chase_form_refuses_busk_refuses_too(show: busk.OfflineShow, text: str) -> None:
+    assert check_rate(text) is not None
+    assert check_multiplier(text) is not None
+    assert not show.execute(f"cuelist 9 chase hz {text}").ok
+
+
+@pytest.mark.parametrize(("text", "ok"), [("0", True), ("1", True), ("0.25", True), ("1.5", False)])
+def test_the_chase_form_and_busk_agree_on_a_crossfade(
+    show: busk.OfflineShow, text: str, ok: bool
+) -> None:
+    assert (check_crossfade(text) is None) is ok
+    assert show.execute(f"cuelist 9 chase hz 2 crossfade {text}").ok is ok
+
+
+def test_the_cue_and_list_lines_do_what_they_say(show: busk.OfflineShow) -> None:
+    def cue_list(number: int) -> Any:
+        return next(found for found in show.show["cueLists"] if found["number"] == number)
+
+    def run(*lines: Line) -> None:
+        for line in lines:
+            reply = show.execute(line.text)
+            assert reply.ok, (line.text, reply.text)
+
+    assert show.execute("sel group 1").ok
+    assert show.execute("set intensity 50%").ok
+    run(commands.cuelist_add(30, "Encore"))
+    assert (cue_list(30)["name"], cue_list(30)["cues"]) == ("Encore", [])
+    run(commands.record_cue(30, "2.5", name="Bridge"))
+    cue = cue_list(30)["cues"][0]
+    assert (cue["number"], cue["name"], len(cue["entries"])) == ("2.5", "Bridge", 1)
+    run(commands.cue_release(30, "2.5", "group 1", ("pan", "tilt")))
+    release = cue_list(30)["cues"][0]["releases"][0]
+    assert (release["targets"]["kind"], release["attributes"]) == ("group", ["pan", "tilt"])
+    run(commands.record_cue(30, "2.5", "remove"))
+    assert cue_list(30)["cues"][0]["entries"] == []
+    run(commands.cuelist_tracking(30, True))
+    assert cue_list(30)["tracking"] is True
+    run(commands.chase_settings(30, hz="0.125", direction="bounce", crossfade="0.5"))
+    assert cue_list(30)["mode"] == "chase"
+    assert cue_list(30)["chase"]["rate"] == {"kind": "hz", "value": 0.125}
+    assert (cue_list(30)["chase"]["direction"], cue_list(30)["chase"]["crossfade"]) == (
+        "bounce",
+        0.5,
+    )
+    run(commands.rename_cuelist(30, "Last"))
+    assert cue_list(30)["name"] == "Last"
+    run(commands.delete_cue(30, "2.5"))
+    assert cue_list(30)["cues"] == []
+    assert show.confirmation(commands.delete_cuelist(30).text) == 'Delete cue list 30 "Last"?'
+    run(commands.delete_cuelist(30))
+    assert 30 not in [found["number"] for found in show.show["cueLists"]]
 
 
 def test_no_prefill_builder_is_left_unused() -> None:

@@ -405,6 +405,16 @@ class CueInfo:
 
 
 @dataclass(frozen=True, slots=True)
+class ChaseRate:
+    """A chase's rate and direction, to fill the form that edits them."""
+
+    hz: float | None  # its rate in Hz; None: a speed master's beat
+    master: str | None  # that master's name, when the show has several
+    multiplier: float
+    direction: str  # forward, reverse, bounce, random
+
+
+@dataclass(frozen=True, slots=True)
 class CueListInfo:
     number: int
     name: str
@@ -413,6 +423,7 @@ class CueListInfo:
     cues: tuple[CueInfo, ...]  # in cue order
     crossfade: float = 0.0  # a chase's crossfade, when it has chase settings
     tracking: bool = False
+    rate: ChaseRate | None = None  # the same settings as ``chase``, one by one
 
 
 @dataclass(frozen=True, slots=True)

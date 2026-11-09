@@ -44,8 +44,8 @@ do can already be typed in the TUI. The tables below show how much the screens h
 |---|---|---|---|---|
 | Fixtures, patch | control (F3, F8, F1 A/C) | control (F3's form, F8's place) | control (cascades) | control (F3's FIXTURE panel, F8's place) |
 | Universes, routes | control (F8) | control (F8) | control (a universe cascades) | control; editing a route: prompt |
-| Cues | control (F4) | control (append); prompt (at a number) | prompt | pre-fill (timing, trigger, name); prompt (values) |
-| Cue lists | control (F4) | prompt | prompt | control (sequence/chase); prompt for the rest |
+| Cues | control (F4) | control | control | control (values, releases); pre-fill (timing, trigger, name) |
+| Cue lists | control (F4) | control | control (cascades) | control; renumber: prompt |
 | Presets | control (F6, colour chips) | control (F6's PRESET panel) | control | control (values, name, number) |
 | Effects in the programmer | control (F5, F1 B) | control | control | control (stop, run); prompt (settings) |
 | Effects in cues | control (F5) | control (via `record cue`) | prompt | prompt |
@@ -57,12 +57,12 @@ In short:
 
 - **SHOW is covered** for all of them except a playback's configuration: its buttons, fader
   function, band, exclusivity, flash, LTP mode and release time are on no screen.
-- **The TUI is a performance and programming frontend, and it edits the rig and the presets,
-  but not the rest of a show yet.** F3, F8 and F6 show, add, delete and update fixtures,
-  universes, routes and presets from controls alone. Beyond them, nothing can be deleted from
-  a screen except a programmer effect (`✕`), and ADD has controls only for cues (append) and
-  programmer effects. UPDATE has pre-fills for a cue's timing, trigger and name. The rest is
-  typed at the prompt.
+- **The TUI is a performance and programming frontend, and it edits the rig, the presets and
+  the cue lists, but not the rest of a show yet.** F3, F8, F6 and F4 show, add, delete and update
+  fixtures, universes, routes, presets, cues and cue lists from controls alone; a cue's timing,
+  trigger and name are pre-fills. Beyond them, nothing can be deleted from a screen except a
+  programmer effect (`✕`), and ADD has controls only for programmer effects. The rest is typed at
+  the prompt.
 - **busk has the lines the TUI needs.** Deleting several presets, cues or lists at once is all it
   still lacks (see [What busk is missing](#what-busk-is-missing)).
 
@@ -116,13 +116,13 @@ parked value as "none", until the pending plan's Phase 12.
 |---|---|---|---|
 | Show | typed `LiveShow.show`; `list cues L` | yes | control: F4 cue table (current cue, number, name, fades with family timings, delays, curve, trigger, intensity and colour entries, effect ids). Values of the other families (position, beam…) are not shown |
 | Add at the end | `record cue L` | yes | control: F4 `[record cue L]` |
-| Add at a number, insert | `record cue L/C [only …] [freeze] ["name"]` (`9/2.5` goes between 2 and 3) | yes | prompt |
-| Delete | `delete cue L/C` | yes | prompt |
-| Change its values | `record cue L/C merge\|replace\|remove [only …]` | yes | prompt |
+| Add at a number, insert | `record cue L/C [only …] [freeze] ["name"]` (`9/2.5` goes between 2 and 3) | yes | control: F4 `[record at…]`, a form that refuses a cue that exists; `only` and `freeze`: prompt |
+| Delete | `delete cue L/C` | yes | control: F4 `[delete]`, after the TUI's question, which says when a playback is on the cue |
+| Change its values | `record cue L/C merge\|replace\|remove [only …]` | yes | control: F4 `[merge]`, `[replace]`, `[remove]`, the last two after the TUI's question; `only`: prompt |
 | Timing | `cue L/C time …`, `cue L/C time <family> …` | yes | pre-fill on F4 (`time…`, `delay…`, `curve…`, and a click on those cells) |
 | Trigger | `cue L/C go`, `… follow <d>`, `… wait <d>` | yes | pre-fill on F4 |
 | Rename | `rename cue L/C "…"` | yes | pre-fill on F4 |
-| Release targets | `cue L/C release <targets> [only …]` | yes | prompt |
+| Release targets | `cue L/C release <targets> [only …]` | yes | control: F4 `[release…]`, a form that starts at the selection |
 | Renumber, move, copy | `cue L/C number "…"` (generic property) | partial: only while the order stays; no move or copy | prompt |
 
 ## Cue lists
@@ -130,11 +130,11 @@ parked value as "none", until the pending plan's Phase 12.
 | Operation | busk line | Engine | TUI |
 |---|---|---|---|
 | Show | typed `LiveShow.show`; `list cuelists` | yes | control: F4 CUELISTS (number, name, kind, cue count, playback) and the meta line (mode, tracking, chase settings, playbacks and level, groups) |
-| Add | `cuelist add N ["name"]` (GAP-33), a list with no cues. `record cue N/1` creates list N with its first cue; `record slot` creates a list with a playback | yes | prompt |
-| Delete | `delete cuelist N cascade` (GAP-36), with the playbacks that run it; `delete cuelist N` | yes. A plain `delete` is refused in one line while a playback runs it | prompt |
-| Sequence or chase | `cuelist N sequence`, `cuelist N chase hz\|bpm …` | yes | control: F4 toggle (keeps the list's chase settings, else `bpm x 1`); prompt for rate, direction and crossfade |
-| Tracking | `cuelist N tracking true\|false` (generic property) | yes | prompt (F4 shows it) |
-| Rename | `rename cuelist N "…"` | yes | prompt |
+| Add | `cuelist add N ["name"]` (GAP-33), a list with no cues. `record cue N/1` creates list N with its first cue; `record slot` creates a list with a playback | yes | control: F4 `[+ list…]`, a form that refuses a number that is taken |
+| Delete | `delete cuelist N cascade` (GAP-36), with the playbacks that run it; `delete cuelist N` | yes. A plain `delete` is refused in one line while a playback runs it | control: F4 `[delete]`, after busk's question |
+| Sequence or chase | `cuelist N sequence`, `cuelist N chase hz\|bpm …` | yes | control: F4 toggle (keeps the list's chase settings, else `bpm x 1`), and `[chase…]`, a form for the rate, master, multiplier, direction and crossfade |
+| Tracking | `cuelist N tracking true\|false` (generic property) | yes | control: F4 `[tracking on]`, `[tracking off]` |
+| Rename | `rename cuelist N "…"` | yes | control: F4 `[rename…]`, a name dialog |
 | Renumber | `cuelist N number M` (generic property) | yes | prompt |
 
 ## Presets
@@ -143,7 +143,7 @@ parked value as "none", until the pending plan's Phase 12.
 |---|---|---|---|
 | Show | typed `LiveShow.show`; `list presets` | yes | control: F6 tiles per pool with a preview; colour chips on F1 and F2. In edit mode, the PRESET panel shows what a preset holds (each stored value, its scope and where) and the cues and effect palettes that use it |
 | Add | `record preset <pool> N [global\|profile\|target] ["name"]` | yes | control: F6's `+ record` tile opens the PRESET panel, with the next free number. Every pool the rig can record into shows. The panel sets the number, name and scope, the selection, and every value the pool records: encoder rows, a colour picker, option chips for the discrete attributes, and spreads (fans). It shows what a record takes, then `[record]` |
-| Delete | `delete preset <pool> N cascade` (GAP-36), `delete preset <pool> N` | yes. A plain `delete` is refused in one line while a cue or a palette uses it. The cascade is refused only for a palette's last colour | control: `[delete]`, after the TUI's own question (busk asks none). Inert while cues or effect palettes use the preset, and the panel names them |
+| Delete | `delete preset <pool> N cascade` (GAP-36), `delete preset <pool> N` | yes. A plain `delete` is refused in one line while a cue or a palette uses it. The cascade is refused only for a palette's last colour | control: `[delete]`, and the panel names what uses the preset. In use by a cue or a palette: the cascade, after busk's question. Else the plain line, after the TUI's own question (busk asks none). A preset only a binding names is refused in one line: the TUI does not know that use, so the cascade is typed at the prompt |
 | Change its values | `record preset <pool> N merge\|replace\|remove` | yes | control: `[its fixtures]`, `[load]`, the panel's editors, then `[merge]`, `[replace]` or `[remove]` |
 | Rename | `rename preset <pool> N "…"` | yes | control: `[rename…]`, a name dialog |
 | Renumber | `preset <pool> N number M` (generic property) | yes | control: `[number…]`, a dialog that refuses a taken number |
@@ -216,8 +216,6 @@ host it:
 
 - **F1**: the playback's own buttons (`button N B on|off`) instead of the fixed GO, ◂ and
   FLASH; `record slot` on an empty slot.
-- **F4**: delete a cue; re-record a cue (`merge`, `replace`, `remove`); record at a number;
-  a new cue list; delete, rename, tracking and chase settings of a list; release targets.
 - **F5**: edit an effect's settings (programmer: `effect add … id <id>`; cue: `cue L/C
   effect`); remove one effect from a cue; `effect clear`; add, delete, rename and change a
   template.
@@ -228,6 +226,6 @@ host it:
 
 - `LiveShow.confirmation()` asks before every `delete … cascade`, `delete route <id>` and
   `route <id> off`, so F3's and F8's controls show busk's question. It asks nothing before
-  any other `delete`, a `record … replace` or `effect clear`. They are undo steps. A TUI delete
-  button there would rely on `undo`, unless the TUI asks first itself. F6's `[delete]` asks first
-  (`RunLine.ask`).
+  any other `delete`, a `record … replace` or `effect clear`. They are undo steps. A TUI control
+  there would rely on `undo`, unless the TUI asks first itself. F6's `[delete]` and F4's cue
+  `[delete]`, `[replace]` and `[remove]` ask first (`RunLine.ask`).

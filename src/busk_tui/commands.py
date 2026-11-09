@@ -254,8 +254,10 @@ def record_preset(
     return Line(" ".join(words))
 
 
-def delete_preset(pool: str, preset_number: int) -> Line:
-    return Line(f"delete preset {pool} {preset_number}")
+def delete_preset(pool: str, preset_number: int, *, cascade: bool = False) -> Line:
+    """``delete preset color 5``; ``cascade``, for one in use: ``delete preset
+    color 5 cascade``, and busk asks, naming the cues it leaves."""
+    return Line(f"delete preset {pool} {preset_number}" + (" cascade" if cascade else ""))
 
 
 def rename_preset(pool: str, preset_number: int, name: str) -> Line:
@@ -414,9 +416,50 @@ def route_on(route: str, on: bool) -> Line:
 # ------------------------------------------------------------------- cues
 
 
-def record_cue(cue_list: int) -> Line:
-    """The programmer as a new cue at the end of the list: ``record cue 9``."""
-    return Line(f"record cue {cue_list}")
+def record_cue(
+    cue_list: int,
+    cue: str | None = None,
+    merge: Literal["merge", "replace", "remove"] | None = None,
+    name: str | None = None,
+) -> Line:
+    """The programmer as a new cue at the end of the list: ``record cue 9``;
+    at a number: ``record cue 9/2.5 "Bridge"`` (without a name, busk names
+    it); into a cue that exists: ``record cue 9/3 merge``."""
+    words = ["record", "cue", str(cue_list) if cue is None else f"{cue_list}/{cue}"]
+    if merge is not None:
+        words.append(merge)
+    if name is not None:
+        words.append(quoted(name))
+    return Line(" ".join(words))
+
+
+def delete_cue(cue_list: int, cue: str) -> Line:
+    return Line(f"delete cue {cue_list}/{cue}")
+
+
+def cue_release(cue_list: int, cue: str, targets: str, only: Sequence[str] = ()) -> Line:
+    """``cue 9/3 release group 1 only pan tilt``, ``targets`` as busk reads
+    them; no ``only``: every attribute."""
+    attributes = " only " + " ".join(only) if only else ""
+    return Line(f"cue {cue_list}/{cue} release {targets}{attributes}")
+
+
+def cuelist_add(cue_list: int, name: str | None = None) -> Line:
+    """``cuelist add 30 "Encore"``; without a name, busk names it (``Cue list 30``)."""
+    return Line(f"cuelist add {cue_list}" + ("" if name is None else f" {quoted(name)}"))
+
+
+def rename_cuelist(cue_list: int, name: str) -> Line:
+    return Line(f"rename cuelist {cue_list} {quoted(name)}")
+
+
+def delete_cuelist(cue_list: int) -> Line:
+    """``delete cuelist 9 cascade``: busk asks, naming the playbacks that go."""
+    return Line(f"delete cuelist {cue_list} cascade")
+
+
+def cuelist_tracking(cue_list: int, on: bool) -> Line:
+    return Line(f"cuelist {cue_list} tracking {'true' if on else 'false'}")
 
 
 def cuelist_sequence(cue_list: int) -> Line:
@@ -430,6 +473,27 @@ def cuelist_chase(cue_list: int, settings: str | None = None, crossfade: float =
         return Line(f"cuelist {cue_list} chase bpm x 1")
     fade = f" crossfade {number(crossfade)}" if crossfade else ""
     return Line(f"cuelist {cue_list} chase {settings}{fade}")
+
+
+def chase_settings(
+    cue_list: int,
+    *,
+    hz: str | None = None,
+    master: str | None = None,
+    multiplier: str = "1",
+    direction: str = "forward",
+    crossfade: str = "0",
+) -> Line:
+    """What the chase form holds, each number as typed so that none is
+    rounded: ``hz``: ``cuelist 9 chase hz 2 bounce crossfade 0.5``; else on a
+    speed master's beat: ``cuelist 9 chase bpm "Speed 2" x 0.5 forward`` (no
+    ``master``: the show's only one, which busk finds)."""
+    if hz is not None:
+        rate = f"hz {hz}"
+    else:
+        rate = "bpm " + ("" if master is None else f"{quoted(master)} ") + f"x {multiplier}"
+    fade = f" crossfade {crossfade}" if float(crossfade) else ""
+    return Line(f"cuelist {cue_list} chase {rate} {direction}{fade}")
 
 
 # ---------------------------------------------------------------- pre-fills

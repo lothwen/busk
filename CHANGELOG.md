@@ -10,6 +10,10 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- F4 edits cue lists from controls. A cue's row has `[release…]`, `[record at…]`, `[merge]`,
+  `[replace]`, `[remove]` and `[delete]`, and a list's row has a tracking toggle, `[chase…]` (a form
+  for the rate, master, multiplier, direction and crossfade), `[rename…]` and `[delete]`.
+  `[+ list…]`, under CUELISTS, adds one.
 - `route <id> change <what route add takes>` edits a route in one undo step. It keeps the id and
   whether the route is on.
 - `fixture N thru M patch U.A|none` places or unpatches a run of fixtures, each after the one
@@ -35,6 +39,7 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   is refused while it runs.
 - `help`, Tab and `?` name a playback's and a cue list's properties and the values of those with
   a closed set. `<property> none` removes an optional one, such as `playback 3 exclusivity none`.
+- F6's `[delete]` also takes a preset that cues or effect palettes use, after busk's question.
 - F6 edits presets from controls. `[edit]` or a `+ record` tile opens the PRESET panel: what a
   preset holds and the cues that use it, rename, renumber, delete after a question, and new
   presets and new values recorded through the programmer. Its editors are the encoder rows, a

@@ -24,12 +24,27 @@ row (bg 235), else the cue the playback is on, else the first.
 ``cuelist 9 sequence``, or ``cuelist 9 chase …`` with the chase settings the
 list keeps, else ``bpm x 1`` (busk refuses the spec's ``x1``).
 
+**The list's row.** ``[tracking on|off]``, ``[chase…]`` (the form of
+:mod:`busk_tui.widgets.chase_dialog`), ``[rename…]`` and ``[delete]``
+(``delete cuelist 9 cascade``, after busk's question). ``[+ list…]``, under
+CUELISTS, adds one and shows it.
+
+**The cue's row**, after the pre-fills: ``[release…]`` (targets and attributes
+in a form, ``cue 9/3 release group 1 only pan``), ``[record at…]`` (a free
+number and a name; the new cue is chosen), ``[merge]``, ``[replace]`` and
+``[remove]`` (``record cue 9/3 merge``) and ``[delete]`` (``delete cue 9/3``).
+The last three of those ask the TUI's own question, since busk asks none, and
+the delete's says when a playback is on the cue: it leaves it at once. Those
+that record are grey while the programmer has nothing to record. On a list
+with no cues the row is only ``[record at…]``.
+
 The pane cursor stops on the cues first (Enter goes to one), then the
-buttons and the edits, then the lists (Enter chooses one).
+buttons and the two rows, then the lists (Enter chooses one) and ``[+ list…]``.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import partial
 from typing import Final
 
@@ -41,12 +56,22 @@ from textual.widgets import Static
 
 from busk_tui import colors, commands
 from busk_tui.commands import Line
-from busk_tui.formats import selection_text
+from busk_tui.formats import numbers_text, selection_text
 from busk_tui.model import CueInfo, CueListInfo, LiveState, ShowModel
 from busk_tui.nav import Item, Stop
 from busk_tui.pages.base import Page, Part, View
+from busk_tui.widgets.chase_dialog import ChaseDialog
 from busk_tui.widgets.controls import ButtonStrip, FillPrompt, RunLine, StripButton, button_label
 from busk_tui.widgets.cuetable import CueListTable, CueTable, cue_cells, edit_prefill, list_cells
+from busk_tui.widgets.dialogs import (
+    FormDialog,
+    TextDialog,
+    check_cue,
+    check_name,
+    check_number,
+    next_cue,
+    next_number,
+)
 from busk_tui.widgets.panel import Panel
 from busk_tui.widgets.playbacks import LEVEL_COLORS, PlaybackRow
 from busk_tui.widgets.quick import strip_stops
@@ -101,6 +126,22 @@ def meta_text(cue_list: CueListInfo, show: ShowModel, live: LiveState | None) ->
     return text
 
 
+def ask(label: str, action: Callable[[], None], color: str = colors.MID) -> StripButton:
+    """A button that calls ``action`` (one callable per button: equal buttons
+    compare equal)."""
+    return StripButton(button_label(label, color), Line(""), action=action)
+
+
+def grey(label: str) -> StripButton:
+    """A button with nothing to do yet: no click, no pane cursor."""
+    return StripButton(Text(f"[{label}]", style=colors.BORDER), Line(""), note=True)
+
+
+def cue_words(cue_list: int, cue: CueInfo) -> str:
+    """``cue 9/3 "Pre"``, for a question."""
+    return f"cue {cue_list}/{cue.number}" + (f' "{cue.name}"' if cue.name else "")
+
+
 def mode_line(cue_list: CueListInfo) -> Line:
     """The toggle: back to a sequence, or a chase with the settings it keeps."""
     if cue_list.mode == "chase":
@@ -119,9 +160,10 @@ class CuesPage(Page):
     CuesPage #cues-row.stacked > Panel { width: 100%; }
     CuesPage #cuelist-meta { margin-bottom: 1; }
     CuesPage #cue-buttons { margin-top: 1; }
-    CuesPage #cue-edit-row { height: auto; }
-    CuesPage #cue-edit-label { width: auto; padding-right: 1; }
-    CuesPage #cue-edits { width: 1fr; }
+    CuesPage #cuelist-add { margin-top: 1; }
+    CuesPage .cue-row { height: auto; }
+    CuesPage .cue-row-label { width: auto; max-width: 40%; padding-right: 1; }
+    CuesPage .cue-row-strip { width: 1fr; }
     """
 
     def __init__(self, number: int, title: str) -> None:
@@ -130,10 +172,13 @@ class CuesPage(Page):
         self.meta = Static("", id="cuelist-meta")
         self.cues = CueTable(id="cue-table")
         self.buttons = ButtonStrip(id="cue-buttons")
-        self.edit_label = Static("", id="cue-edit-label")
-        self.edits = ButtonStrip(id="cue-edits")
+        self.list_label = Static("", id="cue-list-label", classes="cue-row-label")
+        self.list_edits = ButtonStrip(id="cue-list-edits", classes="cue-row-strip")
+        self.edit_label = Static("", id="cue-edit-label", classes="cue-row-label")
+        self.edits = ButtonStrip(id="cue-edits", classes="cue-row-strip")
+        self.list_add = ButtonStrip([ask("+ list…", self.ask_add_list)], id="cuelist-add")
         self.panel = Panel("cuelist", id="cuelist")
-        self.browser = Panel("cuelists", self.lists, id="cuelists")
+        self.browser = Panel("cuelists", self.lists, self.list_add, id="cuelists")
         self.list: int | None = None  # the chosen list's number
         self.cue: str | None = None  # the chosen cue's number, until the list changes
         self._followed: int | None = None  # the selected playback the list last followed
@@ -148,7 +193,10 @@ class CuesPage(Page):
                 yield self.meta
                 yield self.cues
                 yield self.buttons
-                with Horizontal(id="cue-edit-row"):
+                with Horizontal(id="cue-list-row", classes="cue-row"):
+                    yield self.list_label
+                    yield self.list_edits
+                with Horizontal(id="cue-edit-row", classes="cue-row"):
                     yield self.edit_label
                     yield self.edits
 
@@ -169,7 +217,7 @@ class CuesPage(Page):
         self._view = view
         if changed & {"show", "playback"}:
             self._follow()
-        if changed & {"show", "live", "playback"}:
+        if changed & {"show", "live", "playback", "programmer"}:
             self._draw()
 
     def _follow(self) -> None:
@@ -214,6 +262,28 @@ class CuesPage(Page):
                 return found
         return cues[0] if cues else None
 
+    def picked(self) -> tuple[int, CueInfo] | None:
+        """The chosen list's number and :meth:`chosen_cue`."""
+        cue = self.chosen_cue()
+        return None if self.list is None or cue is None else (self.list, cue)
+
+    def playing(self, cue: str) -> list[int]:
+        """The numbers of the playbacks of the chosen list that are on ``cue``."""
+        show, live = self._view.show, self._view.live
+        if show is None or live is None or self.list is None:
+            return []
+        views = [live.playback(number) for number in show.runs(self.list)]
+        return [view.number for view in views if view is not None and view.cue == cue]
+
+    def recordable(self) -> bool:
+        """Whether the programmer has what ``record cue`` takes: a value, or
+        an effect that runs (busk does not record a stopped one)."""
+        programmer = self._view.programmer
+        if programmer is None:
+            return False
+        running = any(effect.id not in programmer.stopped for effect in programmer.effects)
+        return bool(programmer.values) or running
+
     # ------------------------------------------------------------- draw
 
     def _draw(self) -> None:
@@ -238,6 +308,7 @@ class CuesPage(Page):
         empty = Text(NO_CUES.format(cue_list.number), style=colors.DIM)
         self.cues.show(rows, None if picked is None else cue_list.cues.index(picked), empty)
         self.buttons.show(self._buttons(cue_list))
+        self._draw_list_edits(cue_list)
         self._draw_edits(cue_list.number, picked)
 
     def _buttons(self, cue_list: CueListInfo) -> list[StripButton]:
@@ -256,10 +327,35 @@ class CuesPage(Page):
         ]
         return buttons
 
+    def _draw_list_edits(self, cue_list: CueListInfo) -> None:
+        label = Text("list ", style=colors.DIM)
+        label.append(str(cue_list.number), style=colors.CYAN)
+        if cue_list.name:
+            label.append(f" {cue_list.name}", style=colors.FG)
+        self._update(self.list_label, label)
+        tracking = commands.cuelist_tracking(cue_list.number, not cue_list.tracking)
+        words = f"tracking {'off' if cue_list.tracking else 'on'}"
+        self.list_edits.show(
+            [
+                StripButton(button_label(words, colors.AMBER), tracking),
+                ask("chase…", self.ask_chase, colors.AMBER),
+                ask("rename…", self.ask_rename_list),
+                StripButton(
+                    button_label("delete", colors.RED), commands.delete_cuelist(cue_list.number)
+                ),
+            ]
+        )
+
     def _draw_edits(self, cue_list: int, cue: CueInfo | None) -> None:
+        recordable = self.recordable()
+        record_at = (
+            ask("record at…", self.ask_record_at, colors.MAGENTA)
+            if recordable
+            else grey("record at…")
+        )
         if cue is None:
             self._update(self.edit_label, Text())
-            self.edits.show([])
+            self.edits.show([record_at])
             return
         label = Text("edit ", style=colors.DIM)
         label.append(f"cue {cue_list}/{cue.number}", style=colors.CYAN)
@@ -275,11 +371,27 @@ class CuesPage(Page):
             ("wait", edit_prefill(cue_list, cue, "wait")),
             ("rename", commands.rename_cue_prefill(cue_list, cue.number)),
         ]
+        merge = commands.record_cue(cue_list, cue.number, "merge")
+        writes = (
+            [
+                StripButton(button_label("merge", colors.MAGENTA), merge),
+                ask("replace", self.ask_replace, colors.MAGENTA),
+                ask("remove", self.ask_remove, colors.MAGENTA),
+            ]
+            if recordable
+            else [grey("merge"), grey("replace"), grey("remove")]
+        )
         self.edits.show(
             [
-                StripButton(button_label(f"{name}…", colors.MID), Line(text), prefill=text)
-                for name, text in prefills
-                if text is not None
+                *(
+                    StripButton(button_label(f"{name}…", colors.MID), Line(text), prefill=text)
+                    for name, text in prefills
+                    if text is not None
+                ),
+                ask("release…", self.ask_release),
+                record_at,
+                *writes,
+                ask("delete", self.ask_delete, colors.RED),
             ]
         )
 
@@ -324,6 +436,149 @@ class CuesPage(Page):
             self.post_message(RunLine(commands.goto(runner, number)))
         self._draw()
 
+    # --------------------------------------------------- a cue's controls
+
+    def ask_delete(self) -> None:
+        """``[delete]``: ``delete cue 9/3``, after the TUI's question, which
+        says when a playback is on the cue: it leaves it at once."""
+        found = self.picked()
+        if found is None:
+            return
+        cue_list, cue = found
+        question = f"Delete {cue_words(cue_list, cue)}?"
+        on = self.playing(cue.number)
+        if on:
+            who = ", ".join(f"P{number}" for number in on)
+            question += (
+                f"\n{who} {'is' if len(on) == 1 else 'are'} on it, and will leave it at once."
+            )
+        self.post_message(RunLine(commands.delete_cue(cue_list, cue.number), ask=question))
+
+    def ask_replace(self) -> None:
+        """``[replace]``: ``record cue 9/3 replace``, after the TUI's question."""
+        found = self.picked()
+        if found is not None:
+            cue_list, cue = found
+            question = f"Replace what {cue_words(cue_list, cue)} holds with the programmer?"
+            line = commands.record_cue(cue_list, cue.number, "replace")
+            self.post_message(RunLine(line, ask=question))
+
+    def ask_remove(self) -> None:
+        """``[remove]``: ``record cue 9/3 remove``, after the TUI's question."""
+        found = self.picked()
+        if found is not None:
+            cue_list, cue = found
+            question = f"Remove the programmer's attributes from {cue_words(cue_list, cue)}?"
+            line = commands.record_cue(cue_list, cue.number, "remove")
+            self.post_message(RunLine(line, ask=question))
+
+    def ask_record_at(self) -> None:
+        """``[record at…]``: ``record cue 9/2.5 "Bridge"``, a number that is
+        free and a name; once it has run, the new cue is the one chosen."""
+        cue_list = self.list
+        if cue_list is None or not self.recordable():
+            return
+        taken = [cue.number for cue in self._shown_cues]
+        check = check_cue(taken)
+
+        def given(values: tuple[str, ...] | None) -> None:
+            if values is not None:
+                number, name = (value.strip() for value in values)
+                line = commands.record_cue(cue_list, number, name=name or None)
+                self.post_message(RunLine(line, done=partial(self._recorded, cue_list, number)))
+
+        note = "2.5 goes between 2 and 3\nno name: busk names it Cue <number>"
+        fields = (("number", next_cue(taken)), ("name", ""))
+        dialog = FormDialog(
+            f"RECORD AT · cuelist {cue_list}", fields, lambda values: check(values[0]), note
+        )
+        self.app.push_screen(dialog, given)
+
+    def _recorded(self, cue_list: int, number: str, ok: bool) -> None:
+        if ok and self.list == cue_list:
+            self.choose_cue(number, go=False)
+
+    def ask_release(self) -> None:
+        """``[release…]``: ``cue 9/3 release group 1 only pan tilt``. The
+        targets start at the selection. What only busk can tell (a word it
+        does not read) is refused in the log."""
+        found, show, programmer = self.picked(), self._view.show, self._view.programmer
+        if found is None:
+            return
+        cue_list, cue = found
+        selection = () if programmer is None else programmer.selection
+        start = selection_text(selection, () if show is None else show.fixtures)
+
+        def given(values: tuple[str, ...] | None) -> None:
+            if values is not None:
+                targets, only = values[0].strip(), values[1].split()
+                self.post_message(
+                    RunLine(commands.cue_release(cue_list, cue.number, targets, only))
+                )
+
+        def check(values: tuple[str, ...]) -> str | None:
+            return None if values[0].strip() else "the targets: group 1, or 101 thru 104"
+
+        note = "targets: group 1, or 101 thru 104\nonly: attribute names; empty: all of them"
+        fields = (("targets", start), ("only", ""))
+        dialog = FormDialog(f"RELEASE · cue {cue_list}/{cue.number}", fields, check, note)
+        self.app.push_screen(dialog, given)
+
+    # -------------------------------------------------- a list's controls
+
+    def ask_add_list(self) -> None:
+        """``[+ list…]``: ``cuelist add 30 "Encore"``; once it has run, the
+        new list shows."""
+        taken = frozenset(cue_list.number for cue_list in self._shown_lists)
+        check = check_number(taken, None)
+
+        def given(values: tuple[str, ...] | None) -> None:
+            if values is not None:
+                number, name = int(values[0].strip()), values[1].strip()
+                line = commands.cuelist_add(number, name or None)
+                self.post_message(RunLine(line, done=partial(self._added, number)))
+
+        note = "no name: busk names it Cue list <number>"
+        if taken:
+            note = f"taken: {numbers_text(sorted(taken))}\n{note}"
+        fields = (("number", str(next_number(taken))), ("name", ""))
+        dialog = FormDialog("NEW CUE LIST", fields, lambda values: check(values[0]), note)
+        self.app.push_screen(dialog, given)
+
+    def _added(self, number: int, ok: bool) -> None:
+        if ok:
+            self.choose_list(number)
+
+    def _chosen_list(self) -> CueListInfo | None:
+        show = self._view.show
+        return None if show is None or self.list is None else show.cue_list(self.list)
+
+    def ask_rename_list(self) -> None:
+        """``[rename…]``: ``rename cuelist 9 "Encore"``."""
+        cue_list = self._chosen_list()
+        if cue_list is None:
+            return
+
+        def given(text: str | None) -> None:
+            if text is not None and text.strip() != cue_list.name:
+                self.post_message(RunLine(commands.rename_cuelist(cue_list.number, text.strip())))
+
+        title = f"RENAME · cuelist {cue_list.number}"
+        self.app.push_screen(TextDialog(title, cue_list.name, check_name(True)), given)
+
+    def ask_chase(self) -> None:
+        """``[chase…]``: the form, whose line also makes the list a chase."""
+        show, cue_list = self._view.show, self._chosen_list()
+        if show is None or cue_list is None:
+            return
+
+        def given(line: Line | None) -> None:
+            if line is not None:
+                self.post_message(RunLine(line))
+
+        speeds = [master.name for master in show.masters if master.kind == "speed"]
+        self.app.push_screen(ChaseDialog(cue_list, speeds), given)
+
     # ----------------------------------------------------- pane cursor
 
     def stops(self) -> list[Stop]:
@@ -338,11 +593,14 @@ class CuesPage(Page):
                 choose = partial(self.choose_cue, cue.number, go=False)  # the line goes
                 stops.append(Stop(Item(label, line=line, action=choose), self.cues, row))
         self.cues.spots = cue_spots
-        stops += strip_stops(self.buttons)
-        stops += strip_stops(self.edits)
+        if self.panel.display:
+            stops += strip_stops(self.buttons)
+            stops += strip_stops(self.list_edits)
+            stops += strip_stops(self.edits)
         self.lists.spots = [(row, None) for row in range(len(self._shown_lists))]
         for row, cue_list in enumerate(self._shown_lists):
             choose_list = partial(self.choose_list, cue_list.number)
             label = f"cuelist {cue_list.number} {cue_list.name}"
             stops.append(Stop(Item(label, action=choose_list), self.lists, row))
+        stops += strip_stops(self.list_add)
         return stops

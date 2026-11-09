@@ -27,6 +27,7 @@ from busk_tui.bridge import (
     surface_views,
 )
 from busk_tui.model import (
+    ChaseRate,
     EffectInfo,
     ElementOutput,
     FixtureInfo,
@@ -86,6 +87,7 @@ def test_the_show_model_has_what_f1_and_f7_show(club: busk.OfflineShow) -> None:
     chase = model.cue_list(10)
     assert chase is not None
     assert (chase.mode, chase.chase) == ("chase", "bpm x 1 bounce")
+    assert chase.rate == ChaseRate(None, None, 1.0, "bounce")
     assert model.masters == (
         MasterView("Grand Master", "grand", None, ()),
         MasterView("Speed 1", "speed", None, (0.25, 0.5, 1.0, 2.0, 4.0)),
@@ -133,6 +135,8 @@ def test_a_chase_names_its_master_when_the_show_has_two(show: busk.OfflineShow) 
     assert show.execute("cuelist 1 chase hz 2.5 random").ok
     model = show_model(show.show)
     assert model.cue_list(10).chase == 'bpm "Speed 2" x 0.5 forward'  # type: ignore[union-attr]
+    assert model.cue_list(10).rate == ChaseRate(None, "Speed 2", 0.5, "forward")  # type: ignore[union-attr]
+    assert model.cue_list(1).rate == ChaseRate(2.5, None, 1.0, "random")  # type: ignore[union-attr]
     assert model.cue_list(1).chase == "hz 2.5 random"  # type: ignore[union-attr]
 
 
