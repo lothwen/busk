@@ -28,6 +28,7 @@ import json
 import threading
 import time
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -70,7 +71,13 @@ from busk_tui.widgets.fixturetable import FixtureTable
 from busk_tui.widgets.frame import StatusBar
 from busk_tui.widgets.log import LogView
 from busk_tui.widgets.options import LIT, OptionRow
-from busk_tui.widgets.playback_panel import CueListDialog, PlaybackEditor, PlaybackPanel
+from busk_tui.widgets.playback_panel import (
+    CueListDialog,
+    PickDialog,
+    PlaybackDialog,
+    PlaybackEditor,
+    PlaybackPanel,
+)
 from busk_tui.widgets.playbacks import PlaybackRow
 from busk_tui.widgets.preset_panel import Chosen
 from busk_tui.widgets.profile_picker import ProfileDialog
@@ -1819,6 +1826,145 @@ def test_f1_edits_a_playback_from_controls_on_the_real_engine(
         drive(app, body, size=(150, 70))
     finally:
         bridge.stop()
+
+
+def test_f1_adds_places_and_deletes_playbacks_and_pages_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """A new playback on an empty slot; another placed on two pages and taken
+    off one; a playback deleted, with busk's question, the bindings by slot
+    left alone; a new page; the page shown deleted, and the engine on another;
+    the last page deleted, and F1 with none; ``undo``."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(), standalone=True)
+
+    def show() -> Any:
+        assert app.view.show is not None
+        return app.view.show
+
+    def editor() -> PlaybackEditor:
+        return app.query_one(PlaybackEditor)
+
+    def on_page() -> int | None:
+        assert app.view.live is not None
+        return None if app.view.live.page is None else app.view.live.page.number
+
+    def page_slots(number: int) -> tuple[int | None, ...]:
+        return next(page.slots for page in show().pages if page.number == number)
+
+    def page_gone(number: int) -> bool:
+        return all(page.number != number for page in show().pages)
+
+    async def body(pilot: Pilot[int]) -> None:
+        async def tile(slot: int) -> None:
+            await pilot.pause(0.1)
+            await pilot.click(editor().tiles[slot - 1])
+            await until(pilot, lambda: editor().slot == slot)
+            await pilot.pause(0.1)
+
+        async def picked(dialog: type[PickDialog], number: int) -> None:
+            await until(pilot, lambda: isinstance(app.screen, dialog))
+            await pilot.pause(0.1)
+            screen = app.screen
+            assert isinstance(screen, PickDialog)
+            screen.options.highlighted = screen.numbers.index(number)
+            await pilot.pause(0.1)
+            await pilot.press("enter")
+
+        async def tap(strip: ButtonStrip, label: str) -> None:
+            await pilot.pause(0.1)
+            await tap_button(pilot, strip, label)
+
+        async def yes(question: str) -> None:
+            await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+            screen = app.screen
+            assert isinstance(screen, ConfirmDialog)
+            assert question in screen.question
+            await pilot.press("y")
+
+        await until(pilot, lambda: app.view.live is not None and app.view.show is not None)
+        await pilot.pause(0.1)
+        await pilot.click("#busk-edit")
+        await until(pilot, lambda: bool(editor().tiles))
+        await tap(editor().tabs, "2 Washes")
+        await until(pilot, lambda: on_page() == 2)
+        await until(pilot, lambda: editor().page is not None and editor().page.number == 2)
+        bindings = show().bindings
+
+        await tile(7)
+        await tap(editor().slot_edits, "new playback…")
+        await picked(CueListDialog, 11)
+        await until(pilot, lambda: isinstance(app.screen, FormDialog))
+        await pilot.press("ctrl+u", *"30", "tab", "ctrl+u", *"Encore", "enter")
+        await until(pilot, lambda: page_slots(2)[6] == 30, timeout=2.0)
+        assert show().playback(30).name == "Encore"
+        assert show().playback(30).cueList == 11
+        await until(pilot, lambda: app.view.playback == 30, timeout=2.0)
+
+        await tile(14)  # the empty tile past the last slot
+        await tap(editor().slot_edits, "place…")
+        await picked(PlaybackDialog, 9)
+        await until(pilot, lambda: len(page_slots(2)) == 14 and page_slots(2)[13] == 9, timeout=2.0)
+        assert page_slots(1)[8] == 9  # a playback on two pages
+        await until(pilot, lambda: app.view.playback == 9, timeout=2.0)
+        await tap(editor().slot_edits, "clear")
+        await until(pilot, lambda: page_slots(2)[13] is None, timeout=2.0)
+        assert page_slots(1)[8] == 9  # the other page keeps it
+
+        await tile(7)
+        await until(pilot, lambda: app.view.playback == 30)
+        await pilot.click(app.query_one(PlaybackPanel).delete)
+        await yes('Delete playback 30 "Encore"?')
+        await until(pilot, lambda: page_slots(2)[6] is None, timeout=2.0)
+        assert show().playback(30) is None
+        assert any(binding.what == "fader 7" for binding in bindings)  # its slot, bound
+        assert show().bindings == bindings  # those by slot, and the others
+        assert app.view.playback != 30
+
+        await tap(editor().tabs, "+ page…")
+        await until(pilot, lambda: isinstance(app.screen, FormDialog))
+        await pilot.press("tab", "ctrl+u", *"Encore", "enter")
+        await until(pilot, lambda: any(page.number == 3 for page in show().pages), timeout=2.0)
+        assert on_page() == 2  # it stays on the page it was on
+        await tap(editor().tabs, "3 Encore")
+        await until(pilot, lambda: on_page() == 3)
+        await until(pilot, lambda: len(editor().tiles) == 1)  # a tile to start on
+        await tap(editor().page_edits, "rename…")
+        await answer_field(pilot, app, "Last")
+        await until(pilot, lambda: page_slots(3) == () and "3 Last" in plain_tabs(editor()))
+
+        await tap(editor().page_edits, "delete")
+        await yes('Delete page 3 "Last"?')
+        await until(pilot, lambda: on_page() == 2, timeout=2.0)  # the engine moved on
+        await until(pilot, lambda: editor().page is not None and editor().page.number == 2)
+        assert "3 Last" not in plain_tabs(editor())
+
+        for number, word in ((2, "Washes"), (1, "Main")):
+            await tap(editor().page_edits, "delete")
+            await yes(f'Delete page {number} "{word}"?')
+            await until(pilot, partial(page_gone, number), timeout=2.0)
+        await until(pilot, lambda: on_page() is None, timeout=2.0)
+        await until(pilot, lambda: editor().page is None)
+        await until(pilot, lambda: not editor().page_row.display)
+        assert plain_tabs(editor()) == ["+ page…"]
+        numbers = [tile.info.number for tile in editor().tiles if tile.info is not None]
+        assert numbers == [info.number for info in show().playbacks]  # by number
+
+        await pilot.press(*"undo", "enter")
+        await until(pilot, lambda: bool(show().pages), timeout=2.0)
+        await until(pilot, lambda: editor().page is not None and editor().page.number == 1)
+        assert editor().page_row.display
+
+    try:
+        drive(app, body, size=(150, 70))
+    finally:
+        bridge.stop()
+
+
+def plain_tabs(editor: PlaybackEditor) -> list[str]:
+    return [button.label.plain.strip("[]") for button in editor.tabs.buttons]
 
 
 def test_f1_c_places_a_fixture_through_its_form_on_the_real_engine(

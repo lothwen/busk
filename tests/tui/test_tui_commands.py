@@ -119,6 +119,28 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
         'playback 9 buttons ["go", "flash"]',
         False,
     ),
+    "page add": (commands.page_add(7, 'Say "hi"'), r'page add 7 "Say \"hi\""', False),
+    "page add, no name": (commands.page_add(8), "page add 8", False),
+    "rename page": (commands.rename_page(7, "Encore"), 'rename page 7 "Encore"', False),
+    "go to a page": (commands.go_page(7), "page 7", True),
+    "place a playback": (
+        commands.place_playback(7, 2, 9),
+        "page 7 slot 2 playback 9",
+        False,
+    ),
+    "clear a slot": (commands.clear_slot(7, 2), "page 7 slot 2 clear", False),
+    "playback add": (
+        commands.playback_add(30, 9, 7, 3, 'Say "hi"'),
+        r'playback add 30 cuelist 9 at 7.3 "Say \"hi\""',
+        False,
+    ),
+    "playback add, no name": (
+        commands.playback_add(31, 9, 8, 1),
+        "playback add 31 cuelist 9 at 8.1",
+        False,
+    ),
+    "delete playback": (commands.delete_playback(30), "delete playback 30 cascade", False),
+    "delete page": (commands.delete_page(7), "delete page 7 cascade", False),
     "cue effect number": (
         commands.cue_effect(9, "4", "rainbow", "size", "0.5"),
         "cue 9/4 effect rainbow size 0.5",
@@ -418,7 +440,7 @@ PERFORMANCE_WORDS = {
     "blackout", "tap", "bpm", "page", "output",
 }  # fmt: skip
 """The first words of busk's performance lines (``LiveShow.execute``);
-``master add`` and ``page add`` are edits."""
+``master add``, ``page add`` and ``page P slot S …`` are edits."""
 
 
 @pytest.fixture
@@ -518,8 +540,9 @@ def test_each_builder_is_marked_as_busk_runs_it(name: str) -> None:
     line, text, performance = BUILDERS[name]
     assert line.text == text
     assert line.performance is performance
-    first = line.text.split()[0]
-    assert (first in PERFORMANCE_WORDS) is performance
+    words = line.text.split()
+    edit = words[0] == "page" and (words[1] == "add" or "slot" in words)
+    assert (words[0] in PERFORMANCE_WORDS and not edit) is performance
 
 
 @pytest.mark.parametrize(

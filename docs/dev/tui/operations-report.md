@@ -51,7 +51,7 @@ do can already be typed in the TUI. The tables below show how much the screens h
 | Effects in cues | control (F5) | control (via `record cue`) | control | control (F5's EFFECT panel) |
 | Effect templates | control (F5) | control (F5's `[+ template…]`) | control (F5's TEMPLATE panel) | control (F5's TEMPLATE panel) |
 | Playbacks, operating | control (F1) | n/a | n/a | control: the fader and the playback's own buttons |
-| Playbacks, configuration | control (F1's PLAYBACK panel) | prompt | prompt | control (F1's PLAYBACK panel) |
+| Playbacks, configuration | control (F1's PLAYBACK panel) | control (F1's edit mode) | control (F1's PLAYBACK panel) | control (F1's PLAYBACK panel) |
 
 In short:
 
@@ -59,9 +59,8 @@ In short:
 - **The TUI is a performance and programming frontend, and it edits the rig, the presets, the
   cue lists and the effects, but not the rest of a show yet.** F3, F8, F6, F4 and F5 show, add,
   delete and update fixtures, universes, routes, presets, cues, cue lists, effects and effect
-  templates from controls alone; a cue's timing, trigger and name are pre-fills. F1's PLAYBACK panel edits a
-  playback's configuration; adding and deleting one, and placing it on a page, is typed at the
-  prompt.
+  templates from controls alone; a cue's timing, trigger and name are pre-fills. F1's edit mode adds,
+  places, edits and deletes playbacks, and adds, renames and deletes pages.
 - **busk has the lines the TUI needs.** Deleting several presets, cues or lists at once is all it
   still lacks (see [What busk is missing](#what-busk-is-missing)).
 
@@ -177,9 +176,10 @@ recorded into cues, and the templates both are made from.
 | Flash | `flash N on\|off` | yes | control: F1's `flash` and `swop` buttons, held |
 | Release | `release N [<s>]`, `release all` | yes | control: F1's `release` button; F5 state click (cue effects); F7 `release all` |
 | The playback's own buttons | `button N B on\|off`, `toggle N` (GAP-04) | yes | control: F1, in all three layouts: one per entry of `buttons`, labelled by function. Layout C has room for the first. A button that would do nothing is grey |
-| Add | `playback add N cuelist L [at [P.]S] ["name"]` (GAP-34); `record slot [P.]S` makes one with a new cue list and its cue 1 | yes | control: F1's `[record]` on an empty slot, `record slot P.S`; prompt: `playback add` |
-| Delete | `delete playback N cascade` (GAP-36), `delete playback N` | yes: its cue list stays. A plain `delete` is refused in one line while a page slot holds it | prompt |
-| Place on a page | `page P slot S playback N`, `page P slot S clear`, `page add N` | yes | prompt |
+| Add | `playback add N cuelist L [at [P.]S] ["name"]` (GAP-34); `record slot [P.]S` makes one with a new cue list and its cue 1 | yes | control: F1's edit mode, `[new playback…]` on an empty slot, a list picker and a form; F1's `[record]` on an empty slot, `record slot P.S` |
+| Delete | `delete playback N cascade` (GAP-36), `delete playback N` | yes: its cue list stays. A plain `delete` is refused in one line while a page slot holds it | control: F1's PLAYBACK panel, `[delete]`, after busk's question |
+| Place on a page | `page P slot S playback N`, `page P slot S clear` | yes | control: F1's edit mode, `[place…]` (a picker) and `[clear]` on the slot in hand |
+| Pages | `page N`, `page add N ["name"]`, `rename page N "name"`, `delete page N cascade` (GAP-36) | yes: its playbacks stay. The engine moves off a deleted current page | control: F1's edit mode, a tab per page, `[+ page…]`, `[rename…]` and `[delete]`. `page N number M` is typed at the prompt |
 | Buttons, fader function | `playback N buttons ["go", "flash", "release"]`, `playback N fader rate` | yes: `help` and `?` name them (GAP-35) | control: F1's PLAYBACK panel, `[buttons…]` and a chip per function |
 | Band, exclusivity, flash, LTP, release time, colour | `playback N priority 60`, `… exclusivity wash`, `… flash.level 0.5`, `… ltpFaderMode followFader`, `… releaseTime 2`, `… uiColor "#ff8800"`, `<optional> none` | yes: as above | control: F1's PLAYBACK panel, a chip or a dialog per setting, and `[none]` |
 | Rename, renumber | `rename playback N "…"`, `playback N number M` | yes | control: F1's PLAYBACK panel |
@@ -210,9 +210,10 @@ Candidates for [engine-gaps.md](engine-gaps.md), if the TUI is to cover these:
 
 ## What the TUI is missing
 
-busk has the line for all of these, but no screen offers it:
-
-- **Playbacks**: no screen deletes one, makes one on a list that exists, or places one on a page.
+The last item here, playbacks, is closed: F1's edit mode adds, places and deletes them. The rows
+above that still say **prompt** are editing a route (Phase 13 of
+[the pending plan](../../plans/tui-pending-plan.md)) and renumbering a cue or a list and the options
+of a new effect (its §7), and renumbering a page.
 
 ## Side findings
 

@@ -10,6 +10,11 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- F1's edit mode adds, places and deletes playbacks, and manages pages, from controls. A click on a
+  slot takes it in hand: `[new playback…]` on an empty one asks for a cue list, a number and a name;
+  `[place…]` puts any playback on it from a picker that says where each one sits; `[clear]` empties
+  it. The PLAYBACK panel has `[delete]`. Over the grid are a tab per page, `[+ page…]`, and the shown
+  page's `[rename…]` and `[delete]`. Each is one line, and the deletes ask busk's question.
 - F1 edits a playback from controls. `[edit]` puts a grid of the page's slots and a PLAYBACK panel in
   place of the layout: its name and number, cue list, buttons, fader, band, exclusivity, flash level,
   LTP and boost, LTP mode and threshold, auto start and release, goto cue, swop protection, release

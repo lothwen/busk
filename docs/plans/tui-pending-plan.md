@@ -759,12 +759,66 @@ Needs GAP-34, GAP-36 and Phase 10.
 
 1. **On an empty slot:** `[new playback…]`, a list picker and a name, `playback add N cuelist L at
    P.S "name"`.
+
+   **Done** (2026-11-10). As planned, in `PlaybackEditor` of `src/busk_tui/widgets/playback_panel.py`:
+   the picker, then a form of a number and a name, then one line. The picker is `PickDialog`, which
+   `CueListDialog` and the new `PlaybackDialog` share. Which the user may veto:
+   - **The grid has one empty tile past the last slot**, which the plan did not name. `page add` makes
+     a page with no slots, and a slot exists only once something was put there, so a new page would
+     have no tile at all. A slot further out is typed at the prompt.
+   - **The name starts as the list's**, so Enter names the playback after what it runs. An empty name
+     leaves it to busk (`Playback 30`). The number starts at the next free one.
+   - The new playback is selected once busk has it, as `[number…]` does.
+   - `[new playback…]` is grey on a show with no cue list.
 2. **`[delete]`:** `delete playback N cascade`, busk's question.
+
+   **Done** (2026-11-10). As planned: `[delete]` beside `[rename…]` and `[number…]` at the top of the
+   PLAYBACK panel. busk's question names the pages it leaves and says when it runs. The selection then
+   moves as it does when a playback leaves the page: to the one in its slot, else the first.
 3. **Slots and pages:** place a playback on a slot (`page P slot S playback N`), `[clear]`, page
    tabs, `[+ page…]` (`page add N`), rename, and `delete page N cascade`.
 
+   **Done** (2026-11-10). As planned. Over the grid, a tab per page and `[+ page…]`, then a row for the
+   page shown, `page 1 Main [rename…] [delete]`, as F4's list has. Which the user may veto:
+   - **The slot in hand**, which the plan did not name: the row under the grid is about the tile last
+     clicked, `slot 2 · P9 Song [place…] [clear]` or `slot 3 · empty [new playback…] [place…]`. A
+     playback can sit on two slots of one page, so the selection cannot say which. ← → take the
+     selected playback's slot in hand. **Only the selection moving takes the hand elsewhere**, not a
+     new show: the selection reaches the editor after the engine's next frame, and the first build
+     cleared slot 9 when slot 14 was meant (the test on the real engine found it). **An empty slot
+     stays in hand** until another click, so a second click on `[clear]` finds no slot to clear.
+   - **`[place…]` replaces what a full slot holds, and asks nothing**: §1 does not name it, and `undo`
+     brings it back. What the slot held stays in the show. Its picker starts at what the slot holds,
+     else the selected playback, and each row says where that playback sits (`9 Song · 1.9 2.9`).
+     The playback placed is selected.
+   - **A tab goes to the page** (`page 2`), as PgUp does, so the surfaces follow too. There is no
+     looking at a page without going to it.
+   - **`[+ page…]` stays on the page it was on.** Going to the new page would move what the surfaces
+     play; its tab is one click.
+   - No `[number…]` for a page, which the plan did not name: `page N number M` is typed.
+   - A tab cuts a name past 16 characters.
+   - With no pages, the grid has the playbacks by number, as F1 does, and only `[+ page…]` is over it.
+   - Below 100 columns a click on a tile scrolls to the slot's row, with the panel under it, not to
+     the panel's top.
+
 Verify: a playback on two pages; the last page deleted, and F1 with no pages; bindings by slot
 unaffected; the page shown when it is deleted.
+
+**Phase 11 checks** (2026-11-10). The whole suite: 6,062 passed and 1 skipped, in 6:27 with `uv run
+pytest -n 6`. `ruff check`, `ruff format --check` and `mypy src` clean. No change to `src/busk/` or
+the engine's tests. The two TUI test files the phase changed most, 454 tests, and the new test on the
+real engine with Phase 10's beside it pass on Textual 8.2.0. The perf gate: 7 passed, no overruns, F1
+B at +0.175 core, A at +0.186 and C at +0.199. 61 mutations of the new code: 58 caught at once; of the
+three that survived, one was code that could do nothing, now gone, and two needed a tighter test,
+which is in. The new test in `tests/tui/test_tui_e2e.py` runs on the real engine: a new playback on
+page 2, P9 placed on both pages and cleared from one, a playback deleted with busk's question and
+every binding left, slot 7's by slot among them, a new page, renamed, the page shown deleted and the
+engine on the next, the last page deleted with F1 by number, and `undo`. A real `busk-tui --state-dir
+…` under `busk run` on the club show, with real mouse clicks in a pty, on the final code: at 150
+columns in layout B, the same walk, with `go 21` before its `[delete]`, whose question said it runs;
+at 99 columns in layout A, a tile's row and panel scrolled into sight, `[place…]`, the wheel and a
+tab. No error in the log. Docs: `docs/tui/guide.md` with its diagram, the report's Summary, rows, "In
+short" and "What the TUI is missing", and `CHANGELOG.md`.
 
 ### Phase 12: Groups and park
 
@@ -847,6 +901,11 @@ Left out because the five places do not name them. Say if any should join a phas
 - `playback N <prop> <value>` replies with a path too, and F1's PLAYBACK panel now puts that in the
   log. `go` on a playback whose `gotoCue` its list lacks, after a change of list, was not checked.
   Found on 2026-11-09.
+- `rename page N "…"` replies with a path too (`set pages[2].name to "Finale"`), and F1's page
+  `[rename…]` now puts that in the log. Found on 2026-11-10.
+- With `--faders` below a page's slot count, ← → and the selection that follows a change of slots
+  use only the first `faders` slots, in edit mode too, where the grid has them all: a change of those
+  slots moves a selection past them to the first. Found on 2026-11-10.
 - `commands.effect_stop`, `effect_run` and `effect_remove` do not quote an id, so those controls
   fail on an effect id of two words, which only `id "my fx"` makes. `_rate_text` in the bridge does
   not escape a quote in a master's name. Found on 2026-11-09.

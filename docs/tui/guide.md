@@ -212,23 +212,24 @@ Below 100 columns the right column goes under the playbacks.
 
 `[edit]`, at the right of the header, turns edit mode on (`[edit ●]`), in any layout. A grid of the
 page's slots and the PLAYBACK panel take the layout's place until `[done]`, at the end of the panel,
-or `[edit ●]` again. Nothing on the grid performs: a click selects a playback.
+or `[edit ●]` again. Nothing on the grid performs: a click selects a playback, and takes its slot
+in hand.
 
 ```
  page 1 Main · slots 1–13 · sel none                                       layout   A console    B stack    C stage   [edit ●]
 
  ┌─ SLOTS · page 1 Main ──────────────────────────────────────────────────────┐ ┌─ PLAYBACK · P9 Song ─────────────────────────────┐
- │ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐    │ │ [rename…] [number…]                              │
- │ │ 1          P1 │ │ 2          P2 │ │ 3          P3 │ │ 4          P4 │    │ │                                                  │
- │ │ Warm          │ │ Cool          │ │ Blue          │ │ Red           │    │ │ cue list     9 Song            [list…]           │
- │ └───────────────┘ └───────────────┘ └───────────────┘ └───────────────┘    │ │ buttons      go back release   [buttons…]        │
- │ …                                                                          │ │              goto                                │
- └────────────────────────────────────────────────────────────────────────────┘ │ fader        [master] [crossfade] [rate] [size]  │
-                                                                                │              [temp] [none]                       │
-                                                                                │ band         50                [band…]           │
-                                                                                │ exclusive    base              [key…] [none]     │
-                                                                                │ flash level  100%              [level…]          │
-                                                                                │ flash LTP    [on] [off]                          │
+ │ [1 Main] [2 Washes] [+ page…]                                              │ │ [rename…] [number…] [delete]                     │
+ │ page 1 Main [rename…] [delete]                                             │ │                                                  │
+ │                                                                            │ │ cue list     9 Song            [list…]           │
+ │ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐    │ │ buttons      go back release   [buttons…]        │
+ │ │ 1          P1 │ │ 2          P2 │ │ 3          P3 │ │ 4          P4 │    │ │              goto                                │
+ │ │ Warm          │ │ Cool          │ │ Blue          │ │ Red           │    │ │ fader        [master] [crossfade] [rate] [size]  │
+ │ └───────────────┘ └───────────────┘ └───────────────┘ └───────────────┘    │ │              [temp] [none]                       │
+ │ …                                                                          │ │ band         50                [band…]           │
+ │                                                                            │ │ exclusive    base              [key…] [none]     │
+ │ slot 9 · P9 Song [place…] [clear]                                          │ │ flash level  100%              [level…]          │
+ └────────────────────────────────────────────────────────────────────────────┘ │ flash LTP    [on] [off]                          │
                                                                                 │ flash boost  none              [boost…]          │
                                                                                 │ LTP mode     [followFader] [threshold]           │
                                                                                 │              [ignoreFader]                       │
@@ -244,8 +245,26 @@ or `[edit ●]` again. Nothing on the grid performs: a click selects a playback.
                                                                                 └──────────────────────────────────────────────────┘
 ```
 
-**The grid** has a tile for every slot of the page F1 is on, past `--faders` too; a show with no
-pages has its playbacks by number. PgUp and PgDn change the page, as they do outside edit mode.
+**The grid** has a tile for every slot of the page F1 is on, past `--faders` too, and one empty tile
+past the last, since a page has only the slots that were ever filled, and a new one has none. A show
+with no pages has its playbacks by number. PgUp and PgDn change the page, as they do outside edit
+mode.
+
+**The pages** are the tabs over the grid. A click goes to that page (`page 2`), as PgUp does, for the
+surfaces too. `[+ page…]` adds one (`page add 3 "Encore"`), and F1 stays on the page it was on. The
+row under the tabs is the page shown: `[rename…]` (`rename page 2 "Washes"`) and `[delete]` (`delete
+page 2 cascade`, after busk's question). A page's playbacks stay when it goes, and the bindings that
+go to it by number go with it. Delete the page shown and the engine moves to the next one, else the
+last. With no pages left, F1 has the playbacks by number, and `[+ page…]` is the way back.
+
+**The slot in hand** is the last tile clicked, drawn in magenta, and the row under the grid is about
+it. ← → take the selected playback's slot in hand. An empty slot stays in hand until another click.
+
+| Slot | Control | Line |
+|---|---|---|
+| empty | `[new playback…]`: a cue list, then a number and a name, which starts as the list's | `playback add 30 cuelist 9 at 2.7 "Encore"`, one undo step. The new one is selected. Grey on a show with no cue list |
+| empty or full | `[place…]`: a picker of the playbacks, each with the slots it sits on | `page 2 slot 7 playback 9`, over what the slot held, which stays in the show. A playback can sit on any number of slots |
+| full | `[clear]` | `page 2 slot 7 clear`. The playback stays in the show |
 
 **The panel** shows the selected playback: click a tile, or use ← → on an empty prompt. Each
 setting is one control and one line, so one undo step. A value left as it was sends nothing.
@@ -253,6 +272,7 @@ setting is one control and one line, so one undo step. A value left as it was se
 | Row | Control | Line |
 |---|---|---|
 | `[rename…]`, `[number…]` | a dialog each | `rename playback 9 "Song"`, `playback 9 number 30`. The selection follows the number |
+| `[delete]` | busk's question, which names the pages it leaves and says if it runs | `delete playback 9 cascade`. Its slots go empty; its cue list, and the bindings by slot, stay |
 | cue list | `[list…]`, a picker | `playback 9 cuelist 11`. Grey while the playback runs, and the panel says why: release it first |
 | buttons | `[buttons…]`: the functions as words, in order, a space between | `playback 9 buttons ["go", "flash"]`. No words: no buttons. `none` keeps a place |
 | fader | a chip each | `playback 9 fader size` |
@@ -274,8 +294,9 @@ list lacks: busk warns in the log, and `[goto…]` sets another.
 
 The F-keys, the prompt and `undo` work as anywhere, and so do Space, `[ ]` and the other keys of an
 empty prompt: they act on the selected playback as they do on every page. The pane cursor stops on
-each tile (Enter selects it), the panel's controls, `[done]`, the layouts and `[edit]`. Below 100
-columns the panel goes under the grid, and a click on a tile scrolls to it.
+the tabs, the page's controls, each tile (Enter takes it in hand and selects its playback), the
+slot's controls, the panel's controls, `[done]`, the layouts and `[edit]`. Below 100 columns the
+panel goes under the grid, and a click on a tile scrolls to the slot's row and the panel under it.
 
 ### Layout A: console
 

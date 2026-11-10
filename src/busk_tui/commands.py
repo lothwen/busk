@@ -133,6 +133,11 @@ def page(step: int) -> Line:
     return Line("page next" if step > 0 else "page prev", performance=True)
 
 
+def go_page(number: int) -> Line:
+    """Go to one page: ``page 2``."""
+    return Line(f"page {number}", performance=True)
+
+
 def goto(playback: int, cue: str) -> Line:
     """Go to one cue of the list the playback runs: ``goto 9 3``."""
     return Line(f"goto {playback} {cue}", performance=True)
@@ -598,6 +603,48 @@ def playback_setting(playback: int, prop: str, value: str) -> Line:
 def playback_buttons(playback: int, functions: Sequence[str]) -> Line:
     """All of a playback's buttons, in order: ``playback 9 buttons ["go", "flash"]``."""
     return Line(f"playback {playback} buttons {json.dumps(list(functions))}")
+
+
+def playback_add(
+    playback: int, cue_list: int, page: int, slot: int, name: str | None = None
+) -> Line:
+    """A new playback on a list that exists, on a slot, in one undo step:
+    ``playback add 30 cuelist 9 at 2.7 "Encore"``; without a name, busk names
+    it (``Playback 30``)."""
+    named = "" if name is None else f" {quoted(name)}"
+    return Line(f"playback add {playback} cuelist {cue_list} at {page}.{slot}{named}")
+
+
+def delete_playback(playback: int) -> Line:
+    """``delete playback 9 cascade``: busk asks, naming the pages it leaves."""
+    return Line(f"delete playback {playback} cascade")
+
+
+# ------------------------------------------------------------------- pages
+
+
+def page_add(page: int, name: str | None = None) -> Line:
+    """``page add 3 "Encore"``; without a name, busk names it (``Page 3``)."""
+    return Line(f"page add {page}" + ("" if name is None else f" {quoted(name)}"))
+
+
+def rename_page(page: int, name: str) -> Line:
+    return Line(f"rename page {page} {quoted(name)}")
+
+
+def delete_page(page: int) -> Line:
+    """``delete page 2 cascade``: busk asks, and its playbacks stay."""
+    return Line(f"delete page {page} cascade")
+
+
+def place_playback(page: int, slot: int, playback: int) -> Line:
+    """``page 2 slot 7 playback 9``, over whatever the slot holds."""
+    return Line(f"page {page} slot {slot} playback {playback}")
+
+
+def clear_slot(page: int, slot: int) -> Line:
+    """``page 2 slot 7 clear``: the playback stays in the show."""
+    return Line(f"page {page} slot {slot} clear")
 
 
 # ---------------------------------------------------------------- pre-fills

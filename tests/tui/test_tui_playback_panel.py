@@ -10,7 +10,7 @@ from typing import Any, get_type_hints
 import pytest
 from rich.text import Text
 from textual.pilot import Pilot
-from textual.widgets import Input, OptionList
+from textual.widgets import Input, OptionList, Static
 from tui_fakes import (
     FakeBridge,
     Reply,
@@ -24,7 +24,9 @@ from tui_fakes import (
 )
 
 from busk.model.playback import Playback, PlaybackFlash
+from busk_tui import commands
 from busk_tui.model import (
+    CommandDone,
     CueInfo,
     CueListInfo,
     LiveChanged,
@@ -41,12 +43,14 @@ from busk_tui.pages.busk_stack import StackLayout
 from busk_tui.pages.busk_stage import StageLayout
 from busk_tui.shell import BuskApp
 from busk_tui.widgets.controls import ActionButton, ButtonStrip
-from busk_tui.widgets.dialogs import TextDialog
+from busk_tui.widgets.dialogs import ConfirmDialog, FormDialog, TextDialog
 from busk_tui.widgets.log import LogView
 from busk_tui.widgets.playback_panel import (
     TOGGLES,
     TYPED,
     CueListDialog,
+    PickDialog,
+    PlaybackDialog,
     PlaybackEditor,
     PlaybackPanel,
     SlotTile,
@@ -56,9 +60,13 @@ from busk_tui.widgets.playback_panel import (
     check_percent,
     check_whole,
     colour_text,
+    in_hand,
     list_text,
     percent_value,
+    playback_text,
     read_signed,
+    slots_text,
+    tab_word,
     whole_value,
 )
 
@@ -155,6 +163,15 @@ def tile_of(app: BuskApp, number: int) -> SlotTile:
 
 def lines(bridge: FakeBridge) -> list[str]:
     return [sent.line for sent in bridge.sent]
+
+
+def label_of(widget: Static) -> str:
+    content = widget.content
+    return content.plain if isinstance(content, Text) else str(content)
+
+
+def row_of(strip: ButtonStrip) -> list[str]:
+    return [button.label.plain.strip("[]") for button in strip.buttons]
 
 
 def value_of(panel: PlaybackPanel, name: str) -> str:
@@ -370,17 +387,23 @@ def test_a_click_on_a_tile_selects_and_runs_nothing() -> None:
     drive(app, body, size=SIZE)
 
 
-def test_a_click_on_an_empty_slot_does_nothing() -> None:
+def test_a_click_on_an_empty_slot_takes_it_in_hand_and_selects_nothing() -> None:
     bridge = FakeBridge()
     app = make_app(bridge)
 
     async def body(pilot: Pilot[int]) -> None:
         started(bridge)
         await open_editor(pilot, app, 9)
-        await pilot.click(editor_of(app).tiles[2])
+        editor = editor_of(app)
+        await pilot.click(editor.tiles[2])
         await settle(pilot, app)
         assert app.view.playback == 9
         assert bridge.sent == []
+        assert editor.slot == 3
+        assert editor.tiles[2].has_class("-chosen")
+        assert not tile_of(app, 9).has_class("-chosen")
+        assert label_of(editor.slot_label) == "slot 3 · empty"
+        assert row_of(editor.slot_edits) == ["new playback…", "place…"]
 
     drive(app, body, size=SIZE)
 
@@ -395,7 +418,7 @@ def test_another_page_shows_its_slots_and_the_panel_follows_the_selection() -> N
         assert panel.chosen() == PLAIN
         bridge.events.append(LiveChanged(live(seq=2, page=PageView(2, "Washes"))))
         await settle(pilot, app)
-        assert [t.info and t.info.number for t in editor_of(app).tiles] == [4, 9]
+        assert [t.info and t.info.number for t in editor_of(app).tiles] == [4, 9, None]
         assert app.view.playback == 4  # P1 is not on it: the playback in its slot
         chosen = panel.chosen()
         assert chosen is not None
@@ -1049,8 +1072,10 @@ def test_the_pane_cursor_reaches_the_tiles_and_the_panels_controls() -> None:
         started(bridge)
         await open_editor(pilot, app, 9)
         labels = [item.line or item.label for item in app.current_page.items()]
-        assert labels[:3] == ["P1 Warm", "P9 Song", "P3 Chase"]
-        assert labels[3:5] == ["rename…", "number…"]
+        assert labels[:4] == ["page 2", "[+ page…]", "[rename…]", "delete page 1 cascade"]
+        assert labels[4:9] == ["P1 Warm", "P9 Song", "slot 3", "P3 Chase", "slot 5"]
+        assert labels[9:11] == ["[place…]", "page 1 slot 2 clear"]
+        assert labels[11:14] == ["rename…", "number…", "delete"]
         assert "cue list list…" in labels
         assert "buttons buttons…" in labels
         assert "playback 9 fader size" in labels
@@ -1077,7 +1102,8 @@ def test_the_pane_cursor_chooses_a_tile_runs_a_chip_and_leaves() -> None:
     async def body(pilot: Pilot[int]) -> None:
         started(bridge)
         await open_editor(pilot, app)
-        await pilot.press("tab", "down", "enter")
+        tile = next(i for i, item in enumerate(app.current_page.items()) if item.label == "P9 Song")
+        await pilot.press("tab", *["down"] * tile, "enter")
         await settle(pilot, app)
         assert app.view.playback == 9
         assert app.cursor.current is not None
@@ -1101,7 +1127,7 @@ def test_the_pane_cursor_chooses_a_tile_runs_a_chip_and_leaves() -> None:
     drive(app, body, size=SIZE)
 
 
-def test_the_pane_cursor_has_no_stop_on_an_empty_slot_or_a_grey_button() -> None:
+def test_the_pane_cursor_has_no_stop_on_a_grey_button() -> None:
     bridge = FakeBridge()
     app = make_app(bridge)
     running = (playback(1, "Warm"), playback(9, "Song", state="active", cue="1"))
@@ -1141,7 +1167,7 @@ def test_below_100_columns_the_panel_goes_under_the_slots_and_a_click_reveals_it
     app = make_app(bridge)
 
     async def body(pilot: Pilot[int]) -> None:
-        started(bridge)
+        started(bridge, club(pages=(PageInfo(1, "Main", (1, 9, 3, 4) * 5),)))  # room to scroll
         panel = await open_editor(pilot, app)
         slots = editor_of(app).slots
         assert panel.region.y >= slots.region.bottom
@@ -1151,8 +1177,11 @@ def test_below_100_columns_the_panel_goes_under_the_slots_and_a_click_reveals_it
         await pilot.pause()
         page = app.query_one(BuskPage)
         assert page.scroll_offset.y > 0
+        row = editor_of(app).slot_row
+        assert page.region.y <= row.region.y < page.region.y + 4  # at the top, in sight
+        assert panel.region.y < page.region.bottom  # and the panel under it
 
-    drive(app, body, size=(99, 40))
+    drive(app, body, size=(99, 30))  # short enough that the panel alone would fill the view
 
 
 def test_at_100_columns_the_panel_is_beside_the_slots() -> None:
@@ -1230,3 +1259,755 @@ def test_the_small_checks() -> None:
     assert check_buttons("") is None
     assert check_buttons("go none") is None
     assert check_buttons("go NONE") == "each one of the words above"
+
+
+# -------------------------------------------------------- pages and slots
+
+
+async def click_tile(pilot: Pilot[int], app: BuskApp, slot: int) -> None:
+    await pilot.click(editor_of(app).tiles[slot - 1])
+    await settle(pilot, app)
+
+
+async def tap(pilot: Pilot[int], app: BuskApp, strip: ButtonStrip, label: str) -> None:
+    await click_chip(pilot, strip, label)
+    await settle(pilot, app)
+
+
+async def pick(pilot: Pilot[int], app: BuskApp, number: int) -> None:
+    """Choose the row of the open picker with ``number``."""
+    dialog = app.screen
+    assert isinstance(dialog, PickDialog)
+    dialog.options.highlighted = dialog.numbers.index(number)
+    await pilot.press("enter")
+    await settle(pilot, app)
+
+
+async def form(pilot: Pilot[int], app: BuskApp, *values: str) -> None:
+    """Fill the open form's fields, and press Enter."""
+    dialog = app.screen
+    assert isinstance(dialog, FormDialog)
+    for field, value in zip(dialog.inputs, values, strict=False):
+        field.value = value
+    await pilot.press("enter")
+    await settle(pilot, app)
+
+
+def ask_everything(bridge: FakeBridge, question: str = "Delete it?") -> None:
+    bridge.confirmation = lambda line: question  # type: ignore[method-assign]
+
+
+@pytest.mark.parametrize(
+    ("slots", "tiles"),
+    [
+        ((), [None]),
+        ((1,), [1, None]),
+        ((1, None), [1, None]),
+        ((None, 3), [None, 3, None]),
+    ],
+)
+def test_the_grid_ends_in_an_empty_tile(
+    slots: tuple[int | None, ...], tiles: list[int | None]
+) -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge, club(pages=(PageInfo(1, "Main", slots),)))
+        await open_editor(pilot, app)
+        assert [t.info and t.info.number for t in editor_of(app).tiles] == tiles
+        assert app.query_one(BuskHeader).left.plain.startswith(
+            f"page 1 Main · slots {f'1–{len(slots)}' if slots else 'none'}"
+        )
+
+    drive(app, body, size=SIZE)
+
+
+@pytest.mark.parametrize(
+    ("slot", "slots", "selected", "moved", "hand"),
+    [
+        (None, (1, 9, None), 9, False, 2),  # the selected playback's
+        (None, (1, 9, None), 5, False, None),  # it is not on the page
+        (3, (1, 9, None), 9, True, 3),  # an empty slot stays
+        (1, (1, 9, None), 9, True, 2),  # the selection moved off what it holds
+        (1, (1, 9, None), 9, False, 1),  # it did not: a new show, or a click on its way
+        (2, (9, 9), 9, True, 2),  # the second of two
+        (1, (9, 9), 9, True, 1),
+        (4, (1, 9), 9, False, 2),  # one the grid no longer has
+        (4, (1, 9), 5, False, None),
+    ],
+)
+def test_the_slot_in_hand(
+    slot: int | None,
+    slots: tuple[int | None, ...],
+    selected: int,
+    moved: bool,
+    hand: int | None,
+) -> None:
+    assert in_hand(slot, slots, selected, moved) == hand
+
+
+def test_the_row_says_what_the_slot_in_hand_holds_and_follows_the_selection() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await open_editor(pilot, app)
+        editor = editor_of(app)
+        assert label_of(editor.slot_label) == "slot 1 · P1 Warm"  # the selected playback's
+        assert row_of(editor.slot_edits) == ["place…", "clear"]
+        assert tile_of(app, 1).has_class("-chosen")
+        await pilot.press("right")
+        await settle(pilot, app)
+        assert label_of(editor.slot_label) == "slot 2 · P9 Song"
+        assert tile_of(app, 9).has_class("-chosen")
+        assert not tile_of(app, 1).has_class("-chosen")
+
+    drive(app, body, size=SIZE)
+
+
+def test_nothing_is_in_hand_when_the_selection_is_not_on_the_page() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge, club(pages=(PageInfo(1, "Main", (None, 9)),)))
+        await settle(pilot, app)
+        app.view.playback = 1
+        await open_editor(pilot, app)
+        editor = editor_of(app)
+        assert editor.slot is None
+        assert label_of(editor.slot_label) == "click a slot"
+        assert editor.slot_edits.buttons == ()
+
+    drive(app, body, size=SIZE)
+
+
+def test_new_playback_is_a_list_then_a_form_then_one_line_and_selects_it() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await open_editor(pilot, app, 9)
+        editor = editor_of(app)
+        await click_tile(pilot, app, 3)
+        await tap(pilot, app, editor.slot_edits, "new playback…")
+        dialog = app.screen
+        assert isinstance(dialog, CueListDialog)
+        assert dialog.title_text == "NEW PLAYBACK · 1.3"
+        assert dialog.options.highlighted == 0  # no list to start at
+        await pick(pilot, app, 2)
+        form_screen = app.screen
+        assert isinstance(form_screen, FormDialog)
+        assert form_screen.title_text == "NEW PLAYBACK · 1.3"
+        assert [field.value for field in form_screen.inputs] == ["10", "Song"]  # the list's name
+        assert form_screen.note.startswith("taken: 1, 3–4, 9\n")
+        await form(pilot, app, "30", "Encore")
+        assert lines(bridge) == ['playback add 30 cuelist 2 at 1.3 "Encore"']
+        await settle(pilot, app)
+        assert app.view.playback == 30
+
+    drive(app, body, size=SIZE)
+
+
+def test_a_new_playback_with_no_name_leaves_it_to_busk() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await open_editor(pilot, app, 9)
+        await click_tile(pilot, app, 5)  # the empty tile past the last slot
+        await tap(pilot, app, editor_of(app).slot_edits, "new playback…")
+        await pick(pilot, app, 3)
+        await form(pilot, app, "12", "  ")
+        assert lines(bridge) == ["playback add 12 cuelist 3 at 1.5"]
+
+    drive(app, body, size=SIZE)
+
+
+def test_escape_at_either_step_of_a_new_playback_sends_nothing() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await open_editor(pilot, app, 9)
+        editor = editor_of(app)
+        await click_tile(pilot, app, 3)
+        await tap(pilot, app, editor.slot_edits, "new playback…")
+        await pilot.press("escape")
+        await settle(pilot, app)
+        assert not isinstance(app.screen, PickDialog)
+        await tap(pilot, app, editor.slot_edits, "new playback…")
+        await pick(pilot, app, 1)
+        assert isinstance(app.screen, FormDialog)
+        await pilot.press("escape")
+        await settle(pilot, app)
+        assert not isinstance(app.screen, FormDialog)
+        assert bridge.sent == []
+        assert app.view.playback == 9
+
+    drive(app, body, size=SIZE)
+
+
+def test_a_taken_number_stays_in_the_new_playback_form() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await open_editor(pilot, app, 9)
+        await click_tile(pilot, app, 3)
+        await tap(pilot, app, editor_of(app).slot_edits, "new playback…")
+        await pick(pilot, app, 1)
+        await form(pilot, app, "9", "Other")
+        assert isinstance(app.screen, FormDialog)
+        assert bridge.sent == []
+
+    drive(app, body, size=SIZE)
+
+
+def test_a_new_playback_refused_leaves_the_selection() -> None:
+    bridge = FakeBridge()
+    line = 'playback add 30 cuelist 1 at 1.3 "Warm"'
+    bridge.replies[line] = Reply(ok=False, text="slot 3 is in use on page 1")
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await open_editor(pilot, app, 9)
+        await click_tile(pilot, app, 3)
+        await tap(pilot, app, editor_of(app).slot_edits, "new playback…")
+        await pick(pilot, app, 1)
+        await form(pilot, app, "30")
+        assert lines(bridge) == [line]
+        await settle(pilot, app)
+        assert app.view.playback == 9
+
+    drive(app, body, size=SIZE)
+
+
+def test_a_show_with_no_cue_lists_has_no_new_playback() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge, club(cueLists=()))
+        await open_editor(pilot, app, 9)
+        editor = editor_of(app)
+        await click_tile(pilot, app, 3)
+        new, place = editor.slot_edits.buttons
+        assert new.note
+        assert not place.note
+        await tap(pilot, app, editor.slot_edits, "new playback…")
+        assert not isinstance(app.screen, PickDialog)
+        assert "new playback…" not in [item.label.strip("[]") for item in app.current_page.items()]
+
+    drive(app, body, size=SIZE)
+
+
+def test_a_show_with_no_playbacks_has_nothing_to_place() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge, club(playbacks=(), pages=(PageInfo(1, "Main", ()),)), playbacks=())
+        await open_editor(pilot, app)
+        editor = editor_of(app)
+        await click_tile(pilot, app, 1)
+        new, place = editor.slot_edits.buttons
+        assert not new.note
+        assert place.note
+
+    drive(app, body, size=SIZE)
+
+
+def test_place_lists_every_playback_with_where_it_sits_and_is_one_line() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await open_editor(pilot, app, 9)
+        await tap(pilot, app, editor_of(app).slot_edits, "place…")
+        dialog = app.screen
+        assert isinstance(dialog, PlaybackDialog)
+        assert dialog.title_text == "PLACE · 1.2"
+        assert dialog.numbers == [1, 3, 4, 9]
+        assert dialog.options.highlighted == 3  # what the slot holds
+        await pick(pilot, app, 4)
+        assert lines(bridge) == ["page 1 slot 2 playback 4"]
+        await settle(pilot, app)
+        assert app.view.playback == 4
+
+    drive(app, body, size=SIZE)
+
+
+def test_place_on_an_empty_slot_starts_at_the_selected_playback() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await open_editor(pilot, app, 9)
+        await click_tile(pilot, app, 3)
+        await tap(pilot, app, editor_of(app).slot_edits, "place…")
+        dialog = app.screen
+        assert isinstance(dialog, PlaybackDialog)
+        assert dialog.numbers[dialog.options.highlighted or 0] == 9
+        await pilot.press("enter")
+        await settle(pilot, app)
+        assert lines(bridge) == ["page 1 slot 3 playback 9"]  # a playback on two slots
+
+    drive(app, body, size=SIZE)
+
+
+def test_place_starts_at_what_the_slot_holds_though_another_is_selected() -> None:
+    """P4 reached the slot in hand by a line typed at the prompt."""
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await open_editor(pilot, app, 9)
+        editor = editor_of(app)
+        bridge.events.append(ShowChanged(club(pages=(PageInfo(1, "Main", (1, 4, 9, 3)),))))
+        await settle(pilot, app)
+        assert app.view.playback == 9
+        assert editor.slot == 2  # the selection has not moved, so the hand has not
+        await tap(pilot, app, editor.slot_edits, "place…")
+        dialog = app.screen
+        assert isinstance(dialog, PlaybackDialog)
+        assert dialog.numbers[dialog.options.highlighted or 0] == 4
+
+    drive(app, body, size=SIZE)
+
+
+def test_placing_what_the_slot_holds_or_escape_sends_nothing() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await open_editor(pilot, app, 9)
+        editor = editor_of(app)
+        await tap(pilot, app, editor.slot_edits, "place…")
+        await pick(pilot, app, 9)
+        await tap(pilot, app, editor.slot_edits, "place…")
+        await pilot.press("escape")
+        await settle(pilot, app)
+        assert bridge.sent == []
+
+    drive(app, body, size=SIZE)
+
+
+@pytest.mark.parametrize("show_first", [True, False])
+def test_the_slot_placed_on_stays_in_hand_whichever_comes_first(show_first: bool) -> None:
+    """P9 is on slot 2 too, and a new show before the reply moves the hand."""
+    bridge = FakeBridge(auto_reply=False)
+    app = make_app(bridge)
+    placed = club(pages=(PageInfo(1, "Main", (1, 9, 9, 3)),))
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await open_editor(pilot, app, 1)
+        editor = editor_of(app)
+        await click_tile(pilot, app, 3)
+        await tap(pilot, app, editor.slot_edits, "place…")
+        await pick(pilot, app, 9)
+        sent = bridge.sent[-1]
+        assert sent.line == "page 1 slot 3 playback 9"
+        reply = CommandDone(sent.ticket, sent.line, sent.origin, True, (), 0.0, False)
+        bridge.events += (
+            [ShowChanged(placed), reply] if show_first else [reply, ShowChanged(placed)]
+        )
+        await settle(pilot, app)
+        await settle(pilot, app)
+        assert app.view.playback == 9
+        assert editor.slot == 3
+        assert label_of(editor.slot_label) == "slot 3 · P9 Song"
+        await tap(pilot, app, editor.slot_edits, "clear")
+        assert bridge.sent[-1].line == "page 1 slot 3 clear"
+
+    drive(app, body, size=SIZE)
+
+
+def test_a_tile_clicked_stays_in_hand_while_the_selection_catches_up() -> None:
+    """A frame from the engine between the click and the selection."""
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge, club(pages=(PageInfo(1, "Main", (1, 9, None, 9)),)))
+        await open_editor(pilot, app, 1)
+        editor = editor_of(app)
+        view = app.view
+        editor.on_slot_tile_picked(SlotTile.Picked(4, 9))
+        page = app.query_one(BuskPage)
+        assert view.playback == 1
+        page.update_view(view, frozenset({"live"}))
+        assert editor.slot == 4
+        await settle(pilot, app)
+        assert app.view.playback == 9
+        assert editor.slot == 4
+
+    drive(app, body, size=SIZE)
+
+
+def test_a_click_on_a_tile_the_grid_has_lost_raises_nothing() -> None:
+    """A click on its way when the page gets shorter."""
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await open_editor(pilot, app, 9)
+        editor = editor_of(app)
+        editor.on_slot_tile_picked(SlotTile.Picked(40, None))
+        await settle(pilot, app)
+        assert editor.slot == 2  # back on the selection's
+        assert app.view.playback == 9
+
+    drive(app, body, size=SIZE)
+
+
+def test_the_arrows_take_the_slot_of_the_selection_in_hand() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await open_editor(pilot, app, 9)
+        editor = editor_of(app)
+        assert editor.slot == 2
+        await pilot.press("right")
+        await settle(pilot, app)
+        assert app.view.playback == 3
+        assert editor.slot == 4
+
+    drive(app, body, size=SIZE)
+
+
+def test_a_placement_answered_on_another_page_leaves_the_hand_alone() -> None:
+    bridge = FakeBridge(auto_reply=False)
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await open_editor(pilot, app, 9)
+        editor = editor_of(app)
+        await click_tile(pilot, app, 3)
+        await tap(pilot, app, editor.slot_edits, "place…")
+        await pick(pilot, app, 4)
+        sent = bridge.sent[-1]
+        bridge.events.append(LiveChanged(live(seq=2, page=PageView(2, "Washes"))))
+        await settle(pilot, app)
+        bridge.events.append(CommandDone(sent.ticket, sent.line, sent.origin, True, (), 0.0, False))
+        await settle(pilot, app)
+        await settle(pilot, app)
+        assert app.view.playback == 4
+        assert editor.slot == 1  # P4's slot on page 2, not slot 3 of page 1
+
+    drive(app, body, size=SIZE)
+
+
+def test_clear_is_one_line_and_asks_nothing_and_the_slot_stays_in_hand() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await open_editor(pilot, app, 9)
+        editor = editor_of(app)
+        await tap(pilot, app, editor.slot_edits, "clear")
+        assert lines(bridge) == ["page 1 slot 2 clear"]
+        bridge.events.append(ShowChanged(club(pages=(PageInfo(1, "Main", (1, None, None, 3)),))))
+        await settle(pilot, app)
+        assert editor.slot == 2
+        assert label_of(editor.slot_label) == "slot 2 · empty"
+        assert editor.tiles[1].has_class("-chosen")
+
+    drive(app, body, size=SIZE)
+
+
+def test_a_playback_on_two_slots_of_a_page_keeps_the_one_clicked() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+    slots = (1, 9, None, 9)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge, club(pages=(PageInfo(1, "Main", slots),)))
+        await open_editor(pilot, app)
+        editor = editor_of(app)
+        await click_tile(pilot, app, 4)
+        assert app.view.playback == 9
+        assert editor.slot == 4
+        assert editor.tiles[3].has_class("-chosen")
+        assert not editor.tiles[1].has_class("-chosen")
+        await tap(pilot, app, editor.slot_edits, "clear")
+        assert lines(bridge) == ["page 1 slot 4 clear"]
+
+    drive(app, body, size=SIZE)
+
+
+def test_delete_is_busks_question_then_one_line_and_the_selection_moves_on() -> None:
+    bridge = FakeBridge()
+    ask_everything(bridge, 'Delete playback 9 "Song"? It leaves pages 1, 2.')
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        panel = await open_editor(pilot, app, 9)
+        await press(pilot, app, panel.delete)
+        assert isinstance(app.screen, ConfirmDialog)
+        assert "It leaves pages 1, 2." in app.screen.question
+        await pilot.press("n")
+        await settle(pilot, app)
+        assert bridge.sent == []
+        await press(pilot, app, panel.delete)
+        await pilot.press("y")
+        await settle(pilot, app)
+        assert lines(bridge) == ["delete playback 9 cascade"]
+        bridge.events.append(
+            ShowChanged(
+                club(
+                    pages=(
+                        PageInfo(1, "Main", (1, None, None, 3)),
+                        PageInfo(2, "Washes", (4, None)),
+                    ),
+                    playbacks=(PLAIN, *OTHERS),
+                )
+            )
+        )
+        await settle(pilot, app)
+        assert app.view.playback == 1
+        chosen = panel.chosen()
+        assert chosen is not None
+        assert chosen.number == 1
+
+    drive(app, body, size=SIZE)
+
+
+def test_a_tab_per_page_by_number_and_the_page_shown_runs_nothing() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+    pages = (PageInfo(2, "Washes", (4, 9)), PageInfo(1, "Main", (1, 9, None, 3)))
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge, club(pages=pages))
+        await open_editor(pilot, app)
+        tabs = editor_of(app).tabs
+        assert row_of(tabs) == ["1 Main", "2 Washes", "+ page…"]
+        first, second, _ = tabs.buttons
+        assert first.note  # the page shown
+        assert second.line == commands.go_page(2)
+        await tap(pilot, app, tabs, "2 Washes")
+        assert lines(bridge) == ["page 2"]
+        assert bridge.sent[0].performance
+
+    drive(app, body, size=SIZE)
+
+
+def test_another_page_takes_nothing_in_hand_from_the_last() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await open_editor(pilot, app, 9)
+        editor = editor_of(app)
+        await click_tile(pilot, app, 3)  # empty, and past the end of page 2
+        bridge.events.append(LiveChanged(live(seq=2, page=PageView(2, "Washes"))))
+        await settle(pilot, app)
+        assert app.view.playback == 9  # on page 2 too
+        assert editor.slot == 2
+        assert label_of(editor.slot_label) == "slot 2 · P9 Song"
+        assert label_of(editor.page_label) == "page 2 Washes"
+        tabs = editor.tabs.buttons
+        assert [button.note for button in tabs] == [False, True, False]
+
+    drive(app, body, size=SIZE)
+
+
+def test_a_long_page_name_is_cut_on_its_tab() -> None:
+    assert tab_word(PageInfo(3, "Encore", ())) == "3 Encore"
+    assert tab_word(PageInfo(3, "x" * 16, ())) == "3 " + "x" * 16
+    assert tab_word(PageInfo(3, "x" * 17, ())) == "3 " + "x" * 15 + "…"
+
+
+def test_a_new_page_is_one_line_and_stays_on_the_page_it_was_on() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await open_editor(pilot, app)
+        await tap(pilot, app, editor_of(app).tabs, "+ page…")
+        dialog = app.screen
+        assert isinstance(dialog, FormDialog)
+        assert dialog.title_text == "NEW PAGE"
+        assert [field.value for field in dialog.inputs] == ["3", ""]
+        await form(pilot, app, "7", 'The "End"')
+        assert lines(bridge) == [r'page add 7 "The \"End\""']
+        await settle(pilot, app)
+        assert lines(bridge) == [r'page add 7 "The \"End\""']  # no page 7 to follow it
+
+    drive(app, body, size=SIZE)
+
+
+def test_a_new_page_with_no_name_leaves_it_to_busk_and_a_taken_number_stays() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await open_editor(pilot, app)
+        await tap(pilot, app, editor_of(app).tabs, "+ page…")
+        await form(pilot, app, "2")
+        assert isinstance(app.screen, FormDialog)
+        assert bridge.sent == []
+        await form(pilot, app, "4")
+        assert lines(bridge) == ["page add 4"]
+
+    drive(app, body, size=SIZE)
+
+
+def test_rename_page_is_one_line_and_left_as_it_was_sends_nothing() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await open_editor(pilot, app)
+        edits = editor_of(app).page_edits
+        assert row_of(edits) == ["rename…", "delete"]
+        await tap(pilot, app, edits, "rename…")
+        assert isinstance(app.screen, TextDialog)
+        assert app.screen.title_text == "RENAME · page 1"
+        await type_in(pilot, app, "Main")
+        assert bridge.sent == []
+        await tap(pilot, app, edits, "rename…")
+        await type_in(pilot, app, "  ")
+        assert isinstance(app.screen, TextDialog)  # no name: it stays
+        await type_in(pilot, app, "Set 2")
+        assert lines(bridge) == ['rename page 1 "Set 2"']
+
+    drive(app, body, size=SIZE)
+
+
+def test_delete_page_is_busks_question_then_one_line() -> None:
+    bridge = FakeBridge()
+    ask_everything(bridge, 'Delete page 1 "Main"?')
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await open_editor(pilot, app)
+        edits = editor_of(app).page_edits
+        await tap(pilot, app, edits, "delete")
+        assert isinstance(app.screen, ConfirmDialog)
+        await pilot.press("y")
+        await settle(pilot, app)
+        assert lines(bridge) == ["delete page 1 cascade"]
+
+    drive(app, body, size=SIZE)
+
+
+def test_the_page_shown_deleted_gives_way_to_the_one_the_engine_moved_to() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await open_editor(pilot, app, 9)
+        editor = editor_of(app)
+        bridge.events += [
+            ShowChanged(club(pages=(PageInfo(2, "Washes", (4, 9)),))),
+            LiveChanged(live(seq=2, page=PageView(2, "Washes"))),
+        ]
+        await settle(pilot, app)
+        assert [t.info and t.info.number for t in editor.tiles] == [4, 9, None]
+        assert row_of(editor.tabs) == ["2 Washes", "+ page…"]
+        assert label_of(editor.page_label) == "page 2 Washes"
+        assert app.view.playback == 9
+
+    drive(app, body, size=SIZE)
+
+
+def test_a_show_with_no_pages_only_adds_one() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge, club(pages=()), page=None)
+        panel = await open_editor(pilot, app)
+        editor = editor_of(app)
+        assert row_of(editor.tabs) == ["+ page…"]
+        assert not editor.page_row.display
+        assert not editor.slot_row.display
+        assert [t.info and t.info.number for t in editor.tiles] == [1, 3, 4, 9]  # no spare one
+        assert str(editor.slots.border_title) == "SLOTS · click selects"
+        await click_tile(pilot, app, 4)
+        assert app.view.playback == 9
+        assert panel.chosen() == RICH
+        assert tile_of(app, 9).has_class("-chosen")
+        await tap(pilot, app, editor.tabs, "+ page…")
+        dialog = app.screen
+        assert isinstance(dialog, FormDialog)
+        assert [field.value for field in dialog.inputs] == ["1", ""]
+        await form(pilot, app, "1", "Main")
+        assert lines(bridge) == ['page add 1 "Main"']
+        labels = [item.line or item.label for item in app.current_page.items()]
+        assert "[place…]" not in labels
+        assert "[rename…]" not in labels
+
+    drive(app, body, size=SIZE)
+
+
+def test_a_new_page_has_a_tile_to_start_on() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge, club(pages=(PageInfo(1, "Main", ()),)))
+        await open_editor(pilot, app)
+        editor = editor_of(app)
+        assert [t.slot for t in editor.tiles] == [1]
+        await click_tile(pilot, app, 1)
+        await tap(pilot, app, editor.slot_edits, "place…")
+        await pick(pilot, app, 3)
+        assert lines(bridge) == ["page 1 slot 1 playback 3"]
+
+    drive(app, body, size=SIZE)
+
+
+def test_the_pane_cursor_takes_an_empty_slot_in_hand() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await open_editor(pilot, app, 9)
+        editor = editor_of(app)
+        items = app.current_page.items()
+        target = next(i for i, item in enumerate(items) if item.label == "slot 3")
+        await pilot.press("tab", *["down"] * target, "enter")
+        await settle(pilot, app)
+        assert editor.slot == 3
+        assert app.cursor.current is not None
+        assert app.cursor.current.label == "slot 3"
+        assert row_of(editor.slot_edits) == ["new playback…", "place…"]
+
+    drive(app, body, size=SIZE)
+
+
+def test_where_a_playback_sits() -> None:
+    pages = (PageInfo(1, "Main", (1, 9, None, 9)), PageInfo(2, "Washes", (9,)))
+    assert slots_text(9, pages) == "1.2 1.4 2.1"
+    assert slots_text(1, pages) == "1.1"
+    assert slots_text(30, pages) == ""
+    assert playback_text(RICH, pages).plain == "   9 Song · 1.2 1.4 2.1"
+    assert playback_text(PLAIN, ()).plain == "   1 Warm · on no page"

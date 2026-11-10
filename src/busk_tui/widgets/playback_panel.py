@@ -20,6 +20,16 @@ and one line:
   what it can be without (``playback 9 exclusivity none``).
 
 A value left as it was sends nothing.
+
+Over the grid, the pages: a tab per page (``page 2``), ``[+ page…]`` (``page add
+3 "Encore"``), and the shown page's ``[rename…]`` and ``[delete]`` (``delete page
+2 cascade``, after busk's question). The grid has one empty tile past the last
+slot, since a new page has none and ``ASSIGN_PLAYBACK`` adds them.
+
+Under it, the row of the slot in hand, the one last clicked: ``[new playback…]``
+on an empty one (``playback add 30 cuelist 9 at 2.7 "Encore"``), ``[place…]``
+(``page 2 slot 7 playback 9``) and ``[clear]`` on a full one (``page 2 slot 7
+clear``). Selecting another playback takes its slot in hand.
 """
 
 from __future__ import annotations
@@ -36,6 +46,7 @@ from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Container, Horizontal, Vertical
+from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widget import Widget
 from textual.widgets import OptionList, Static
@@ -47,13 +58,22 @@ from busk_tui.commands import Line, exact, quoted
 from busk_tui.formats import numbers_text
 from busk_tui.model import CueListInfo, LiveState, PageInfo, PlaybackInfo, ShowModel
 from busk_tui.nav import Item, Stop
-from busk_tui.widgets.controls import MARKED, ActionButton, ButtonStrip, RunLine
+from busk_tui.widgets.controls import (
+    MARKED,
+    ActionButton,
+    ButtonStrip,
+    RunLine,
+    StripButton,
+    button_label,
+)
 from busk_tui.widgets.dialogs import (
+    FormDialog,
     TextDialog,
     check_name,
     check_number,
     cue_key,
     dialog_css,
+    next_number,
     read_whole,
 )
 from busk_tui.widgets.effect_panel import check_seconds
@@ -75,6 +95,9 @@ COLOUR: Final = re.compile(r"#[0-9a-fA-F]{6}")
 """The colours F1 can draw: anything else in a ``uiColor`` is only words."""
 
 NO_PLAYBACK: Final = "no playback selected: click one in the slots"
+
+TAB_NAME: Final = 16
+"""The most of a page's name a tab shows, so that one tab cannot fill the row."""
 
 
 def read_signed(text: str) -> int | None:
@@ -263,19 +286,38 @@ def list_text(info: CueListInfo) -> Text:
     return text
 
 
-class CueListDialog(ModalScreen[int | None]):
-    """Closes with a cue list's number, or ``None``: ↑ ↓ move, Enter or a click
-    chooses, Esc cancels. It starts on ``chosen``."""
+def slots_text(number: int, pages: Sequence[PageInfo]) -> str:
+    """Where a playback sits, as ``at`` takes it: ``1.9 2.9``; ``""``: nowhere."""
+    return " ".join(
+        f"{page.number}.{slot}"
+        for page in pages
+        for slot, there in enumerate(page.slots, start=1)
+        if there == number
+    )
+
+
+def playback_text(info: PlaybackInfo, pages: Sequence[PageInfo]) -> Text:
+    """A row of the picker: ``9 Song · 1.9 2.9``, ``30 Encore · on no page``."""
+    text = Text(no_wrap=True, overflow="ellipsis")
+    text.append(f"{info.number:>4} ", style=colors.CYAN)
+    text.append(info.name, style=colors.FG)
+    text.append(f" · {slots_text(info.number, pages) or 'on no page'}", style=colors.DIM)
+    return text
+
+
+class PickDialog(ModalScreen[int | None]):
+    """Closes with the number of one of ``rows``, or ``None``: ↑ ↓ move, Enter
+    or a click chooses, Esc cancels. It starts on ``chosen``, else the first."""
 
     DEFAULT_CSS = (
-        dialog_css("CueListDialog")
+        dialog_css("PickDialog")
         + f"""
-    CueListDialog > Vertical {{ width: 60; }}
-    CueListDialog OptionList, CueListDialog OptionList:focus {{
+    PickDialog > Vertical {{ width: 60; }}
+    PickDialog OptionList, PickDialog OptionList:focus {{
         height: auto; max-height: 12; padding: 0; border: none; background: {colors.BG};
         background-tint: transparent; scrollbar-size-vertical: 1;
     }}
-    CueListDialog OptionList > .option-list--option-highlighted {{
+    PickDialog OptionList > .option-list--option-highlighted {{
         background: {colors.SEL}; text-style: none;
     }}
     """
@@ -284,12 +326,12 @@ class CueListDialog(ModalScreen[int | None]):
         Binding("escape", "cancel", "Cancel", show=False),
     ]
 
-    def __init__(self, title: str, lists: Sequence[CueListInfo], chosen: int) -> None:
+    def __init__(self, title: str, rows: Sequence[tuple[int, Text]], chosen: int | None) -> None:
         super().__init__()
         self.title_text = title
-        self.lists = sorted(lists, key=lambda info: info.number)
+        self.numbers = [number for number, _ in rows]
         self.chosen = chosen
-        self.options = OptionList(*(Option(list_text(info)) for info in self.lists))
+        self.options = OptionList(*(Option(text) for _, text in rows))
 
     def compose(self) -> ComposeResult:
         with Vertical() as box:
@@ -298,16 +340,38 @@ class CueListDialog(ModalScreen[int | None]):
             yield Static("↑ ↓: move · Enter: choose · Esc: cancel", classes="note")
 
     def on_mount(self) -> None:
-        numbers = [info.number for info in self.lists]
+        numbers = self.numbers
         self.options.highlighted = numbers.index(self.chosen) if self.chosen in numbers else 0
         self.options.focus()
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         event.stop()
-        self.dismiss(self.lists[event.option_index].number)
+        self.dismiss(self.numbers[event.option_index])
 
     def action_cancel(self) -> None:
         self.dismiss(None)
+
+
+class CueListDialog(PickDialog):
+    """The cue lists, by number."""
+
+    def __init__(self, title: str, lists: Sequence[CueListInfo], chosen: int | None) -> None:
+        self.lists = sorted(lists, key=lambda info: info.number)
+        super().__init__(title, [(info.number, list_text(info)) for info in self.lists], chosen)
+
+
+class PlaybackDialog(PickDialog):
+    """The playbacks, by number, each with where it sits."""
+
+    def __init__(
+        self,
+        title: str,
+        playbacks: Sequence[PlaybackInfo],
+        pages: Sequence[PageInfo],
+        chosen: int | None,
+    ) -> None:
+        rows = [(info.number, playback_text(info, pages)) for info in playbacks]
+        super().__init__(title, rows, chosen)
 
 
 class PlaybackPanel(Panel):
@@ -338,6 +402,7 @@ class PlaybackPanel(Panel):
         self.hint = Static(Text(NO_PLAYBACK, style=colors.DIM), classes="pp-text")
         self.rename = ActionButton("rename…", self.ask_name)
         self.renumber = ActionButton("number…", self.ask_number)
+        self.delete = ActionButton("delete", self.ask_delete, "danger")
         self.why = Static("", id="pp-why", classes="pp-text")
         self.settings: dict[str, Setting] = {
             "cue list": Setting("cue list", ActionButton("list…", self.ask_list)),
@@ -363,7 +428,7 @@ class PlaybackPanel(Panel):
     def compose(self) -> ComposeResult:
         yield self.hint
         with self.body:
-            yield Horizontal(self.rename, self.renumber, id="pp-names")
+            yield Horizontal(self.rename, self.renumber, self.delete, id="pp-names")
             for name in ORDER:
                 if name in self.settings:
                     yield self.settings[name]
@@ -473,6 +538,13 @@ class PlaybackPanel(Panel):
         check = check_number(taken, info.number)
         self.app.push_screen(TextDialog(title, str(info.number), check, note), given)
 
+    def ask_delete(self) -> None:
+        """``[delete]``: ``delete playback 9 cascade``, after busk's question.
+        Its slots go empty, its cue list stays."""
+        info = self.chosen()
+        if info is not None:
+            self._run(commands.delete_playback(info.number))
+
     def ask_list(self) -> None:
         """``[list…]``: the picker, ``playback 9 cuelist 11``."""
         info, show = self.chosen(), self.show_model
@@ -551,7 +623,7 @@ class PlaybackPanel(Panel):
         """The panel's controls, in reading order (a grey one is none)."""
         stops: list[Stop] = []
         if self.chosen() is not None:
-            for button in (self.rename, self.renumber):
+            for button in (self.rename, self.renumber, self.delete):
                 stops.append(Stop(Item(button.label, action=button.action), button))
             for name in ORDER:
                 if name in self.settings:
@@ -564,16 +636,24 @@ class PlaybackPanel(Panel):
 
 class SlotTile(Widget):
     """One slot: its number (dim) and the playback's on the first line, its name
-    on the second. A click selects the playback; an empty slot does nothing."""
+    on the second. A click takes the slot in hand and selects its playback."""
 
     DEFAULT_CSS = f"""
     SlotTile {{ height: 4; border: solid {colors.TRACK}; padding: 0 1; }}
     SlotTile.-chosen {{ border: solid {colors.MAGENTA}; }}
-    SlotTile.-full:hover {{ border: solid {colors.CYAN}; background: {colors.BAR}; }}
+    SlotTile:hover {{ border: solid {colors.CYAN}; background: {colors.BAR}; }}
     """
 
+    class Picked(Message):
+        """The operator took slot ``slot`` in hand; it holds ``number``."""
+
+        def __init__(self, slot: int, number: int | None) -> None:
+            super().__init__()
+            self.slot = slot
+            self.number = number
+
     def __init__(self, slot: int, info: PlaybackInfo | None) -> None:
-        super().__init__(classes="" if info is None else "-full")
+        super().__init__()
         self.slot = slot
         self.info = info
         self.marked = False
@@ -601,8 +681,10 @@ class SlotTile(Widget):
 
     def on_click(self, event: events.Click) -> None:
         event.stop()
-        if self.info is not None:
-            self.post_message(PlaybackRow.Chosen(self.info.number))
+        self.pick()
+
+    def pick(self) -> None:
+        self.post_message(self.Picked(self.slot, None if self.info is None else self.info.number))
 
 
 class SlotGrid(Container):
@@ -622,6 +704,46 @@ class SlotGrid(Container):
             self.styles.grid_columns = " ".join(["1fr"] * columns)
 
 
+def in_hand(
+    slot: int | None, slots: Sequence[int | None], selected: int, moved: bool
+) -> int | None:
+    """The slot the row under the grid is about: ``slot``, while the grid has it,
+    unless the selection ``moved`` off what it holds (an empty one stays, so a
+    second click on ``[clear]`` finds nothing to clear); else the first that
+    holds the selected playback; else none. Only the selection moving can take
+    the hand elsewhere: a new show or a slot's new playback may come before the
+    selection does."""
+    if slot is not None and slot <= len(slots):
+        holds = slots[slot - 1]
+        if holds is None or holds == selected or not moved:
+            return slot
+    return slots.index(selected) + 1 if selected in slots else None
+
+
+def tab_word(page: PageInfo) -> str:
+    """A page's tab: ``2 Washes``, a long name cut."""
+    name = page.name if len(page.name) <= TAB_NAME else f"{page.name[: TAB_NAME - 1]}…"
+    return f"{page.number} {name}"
+
+
+def page_tabs(pages: Sequence[PageInfo], shown: PageInfo | None) -> list[StripButton]:
+    """A chip per page, by number. The page shown is lit, and runs nothing."""
+    numbers = {tab_word(page): page.number for page in sorted(pages, key=attrgetter("number"))}
+    lit = "" if shown is None else tab_word(shown)
+    return chips(tuple(numbers), lit, lambda word: commands.go_page(numbers[word]))
+
+
+def ask(label: str, action: Callable[[], None], color: str = colors.MID) -> StripButton:
+    """A button that calls ``action`` (one callable per button: equal buttons
+    compare equal)."""
+    return StripButton(button_label(label, color), Line(""), action=action)
+
+
+def grey(label: str) -> StripButton:
+    """A button with nothing to do: no click, no pane cursor."""
+    return StripButton(Text(f"[{label}]", style=colors.BORDER), Line(""), note=True)
+
+
 class PlaybackEditor(Horizontal):
     """F1's edit mode (see the module docs): SLOTS, and the PLAYBACK panel to
     the right of it at 100 columns or more, else under it."""
@@ -629,16 +751,40 @@ class PlaybackEditor(Horizontal):
     DEFAULT_CSS = """
     PlaybackEditor { height: auto; }
     PlaybackEditor > #slots-panel { width: 1fr; }
+    PlaybackEditor .slot-row { height: auto; }
+    PlaybackEditor .slot-label { width: auto; max-width: 40%; padding-right: 1; }
+    PlaybackEditor .slot-strip { width: 1fr; }
+    PlaybackEditor #page-row { margin-bottom: 1; }
+    PlaybackEditor #slot-row { margin-top: 1; }
     """
 
     def __init__(self, leave: Callable[[], None]) -> None:
         super().__init__(id="playback-editor")
+        self.tabs = ButtonStrip(id="page-tabs")
+        self.page_label = Static("", classes="slot-label")
+        self.page_edits = ButtonStrip(classes="slot-strip")
+        self.page_row = Horizontal(
+            self.page_label, self.page_edits, id="page-row", classes="slot-row"
+        )
         self.grid = SlotGrid()
-        self.slots = Panel("slots", self.grid, id="slots-panel")
+        self.slot_label = Static("", classes="slot-label")
+        self.slot_edits = ButtonStrip(classes="slot-strip")
+        self.slot_row = Horizontal(
+            self.slot_label, self.slot_edits, id="slot-row", classes="slot-row"
+        )
+        self.slots = Panel(
+            "slots", self.tabs, self.page_row, self.grid, self.slot_row, id="slots-panel"
+        )
         self.panel = PlaybackPanel(leave)
         self.tiles: list[SlotTile] = []
         self.shape: object = None
-        self.selected: int | None = None
+        self.rows: object = None
+        self.lit: int | None = None
+        self.show_model: ShowModel | None = None
+        self.page: PageInfo | None = None
+        self.numbers: tuple[int | None, ...] = ()  # what each tile holds
+        self.selected = 0
+        self.slot: int | None = None  # the slot in hand, from 1
 
     def compose(self) -> ComposeResult:
         yield self.slots
@@ -653,9 +799,22 @@ class PlaybackEditor(Horizontal):
         selected: int,
         mode: ColorMode,
     ) -> None:
-        """Redraw with what shows now. The tiles are built again only when
-        what they say changes, not for each setting of a playback."""
-        infos = [None if show is None or n is None else show.playback(n) for n in slots]
+        """Redraw with what shows now."""
+        if page is None or self.page is None or page.number != self.page.number:
+            self.slot = None  # a slot of another page means nothing here
+        spare = page is not None and (not slots or slots[-1] is not None)
+        moved = selected != self.selected
+        self.show_model, self.page, self.selected = show, page, selected
+        self.numbers = (*slots, None) if spare else slots
+        self.draw(moved)
+        self.panel.show_view(show, live, selected, mode)
+
+    def draw(self, moved: bool = False) -> None:
+        """The tiles, built again only when what they say changes, not for each
+        setting of a playback; the slot in hand; the rows. ``moved``: the
+        selection has changed."""
+        show, page = self.show_model, self.page
+        infos = [None if show is None or n is None else show.playback(n) for n in self.numbers]
         shape = (page, tuple(None if i is None else (i.number, i.name) for i in infos))
         if shape != self.shape:
             self.shape = shape
@@ -664,22 +823,157 @@ class PlaybackEditor(Horizontal):
             self.tiles = [SlotTile(slot, info) for slot, info in enumerate(infos, start=1)]
             self.grid.remove_children()
             self.grid.mount_all(self.tiles)
-            self.selected = None
-        if selected != self.selected:
-            self.selected = selected
+            self.lit = None
+        self.slot = in_hand(self.slot, self.numbers, self.selected, moved)
+        if self.slot != self.lit:
+            self.lit = self.slot
             for tile in self.tiles:
-                tile.set_class(tile.info is not None and tile.info.number == selected, "-chosen")
-        self.panel.show_view(show, live, selected, mode)
+                tile.set_class(tile.slot == self.slot, "-chosen")
+        rows = (
+            shape,
+            self.slot,
+            None if show is None else (show.pages, show.cueLists, show.playbacks),
+        )
+        if rows != self.rows:
+            self.rows = rows
+            self.draw_rows(show, page)
+
+    def draw_rows(self, show: ShowModel | None, page: PageInfo | None) -> None:
+        """The tabs, and the rows of the page shown and of the slot in hand."""
+        pages = () if show is None else show.pages
+        self.tabs.show([*page_tabs(pages, page), ask("+ page…", self.ask_add_page)])
+        self.page_row.display = self.slot_row.display = page is not None
+        if show is None or page is None:
+            return
+        label = Text("page ", style=colors.DIM)
+        label.append(f"{page.number} {page.name}", style=colors.FG)
+        put(self.page_label, label)
+        delete = StripButton(button_label("delete", colors.RED), commands.delete_page(page.number))
+        self.page_edits.show([ask("rename…", self.ask_rename_page), delete])
+        if self.slot is None:
+            put(self.slot_label, Text("click a slot", style=colors.DIM))
+            self.slot_edits.show([])
+            return
+        info = self.tiles[self.slot - 1].info
+        place = ask("place…", self.ask_place) if show.playbacks else grey("place…")
+        label = Text(f"slot {self.slot} · ", style=colors.DIM)
+        if info is None:
+            label.append("empty", style=colors.DIM)
+            new = (
+                ask("new playback…", self.ask_new, colors.MAGENTA)
+                if show.cueLists
+                else grey("new playback…")
+            )
+            self.slot_edits.show([new, place])
+        else:
+            label.append(f"P{info.number} {info.name}", style=colors.FG)
+            clear = commands.clear_slot(page.number, self.slot)
+            self.slot_edits.show([place, StripButton(button_label("clear", colors.MID), clear)])
+        put(self.slot_label, label)
+
+    # ------------------------------------------------------------ actions
+
+    def on_slot_tile_picked(self, message: SlotTile.Picked) -> None:
+        """A tile's click: its slot in hand, its playback selected."""
+        self.slot = message.slot
+        if message.number is not None:
+            self.post_message(PlaybackRow.Chosen(message.number))
+        self.draw()
+
+    def _placed(self, number: int, ok: bool) -> None:
+        if ok:
+            self.post_message(PlaybackRow.Chosen(number))
+
+    def ask_new(self) -> None:
+        """``[new playback…]``: a cue list, then a number and a name; one line,
+        ``playback add 30 cuelist 9 at 2.7 "Encore"``. The new one is selected."""
+        show, page, slot = self.show_model, self.page, self.slot
+        if show is None or page is None or slot is None:
+            return
+        names = {info.number: info.name for info in show.cueLists}
+        taken = frozenset(info.number for info in show.playbacks)
+        check = check_number(taken, None)
+        title = f"NEW PLAYBACK · {page.number}.{slot}"
+
+        def named(cue_list: int, values: tuple[str, ...] | None) -> None:
+            if values is not None:
+                number, name = int(values[0].strip()), values[1].strip()
+                line = commands.playback_add(number, cue_list, page.number, slot, name or None)
+                self.post_message(RunLine(line, done=partial(self._placed, number)))
+
+        def listed(cue_list: int | None) -> None:
+            if cue_list is None:
+                return
+            note = "no name: busk names it Playback <number>"
+            if taken:
+                note = f"taken: {numbers_text(sorted(taken))}\n{note}"
+            fields = (("number", str(next_number(taken))), ("name", names[cue_list]))
+            dialog = FormDialog(title, fields, lambda values: check(values[0]), note)
+            self.app.push_screen(dialog, partial(named, cue_list))
+
+        self.app.push_screen(CueListDialog(title, show.cueLists, None), listed)
+
+    def ask_place(self) -> None:
+        """``[place…]``: the picker, ``page 2 slot 7 playback 9``. What the slot
+        held stays in the show, and what it holds now is selected."""
+        show, page, slot = self.show_model, self.page, self.slot
+        if show is None or page is None or slot is None:
+            return
+        occupant = self.numbers[slot - 1]
+
+        def given(number: int | None) -> None:
+            if number is not None and number != occupant:
+                line = commands.place_playback(page.number, slot, number)
+                self.post_message(RunLine(line, done=partial(self._placed, number)))
+
+        title = f"PLACE · {page.number}.{slot}"
+        start = self.selected if occupant is None else occupant
+        self.app.push_screen(PlaybackDialog(title, show.playbacks, show.pages, start), given)
+
+    def ask_add_page(self) -> None:
+        """``[+ page…]``: ``page add 3 "Encore"``. It stays on the page it was
+        on: another page moves what the surfaces play, and its tab is a click."""
+        show = self.show_model
+        taken = frozenset(() if show is None else (page.number for page in show.pages))
+        check = check_number(taken, None)
+
+        def given(values: tuple[str, ...] | None) -> None:
+            if values is not None:
+                self.post_message(
+                    RunLine(commands.page_add(int(values[0].strip()), values[1].strip() or None))
+                )
+
+        note = "no name: busk names it Page <number>"
+        if taken:
+            note = f"taken: {numbers_text(sorted(taken))}\n{note}"
+        fields = (("number", str(next_number(taken))), ("name", ""))
+        dialog = FormDialog("NEW PAGE", fields, lambda values: check(values[0]), note)
+        self.app.push_screen(dialog, given)
+
+    def ask_rename_page(self) -> None:
+        """``[rename…]``: ``rename page 2 "Encore"``."""
+        page = self.page
+        if page is None:
+            return
+
+        def given(text: str | None) -> None:
+            if text is not None and text.strip() != page.name:
+                self.post_message(RunLine(commands.rename_page(page.number, text.strip())))
+
+        title = f"RENAME · page {page.number}"
+        self.app.push_screen(TextDialog(title, page.name, check_name(True)), given)
+
+    # -------------------------------------------------------- pane cursor
 
     def stops(self) -> list[Stop]:
-        """Each playback's tile, then the PLAYBACK panel's controls."""
-        stops = []
+        """The pages, each tile, the slot's controls, the PLAYBACK panel's."""
+        stops = strip_stops(self.tabs)
+        if self.page is not None:
+            stops += strip_stops(self.page_edits)
         for tile in self.tiles:
-            if tile.info is not None:
-                number = tile.info.number
-                item = Item(f"P{number} {tile.info.name}", action=partial(self.choose, number))
-                stops.append(Stop(item, tile))
+            info = tile.info
+            label = f"slot {tile.slot}" if info is None else f"P{info.number} {info.name}"
+            stops.append(Stop(Item(label, action=tile.pick), tile))
+        if self.page is not None:
+            stops += strip_stops(self.slot_edits)
         return stops + self.panel.stops()
-
-    def choose(self, number: int) -> None:
-        self.post_message(PlaybackRow.Chosen(number))

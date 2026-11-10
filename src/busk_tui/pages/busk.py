@@ -14,7 +14,8 @@ moves to the playback in the same slot.
 
 ``[edit]`` puts a grid of the page's slots and the PLAYBACK panel in place of
 the layout, whichever it is (:mod:`busk_tui.widgets.playback_panel`); ``[done]``
-gives it back. The grid shows every slot of the page, past ``faders`` too.
+gives it back. The grid shows every slot of the page, past ``faders`` too, and
+has the controls that add, place and delete playbacks and pages.
 """
 
 from __future__ import annotations
@@ -40,8 +41,7 @@ from busk_tui.pages.busk_console import ConsoleLayout
 from busk_tui.pages.busk_stack import StackLayout
 from busk_tui.pages.busk_stage import StageLayout
 from busk_tui.widgets.controls import MARKED, ActionButton
-from busk_tui.widgets.playback_panel import PlaybackEditor
-from busk_tui.widgets.playbacks import PlaybackRow
+from busk_tui.widgets.playback_panel import PlaybackEditor, SlotTile
 
 LAYOUTS: Final[tuple[tuple[Layout, str], ...]] = (("A", "console"), ("B", "stack"), ("C", "stage"))
 
@@ -259,12 +259,12 @@ class BuskPage(Page):
         if self.view is not None:
             self.update_view(self.view, ALL_PARTS)
 
-    def on_playback_row_chosen(self, message: PlaybackRow.Chosen) -> None:
-        """A click on a slot: under the grid (below 100 columns), the panel
-        scrolls into sight. The app selects the playback."""
-        if self.editing and self.screen.has_class("narrow"):
+    def on_slot_tile_picked(self, message: SlotTile.Picked) -> None:
+        """A click on a tile: below 100 columns, the row of its slot and the
+        PLAYBACK panel under it scroll into sight."""
+        if self.screen.has_class("narrow"):
             self.call_after_refresh(
-                self.scroll_to_widget, self.editor.panel, animate=False, top=True
+                self.scroll_to_widget, self.editor.slot_row, animate=False, top=True
             )
 
     # -------------------------------------------------------- pane cursor
