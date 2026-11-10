@@ -307,5 +307,6 @@ A modal panel (cyan border, max 110 columns, max 88% height, scrollable) over a 
 1. Which Busk layout (A, B or C) is the default, and should the others ship?
 2. Paging: should `page N` switch the visible playback bank, and should the page number take a status-bar slot?
 3. Stage-plot positions: confirm the property names for truss row and x-position.
-4. Cue cell editing: inline editing in the table, or prompt pre-fill only?
+4. Cue cell editing: inline editing in the table, or prompt pre-fill only? *(Answered: a dialog
+   per cell, filled in with the cue; see the pending plan's Phase 15.)*
 5. Should GO on a fader at 0% raise it to 100%? The prototype does; console conventions differ.

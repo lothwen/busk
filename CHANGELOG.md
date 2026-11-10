@@ -10,6 +10,12 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- F4 edits a cue's timing, trigger and name in dialogs, where a click put the start of a line in
+  the prompt. A click on a cue's time, delay, curve, follow or wait cell, or `[time…]`,
+  `[delay…]`, `[curve…]`, `[follow…]`, `[wait…]` and `[rename…]` under the table, opens a dialog
+  filled in with what the cue holds. It sends one line, `cue 9/3 time 1/3 delay 0/1`, and nothing
+  when it is left as it was. `[time…]` sets a family's own fade and delay too, keeping its curve,
+  and `[curve…]` takes a Bézier's four points. `[go…]` still puts `cue 9/3 go` in the prompt.
 - F8's `[edit…]` changes a route: the route form, filled in with what the route holds, sends `route
   <id> change …`, which keeps its id and whether it is on. A form that changes nothing sends
   nothing.

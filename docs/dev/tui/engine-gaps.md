@@ -2574,7 +2574,8 @@ Tests: `tests/test_fixture_profiles.py`, and `busk run` with processes in `tests
 **Status:** open.
 
 Found while building F5's EFFECT panel (`docs/plans/tui-pending-plan.md`, Phase 7, 2026-11-09).
-GAP-40 is kept for the split patch of that plan's Phase 14.
+GAP-40 was kept for the split patch of that plan's Phase 14, which the user's answer to its Q4
+dropped on 2026-11-10: the number stays unused.
 
 **Needed by:** F5's EFFECT panel.
 

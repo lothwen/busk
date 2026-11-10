@@ -8,8 +8,8 @@ the list's playback is on, ``L/C``, the name, the fade times (``1/3``, and
 a family's own: ``2, position 4``), the delays, the curve, the trigger's
 delay under ``follow`` or ``wait`` (``—`` for a GO), the intensity and
 colour entries (a value, a preset's name, ``spread``, ``per target``; a
-colour with its swatch), and the cue's effects by id. Cells that are edits
-(time, delay, curve, follow, wait) name a pre-fill (:func:`edit_prefill`).
+colour with its swatch), and the cue's effects by id. A click on a cell that
+is an edit (:data:`EDITS`) opens its dialog on F4.
 """
 
 from __future__ import annotations
@@ -18,16 +18,16 @@ from typing import Final
 
 from rich.text import Text
 
-from busk_tui import colors, commands
+from busk_tui import colors
 from busk_tui.colors import ColorMode
-from busk_tui.formats import delay_text, pair_text, seconds, stored_text, time_text
+from busk_tui.formats import delay_text, seconds, stored_text, time_text
 from busk_tui.model import CueInfo, CueListInfo, StoredValue
 from busk_tui.widgets.rows import Cells, Column, RowTable, cell
 
 NONE: Final = "—"
 
 EDITS: Final = ("time", "delay", "curve", "follow", "wait")
-"""The cue table's cells whose click puts an edit in the prompt."""
+"""The cue table's cells whose click opens an edit's dialog."""
 
 
 class CueListTable(RowTable):
@@ -112,19 +112,3 @@ def _swatch(value: StoredValue, mode: ColorMode) -> Text:
     if value.color is None:
         return Text.assemble(("░░ ", colors.MID))
     return Text.assemble(("██", colors.swatch(value.color, 1.0, mode)), " ")
-
-
-def edit_prefill(cue_list: int, cue: CueInfo, name: str) -> str | None:
-    """What a click on the cell ``name`` of a cue puts in the prompt: ``cue
-    9/3 time ``, ``cue 9/3 time 1/3 delay `` (the fade times kept), ``cue
-    9/3 time 1/3 `` (a curve next), ``cue 9/3 follow ``, ``cue 9/3 wait ``;
-    ``None`` for the other cells."""
-    times = pair_text(cue.fadeIn, cue.fadeOut)
-    match name:
-        case "time" | "follow" | "wait":
-            return commands.cue_prefill(cue_list, cue.number, name)
-        case "delay":
-            return commands.cue_time_prefill(cue_list, cue.number, times, "delay")
-        case "curve":
-            return commands.cue_time_prefill(cue_list, cue.number, times)
-    return None

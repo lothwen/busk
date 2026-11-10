@@ -69,6 +69,9 @@ FAMILY_OF: Final[Mapping[str, str]] = {
 }  # fmt: skip
 """Each of busk's attributes and its family (busk's attribute registry)."""
 
+TIMING_FAMILIES: Final = ("intensity", "position", "color", "beam", "focus", "shutter")
+"""The families a cue may time on their own (``cue L/C time position 4``), in busk's order."""
+
 POOLS: Final = ("color", "position", "beam", "intensity", "focus", "all")
 """busk's preset pools, in the order F6 shows them (spec §8.6's four first)."""
 

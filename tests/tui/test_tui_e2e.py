@@ -6,7 +6,8 @@
   program it; F6's PRESET panel records presets and changes them, and
   on the TupperDMX show records a colour from its picker and a beam preset
   from its option chips and bars; F4
-  goes to a cue, and builds and deletes cues and lists from its controls, and
+  goes to a cue, builds and deletes cues and lists from its controls, and
+  edits a cue's timing, trigger and name in its dialogs, and
   F5 adds, stops and removes an effect and builds a template; F3 and F1's
   layouts A and C show the output, and select from it; F3's FIXTURE panel
   renames, renumbers and deletes a fixture, sets a profile's category, a
@@ -50,7 +51,15 @@ from builders import show as show_doc
 from busk_tui import attributes, colors, commands, config
 from busk_tui.bridge import Bridge
 from busk_tui.commands import Line, percent
-from busk_tui.model import CueListInfo, EffectInfo, EffectView, FixtureInfo, Orientation
+from busk_tui.model import (
+    CueInfo,
+    CueListInfo,
+    EffectInfo,
+    EffectView,
+    FamilyTiming,
+    FixtureInfo,
+    Orientation,
+)
 from busk_tui.pages.busk_console import OutputGrid
 from busk_tui.pages.busk_stack import StackLayout
 from busk_tui.pages.busk_stage import StageLayout, StagePlot
@@ -65,6 +74,7 @@ from busk_tui.widgets.bars import HBar
 from busk_tui.widgets.chase_dialog import ChaseDialog
 from busk_tui.widgets.colorpicker import cell_color, rgb_of
 from busk_tui.widgets.controls import ActionButton, ButtonStrip
+from busk_tui.widgets.cue_dialogs import CurveDialog, TimeDialog
 from busk_tui.widgets.cuetable import CueTable
 from busk_tui.widgets.dialogs import ConfirmDialog, FormDialog, TextDialog
 from busk_tui.widgets.dmxmap import DmxMap
@@ -1673,6 +1683,108 @@ def test_f4_and_f6_build_and_delete_cues_and_lists_from_controls_on_the_real_eng
         await pilot.press(*"undo", "enter")
         await until(pilot, lambda: not blue_gone())
         errors = [text for kind, text in app.query_one(LogView).entries if kind == "error"]
+        assert errors == []
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_f4_edits_a_cues_timing_trigger_and_name_in_dialogs_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """F4's cells and edits open dialogs filled in with the cue: the fade
+    times, a family's own (its curve kept), the delays (the fades kept), a
+    Bézier, a wait in place of a follow and the name reach the show; Esc and
+    an unchanged form send nothing, and ``undo`` takes the last back."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=4), standalone=True)
+
+    def cue(number: str) -> CueInfo:
+        song = None if app.view.show is None else app.view.show.cue_list(9)
+        assert song is not None
+        return next(found for found in song.cues if found.number == number)
+
+    async def dialog_of[D](pilot: Pilot[int], kind: type[D]) -> D:
+        await until(pilot, lambda: isinstance(app.screen, kind))
+        dialog = app.screen
+        assert isinstance(dialog, kind)
+        return dialog
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.live is not None and app.view.show is not None)
+        app._select_playback(9)
+        page = app.query_one(CuesPage)
+        cues = app.query_one(CueTable)
+        await until(pilot, lambda: column(cues, "cue")[:1] == ["9/1"])
+        log = app.query_one(LogView).entries
+        assert (cue("3").fadeIn, cue("3").fadeOut, cue("3").delayIn) == (1, 3, 0)
+
+        await click_cell(pilot, cues, 2, "time")
+        dialog = await dialog_of(pilot, TimeDialog)
+        assert (dialog.fade_in.value, dialog.fade_out.value) == ("1", "3")
+        await pilot.press("escape")
+        await click_cell(pilot, cues, 2, "time")
+        await dialog_of(pilot, TimeDialog)
+        await pilot.press("enter")  # unchanged
+        await until(pilot, lambda: not isinstance(app.screen, TimeDialog))
+        await click_cell(pilot, cues, 2, "time")
+        await dialog_of(pilot, TimeDialog)
+        await pilot.press("2", "tab", "2", "enter")  # a field's text is selected: typed over
+        await until(pilot, lambda: (cue("3").fadeIn, cue("3").fadeOut) == (2, 2))
+        assert [line for kind, line in log if kind == "ui"] == ["cue 9/3 time 2"]  # no goto
+
+        await pilot.press(*"cue 9/2 time position 4 delay 1 snapEnd", "enter")
+        own = FamilyTiming("position", 4.0, 1.0, "snapEnd")
+        await until(pilot, lambda: cue("2").families == (own,))
+        await click_cell(pilot, cues, 1, "time")
+        dialog = await dialog_of(pilot, TimeDialog)
+        dialog.target.pick("position")
+        await pilot.pause()
+        dialog.fade.value = "6"
+        await pilot.press("enter")
+        changed = FamilyTiming("position", 6.0, 1.0, "snapEnd")
+        await until(pilot, lambda: cue("2").families == (changed,))
+
+        await click_cell(pilot, cues, 2, "delay")
+        form = await dialog_of(pilot, FormDialog)
+        form.inputs[0].value = "0.5"
+        await pilot.press("enter")
+        await until(pilot, lambda: (cue("3").delayIn, cue("3").delayOut) == (0.5, 0))
+        assert (cue("3").fadeIn, cue("3").fadeOut) == (2, 2)
+
+        await click_cell(pilot, cues, 2, "curve")
+        curve = await dialog_of(pilot, CurveDialog)
+        curve.curve.pick("bezier")
+        await pilot.pause()
+        curve.points.value = "0.42 0 0.58 1"
+        await pilot.press("enter")
+        await until(pilot, lambda: cue("3").curve == "bezier 0.42 0 0.58 1")
+        assert (cue("3").fadeIn, cue("3").delayIn) == (2, 0.5)
+
+        assert (cue("5").trigger, cue("5").delay) == ("follow", 4)
+        page.choose_cue("5", go=False)
+        await pilot.pause()
+        await tap_button(pilot, page.edits, "wait…")
+        text = await dialog_of(pilot, TextDialog)
+        assert str(text.query(".note").first().render()).endswith("\nnow: follow 4")
+        text.query_one(Input).value = "3"
+        await pilot.press("enter")
+        await until(pilot, lambda: (cue("5").trigger, cue("5").delay) == ("wait", 3))
+
+        await tap_button(pilot, page.edits, "rename…")
+        text = await dialog_of(pilot, TextDialog)
+        assert text.query_one(Input).value == "Outro"
+        text.query_one(Input).value = "Coda"
+        await pilot.press("enter")
+        await until(pilot, lambda: cue("5").name == "Coda")
+        await pilot.press(*"undo", "enter")
+        await until(pilot, lambda: cue("5").name == "Outro")
+        assert (cue("5").trigger, cue("5").delay) == ("wait", 3)
+        errors = [text for kind, text in log if kind == "error"]
         assert errors == []
 
     try:

@@ -70,6 +70,12 @@ def exact(value: float) -> str:
     return format(Decimal(repr(value)), "f").removesuffix(".0")
 
 
+def exact_pair(first: float, second: float) -> str:
+    """An in and an out time as ``cue L/C time`` takes them, every digit
+    kept: ``3`` when they are the same, else ``1/3``."""
+    return exact(first) if first == second else f"{exact(first)}/{exact(second)}"
+
+
 # ------------------------------------------------------------- performance
 
 
@@ -634,6 +640,33 @@ def cue_release(cue_list: int, cue: str, targets: str, only: Sequence[str] = ())
     return Line(f"cue {cue_list}/{cue} release {targets}{attributes}")
 
 
+def cue_time(
+    cue_list: int,
+    cue: str,
+    times: str,
+    *,
+    family: str | None = None,
+    delay: str | None = None,
+    curve: str | None = None,
+) -> Line:
+    """``cue 9/3 time 1/3 delay 0/1 easeIn``, ``times`` and ``delay`` as the
+    line takes them (``1/3``); busk keeps the delay and the curve the line
+    leaves out. With a ``family``, its own timing, which busk sets whole:
+    ``cue 9/3 time position 4 delay 1``."""
+    words = [f"cue {cue_list}/{cue} time", family, times, delay and f"delay {delay}", curve]
+    return Line(" ".join(word for word in words if word))
+
+
+def cue_trigger(cue_list: int, cue: str, kind: str, delay: str) -> Line:
+    """``cue 9/3 follow 4`` (a GO 4 s after the cue before has finished) or
+    ``cue 9/3 wait 8`` (8 s after it has started)."""
+    return Line(f"cue {cue_list}/{cue} {kind} {delay}")
+
+
+def rename_cue(cue_list: int, cue: str, name: str) -> Line:
+    return Line(f"rename cue {cue_list}/{cue} {quoted(name)}")
+
+
 def cuelist_add(cue_list: int, name: str | None = None) -> Line:
     """``cuelist add 30 "Encore"``; without a name, busk names it (``Cue list 30``)."""
     return Line(f"cuelist add {cue_list}" + ("" if name is None else f" {quoted(name)}"))
@@ -760,17 +793,6 @@ def cue_prefill(cue_list: int, cue: str, verb: str) -> str:
     """``cue 9/3 time ``, ``cue 9/3 follow ``, ``cue 9/3 wait ``, and ``cue 9/3
     go`` (whole: Enter runs it)."""
     return f"cue {cue_list}/{cue} go" if verb == "go" else f"cue {cue_list}/{cue} {verb} "
-
-
-def cue_time_prefill(cue_list: int, cue: str, times: str, then: str = "") -> str:
-    """The cue's fade times kept, for what comes after them: ``cue 9/3 time
-    1/3 delay `` (``then`` ``delay``), or ``cue 9/3 time 1/3 `` (a curve)."""
-    return f"cue {cue_list}/{cue} time {times} " + (f"{then} " if then else "")
-
-
-def rename_cue_prefill(cue_list: int, cue: str) -> str:
-    """``rename cue 9/3 "``: the name comes next."""
-    return f'rename cue {cue_list}/{cue} "'
 
 
 def bind_prefill(surface: str) -> str:

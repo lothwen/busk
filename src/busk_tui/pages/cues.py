@@ -1,5 +1,5 @@
 """F4 Cues (spec §8.4, plan Phase 3): browse the cue lists, go to a cue,
-record, switch sequence and chase, edit a cue's timing at the prompt.
+record, switch sequence and chase, edit a cue's timing in dialogs.
 
 CUELISTS on the left lists every cue list; the panel on the right shows the
 chosen one: a meta line (its mode, the playbacks that run it with their
@@ -15,9 +15,18 @@ else the first that does; GO, BACK and going to a cue act on it.
 **A cue row.** A click goes to that cue (``goto 9 3``; busk's ``cue L/C go``
 would set its trigger) and chooses the row; a list no playback runs has no
 go-to, its rows only choose. A click on a time, delay, curve, follow or wait
-cell puts that edit in the prompt instead (spec open question 4, adaptation
-7). The edits under the table pre-fill the chosen cue's lines: the chosen
-row (bg 235), else the cue the playback is on, else the first.
+cell chooses the row and opens that edit's dialog instead (pending plan
+Phase 15, which reverses adaptation 7). The edits under the table act on the
+chosen cue: the chosen row (bg 235), else the cue the playback is on, else
+the first.
+
+**A cue's edits.** ``[time…]`` and ``[curve…]`` open the forms of
+:mod:`busk_tui.widgets.cue_dialogs`; ``[delay…]`` the in and out delays
+(``cue 9/3 time 1/3 delay 0/1``, the fade times kept), ``[follow…]`` and
+``[wait…]`` the seconds of an automatic GO (``cue 9/3 follow 4``), and
+``[rename…]`` the name. Each is filled in with what the cue holds and sends
+one line, nothing when it is left as it was. ``[go…]`` puts ``cue 9/3 go``,
+a whole line, in the prompt: back to a manual GO.
 
 **Buttons.** ``[GO]`` and ``[BACK]`` (``go N``, ``back N``), ``[record cue
 9]`` (the programmer as a new cue at the end), and the mode toggle:
@@ -29,7 +38,7 @@ list keeps, else ``bpm x 1`` (busk refuses the spec's ``x1``).
 (``delete cuelist 9 cascade``, after busk's question). ``[+ list…]``, under
 CUELISTS, adds one and shows it.
 
-**The cue's row**, after the pre-fills: ``[release…]`` (targets and attributes
+**The cue's row**, after those: ``[release…]`` (targets and attributes
 in a form, ``cue 9/3 release group 1 only pan``), ``[record at…]`` (a free
 number and a name; the new cue is chosen), ``[merge]``, ``[replace]`` and
 ``[remove]`` (``record cue 9/3 merge``) and ``[delete]`` (``delete cue 9/3``).
@@ -55,14 +64,21 @@ from textual.containers import Horizontal
 from textual.widgets import Static
 
 from busk_tui import colors, commands
-from busk_tui.commands import Line
+from busk_tui.commands import Line, exact, exact_pair
 from busk_tui.formats import numbers_text, selection_text
 from busk_tui.model import CueInfo, CueListInfo, LiveState, ShowModel
 from busk_tui.nav import Item, Stop
 from busk_tui.pages.base import Page, Part, View
 from busk_tui.widgets.chase_dialog import ChaseDialog
-from busk_tui.widgets.controls import ButtonStrip, FillPrompt, RunLine, StripButton, button_label
-from busk_tui.widgets.cuetable import CueListTable, CueTable, cue_cells, edit_prefill, list_cells
+from busk_tui.widgets.controls import ButtonStrip, RunLine, StripButton, button_label
+from busk_tui.widgets.cue_dialogs import (
+    CurveDialog,
+    TimeDialog,
+    check_seconds,
+    check_times,
+    pair_words,
+)
+from busk_tui.widgets.cuetable import EDITS, CueListTable, CueTable, cue_cells, list_cells
 from busk_tui.widgets.dialogs import (
     FormDialog,
     TextDialog,
@@ -358,15 +374,7 @@ class CuesPage(Page):
         if cue.name:
             label.append(f" {cue.name}", style=colors.FG)
         self._update(self.edit_label, label)
-        prefills = [
-            ("time", edit_prefill(cue_list, cue, "time")),
-            ("delay", edit_prefill(cue_list, cue, "delay")),
-            ("curve", edit_prefill(cue_list, cue, "curve")),
-            ("go", commands.cue_prefill(cue_list, cue.number, "go")),
-            ("follow", edit_prefill(cue_list, cue, "follow")),
-            ("wait", edit_prefill(cue_list, cue, "wait")),
-            ("rename", commands.rename_cue_prefill(cue_list, cue.number)),
-        ]
+        go = commands.cue_prefill(cue_list, cue.number, "go")
         merge = commands.record_cue(cue_list, cue.number, "merge")
         writes = (
             [
@@ -379,11 +387,13 @@ class CuesPage(Page):
         )
         self.edits.show(
             [
-                *(
-                    StripButton(button_label(f"{name}…", colors.MID), Line(text), prefill=text)
-                    for name, text in prefills
-                    if text is not None
-                ),
+                ask("time…", self.ask_time),
+                ask("delay…", self.ask_delay),
+                ask("curve…", self.ask_curve),
+                StripButton(button_label("go…", colors.MID), Line(go), prefill=go),
+                ask("follow…", self.ask_follow),
+                ask("wait…", self.ask_wait),
+                ask("rename…", self.ask_rename),
                 ask("release…", self.ask_release),
                 record_at,
                 *writes,
@@ -404,15 +414,10 @@ class CuesPage(Page):
             if message.row < len(self._shown_lists):
                 self.choose_list(self._shown_lists[message.row].number)
         elif message.table is self.cues and message.row < len(self._shown_cues):
-            cue = self._shown_cues[message.row]
-            prefill = (
-                None
-                if self.list is None or message.cell is None
-                else edit_prefill(self.list, cue, message.cell)
-            )
-            self.choose_cue(cue.number, go=prefill is None)
-            if prefill is not None:
-                self.post_message(FillPrompt(prefill))
+            cell = message.cell if message.cell in EDITS else None
+            self.choose_cue(self._shown_cues[message.row].number, go=cell is None)
+            if cell is not None:
+                self.ask_edit(cell)
 
     def choose_list(self, number: int) -> None:
         """A list chosen by a click or the pane cursor; the playback that
@@ -519,6 +524,97 @@ class CuesPage(Page):
         fields = (("targets", start), ("only", ""))
         dialog = FormDialog(f"RELEASE · cue {cue_list}/{cue.number}", fields, check, note)
         self.app.push_screen(dialog, given)
+
+    # ------------------------------------------- a cue's timing and name
+
+    def ask_edit(self, cell: str) -> None:
+        """A click on one of the cue table's :data:`EDITS` cells."""
+        asks = {
+            "time": self.ask_time,
+            "delay": self.ask_delay,
+            "curve": self.ask_curve,
+            "follow": self.ask_follow,
+            "wait": self.ask_wait,
+        }
+        asks[cell]()
+
+    def _run(self, line: Line | None) -> None:
+        if line is not None:
+            self.post_message(RunLine(line))
+
+    def ask_time(self) -> None:
+        """``[time…]``: ``cue 9/3 time 1/3``, or a family's own, ``cue 9/3
+        time position 4``."""
+        found = self.picked()
+        if found is not None:
+            self.app.push_screen(TimeDialog(*found), self._run)
+
+    def ask_curve(self) -> None:
+        """``[curve…]``: ``cue 9/3 time 1/3 easeIn``, the fade times kept."""
+        found = self.picked()
+        if found is not None:
+            self.app.push_screen(CurveDialog(*found), self._run)
+
+    def ask_delay(self) -> None:
+        """``[delay…]``: ``cue 9/3 time 1/3 delay 0/1``, the fade times kept."""
+        found = self.picked()
+        if found is None:
+            return
+        cue_list, cue = found
+
+        def given(values: tuple[str, ...] | None) -> None:
+            if values is not None and tuple(map(float, values)) != (cue.delayIn, cue.delayOut):
+                times = exact_pair(cue.fadeIn, cue.fadeOut)
+                self._run(commands.cue_time(cue_list, cue.number, times, delay=pair_words(*values)))
+
+        fields = (("in", exact(cue.delayIn)), ("out", exact(cue.delayOut)))
+        note = "in: before intensity rises and the rest move\nout: before intensity falls"
+        title = f"DELAY · cue {cue_list}/{cue.number}"
+        self.app.push_screen(FormDialog(title, fields, check_times, note), given)
+
+    def ask_follow(self) -> None:
+        """``[follow…]``: ``cue 9/3 follow 4``."""
+        self.ask_trigger("follow")
+
+    def ask_wait(self) -> None:
+        """``[wait…]``: ``cue 9/3 wait 8``."""
+        self.ask_trigger("wait")
+
+    def ask_trigger(self, kind: str) -> None:
+        """A GO by itself, ``kind`` seconds after the cue before has finished
+        (``follow``) or started (``wait``). The dialog says what the cue
+        has while it is another trigger."""
+        found = self.picked()
+        if found is None:
+            return
+        cue_list, cue = found
+        before = cue.delay if cue.trigger == kind else None
+
+        def given(text: str | None) -> None:
+            if text is not None and float(text) != before:
+                self._run(commands.cue_trigger(cue_list, cue.number, kind, text.strip()))
+
+        after = "finished" if kind == "follow" else "started"
+        note = f"it goes by itself this many seconds\nafter the cue before has {after}"
+        if cue.trigger != kind:
+            now = "a manual GO" if cue.trigger == "go" else f"{cue.trigger} {exact(cue.delay)}"
+            note += f"\nnow: {now}"
+        title = f"{kind.upper()} · cue {cue_list}/{cue.number}"
+        self.app.push_screen(TextDialog(title, exact(before or 0), check_seconds, note), given)
+
+    def ask_rename(self) -> None:
+        """``[rename…]``: ``rename cue 9/3 "Pre"``."""
+        found = self.picked()
+        if found is None:
+            return
+        cue_list, cue = found
+
+        def given(text: str | None) -> None:
+            if text is not None and text.strip() != cue.name:
+                self._run(commands.rename_cue(cue_list, cue.number, text.strip()))
+
+        title = f"RENAME · cue {cue_list}/{cue.number}"
+        self.app.push_screen(TextDialog(title, cue.name, check_name(True)), given)
 
     # -------------------------------------------------- a list's controls
 

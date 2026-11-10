@@ -701,7 +701,7 @@ table and the FIXTURE panel.
 ## F4 Cues
 
 Every cue list, and the cues of one: go to a cue, record, re-record and delete cues, make and
-delete lists, set a list's tracking and chase, and edit a cue's timing at the prompt.
+delete lists, set a list's tracking and chase, and edit a cue's timing, trigger and name.
 
 ```
  ┌─ CUELISTS ─────────────────────────┐┌─ CUELIST 9 · Song ────────────────────────────────────────────────────────────────────┐
@@ -738,12 +738,8 @@ cue` stores a spread), with the colour's swatch; then the ids of its effects.
 - A click on a row goes to that cue: `goto 9 3` on the list's playback (busk's `cue 9/3 go`
   sets the cue's trigger instead). A list no playback runs has no go-to: its rows only
   choose.
-- A click on a cue's time, delay, curve, follow or wait puts that edit in the prompt, to
-  finish and Enter: `cue 9/3 time `, `cue 9/3 time 1/3 delay ` (the fade times kept), `cue
-  9/3 time 1/3 ` (a curve next), `cue 9/3 follow `, `cue 9/3 wait `.
-- The `edit` row under the buttons does the same for the chosen cue (the row clicked last,
-  else the one the playback is on), and adds `cue 9/3 go` (back to a manual GO) and `rename
-  cue 9/3 "`.
+- A click on a cue's time, delay, curve, follow or wait chooses the row, without going to
+  it, and opens that edit's dialog (see the `edit` row below).
 - `[GO]` and `[BACK]` run `go 9` and `back 9`. `[record cue 9]` records the programmer as a
   new cue at the end of the list. The last button switches the list to a chase (`cuelist 9
   chase bpm x 1`, or the chase settings the list had before) or back to a sequence
@@ -764,7 +760,27 @@ cue` stores a spread), with the colour's swatch; then the ids of its effects.
 `[+ list…]`, under CUELISTS, asks for a number and a name (`cuelist add 30 "Encore"`), refuses a
 number that is taken, and shows the new list.
 
-**The `edit` row** acts on the chosen cue. After the pre-fills:
+**The `edit` row** acts on the chosen cue: the row clicked last, else the one the playback is
+on. Each dialog is filled in with what the cue holds, sends one line, and sends nothing when it is
+left as it was:
+
+- `[time…]` has the fade in and out: `cue 9/3 time 1/3` (`cue 9/3 time 2` when they are the
+  same). `in` times intensity rising and every family without its own, `out` intensity falling.
+  The `for` chips choose a family instead, for its own fade and delay, which start at what the
+  family takes now: `cue 9/3 time position 4 delay 1`, which F4 then shows after a comma. busk
+  sets a family's timing whole, so the line carries the family's own curve, if it has one.
+- `[delay…]` has the delays in and out: `cue 9/3 time 1/3 delay 0/1`, the fade times kept.
+- `[curve…]` has the curve as chips (`linear`, `easeIn`, `easeOut`, `easeInOut`, `snapStart`,
+  `snapEnd`, `bezier`), and with `bezier` its four points, each from 0 to 1: `cue 9/3 time 1/3
+  bezier 0.42 0 0.58 1`.
+- `[follow…]` and `[wait…]` have the seconds of an automatic GO after the cue before has
+  finished or started: `cue 9/3 follow 4`. While the cue has another trigger, the dialog says
+  which (`now: wait 8`), and starts at 0.
+- `[go…]` puts `cue 9/3 go` in the prompt, a whole line: Enter makes the cue a manual GO again.
+- `[rename…]` is a name dialog: `rename cue 9/3 "Pre"`.
+
+The times are seconds from 0 (`2`, `0.5`), and the fade times a line keeps are written with every
+digit the cue holds, though the table rounds them to two. Then:
 
 - `[release…]` asks for targets, as busk reads them (`group 1`, `101 thru 104`), starting at the
   selection, and attributes, none for all of them: `cue 9/3 release group 1 only pan tilt`.
@@ -1188,12 +1204,13 @@ F8's `[delete]`, F8's `[off]`, F4's `[delete]` of a list and F6's `[delete]` of 
 such lines. F4's `[delete]` of a cue, `[replace]` and `[remove]`, and F6's `[delete]` of a preset
 nothing uses, ask the TUI's own question the same way.
 
-A name, a number or a path (`[rename…]`, `[number…]`, `[address…]`, `[offset…]`, the picker's
-`[import…]`) is typed in a small dialog: Enter takes it, Esc cancels. What it refuses shows in red,
-and the dialog stays open. A form of several fields (`[limit…]`, `[location…]`, `[+ universe…]`,
-`[+ route…]` and a route's `[edit…]`, `[+ list…]`, `[record at…]`, `[release…]`, `[chase…]`) works
-the same way: Tab moves between the fields, and Enter, in any of them, takes the form. In the
-route form and `[chase…]`, Tab also reaches the chips, and ← → move them.
+A name, a number or a path (`[rename…]`, `[number…]`, `[address…]`, `[offset…]`, F4's
+`[follow…]` and `[wait…]`, the picker's `[import…]`) is typed in a small dialog: Enter takes it,
+Esc cancels. What it refuses shows in red, and the dialog stays open. A form of several fields
+(`[limit…]`, `[location…]`, `[+ universe…]`, `[+ route…]` and a route's `[edit…]`, `[+ list…]`,
+`[record at…]`, `[release…]`, `[chase…]`, a cue's `[time…]`, `[delay…]` and `[curve…]`) works the
+same way: Tab moves between the fields, and Enter, in any of them, takes the form. In the route
+form, `[chase…]`, `[time…]` and `[curve…]`, Tab also reaches the chips, and ← → move them.
 
 **The profile picker** (F3's `[profile…]` and `[choose…]`) lists what `fixture add` takes: the
 show's own profiles first, marked `●`, then the library's, with the maker, the name, and the modes

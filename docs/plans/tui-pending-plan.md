@@ -1003,6 +1003,8 @@ of GAP-37 to GAP-39 in `docs/dev/tui/engine-gaps.md`, and `CHANGELOG.md`.
 
 ### Phase 14: Split patch
 
+**Dropped** (2026-11-10): Q4 is (a). GAP-40 stays unused.
+
 Only if Q4 builds it. The engine step comes first.
 
 1. **GAP-40, a split patch.** Remove the `UnsupportedFeature` in `src/busk/compiler/compile.py`,
@@ -1018,10 +1020,63 @@ Only if Q5 asks for it. Needs Phase 6. This reverses adaptation 7 of the TUI pla
 1. **Under Q5's recommended answer:** a click on a time, delay, curve, follow or wait cell opens a
    dialog, filled in with the value, and sends the line that the pre-fill started. The same for
    `[time…]`, `[delay…]`, `[curve…]`, `[follow…]`, `[wait…]` and `[rename…]`.
+
+   **Done** (2026-11-10). As planned. `src/busk_tui/widgets/cue_dialogs.py` has `TimeDialog` and
+   `CurveDialog`, on a `CueDialog` base, as `RateDialog` is the chase form's. `[delay…]` is a
+   `FormDialog`, and `[follow…]`, `[wait…]` and `[rename…]` are `TextDialog`s. Also new:
+   `commands.cue_time`, `cue_trigger`, `rename_cue` and `exact_pair`,
+   `attributes.TIMING_FAMILIES`, and the model's `FamilyTiming`, which holds a family's own curve,
+   now read by the bridge. `cuetable.edit_prefill`, `commands.cue_time_prefill` and
+   `rename_cue_prefill` are gone. Which the user may veto:
+   - **A form that changes nothing sends nothing**, as F5's and F8's do.
+   - **`[time…]` has a `for` row of chips: `cue` and busk's six families.** A family's fade and
+     delay start at its own, else at what it takes now, the cue's in. A family with no timing of its
+     own is sent even unchanged, since sending is what makes it its own. busk sets a family whole,
+     so its own curve rides along in its line, and the dialog says so. No chip changes a family's
+     curve, and no line removes a family's own timing (§7).
+   - **`[delay…]` and `[curve…]` keep the fade times to every digit** (`exact_pair`). The
+     pre-fills wrote the table's two decimals, so finishing one changed a fade of 1.234 s to 1.23.
+   - **`[follow…]` and `[wait…]` start at 0 while the cue has another trigger**, and say which
+     (`now: wait 8`, `now: a manual GO`).
+   - **`[go…]` stays a pre-fill**: `cue 9/3 go` is a whole line, with nothing to fill in. The plan
+     did not name it.
+   - **The forms take seconds as `cue L/C time` takes the cue's own**: no sign, no `%`. busk also
+     takes `50%` in a family's fade and a trigger's delay, and `-0` in a Bézier point, which the
+     forms refuse.
+   - **`[rename…]` refuses an empty name**, as every rename dialog of the TUI does, though busk
+     takes `rename cue 9/1 ""`.
+   - **TIME opens with the keyboard in `in`**, its text selected, so a number typed replaces it.
+     Shift+Tab reaches the chips. CURVE opens on its chips.
+   - The cells are still not stops of the pane cursor: `[time…]` and the rest under the table are,
+     and now open their dialogs.
 2. **The docs:** the TUI plan's §3 item 7 and §8, the spec's open question 4, the guide.
+
+   **Done** (2026-11-10). Also the report's rows, Summary and "In short", `CHANGELOG.md`, and the
+   note on GAP-40 in `docs/dev/tui/engine-gaps.md`.
 
 Verify: each kind, with per-family timings; Esc changes nothing; the prompt keeps the keyboard when
 no dialog is open.
+
+**Phase 15 checks** (2026-11-10). The whole suite: 6,183 passed and 1 skipped, in 7:37 with `uv run
+pytest -n 6`. `ruff check`, `ruff format --check` and `mypy src` clean. No change to `src/busk/` or
+the engine's tests. The four TUI test files the phase touched, 519 tests, pass on Textual 8.2.0. A
+first run had F6's `test_f6_records_and_changes_presets_from_controls_on_the_real_engine` fail under
+`-n 6`; it passed alone and in a second run of the four files, and this phase does not touch F6.
+The perf gate: 7 passed, no overruns, F4 at +0.200 core, F3 at +0.193, F1 B at +0.216. 43
+mutations of the new code: 42 caught at once. One needed a check of its own, and has it: on a cue
+at 0 s, a family with no timing of its own, left at 0, must still be sent. busk's words and checks
+are tested against the forms': the families after `cue 9/1 time `, the curves after `cue 9/1 time
+1 `, the seconds and the Bézier points busk takes. A new test in `tests/tui/test_tui_e2e.py` runs
+on the real engine: cue 9/3's fade times typed into TIME (Esc and an unchanged form send nothing),
+cue 9/2's position, with a curve typed at the prompt, changed in TIME with the curve kept, the
+delays with the fades kept, a Bézier, cue 9/5's follow made a wait from `[wait…]`, which says `now:
+follow 4`, its rename, and `undo`. A real `busk-tui --state-dir …` under `busk run` on the club
+show, with real mouse clicks in a pty: at 150 columns in layout B, a click on each of the time,
+delay, curve and wait cells, Esc on TIME, the fade times typed, the delays, `[bezier]` by ← from
+`[linear]` and its points, a wait on 9/5, `[rename…]` from the `edit` row, and `undo`. At 99
+columns in layout A, the TIME chips wrapped on two lines, position's own from the keyboard
+(Shift+Tab, → →, Tab, `6`), FOLLOW refusing `-1` and staying open, and the prompt taking `status`
+after Esc. No error in the log.
 
 ### Phase 16: Audit, and the user's check
 
@@ -1058,6 +1113,12 @@ Left out because the five places do not name them. Say if any should join a phas
 - `rename group N "…"` and `group N number M` reply with a path too (`set groups[4].name to "V"`),
   and F3's GROUPS now puts that in the log. So does a plain `delete group N` (`deleted
   groups[4]`), which F3 does not send. Found on 2026-11-10.
+- `cue L/C time …`, `cue L/C follow|wait <d>` and `rename cue L/C "…"` reply with a path too (`set
+  cueLists[8].cues[2].timing.fadeIn to 2; …`), and F4's dialogs now put that in the log. Found on
+  2026-11-10.
+- No line removes a family's own timing from a cue (`perFamily`), nor a family's own curve but by
+  setting the family again without one. busk reads a family's fade, a trigger's delay and a Bézier
+  point as any number (`50%`, `-0`), and the cue's own times as plain seconds. Found on 2026-11-10.
 - `commands.effect_stop`, `effect_run` and `effect_remove` do not quote an id, so those controls
   fail on an effect id of two words, which only `id "my fx"` makes. `_rate_text` in the bridge does
   not escape a quote in a master's name. Found on 2026-11-09.
@@ -1093,11 +1154,12 @@ Left out because the five places do not name them. Say if any should join a phas
    - (b) Build it, relative to the element's own address.
    - (c) Build it, relative to the start of the mode.
 
-   ANSWER:
+   ANSWER: (a), the recommended one (the user, 2026-11-10: "Skip phase 14"). Phase 14 is dropped,
+   and busk still refuses a split patch when it compiles a show.
 5. **Editing a cue's cells** (Phase 15). The TUI plan left it out on purpose. `RowTable` draws
    lines, so a cell holds no widget, and the prompt always has the keyboard.
    - (a) A dialog per cell, as F3 does. **Recommended.**
    - (b) A real editor over the cell.
    - (c) Keep the pre-fills, and drop Phase 15.
 
-   ANSWER:
+   ANSWER: (a), the recommended one (the user, 2026-11-10). Built in Phase 15.

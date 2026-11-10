@@ -387,7 +387,10 @@ they answer one of the spec's open questions (§10 of the spec), that is noted.
    with x along the row. Rows are labelled by position (`y 2.0 · z 5.0`), because busk has no
    truss names. *(Phase 5: rows by depth and height, see its Done note.)*
 7. **Cue cells are edited by prompt pre-fill only** (spec open question 4). Selecting a cell puts
-   `cue L/C time ` (or `follow `, `wait `) in the prompt.
+   `cue L/C time ` (or `follow `, `wait `) in the prompt. *(Reversed by the pending plan's Phase 15,
+   its Q5 (a): a click on a time, delay, curve, follow or wait cell opens a dialog filled in with
+   the cue, which sends the line the pre-fill started. The cell holds no widget: the prompt keeps
+   the keyboard while no dialog is open.)*
 8. **Fixture types are profile categories** (GAP-16). A small table in the TUI turns busk's
    eleven categories (`par`, `spot`, `wash`, `beam`, `pixel`, `strobe`, `blinder`, `dimmer`,
    `effect`, `fog`, `other`) into layout A's rows (PARS, SPOTS, WASHES, PIXELS, STROBES, …),
@@ -1679,9 +1682,9 @@ layouts keeps the selected playback and is saved in `state.json`.
 ## 8. Not planned
 
 Anything the spec marks "proposed" or "not in the prototype" that busk cannot support yet: learn
-mode and the MIDI monitor (GAP-13). Inline cell editing (adaptation 7). Attaching the TUI to a
-`busk run` that is already running, and detaching again: GAP-11 built `--frontend` only, so the
-run ends with the TUI. A theme editor. Mouse-only features are kept to what the spec lists, and
+mode and the MIDI monitor (GAP-13). An editor inside a cue's cell (adaptation 7, whose dialogs
+the pending plan's Phase 15 built). Attaching the TUI to a `busk run` that is already running,
+and detaching again: GAP-11 built `--frontend` only, so the run ends with the TUI. A theme editor. Mouse-only features are kept to what the spec lists, and
 each has a keyboard path (prompt, pre-fill or pane cursor), except FLASH (R4).
 
 ---

@@ -84,6 +84,7 @@ from busk_tui.model import (
     EngineStarting,
     EngineState,
     EngineStopped,
+    FamilyTiming,
     FixtureInfo,
     GroupInfo,
     HealthChanged,
@@ -1041,7 +1042,12 @@ def cue_info(cue: Mapping[str, Any], names: _Names) -> CueInfo:
         delayOut=float(timing["delayOut"]),
         curve=_curve_text(timing["curve"]),
         families=tuple(
-            (family, float(own["fade"]), float(own["delay"]))
+            FamilyTiming(
+                family,
+                float(own["fade"]),
+                float(own["delay"]),
+                _curve_text(own["curve"]) if "curve" in own else None,
+            )
             for family, own in timing.get("perFamily", {}).items()
         ),
         trigger=trigger["kind"],

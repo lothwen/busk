@@ -73,8 +73,8 @@ def time_text(cue: CueInfo) -> str:
     """A cue's fade times, and its families' own: ``2, position 4``."""
     parts = [pair_text(cue.fadeIn, cue.fadeOut)]
     parts += [
-        f"{family} {seconds(fade)}" + (f" delay {seconds(delay)}" if delay else "")
-        for family, fade, delay in cue.families
+        f"{own.family} {seconds(own.fade)}" + (f" delay {seconds(own.delay)}" if own.delay else "")
+        for own in cue.families
     ]
     return ", ".join(parts)
 

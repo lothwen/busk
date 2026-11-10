@@ -9,6 +9,7 @@ from typing import Any
 
 from rich.text import Text
 from textual.pilot import Pilot
+from textual.screen import Screen
 from textual.widgets import Input
 from tui_fakes import (
     FakeBridge,
@@ -32,6 +33,7 @@ from busk_tui.model import (
     CueInfo,
     CueListInfo,
     EffectInfo,
+    FamilyTiming,
     FixtureInfo,
     GroupInfo,
     HeldValue,
@@ -49,6 +51,7 @@ from busk_tui.pages.cues import CuesPage, meta_text
 from busk_tui.shell import BuskApp
 from busk_tui.widgets.chase_dialog import ChaseDialog
 from busk_tui.widgets.controls import ButtonStrip
+from busk_tui.widgets.cue_dialogs import BEZIER, POINTS, SECONDS, CurveDialog, TimeDialog
 from busk_tui.widgets.cuetable import CueListTable, CueTable, cue_cells
 from busk_tui.widgets.dialogs import ConfirmDialog, FormDialog, TextDialog
 from busk_tui.widgets.log import LogView
@@ -80,7 +83,7 @@ SONG = CueListInfo(
             (),
             fadeIn=2.0,
             fadeOut=2.0,
-            families=(("position", 4.0, 0.0),),
+            families=(FamilyTiming("position", 4.0),),
             values=(
                 StoredValue(
                     "color",
@@ -214,6 +217,28 @@ async def click_label(pilot: Pilot[int], strip: ButtonStrip, label: str) -> None
     raise AssertionError(f"no {label!r} in {lines}")
 
 
+async def open_edit(pilot: Pilot[int], app: BuskApp, label: str) -> Screen[Any]:
+    """The dialog of one of the chosen cue's edits."""
+    await click_label(pilot, app.query_one("#cue-edits", ButtonStrip), label)
+    await pilot.pause()
+    return app.screen
+
+
+async def ok(pilot: Pilot[int]) -> None:
+    await pilot.press("enter")
+    await pilot.pause()
+
+
+def note_of(dialog: Screen[Any]) -> str:
+    """A dialog's first note: what its fields mean."""
+    return str(dialog.query(".note").first().render())
+
+
+def on_cue(app: BuskApp, number: str) -> None:
+    """``number`` chosen, as a click on its row, without going to it."""
+    page(app).choose_cue(number, go=False)
+
+
 # ------------------------------------------------------------- formatting
 
 
@@ -308,7 +333,7 @@ def test_the_marker_follows_the_snapshot() -> None:
     drive(app, body)
 
 
-def test_a_row_goes_to_its_cue_and_an_edit_cell_prefills() -> None:
+def test_a_row_goes_to_its_cue_and_an_edit_cell_opens_its_dialog() -> None:
     bridge = FakeBridge()
     app = on_f4(bridge)
 
@@ -321,25 +346,35 @@ def test_a_row_goes_to_its_cue_and_an_edit_cell_prefills() -> None:
             ("goto 9 3", "ui", True)
         ]
         assert cues.chosen == 2
-        for name, prefill in (
-            ("time", "cue 9/3 time "),
-            ("delay", "cue 9/3 time 1/3 delay "),
-            ("curve", "cue 9/3 time 1/3 "),
-            ("follow", "cue 9/3 follow "),
-            ("wait", "cue 9/3 wait "),
+        for name, kind in (
+            ("time", TimeDialog),
+            ("delay", FormDialog),
+            ("curve", CurveDialog),
+            ("follow", TextDialog),
+            ("wait", TextDialog),
         ):
             await click_cell(pilot, cues, 2, name)
-            assert app.prompt.value == prefill
+            await pilot.pause()
+            dialog = app.screen
+            assert isinstance(dialog, kind), name
+            assert dialog.title_text == f"{name.upper()} · cue 9/3"
             await pilot.press("escape")
+            await pilot.pause()
+            assert app.prompt.value == ""
         await click_cell(pilot, cues, 0, "time")
-        assert app.prompt.value == "cue 9/1 time "
+        await pilot.pause()
+        dialog = app.screen
+        assert isinstance(dialog, TimeDialog)
+        assert dialog.title_text == "TIME · cue 9/1"
         assert cues.chosen == 0  # an edit chooses the row, without going to it
+        await pilot.press("escape")
+        await pilot.pause()
         assert [s.line for s in bridge.sent] == ["goto 9 3"]
 
     drive(app, body)
 
 
-def test_the_edits_prefill_the_chosen_cue() -> None:
+def test_the_edits_act_on_the_chosen_cue() -> None:
     bridge = FakeBridge()
     app = on_f4(bridge)
 
@@ -352,14 +387,19 @@ def test_the_edits_prefill_the_chosen_cue() -> None:
             "[time…] [delay…] [curve…] [go…] [follow…] [wait…] [rename…]"
             " [release…] [record at…] [merge] [replace] [remove] [delete]"
         )
-        await click_label(pilot, edits, "go…")
+        await click_label(pilot, edits, "go…")  # a whole line: Enter runs it
         assert app.prompt.value == "cue 9/2 go"
         await pilot.press("escape")
-        await click_label(pilot, edits, "rename…")
-        assert app.prompt.value == 'rename cue 9/2 "'
+        dialog = await open_edit(pilot, app, "rename…")
+        assert isinstance(dialog, TextDialog)
+        assert (dialog.title_text, dialog.query_one(Input).value) == ("RENAME · cue 9/2", "Verse")
         await pilot.press("escape")
-        await click_label(pilot, edits, "delay…")
-        assert app.prompt.value == "cue 9/2 time 2 delay "
+        await pilot.pause()
+        dialog = await open_edit(pilot, app, "delay…")
+        assert isinstance(dialog, FormDialog)
+        assert dialog.title_text == "DELAY · cue 9/2"
+        await pilot.press("escape")
+        await pilot.pause()
         assert bridge.sent == []
 
     drive(app, body)
@@ -451,8 +491,8 @@ def test_the_pane_cursor_goes_to_cues_then_buttons_edits_and_lists() -> None:
             "goto 9 1", "goto 9 2", "goto 9 3", "goto 9 4",
             "go 9", "back 9", "record cue 9", "cuelist 9 chase bpm x 1",
             "cuelist 9 tracking false", "[chase…]", "[rename…]", "delete cuelist 9 cascade",
-            "cue 9/2 time ", "cue 9/2 time 2 delay ", "cue 9/2 time 2 ", "cue 9/2 go",
-            "cue 9/2 follow ", "cue 9/2 wait ", 'rename cue 9/2 "', "[release…]", "[delete]",
+            "[time…]", "[delay…]", "[curve…]", "cue 9/2 go",
+            "[follow…]", "[wait…]", "[rename…]", "[release…]", "[delete]",
             "cuelist 9 Song", "cuelist 10 Chase", "cuelist 11 Loop", "cuelist 21 Spare",
             "[+ list…]",
         ]  # fmt: skip
@@ -816,6 +856,385 @@ def test_release_starts_empty_with_nothing_selected() -> None:
         await pilot.press("escape")
         await pilot.pause()
         assert bridge.sent == []
+
+    drive(app, body)
+
+
+# --------------------------------------------- a cue's timing and name
+
+
+def one_cue(cue: CueInfo) -> ShowChanged:
+    """The show with list 9 holding ``cue`` alone."""
+    song = CueListInfo(9, "Song", "sequence", None, (cue,))
+    return ShowChanged(cues_show(cueLists=(song, CHASE, LOOP, SPARE)))
+
+
+def test_the_time_form_starts_at_the_cues_times_and_sends_what_changed() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        on_cue(app, "3")  # in 1, out 3
+        await settle(pilot, app)
+        dialog = await open_edit(pilot, app, "time…")
+        assert isinstance(dialog, TimeDialog)
+        assert dialog.target.chosen == "cue"
+        assert (dialog.fade_in.value, dialog.fade_out.value) == ("1", "3")
+        assert all(found.display for found in dialog.cue_rows)
+        assert not any(found.display for found in dialog.family_rows)
+        assert dialog.focused is dialog.fade_in
+        assert note_of(dialog) == (
+            "in: intensity rising, and families without their own\nout: intensity falling"
+        )
+        await ok(pilot)  # unchanged: nothing to send
+        assert app.screen is not dialog
+        assert bridge.sent == []
+        for first, second, line in (
+            ("2", "3", "cue 9/3 time 2/3"),
+            ("3", " 3.0 ", "cue 9/3 time 3"),
+        ):
+            dialog = await open_edit(pilot, app, "time…")
+            assert isinstance(dialog, TimeDialog)
+            dialog.fade_in.value, dialog.fade_out.value = first, second
+            await ok(pilot)
+            assert bridge.lines()[-1] == line
+        dialog = await open_edit(pilot, app, "time…")
+        assert isinstance(dialog, TimeDialog)
+        for typed in ("-1", "x", "", "1e3", "50%"):
+            dialog.fade_out.value = typed
+            await ok(pilot)
+            assert app.screen is dialog, typed
+            assert str(dialog.error.render()) == SECONDS
+        await pilot.press("escape")
+        await pilot.pause()
+        assert len(bridge.sent) == 2
+
+        on_cue(app, "4")  # 0 s, no family of its own
+        await settle(pilot, app)
+        dialog = await open_edit(pilot, app, "time…")
+        assert isinstance(dialog, TimeDialog)
+        dialog.target.pick("intensity")
+        await pilot.pause()
+        assert (dialog.fade.value, dialog.delay.value) == ("0", "0")
+        await ok(pilot)  # what it takes now, but not its own yet: sent
+        assert bridge.lines()[-1] == "cue 9/4 time intensity 0"
+
+    drive(app, body)
+
+
+def test_the_time_form_sets_a_familys_own_and_keeps_its_curve() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+    intro = CueInfo(
+        "1",
+        "Intro",
+        (),
+        fadeIn=3.0,
+        fadeOut=1.0,
+        delayIn=0.5,
+        families=(FamilyTiming("position", 4.0), FamilyTiming("beam", 2.0, 0.5, "snapEnd")),
+    )
+
+    async def family(pilot: Pilot[int], name: str) -> TimeDialog:
+        dialog = await open_edit(pilot, app, "time…")
+        assert isinstance(dialog, TimeDialog)
+        dialog.target.pick(name)
+        await pilot.pause()
+        return dialog
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events += [one_cue(intro), LiveChanged(live())]
+        await settle(pilot, app)
+        dialog = await family(pilot, "position")
+        assert not any(found.display for found in dialog.cue_rows)
+        assert all(found.display for found in dialog.family_rows)
+        assert (dialog.fade.value, dialog.delay.value) == ("4", "0")
+        assert note_of(dialog) == "position's own, in place of the cue's"
+        await ok(pilot)  # unchanged
+        assert bridge.sent == []
+        dialog = await family(pilot, "position")
+        dialog.fade.value = "5"
+        await ok(pilot)
+        assert bridge.lines() == ["cue 9/1 time position 5"]
+        dialog = await family(pilot, "beam")
+        assert (dialog.fade.value, dialog.delay.value) == ("2", "0.5")
+        assert note_of(dialog) == "beam's own, in place of the cue's\nits curve, snapEnd, stays"
+        dialog.delay.value = "1"
+        await ok(pilot)
+        assert bridge.lines()[-1] == "cue 9/1 time beam 2 delay 1 snapEnd"
+        dialog = await family(pilot, "color")  # none of its own: what it takes now, the cue's in
+        assert (dialog.fade.value, dialog.delay.value) == ("3", "0.5")
+        assert note_of(dialog) == "color takes the cue's in now"
+        await ok(pilot)  # it is new: sent as it is
+        assert bridge.lines()[-1] == "cue 9/1 time color 3 delay 0.5"
+        dialog = await family(pilot, "focus")
+        dialog.delay.value = "0"
+        await ok(pilot)
+        assert bridge.lines()[-1] == "cue 9/1 time focus 3"
+        dialog = await family(pilot, "shutter")
+        dialog.fade.value = "x"
+        await ok(pilot)
+        assert str(dialog.error.render()) == SECONDS
+        dialog.target.pick("cue")
+        await pilot.pause()
+        assert str(dialog.error.render()) == ""  # it was of a field that went
+        assert (dialog.fade_in.value, dialog.fade_out.value) == ("3", "1")
+        await pilot.press("escape")
+        await pilot.pause()
+        assert len(bridge.sent) == 4
+
+    drive(app, body)
+
+
+def test_the_time_forms_chips_by_keys() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        dialog = await open_edit(pilot, app, "time…")
+        assert isinstance(dialog, TimeDialog)
+        await pilot.press("shift+tab")
+        assert dialog.focused is dialog.target
+        await pilot.press("right", "right")
+        await pilot.pause()
+        assert dialog.target.chosen == "position"  # cue 9/2's own: 4
+        await pilot.press("tab")
+        assert dialog.focused is dialog.fade
+        await pilot.press(*"6", "enter")  # Tab selects what it holds: typing replaces it
+        await pilot.pause()
+        assert bridge.lines() == ["cue 9/2 time position 6"]
+
+    drive(app, body)
+
+
+def test_the_curve_form_names_a_curve_or_a_beziers_points() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def curve(pilot: Pilot[int]) -> CurveDialog:
+        dialog = await open_edit(pilot, app, "curve…")
+        assert isinstance(dialog, CurveDialog)
+        return dialog
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        on_cue(app, "1")  # easeInOut, in and out 3
+        await settle(pilot, app)
+        dialog = await curve(pilot)
+        assert dialog.curve.chosen == "easeInOut"
+        assert not dialog.points_row.display
+        await ok(pilot)
+        assert bridge.sent == []
+        dialog = await curve(pilot)
+        dialog.curve.pick("easeIn")
+        await ok(pilot)
+        assert bridge.lines() == ["cue 9/1 time 3 easeIn"]
+        dialog = await curve(pilot)
+        dialog.curve.pick("bezier")
+        await pilot.pause()
+        assert dialog.points_row.display
+        assert dialog.points.value == BEZIER
+        for typed in ("0 0 1 2", "1 0 0", "a b c d", ""):
+            dialog.points.value = typed
+            await ok(pilot)
+            assert app.screen is dialog, typed
+            assert str(dialog.error.render()) == POINTS
+        dialog.curve.pick("linear")
+        await pilot.pause()
+        assert str(dialog.error.render()) == ""
+        assert not dialog.points_row.display
+        await ok(pilot)  # the points it hides are not checked
+        assert bridge.lines()[-1] == "cue 9/1 time 3 linear"
+        dialog = await curve(pilot)
+        dialog.curve.pick("bezier")
+        dialog.points.value = " 0.42  0 0.58 1 "
+        await ok(pilot)
+        assert bridge.lines()[-1] == "cue 9/1 time 3 bezier 0.42 0 0.58 1"
+
+    drive(app, body)
+
+
+def test_the_curve_form_starts_at_a_beziers_points() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+    cue = CueInfo("1", "Intro", (), fadeIn=1.5, fadeOut=0.25, curve="bezier 0.42 0 0.58 1")
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events += [one_cue(cue), LiveChanged(live())]
+        await settle(pilot, app)
+        dialog = await open_edit(pilot, app, "curve…")
+        assert isinstance(dialog, CurveDialog)
+        assert dialog.curve.chosen == "bezier"
+        assert dialog.points_row.display
+        assert dialog.points.value == "0.42 0 0.58 1"
+        dialog.points.value = "0.420 0 0.58 1.0"  # the same points
+        await ok(pilot)
+        assert bridge.sent == []
+        dialog = await open_edit(pilot, app, "curve…")
+        assert isinstance(dialog, CurveDialog)
+        dialog.points.value = "0.42 0 0.6 1"
+        await ok(pilot)
+        assert bridge.lines() == ["cue 9/1 time 1.5/0.25 bezier 0.42 0 0.6 1"]
+
+    drive(app, body)
+
+
+def test_the_delay_form_keeps_the_fade_times_to_every_digit() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+    cue = CueInfo("1", "Intro", (), fadeIn=1.234, fadeOut=1.234)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        on_cue(app, "3")  # fades 1/3, delays 1/2
+        await settle(pilot, app)
+        dialog = await open_edit(pilot, app, "delay…")
+        assert isinstance(dialog, FormDialog)
+        assert [field.value for field in dialog.inputs] == ["1", "2"]
+        assert note_of(dialog) == (
+            "in: before intensity rises and the rest move\nout: before intensity falls"
+        )
+        await ok(pilot)
+        assert bridge.sent == []
+        for first, second, line in (
+            ("0", "2", "cue 9/3 time 1/3 delay 0/2"),
+            ("2.5", "2.50", "cue 9/3 time 1/3 delay 2.5"),
+        ):
+            dialog = await open_edit(pilot, app, "delay…")
+            assert isinstance(dialog, FormDialog)
+            dialog.inputs[0].value, dialog.inputs[1].value = first, second
+            await ok(pilot)
+            assert bridge.lines()[-1] == line
+        dialog = await open_edit(pilot, app, "delay…")
+        assert isinstance(dialog, FormDialog)
+        dialog.inputs[1].value = "-1"
+        await ok(pilot)
+        assert app.screen is dialog
+        assert str(dialog.error.render()) == SECONDS
+        await pilot.press("escape")
+        await pilot.pause()
+
+        bridge.events.append(one_cue(cue))
+        await settle(pilot, app)
+        dialog = await open_edit(pilot, app, "delay…")
+        assert isinstance(dialog, FormDialog)
+        dialog.inputs[0].value = "1"
+        await ok(pilot)
+        assert bridge.lines()[-1] == "cue 9/1 time 1.234 delay 1/0"  # F4 shows 1.23
+
+    drive(app, body)
+
+
+def test_follow_and_wait_start_at_the_trigger_and_say_what_it_is() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def trigger(pilot: Pilot[int], kind: str) -> TextDialog:
+        dialog = await open_edit(pilot, app, f"{kind}…")
+        assert isinstance(dialog, TextDialog)
+        assert dialog.title_text.startswith(f"{kind.upper()} · cue 9/")
+        return dialog
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        on_cue(app, "3")  # wait 8
+        await settle(pilot, app)
+        dialog = await trigger(pilot, "wait")
+        assert dialog.query_one(Input).value == "8"
+        assert note_of(dialog) == (
+            "it goes by itself this many seconds\nafter the cue before has started"
+        )
+        await ok(pilot)
+        assert bridge.sent == []
+        dialog = await trigger(pilot, "wait")
+        dialog.query_one(Input).value = "4"
+        await ok(pilot)
+        assert bridge.lines() == ["cue 9/3 wait 4"]
+        dialog = await trigger(pilot, "follow")
+        assert dialog.query_one(Input).value == "0"
+        assert note_of(dialog) == (
+            "it goes by itself this many seconds\nafter the cue before has finished\nnow: wait 8"
+        )
+        await ok(pilot)  # another trigger: sent as it is
+        assert bridge.lines()[-1] == "cue 9/3 follow 0"
+
+        on_cue(app, "2")  # a manual GO
+        await settle(pilot, app)
+        dialog = await trigger(pilot, "follow")
+        assert note_of(dialog).endswith("\nnow: a manual GO")
+        dialog.query_one(Input).value = "x"
+        await ok(pilot)
+        assert app.screen is dialog
+        assert str(dialog.error.render()) == SECONDS
+        dialog.query_one(Input).value = " 2.5 "
+        await ok(pilot)
+        assert bridge.lines()[-1] == "cue 9/2 follow 2.5"
+
+        on_cue(app, "4")  # follow 4
+        await settle(pilot, app)
+        dialog = await trigger(pilot, "wait")
+        assert note_of(dialog).endswith("\nnow: follow 4")
+        await pilot.press("escape")
+        await pilot.pause()
+        assert len(bridge.sent) == 3
+
+    drive(app, body)
+
+
+def test_rename_a_cue() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        on_cue(app, "3")
+        await settle(pilot, app)
+        dialog = await open_edit(pilot, app, "rename…")
+        assert isinstance(dialog, TextDialog)
+        assert dialog.query_one(Input).value == "Pre"
+        await ok(pilot)  # unchanged: nothing to send
+        assert bridge.sent == []
+        dialog = await open_edit(pilot, app, "rename…")
+        assert isinstance(dialog, TextDialog)
+        dialog.query_one(Input).value = "   "
+        await ok(pilot)
+        assert app.screen is dialog
+        dialog.query_one(Input).value = ' My "Pre" '
+        await ok(pilot)
+        assert bridge.lines() == [r'''rename cue 9/3 "My \"Pre\""''']
+
+    drive(app, body)
+
+
+def test_the_prompt_has_the_keyboard_unless_a_dialog_is_open() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        cues = app.query_one(CueTable)
+        for close in ("escape", "enter"):
+            await click_cell(pilot, cues, 1, "wait")
+            await pilot.pause()
+            assert isinstance(app.screen, TextDialog)
+            await pilot.press("9")  # the dialog's: it replaces the 0 it starts at
+            assert app.prompt.value == ""
+            await pilot.press(close)
+            await pilot.pause()
+            assert not isinstance(app.screen, TextDialog)
+            await pilot.press(*"go")
+            assert app.prompt.value == "go"
+            await pilot.press("escape")
+        assert bridge.lines() == ["cue 9/2 wait 9"]
 
     drive(app, body)
 
@@ -1231,24 +1650,35 @@ def test_the_pane_cursor_reaches_each_control_and_takes_it() -> None:
         labels = [i.line or i.prefill or i.label for i in items]
         for label in (
             "cuelist 9 tracking false", "[chase…]", "[rename…]", "delete cuelist 9 cascade",
+            "[time…]", "[delay…]", "[curve…]", "[follow…]", "[wait…]",
             "[release…]", "[record at…]", "record cue 9/2 merge", "[replace]", "[remove]",
             "[delete]", "[+ list…]",
         ):  # fmt: skip
             assert label in labels, label
-        for label, dialog_type in (
-            ("[record at…]", FormDialog),
-            ("[release…]", FormDialog),
-            ("[+ list…]", FormDialog),
-            ("[rename…]", TextDialog),
-            ("[chase…]", ChaseDialog),
-            ("[replace]", ConfirmDialog),
-            ("[remove]", ConfirmDialog),
-            ("[delete]", ConfirmDialog),
+        for label, which, dialog_type in (
+            ("[record at…]", 0, FormDialog),
+            ("[release…]", 0, FormDialog),
+            ("[+ list…]", 0, FormDialog),
+            ("[rename…]", 0, TextDialog),  # the list's
+            ("[rename…]", 1, TextDialog),  # the cue's
+            ("[time…]", 0, TimeDialog),
+            ("[delay…]", 0, FormDialog),
+            ("[curve…]", 0, CurveDialog),
+            ("[follow…]", 0, TextDialog),
+            ("[wait…]", 0, TextDialog),
+            ("[chase…]", 0, ChaseDialog),
+            ("[replace]", 0, ConfirmDialog),
+            ("[remove]", 0, ConfirmDialog),
+            ("[delete]", 0, ConfirmDialog),
         ):
             before = [i.line or i.prefill or i.label for i in app.current_page.items()]
-            await pilot.press("tab", *["down"] * before.index(label), "enter")
+            at = [k for k, found in enumerate(before) if found == label][which]
+            await pilot.press("tab", *["down"] * at, "enter")
             await pilot.pause()
             assert isinstance(app.screen, dialog_type), label
+            if label == "[rename…]":
+                title = ("RENAME · cuelist 9", "RENAME · cue 9/2")[which]
+                assert app.screen.title_text == title
             await pilot.press("escape")
             await pilot.pause()
             await pilot.press("escape")  # the prompt has the keyboard again

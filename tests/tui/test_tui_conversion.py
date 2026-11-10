@@ -34,6 +34,7 @@ from busk_tui.model import (
     ChaseRate,
     EffectInfo,
     ElementOutput,
+    FamilyTiming,
     FixtureInfo,
     GroupInfo,
     HeldValue,
@@ -640,6 +641,16 @@ def test_the_groups_members_and_what_park_holds(show: busk.OfflineShow) -> None:
     assert washes.members == ((201, 1), (202, 1), (204, 1), (301, 12), (101, 1))
 
 
+def test_a_familys_own_curve_is_read_with_its_timing(show: busk.OfflineShow) -> None:
+    """F4's TIME form sends it back, since busk sets a family's timing whole."""
+    assert show.execute("cue 9/2 time beam 2 delay 0.5 bezier 0.25 0.1 0.25 1").ok
+    verse = show_model(show.show).cue_list(9).cues[1]  # type: ignore[union-attr]
+    assert verse.families == (
+        FamilyTiming("position", 4.0, 0.0),
+        FamilyTiming("beam", 2.0, 0.5, "bezier 0.25 0.1 0.25 1"),
+    )
+
+
 def test_cues_with_their_timing_triggers_and_entries_as_stored(club: busk.OfflineShow) -> None:
     model = show_model(club.show)
     song = model.cue_list(9)
@@ -658,7 +669,7 @@ def test_cues_with_their_timing_triggers_and_entries_as_stored(club: busk.Offlin
         StoredValue("intensity", washes, "literal", value=0.6),
         StoredValue("color", washes, "preset", preset="Blue", color=(0.0, 0.0, 1.0)),
     )
-    assert verse.families == (("position", 4.0, 0.0),)
+    assert verse.families == (FamilyTiming("position", 4.0, 0.0),)
     assert verse.values[1] == StoredValue("pan", heads, "preset", preset="Audience")
     assert verse.values[3].color == (1.0, 0.75, 0.45)
     assert verse.values[3].value == (("r", 1.0), ("g", 0.75), ("b", 0.45))

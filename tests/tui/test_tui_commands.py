@@ -27,6 +27,7 @@ from busk_tui.widgets.chase_dialog import (
     check_multiplier,
     check_rate,
 )
+from busk_tui.widgets.cue_dialogs import CURVES, bezier_points, check_seconds, pair_words
 from busk_tui.widgets.dialogs import check_cue, check_number, next_cue
 from busk_tui.widgets.fixture_panel import CATEGORIES
 from busk_tui.widgets.playback_panel import FADERS, FUNCTIONS, LTP_MODES, TOGGLES, TYPED
@@ -211,6 +212,29 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
     "cue release, every attribute": (
         commands.cue_release(9, "1", "101 thru 102, 201"),
         "cue 9/1 release 101 thru 102, 201",
+        False,
+    ),
+    "cue time": (commands.cue_time(9, "1", "1/3"), "cue 9/1 time 1/3", False),
+    "cue time delay": (
+        commands.cue_time(9, "1", "1/3", delay="0/1"),
+        "cue 9/1 time 1/3 delay 0/1",
+        False,
+    ),
+    "cue time curve": (
+        commands.cue_time(9, "1", "1/3", curve="bezier 0.25 0.1 0.25 1"),
+        "cue 9/1 time 1/3 bezier 0.25 0.1 0.25 1",
+        False,
+    ),
+    "cue time, a family": (
+        commands.cue_time(9, "1", "4", family="position", delay="1", curve="easeIn"),
+        "cue 9/1 time position 4 delay 1 easeIn",
+        False,
+    ),
+    "cue follow": (commands.cue_trigger(9, "2", "follow", "4"), "cue 9/2 follow 4", False),
+    "cue wait": (commands.cue_trigger(9, "2", "wait", "0.5"), "cue 9/2 wait 0.5", False),
+    "rename cue": (
+        commands.rename_cue(9, "1", 'The "Intro"'),
+        r'''rename cue 9/1 "The \"Intro\""''',
         False,
     ),
     "cuelist add": (
@@ -470,9 +494,6 @@ PREFILLS = (
     commands.cue_prefill(9, "3", "follow"),
     commands.cue_prefill(9, "3", "wait"),
     commands.cue_prefill(9, "3", "go"),
-    commands.cue_time_prefill(9, "3", "1/3", "delay"),
-    commands.cue_time_prefill(9, "3", "1/3"),
-    commands.rename_cue_prefill(9, "3"),
     commands.bind_prefill("nanoKONTROL2"),
     commands.feedback_prefill("nanoKONTROL2", "cc 1 0"),
     commands.pickup_prefill("nanoKONTROL2"),
@@ -929,6 +950,79 @@ def test_the_chase_form_and_busk_agree_on_a_crossfade(
 ) -> None:
     assert (check_crossfade(text) is None) is ok
     assert show.execute(f"cuelist 9 chase hz 2 crossfade {text}").ok is ok
+
+
+def test_the_timing_forms_words_are_busks(show: busk.OfflineShow) -> None:
+    assert show.expected("cue 9/1 time ").words == attributes.TIMING_FAMILIES
+    assert tuple(sorted(show.expected("cue 9/1 time 1 ").words, key=order)) == (*CURVES, "delay")
+
+
+def order(word: str) -> int:
+    """``delay`` after the curves, as the form has no chip for it."""
+    return len(CURVES) if word == "delay" else CURVES.index(word)
+
+
+@pytest.mark.parametrize("text", ["0", "2", "0.125", ".5", "2.", "02", "-1", "1e3", "50%", "", "x"])
+def test_a_time_form_and_busk_agree_on_seconds(show: busk.OfflineShow, text: str) -> None:
+    """The forms take what ``cue L/C time`` takes for the cue's own times.
+    A family's fade and a trigger's delay take more in busk (``50%``), which
+    the forms refuse: what they pass, busk takes."""
+    ok = check_seconds(text) is None
+    assert show.execute(f"cue 9/1 time {text}").ok is ok, text
+    assert show.execute(f"cue 9/1 time {text}/{text} delay {text}/{text}").ok is ok, text
+    if ok:
+        assert show.execute(f"cue 9/1 time position {text} delay {text}").ok
+        assert show.execute(f"cue 9/1 follow {text}").ok
+
+
+@pytest.mark.parametrize(
+    ("text", "ok"),
+    [
+        ("0.25 0.1 0.25 1", True),
+        ("0 0 1 1", True),
+        (".5 0 1. 1", True),
+        ("0 0 1 1.5", False),
+        ("0 0 1", False),
+        ("0 0 1 1 1", False),
+        ("a b c d", False),
+    ],
+)
+def test_the_curve_form_and_busk_agree_on_bezier_points(
+    show: busk.OfflineShow, text: str, ok: bool
+) -> None:
+    """busk also takes a sign (``-0``), which the form refuses."""
+    assert (bezier_points(text) is not None) is ok
+    assert show.execute(f"cue 9/1 time 1 bezier {text}").ok is ok, text
+
+
+def test_a_pair_of_times_keeps_every_digit_and_is_one_when_they_are_equal() -> None:
+    assert commands.exact_pair(3.0, 3.0) == "3"
+    assert commands.exact_pair(1.0, 3.0) == "1/3"
+    assert commands.exact_pair(1.234567, 0.00001) == "1.234567/0.00001"
+    assert pair_words(" 2 ", "2.0") == "2"
+    assert pair_words("1", " 3 ") == "1/3"
+
+
+def test_the_cue_timing_lines_do_what_they_say(show: busk.OfflineShow) -> None:
+    def timing() -> Any:
+        return show.show["cueLists"][8]["cues"][0]["timing"]
+
+    def run(line: Line) -> None:
+        reply = show.execute(line.text)
+        assert reply.ok, (line.text, reply.text)
+
+    run(commands.cue_time(9, "1", "1/3", delay="0.5/2", curve="easeIn"))
+    run(commands.cue_time(9, "1", "4/6"))  # the delay and the curve stay
+    assert (timing()["fadeIn"], timing()["fadeOut"]) == (4, 6)
+    assert (timing()["delayIn"], timing()["delayOut"], timing()["curve"]) == (0.5, 2, "easeIn")
+    run(commands.cue_time(9, "1", "2", family="position", delay="1", curve="snapEnd"))
+    assert timing()["perFamily"]["position"] == {"fade": 2, "delay": 1, "curve": "snapEnd"}
+    run(commands.cue_time(9, "1", "3", family="position"))  # set whole: the curve goes
+    assert timing()["perFamily"]["position"] == {"fade": 3, "delay": 0}
+    run(commands.cue_trigger(9, "1", "wait", "8"))
+    assert show.show["cueLists"][8]["cues"][0]["trigger"] == {"kind": "wait", "delay": 8}
+    run(commands.rename_cue(9, "1", "Fresh"))
+    assert show.show["cueLists"][8]["cues"][0]["name"] == "Fresh"
 
 
 def test_the_template_lines_do_what_they_say(show: busk.OfflineShow) -> None:

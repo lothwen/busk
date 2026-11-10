@@ -44,7 +44,7 @@ do can already be typed in the TUI. The tables below show how much the screens h
 |---|---|---|---|---|
 | Fixtures, patch | control (F3, F8, F1 A/C) | control (F3's form, F8's place) | control (cascades; a run in one line) | control (F3's FIXTURE panel, F8's place) |
 | Universes, routes | control (F8) | control (F8) | control (a universe cascades) | control (F8) |
-| Cues | control (F4) | control | control | control (values, releases); pre-fill (timing, trigger, name) |
+| Cues | control (F4) | control | control | control (values, releases, timing, trigger, name) |
 | Cue lists | control (F4) | control | control (cascades) | control; renumber: prompt |
 | Presets | control (F6, colour chips) | control (F6's PRESET panel) | control | control (values, name, number) |
 | Effects in the programmer | control (F5, F1 B) | control | control | control (F5's EFFECT panel, stop, run) |
@@ -59,9 +59,8 @@ In short:
 - **The TUI is a performance and programming frontend, and it edits the rig, the presets, the
   cue lists and the effects, but not the rest of a show yet.** F3, F8, F6, F4 and F5 show, add,
   delete and update fixtures, groups, universes, routes, presets, cues, cue lists, effects and
-  effect templates from controls alone; a cue's timing, trigger and name are pre-fills. F3 parks
-  and F7 unparks. F1's edit mode adds, places, edits and deletes playbacks, and adds, renames and
-  deletes pages.
+  effect templates from controls alone. F3 parks and F7 unparks. F1's edit mode adds, places,
+  edits and deletes playbacks, and adds, renames and deletes pages.
 - **busk has the lines the TUI needs.** Deleting several presets, cues or lists at once is all it
   still lacks (see [What busk is missing](#what-busk-is-missing)).
 
@@ -118,9 +117,9 @@ In short:
 | Add at a number, insert | `record cue L/C [only …] [freeze] ["name"]` (`9/2.5` goes between 2 and 3) | yes | control: F4 `[record at…]`, a form that refuses a cue that exists; `only` and `freeze`: prompt |
 | Delete | `delete cue L/C` | yes | control: F4 `[delete]`, after the TUI's question, which says when a playback is on the cue |
 | Change its values | `record cue L/C merge\|replace\|remove [only …]` | yes | control: F4 `[merge]`, `[replace]`, `[remove]`, the last two after the TUI's question; `only`: prompt |
-| Timing | `cue L/C time …`, `cue L/C time <family> …` | yes | pre-fill on F4 (`time…`, `delay…`, `curve…`, and a click on those cells) |
-| Trigger | `cue L/C go`, `… follow <d>`, `… wait <d>` | yes | pre-fill on F4 |
-| Rename | `rename cue L/C "…"` | yes | pre-fill on F4 |
+| Timing | `cue L/C time …`, `cue L/C time <family> …` | yes | control: F4 `[time…]` (the fade times, or a family's own), `[delay…]`, `[curve…]`, and a click on those cells: dialogs filled in with the cue |
+| Trigger | `cue L/C go`, `… follow <d>`, `… wait <d>` | yes | control: F4 `[follow…]`, `[wait…]` and a click on those cells, dialogs; `go`: pre-fill, a whole line |
+| Rename | `rename cue L/C "…"` | yes | control: F4 `[rename…]`, a name dialog |
 | Release targets | `cue L/C release <targets> [only …]` | yes | control: F4 `[release…]`, a form that starts at the selection |
 | Renumber, move, copy | `cue L/C number "…"` (generic property) | partial: only while the order stays; no move or copy | prompt |
 

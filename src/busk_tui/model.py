@@ -428,6 +428,17 @@ class StoredValue:
 
 
 @dataclass(frozen=True, slots=True)
+class FamilyTiming:
+    """A family's own timing in a cue: ``cue L/C time position 4 delay 1``
+    sets it whole, so a form that changes the fade keeps the curve."""
+
+    family: str
+    fade: float
+    delay: float = 0.0
+    curve: str | None = None  # in busk's words; None: the cue's
+
+
+@dataclass(frozen=True, slots=True)
 class CueInfo:
     number: str
     name: str
@@ -437,7 +448,7 @@ class CueInfo:
     delayIn: float = 0.0
     delayOut: float = 0.0
     curve: str = "linear"  # in busk's words: easeInOut, bezier 0.25 0.1 0.25 1
-    families: tuple[tuple[str, float, float], ...] = ()  # (family, fade, delay) of its own
+    families: tuple[FamilyTiming, ...] = ()  # the families with a timing of their own
     trigger: str = "go"  # go, follow, wait
     delay: float = 0.0  # a follow's or a wait's delay
     values: tuple[StoredValue, ...] = ()  # its value entries, in the order stored
