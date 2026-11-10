@@ -102,6 +102,7 @@ from busk_tui.model import (
     OutputModel,
     PageInfo,
     PageView,
+    Parked,
     PlaybackInfo,
     PlaybackView,
     PresetEntry,
@@ -697,12 +698,16 @@ class _Names:
     @classmethod
     def of(cls, doc: Show) -> _Names:
         speeds = [master for master in doc["masters"] if master["kind"] == "speed"]
+        fixtures: dict[str, int] = {fixture["id"]: fixture["number"] for fixture in doc["fixtures"]}
         return cls(
             templates={template["id"]: template["name"] for template in doc["effects"]},
             groups={
-                group["id"]: GroupInfo(group["number"], group["name"]) for group in doc["groups"]
+                group["id"]: GroupInfo(
+                    group["number"], group["name"], _elements(group["members"], fixtures)
+                )
+                for group in doc["groups"]
             },
-            fixtures={fixture["id"]: fixture["number"] for fixture in doc["fixtures"]},
+            fixtures=fixtures,
             presets={
                 preset["id"]: (preset["name"], _preset_color(preset["values"]))
                 for preset in doc["presets"]
@@ -849,6 +854,15 @@ def show_model(
                 ),
             )
             for profile in choices
+        ),
+        park=tuple(
+            Parked(
+                names.fixtures[entry["slot"]["target"]["fixtureId"]],
+                entry["slot"]["target"]["element"] + 1,
+                entry["slot"]["attribute"],
+                _value(entry["value"]),
+            )
+            for entry in doc["park"]
         ),
     )
 
@@ -1171,10 +1185,7 @@ def output_model(snapshot: OutputSnapshot) -> OutputModel:
                 pan=out.pan,
                 tilt=out.tilt,
                 zoom=out.zoom,
-                sources=tuple(
-                    (family, "none" if source == "park" else source)  # F3 reads it in Phase 12
-                    for family, source in out.source.items()
-                ),
+                sources=tuple(out.source.items()),
                 playback=out.playback,
             )
             for out in snapshot.fixtures
@@ -1426,12 +1437,18 @@ def _targets(spec: Mapping[str, Any], names: _Names) -> Targets:
     number (counted from 1), leaving out a fixture the show no longer has."""
     if spec["kind"] == "group":
         return Targets(group=names.groups.get(spec["groupId"], GroupInfo(0, spec["groupId"])))
-    return Targets(
-        elements=tuple(
-            (names.fixtures[ref["fixtureId"]], ref["element"] + 1)
-            for ref in spec["refs"]
-            if ref["fixtureId"] in names.fixtures
-        )
+    return Targets(elements=_elements(spec["refs"], names.fixtures))
+
+
+def _elements(
+    refs: Sequence[Mapping[str, Any]], fixtures: Mapping[str, int]
+) -> tuple[tuple[int, int], ...]:
+    """Target refs as (fixture number, element counted from 1) pairs, in order,
+    leaving out a fixture the show no longer has (``fixtures``: number by id)."""
+    return tuple(
+        (fixtures[ref["fixtureId"]], ref["element"] + 1)
+        for ref in refs
+        if ref["fixtureId"] in fixtures
     )
 
 

@@ -333,11 +333,11 @@ def out_snapshot(seq: int, intensity: float = 1.0) -> busk.OutputSnapshot:
     return busk.OutputSnapshot(seq=seq, time=seq / 100, fixtures=(element,))
 
 
-def test_a_parked_family_stays_driven_by_nothing_until_f3_reads_it(
+def test_a_parked_family_reaches_the_model_as_park(
     running: tuple[Bridge, Events], stub: Stub
 ) -> None:
-    """GAP-22 gives ``park``, and F3 reads it in the pending plan's Phase 12:
-    until then the model's four sources are all it may hold, or F3 would raise."""
+    """GAP-22's ``park``, which F3's source column reads (the pending plan's
+    Phase 12)."""
     bridge, events = running
     parked = busk.FixtureOutput(
         number=101, element=1, intensity=0.0, color=None, pan=None, tilt=None, zoom=None,
@@ -349,7 +349,7 @@ def test_a_parked_family_stays_driven_by_nothing_until_f3_reads_it(
     assert isinstance(event, OutputChanged)
     element = event.output.element(101, 1)
     assert element is not None
-    assert element.sources == (("intensity", "none"), ("color", "programmer"))
+    assert element.sources == (("intensity", "park"), ("color", "programmer"))
 
 
 def test_the_output_only_while_watched_and_only_when_it_changes(

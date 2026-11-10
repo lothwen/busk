@@ -11,7 +11,8 @@ the same in edit mode.
 
 In edit mode the FIXTURE panel (:mod:`busk_tui.widgets.fixture_panel`) shows
 the chosen fixture, to the right of the table at 100 columns or more, else
-under it. The rig's columns take the place of the live ones, the legend goes,
+under it, and the GROUPS panel (:mod:`busk_tui.widgets.group_panel`) is under
+the table. The rig's columns take the place of the live ones, the legend goes,
 and the page stops reading the output; ``[done]`` leaves edit mode.
 
 Out of it the page reads the output while it shows, and rows are drawn again
@@ -26,7 +27,7 @@ from typing import Final
 from rich.text import Text
 from textual import events
 from textual.app import ComposeResult
-from textual.containers import Horizontal
+from textual.containers import Horizontal, Vertical
 from textual.widgets import Static
 
 from busk_tui import colors, commands
@@ -43,6 +44,7 @@ from busk_tui.widgets.fixturetable import (
     legend,
     rig_cells,
 )
+from busk_tui.widgets.group_panel import GroupPanel
 from busk_tui.widgets.legend import Legend
 from busk_tui.widgets.panel import Panel
 from busk_tui.widgets.rows import Cells, RowTable
@@ -68,7 +70,7 @@ class FixturesPage(Page):
     FixturesPage #fixtures-header { width: 1fr; }
     FixturesPage #fixtures-add { margin-right: 1; }
     FixturesPage #fixtures-body { height: auto; }
-    FixturesPage #fixtures-panel { width: 1fr; }
+    FixturesPage #fixtures-left { width: 1fr; height: auto; }
     FixturesPage #fixtures-legend { margin-top: 1; }
     """
 
@@ -85,6 +87,8 @@ class FixturesPage(Page):
         self.sheet = Panel("fixtures", id="fixtures-panel")
         self.panel = FixturePanel(self._panel_changed, self.leave_edit)
         self.panel.display = False
+        self.groups = GroupPanel()
+        self.groups.display = False
         self.editing = False
         self.shown: tuple[FixtureInfo, ...] = ()
         self._view = View()
@@ -98,10 +102,12 @@ class FixturesPage(Page):
             yield self.add_button
             yield self.edit
         with Horizontal(id="fixtures-body"):
-            with self.sheet:
-                yield self.table
-                yield self.rig
-                yield self.legend
+            with Vertical(id="fixtures-left"):
+                with self.sheet:
+                    yield self.table
+                    yield self.rig
+                    yield self.legend
+                yield self.groups
             yield self.panel
 
     def on_resize(self, event: events.Resize) -> None:
@@ -125,11 +131,16 @@ class FixturesPage(Page):
         if changed & {"show", "programmer"}:
             self._draw_header()
             if self.editing:
-                self.panel.show_view(view.show, self.selected())
+                self.panel.show_view(view.show, self.selection())
+                self.groups.show_view(view.show, self.selection())
 
     def selected(self) -> frozenset[int]:
+        return frozenset(number for number, _ in self.selection())
+
+    def selection(self) -> tuple[tuple[int, int], ...]:
+        """The selected elements, in order."""
         programmer = self._view.programmer
-        return frozenset(() if programmer is None else (n for n, _ in programmer.selection))
+        return () if programmer is None else programmer.selection
 
     # ------------------------------------------------------------- draw
 
@@ -211,11 +222,12 @@ class FixturesPage(Page):
         if not on:
             self.panel.adding = False
         self.table.display = self.legend.display = not on
-        self.rig.display = self.panel.display = on
+        self.rig.display = self.panel.display = self.groups.display = on
         self._draw()
         self._draw_header()
         if on:
-            self.panel.show_view(self._view.show, self.selected())
+            self.panel.show_view(self._view.show, self.selection())
+            self.groups.show_view(self._view.show, self.selection())
         self.post_message(Page.WatchesChanged(self))
 
     # ----------------------------------------------------------- clicks
@@ -238,7 +250,8 @@ class FixturesPage(Page):
     # ----------------------------------------------------- pane cursor
 
     def stops(self) -> list[Stop]:
-        """``[+ add]``, the edit toggle, each row, then the FIXTURE panel's controls."""
+        """``[+ add]``, the edit toggle, each row, then the GROUPS panel's and the
+        FIXTURE panel's controls."""
         stops: list[Stop] = []
         if not self.add_button.inert:
             stops.append(Stop(Item("+ add", action=self.add_fixture), self.add_button))
@@ -251,5 +264,6 @@ class FixturesPage(Page):
             item = Item(label, line=line, action=partial(self.panel.choose, fixture.number))
             stops.append(Stop(item, table, row))
         if self.editing:
+            stops += self.groups.stops()
             stops += self.panel.stops()
         return stops

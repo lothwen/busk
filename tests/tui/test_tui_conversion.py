@@ -42,6 +42,7 @@ from busk_tui.model import (
     ModeInfo,
     Orientation,
     PageInfo,
+    Parked,
     PlaybackView,
     PresetEntry,
     ProfileChoice,
@@ -54,6 +55,11 @@ from busk_tui.widgets.effect_panel import effect_settings
 from busk_tui.widgets.template_panel import NEW_COLOUR, NEW_WAVE, WAVES, layer_text
 
 TUPPER = Path(__file__).resolve().parents[2] / "examples" / "tupperdmx" / "tupper-demo.show"
+
+HEADS = ((101, 1), (102, 1))
+WASHES = ((201, 1), (202, 1), (203, 1), (204, 1))
+BAR = tuple((301, element) for element in range(1, 13))
+"""The club show's groups' members."""
 
 
 @pytest.fixture
@@ -147,7 +153,7 @@ def test_the_show_model_has_what_f1_and_f7_show(club: busk.OfflineShow) -> None:
         MasterView("Grand Master", "grand", None, ()),
         MasterView("Speed 1", "speed", None, (0.25, 0.5, 1.0, 2.0, 4.0)),
         MasterView("FX", "size", None, ()),
-        MasterView("Wash level", "group", GroupInfo(2, "Washes"), ()),
+        MasterView("Wash level", "group", GroupInfo(2, "Washes", WASHES), ()),
         MasterView("Fade", "fadeTime", None, ()),
     )
     assert [g.name for g in model.groups] == ["Heads", "Washes", "Bar", "All"]
@@ -610,13 +616,38 @@ def test_a_playbacks_own_buttons_and_goto_cue_as_stored(club: busk.OfflineShow) 
     assert (warm.buttons, warm.gotoCue) == (("toggle", "flash", "release"), None)
 
 
+def test_the_groups_members_and_what_park_holds(show: busk.OfflineShow) -> None:
+    model = show_model(show.show)
+    assert [(group.number, group.members) for group in model.groups] == [
+        (1, HEADS), (2, WASHES), (3, BAR), (4, HEADS + WASHES + BAR),
+    ]  # fmt: skip
+    assert model.group(2) == GroupInfo(2, "Washes", WASHES)
+    assert model.group(9) is None
+    red = (("r", 1.0), ("g", 0.0), ("b", 0.0))
+    assert model.park == (Parked(204, 1, "intensity", 0.0), Parked(203, 1, "color", red))
+    for line in ("park fixture 301.2 intensity 50%", "park fixture 101 gobo1 open",
+                 "delete fixture 203 cascade", "sel fixture 301.12, fixture 101",
+                 "record group 2 merge"):  # fmt: skip
+        assert show.execute(line).ok, line
+    model = show_model(show.show)
+    assert model.park == (
+        Parked(204, 1, "intensity", 0.0),
+        Parked(301, 2, "intensity", 0.5),
+        Parked(101, 1, "gobo1", "open"),
+    )
+    washes = model.group(2)
+    assert washes is not None
+    assert washes.members == ((201, 1), (202, 1), (204, 1), (301, 12), (101, 1))
+
+
 def test_cues_with_their_timing_triggers_and_entries_as_stored(club: busk.OfflineShow) -> None:
     model = show_model(club.show)
     song = model.cue_list(9)
     assert song is not None
     assert song.tracking
     intro, verse, pre, chorus, outro = song.cues
-    washes, heads = Targets(group=GroupInfo(2, "Washes")), Targets(group=GroupInfo(1, "Heads"))
+    washes = Targets(group=GroupInfo(2, "Washes", WASHES))
+    heads = Targets(group=GroupInfo(1, "Heads", HEADS))
     assert (intro.fadeIn, intro.fadeOut, intro.curve, intro.trigger) == (
         3.0,
         3.0,
@@ -637,7 +668,7 @@ def test_cues_with_their_timing_triggers_and_entries_as_stored(club: busk.Offlin
         EffectInfo(
             "rainbow",
             "Rainbow",
-            Targets(group=GroupInfo(3, "Bar")),
+            Targets(group=GroupInfo(3, "Bar", BAR)),
             rate="hz 0.25",
             phase=(0.0, 360.0),
             pace=ChaseRate(0.25, None, 1.0, "forward"),
@@ -669,7 +700,7 @@ def test_a_recorded_spread_a_bezier_and_a_spread_entry(show: busk.OfflineShow) -
     doc["cueLists"][0]["cues"][0]["entries"].append(entry)
     spread = show_model(doc).cue_list(1).cues[0].values[-1]  # type: ignore[union-attr]
     assert spread == StoredValue(
-        "intensity", Targets(group=GroupInfo(1, "Heads")), "spread", value=0.2, to=0.8
+        "intensity", Targets(group=GroupInfo(1, "Heads", HEADS)), "spread", value=0.2, to=0.8
     )
 
 

@@ -1775,6 +1775,9 @@ is one more origin, ranked above the programmer. What it settles:
 - **F3 does not read it yet.** `busk_tui.bridge` turns `park` into `none`, one expression, as F3's
   tables know four sources and would raise on a fifth. Phase 12 of the pending plan takes it out.
 
+  It did, on 2026-11-10: F3's source column reads `park`, in amber, ranked above the programmer as
+  busk ranks it.
+
 Tests: `tests/test_output_readout.py`, across the engine process in `tests/test_frontend.py`, and
 the bridge in `tests/tui/test_tui_bridge.py`.
 

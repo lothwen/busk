@@ -313,6 +313,27 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
         False,
     ),
     "delete preset": (commands.delete_preset("color", 9), "delete preset color 9", False),
+    # A group recorded from the heads, changed and taken away; values parked and let go.
+    "record group": (commands.record_group(5, name="Floor"), 'record group 5 "Floor"', False),
+    "record group unnamed": (commands.record_group(6), "record group 6", False),
+    "record group merge": (commands.record_group(3, "merge"), "record group 3 merge", False),
+    "record group remove": (commands.record_group(3, "remove"), "record group 3 remove", False),
+    "record group replace": (commands.record_group(6, "replace"), "record group 6 replace", False),
+    "rename group": (commands.rename_group(5, "Floor 2"), 'rename group 5 "Floor 2"', False),
+    "renumber group": (commands.renumber_group(5, 7), "group 5 number 7", False),
+    "delete group": (commands.delete_group(7), "delete group 7 cascade", False),
+    "park": (
+        commands.park("101 thru 102, 301.2", "intensity", "50%"),
+        "park fixture 101 thru 102, fixture 301.2 intensity 50%",
+        False,
+    ),
+    "park a colour": (
+        commands.park("301.3 thru 301.5", "color", "1 0 0"),
+        "park fixture 301.3 thru 301.5 color 1 0 0",
+        False,
+    ),
+    "unpark": (commands.unpark("301.2", "intensity"), "unpark fixture 301.2 intensity", False),
+    "unpark all": (commands.unpark_all(), "unpark all", False),
     "clear": (commands.clear(), "clear", False),
     # A universe, a rig in it and its routes, built up, changed and taken away.
     "universe add": (commands.universe_add(5, "Balcony"), 'universe add 5 "Balcony"', False),
@@ -979,6 +1000,48 @@ def test_no_prefill_builder_is_left_unused() -> None:
     )
     names = [name for name in vars(commands) if name.endswith("_prefill")]
     assert [name for name in names if f"commands.{name}(" not in source] == []
+
+
+def test_the_group_and_park_lines_do_what_they_say(show: busk.OfflineShow) -> None:
+    """What the lines leave in the document: members by fixture and element
+    (from 0), and the park list."""
+
+    def members(number: int) -> list[tuple[int, int]]:
+        group = next(g for g in show.show["groups"] if g["number"] == number)
+        return [(numbers[m["fixtureId"]], m["element"]) for m in group["members"]]
+
+    numbers = {fixture["id"]: fixture["number"] for fixture in show.show["fixtures"]}
+    assert show.execute("sel fixture 301.2 thru 301.3, fixture 101").ok
+    assert show.execute(commands.record_group(5, name="Mixed").text).ok
+    assert members(5) == [(301, 1), (301, 2), (101, 0)]
+    assert show.execute("sel fixture 201").ok
+    assert show.execute(commands.record_group(5, "merge").text).ok
+    assert members(5) == [(301, 1), (301, 2), (101, 0), (201, 0)]
+    assert show.execute("sel fixture 301.3").ok
+    assert show.execute(commands.record_group(5, "remove").text).ok
+    assert members(5) == [(301, 1), (101, 0), (201, 0)]
+    assert show.execute(commands.record_group(5, "replace").text).ok
+    assert members(5) == [(301, 2)]
+    assert show.execute(commands.renumber_group(5, 8).text).ok
+    assert show.execute(commands.rename_group(8, 'The "bar"').text).ok
+    assert [(g["number"], g["name"]) for g in show.show["groups"]][-1] == (8, 'The "bar"')
+    assert show.execute(commands.delete_group(8).text).ok
+    assert [g["number"] for g in show.show["groups"]] == [1, 2, 3, 4]
+    assert show.execute(commands.park("301.2 thru 301.3", "color", "0 0 1").text).ok
+    assert show.execute(commands.park("102", "pan", "-45").text).ok
+    park = [(numbers[e["slot"]["target"]["fixtureId"]], e["slot"]["target"]["element"],
+             e["slot"]["attribute"], e["value"]) for e in show.show["park"]]  # fmt: skip
+    assert park == [  # the club's two first
+        (204, 0, "intensity", 0.0),
+        (203, 0, "color", {"r": 1.0, "g": 0.0, "b": 0.0}),
+        (301, 1, "color", {"r": 0.0, "g": 0.0, "b": 1.0}),
+        (301, 2, "color", {"r": 0.0, "g": 0.0, "b": 1.0}),
+        (102, 0, "pan", -45.0),
+    ]
+    assert show.execute(commands.unpark("301.2 thru 301.3", "color").text).ok
+    assert len(show.show["park"]) == 3
+    assert show.execute(commands.unpark_all().text).ok
+    assert show.show["park"] == []
 
 
 def test_the_rig_lines_do_what_they_say(show: busk.OfflineShow) -> None:

@@ -7,11 +7,12 @@ profile's category), mode, patch (``1.49``; ``—`` in red while unpatched),
 and from the output: intensity (``20–80%`` while its elements differ), one
 swatch per element in its colour at its intensity (twelve at most), pan,
 tilt and zoom (on fixtures that have them), and what drives its intensity
-(``prog``, ``P9``, ``fx P11``, ``fx``; ``—``: nothing).
+(``park``, ``prog``, ``P9``, ``fx P11``, ``fx``; ``—``: nothing).
 
 Source colouring: intensity and the source by what drives the intensity,
 pan and tilt by what drives the position, zoom by what drives the beam
-(magenta programmer, foreground playback, green effect, dim nothing).
+(amber park, magenta programmer, foreground playback, green effect, dim
+nothing).
 
 In edit mode :class:`RigTable` takes its place: the same row up to the patch,
 then what the FIXTURE panel sets, the limits (``pan tilt int``) and the place
@@ -38,7 +39,9 @@ when it has more."""
 NONE: Final = "—"
 UNKNOWN: Final = "·"  # no output read yet; no place
 
-_RANK: Final[dict[Source, int]] = {"programmer": 3, "effect": 2, "playback": 1, "none": 0}
+_RANK: Final[dict[Source, int]] = {
+    "park": 4, "programmer": 3, "effect": 2, "playback": 1, "none": 0,
+}  # fmt: skip
 
 
 class FixtureTable(RowTable):
@@ -156,9 +159,9 @@ def fixture_cells(
 
 
 def top_source(outputs: Sequence[ElementOutput], family: str) -> tuple[Source, int | None]:
-    """What drives ``family`` on the fixture: of its elements', the
-    programmer first, then an effect, then a playback; with the playback
-    number busk gives for the intensity."""
+    """What drives ``family`` on the fixture: of its elements', park first,
+    as busk ranks it, then the programmer, an effect, a playback; with the
+    playback number busk gives for the intensity."""
     best: Source = "none"
     playback: int | None = None
     for out in outputs:
@@ -169,8 +172,10 @@ def top_source(outputs: Sequence[ElementOutput], family: str) -> tuple[Source, i
 
 
 def source_text(source: Source, playback: int | None) -> str:
-    """``prog``, ``P9`` (a playback's cue), ``fx P11`` (its cue's effect),
-    ``fx`` (the programmer's), ``—``."""
+    """``park``, ``prog``, ``P9`` (a playback's cue), ``fx P11`` (its cue's
+    effect), ``fx`` (the programmer's), ``—``."""
+    if source == "park":
+        return "park"
     if source == "programmer":
         return "prog"
     if source == "effect":
@@ -198,8 +203,8 @@ def legend() -> list[Text]:
     """What the colours and marks of the sheet mean."""
     keys = [
         Text.assemble(("■ ", colors.SOURCE_COLORS[source]), (name, colors.DIM))
-        for source, name in (("programmer", "programmer"), ("playback", "playback"),
-                             ("effect", "effect"), ("none", "nothing"))
+        for source, name in (("park", "park"), ("programmer", "programmer"),
+                             ("playback", "playback"), ("effect", "effect"), ("none", "nothing"))
     ]  # fmt: skip
     keys.append(Text.assemble(("— ", colors.RED), ("unpatched", colors.DIM)))
     keys.append(Text.assemble(("▸ ", colors.CYAN), ("selected", colors.DIM)))

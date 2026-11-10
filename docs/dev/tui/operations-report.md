@@ -58,9 +58,10 @@ In short:
 - **SHOW is covered** for all of them.
 - **The TUI is a performance and programming frontend, and it edits the rig, the presets, the
   cue lists and the effects, but not the rest of a show yet.** F3, F8, F6, F4 and F5 show, add,
-  delete and update fixtures, universes, routes, presets, cues, cue lists, effects and effect
-  templates from controls alone; a cue's timing, trigger and name are pre-fills. F1's edit mode adds,
-  places, edits and deletes playbacks, and adds, renames and deletes pages.
+  delete and update fixtures, groups, universes, routes, presets, cues, cue lists, effects and
+  effect templates from controls alone; a cue's timing, trigger and name are pre-fills. F3 parks
+  and F7 unparks. F1's edit mode adds, places, edits and deletes playbacks, and adds, renames and
+  deletes pages.
 - **busk has the lines the TUI needs.** Deleting several presets, cues or lists at once is all it
   still lacks (see [What busk is missing](#what-busk-is-missing)).
 
@@ -80,9 +81,8 @@ In short:
 | Category | `profile "<name>" category …` | yes | control: chips |
 | Change mode | `fixture N mode <mode>` (GAP-26) | yes | control: chips |
 | Change profile | `fixture N profile "<profile>" mode <mode>` (GAP-26) | yes | control: `[profile…]`, the picker, `[change]` |
-
-GAP-22 is closed in busk: `FixtureOutput.source` says `park`. F3's source column still reads a
-parked value as "none", until the pending plan's Phase 12.
+| Groups | `record group N [merge\|replace\|remove] ["name"]`, `rename group N "…"`, `group N number M`, `delete group N cascade` (GAP-36) | yes | control: F3's GROUPS panel in edit mode: `[record…]` from the selection, `[merge]`, `[replace]`, `[remove]` with it, `[rename…]`, `[number…]`, `[delete]` after busk's question |
+| Park | `park <targets> <attribute> <value>`, `unpark <targets> [<attribute>]`, `unpark all` | yes | control: F3's FIXTURE panel shows what is parked and `[park…]` (a form, on the selected elements); F7's PARKED panel, `[unpark]` per value and `[unpark all]`; F3's source column reads `park` (GAP-22) |
 
 ## Universes and routes
 

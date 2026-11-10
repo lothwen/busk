@@ -9,6 +9,8 @@
   override that transitions starting now take.
 * PANIC (busk's): ``[release all]``, ``[OUTPUT OFF]`` (busk asks first),
   ``[OUTPUT ON]``.
+* PARKED (busk's): a row per value park holds, with ``[unpark]``, and
+  ``[unpark all]`` (:mod:`busk_tui.widgets.parked`).
 
 Panels are laid out three across from 132 columns, two from 100, and one
 under the other below that.
@@ -24,13 +26,14 @@ from textual.widget import Widget
 from textual.widgets import Static
 
 from busk_tui import colors, commands
-from busk_tui.model import LiveState, MasterView
+from busk_tui.model import LiveState, MasterView, ShowModel
 from busk_tui.nav import Item, Stop
 from busk_tui.pages.base import Page, Part, View
 from busk_tui.widgets.controls import CommandButton, chip
 from busk_tui.widgets.digits import BigDigits
 from busk_tui.widgets.masters import BlackoutButton, MasterBar, master_item
 from busk_tui.widgets.panel import Panel
+from busk_tui.widgets.parked import ParkedPanel, ParkedRow, parked_rows
 from busk_tui.widgets.tempo import Tempo
 
 PANEL_WIDTH = 44
@@ -62,7 +65,7 @@ class MastersPage(Page):
     def __init__(self, number: int, title: str) -> None:
         super().__init__(number, title)
         self.grid = Grid(id="masters-grid")
-        self.shape: tuple[MasterView, ...] | None = None
+        self.shape: tuple[tuple[MasterView, ...], tuple[ParkedRow, ...]] | None = None
         self._widgets()
 
     def _widgets(self) -> None:
@@ -78,6 +81,7 @@ class MastersPage(Page):
         self.release_all = CommandButton("release all", commands.release_all(), "tempo")
         self.output_off = CommandButton("OUTPUT OFF", commands.output(False), "danger")
         self.output_on = CommandButton("OUTPUT ON", commands.output(True), "go")
+        self.parked = ParkedPanel((), 0)
 
     def compose(self) -> ComposeResult:
         yield self.grid
@@ -90,9 +94,9 @@ class MastersPage(Page):
 
     def update_view(self, view: View, changed: frozenset[Part]) -> None:
         show, live = view.show, view.live
-        if "show" in changed and show is not None and show.masters != self.shape:
-            self.shape = show.masters
-            self._build(show.masters, live)
+        if "show" in changed and show is not None and self._shape(show) != self.shape:
+            self.shape = self._shape(show)
+            self._build(show, live)
         if changed & {"show", "live"} and live is not None:
             self._show_levels(live)
         if changed & {"live", "beats"} and live is not None:
@@ -102,8 +106,14 @@ class MastersPage(Page):
                 beats = None if index is None or index >= len(view.beats) else view.beats[index]
                 tempo.show_beats(beats)
 
-    def _build(self, masters: tuple[MasterView, ...], live: LiveState | None) -> None:
+    @staticmethod
+    def _shape(show: ShowModel) -> tuple[tuple[MasterView, ...], tuple[ParkedRow, ...]]:
+        """What the panels are built from: the masters, and what park holds."""
+        return show.masters, parked_rows(show.park, show.fixtures)
+
+    def _build(self, show: ShowModel, live: LiveState | None) -> None:
         self._widgets()
+        masters = show.masters
         levels = {} if live is None else {m.name: m.level for m in live.masters}
         panels: list[Widget] = []
         grand = next((m for m in masters if m.kind == "grand"), None)
@@ -128,6 +138,8 @@ class MastersPage(Page):
             panels.append(Panel("fade time", *fade_bars, self.fade_now))
         buttons = Horizontal(self.release_all, self.output_off, self.output_on, classes="buttons")
         panels.append(Panel("panic", self.output_state, buttons))
+        self.parked = ParkedPanel(parked_rows(show.park, show.fixtures), len(show.park))
+        panels.append(self.parked)
         self.grid.remove_children()
         self.grid.mount_all(panels)
 
@@ -164,4 +176,4 @@ class MastersPage(Page):
         stops += [Stop(master_item(bar.master), bar) for bar in self.bars]
         for button in (self.release_all, self.output_off, self.output_on):
             stops.append(Stop(Item(button.label, line=button.line.text), button))
-        return stops
+        return stops + self.parked.stops()

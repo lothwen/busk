@@ -19,6 +19,9 @@ chosen in edit mode.
   takes them, intensity always). ``[limit…]`` is a form that starts at the
   limit, else at the profile's range; ``[none]`` removes that limit, and
   ``[no limits]`` all of them.
+* PARK: what park holds on the fixture, a line per attribute and value, and
+  ``[park…]``, a form of an attribute and a value: ``park fixture 101 thru
+  102, fixture 301.2 intensity 0``. F7's PARKED panel unparks.
 * ORIENTATION, where the profile takes pan or tilt: ``[invert pan]``,
   ``[invert tilt]`` and, with both, ``[swap pan/tilt]``, toggles that send at
   once, and an ``[offset…]`` dialog for each axis.
@@ -29,11 +32,14 @@ chosen in edit mode.
 Two reaches (the plan's §4 call 4). The header, the mode, the profile, PATCH and
 the location act on the chosen fixture. LIMITS and ORIENTATION act on every selected fixture
 while the chosen one is selected, as their headings say: a ``thru`` line per run
-of the show's numbers that are all selected.
+of the show's numbers that are all selected. PARK acts on the selected elements
+while the chosen fixture is selected, so a pixel can be parked, else on the
+chosen fixture; one line, its targets as its heading says.
 """
 
 from __future__ import annotations
 
+import textwrap
 from collections.abc import Callable, Iterable, Sequence
 from functools import cache, partial
 from typing import Final
@@ -43,9 +49,9 @@ from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Static
 
-from busk_tui import colors, commands
+from busk_tui import attributes, colors, commands
 from busk_tui.commands import Line
-from busk_tui.formats import numbers_text, runs
+from busk_tui.formats import numbers_text, runs, selection_text
 from busk_tui.model import (
     FixtureInfo,
     Limits,
@@ -68,6 +74,7 @@ from busk_tui.widgets.fixture_form import FixtureForm, find_choice, find_mode, m
 from busk_tui.widgets.fixturetable import profile_text
 from busk_tui.widgets.location_form import PLACE, open_location_form
 from busk_tui.widgets.options import LIT, pick_chips
+from busk_tui.widgets.parked import held_text, parked_rows
 from busk_tui.widgets.patch_chooser import PatchChooser, channels_text, span_text
 from busk_tui.widgets.preset_panel import PANEL_WIDTH
 from busk_tui.widgets.profile_picker import ProfileDialog
@@ -189,6 +196,35 @@ def check_offset(text: str) -> str | None:
     return None if read_number(text) is not None else "a number, in degrees"
 
 
+def check_park(takes: Sequence[str]) -> Callable[[tuple[str, ...]], str | None]:
+    """A park form's check: an attribute of ``takes``, and a value. What only
+    busk can tell (a value it does not read) is refused in the log."""
+
+    def check(values: tuple[str, ...]) -> str | None:
+        if values[0].strip() not in takes:
+            return "an attribute these fixtures take, as the note lists them"
+        return None if values[1].strip() else "a value: 0, 50%, -45, 1 0 0, or an option"
+
+    return check
+
+
+def parked_text(fixture: FixtureInfo, show: ShowModel | None) -> Text:
+    """What park holds on ``fixture``, a line per attribute and value, with
+    the elements when it is not all of them: ``intensity 0% · 301.2 thru
+    301.5``; ``nothing parked``."""
+    park = () if show is None else [p for p in show.park if p.number == fixture.number]
+    rows = parked_rows(park, () if show is None else show.fixtures)
+    if not rows:
+        return Text("nothing parked", style=colors.DIM)
+    lines = []
+    for row in rows:
+        line = held_text(row)
+        if not row.whole():
+            line.append(f" · {row.where}", style=colors.DIM)
+        lines.append(line)
+    return Text("\n").join(lines)
+
+
 def put(widget: Static, text: Text) -> None:
     """``text`` in ``widget``, if it is not there already (no layout for nothing)."""
     if widget.content != text:
@@ -250,6 +286,7 @@ class FixturePanel(VerticalScroll):
         self.chosen: int | None = None
         self.show: ShowModel | None = None
         self.selected: frozenset[int] = frozenset()
+        self.selection: tuple[tuple[int, int], ...] = ()  # the selected elements, in order
         self.adding = False  # the new fixture form shows
         self.hint = Static(
             Text("click a fixture, or [+ add]", style=colors.DIM), classes="fp-section"
@@ -287,6 +324,9 @@ class FixturePanel(VerticalScroll):
             for name in (*AXES, "intensity")
         }
         self.no_limits = ActionButton("no limits", self.drop_limits)
+        self.park_heading = Static("", classes="fp-text fp-crop")
+        self.parked = Static("", classes="fp-text")
+        self.park = ActionButton("park…", self.ask_park)
         self.orientation_heading = Static("", classes="fp-text fp-crop")
         self.toggles = {
             key: ActionButton(label, partial(self.toggle, key))
@@ -329,6 +369,12 @@ class FixturePanel(VerticalScroll):
                 Horizontal(self.no_limits, classes="fp-row"),
                 classes="fp-section",
             ),
+            Vertical(
+                self.park_heading,
+                self.parked,
+                Horizontal(self.park, classes="fp-row"),
+                classes="fp-section",
+            ),
             self.orientation,
             Vertical(
                 self.place,
@@ -348,9 +394,10 @@ class FixturePanel(VerticalScroll):
 
     # ------------------------------------------------------------ drawing
 
-    def show_view(self, show: ShowModel | None, selected: frozenset[int]) -> None:
-        """Redraw with the show and the selected fixtures as they are now."""
-        self.show, self.selected = show, selected
+    def show_view(self, show: ShowModel | None, selection: tuple[tuple[int, int], ...]) -> None:
+        """Redraw with the show and the selected elements as they are now."""
+        self.show, self.selection = show, selection
+        self.selected = frozenset(number for number, _ in selection)
         self.draw()
 
     def fixture(self) -> FixtureInfo | None:
@@ -381,6 +428,7 @@ class FixturePanel(VerticalScroll):
         self._draw_what(fixture)
         self._draw_patch(fixture)
         self._draw_limits(fixture)
+        self._draw_park(fixture)
         self._draw_orientation(fixture)
         put(self.place, location_text(fixture.location))
         self.no_place.display = fixture.location is not None
@@ -443,6 +491,13 @@ class FixturePanel(VerticalScroll):
             row.buttons[1].display = bool(self.spans_with(partial(_has_limit, name)))
         self.no_limits.change(inert=not self.spans_with(_has_limits))
 
+    def _draw_park(self, fixture: FixtureInfo) -> None:
+        heading = Text("PARK", style=colors.CYAN)
+        heading.append(f" · {self.park_where()}", style=colors.FG)
+        put(self.park_heading, heading)
+        put(self.parked, parked_text(fixture, self.show))
+        self.park.change(inert=not self.parkable())
+
     def _draw_orientation(self, fixture: FixtureInfo) -> None:
         profile = self.profile()
         takes = frozenset() if profile is None else profile.attributes
@@ -478,6 +533,35 @@ class FixturePanel(VerticalScroll):
         return runs(
             self.reach(), [] if self.show is None else [f.number for f in self.show.fixtures]
         )
+
+    def park_reach(self) -> tuple[tuple[int, int], ...]:
+        """What ``[park…]`` acts on: the selected elements while the chosen
+        fixture is selected, else every element of the chosen one."""
+        fixture = self.fixture()
+        if fixture is None:
+            return ()
+        if fixture.number in self.selected:
+            return self.selection
+        return tuple((fixture.number, element) for element in range(1, fixture.elements + 1))
+
+    def park_where(self) -> str:
+        """The park reach as busk's targets take it, without the word:
+        ``101 thru 102, 301.2``."""
+        return selection_text(self.park_reach(), () if self.show is None else self.show.fixtures)
+
+    def parkable(self) -> tuple[str, ...]:
+        """The attributes the park reach's profiles take, in busk's order (a
+        colour's components go with ``color``)."""
+        show = self.show
+        if show is None:
+            return ()
+        numbers = {number for number, _ in self.park_reach()}
+        takes: set[str] = set()
+        for fixture in show.fixtures:
+            profile = show.profile(fixture.profile) if fixture.number in numbers else None
+            if profile is not None:
+                takes |= profile.attributes
+        return tuple(name for name in attributes.FAMILY_OF if name in takes)
 
     def spans_with(self, has: Callable[[FixtureInfo], bool]) -> list[tuple[int, int]]:
         """The spans with a fixture that ``has`` it: busk refuses to remove
@@ -673,6 +757,23 @@ class FixturePanel(VerticalScroll):
         """``[no limits]``: ``fixture 101 thru 102 limits none``."""
         self._run(commands.no_limits(a, b) for a, b in self.spans_with(_has_limits))
 
+    def ask_park(self) -> None:
+        """``[park…]``: ``park fixture 301.2 thru 301.5 intensity 0``, an
+        attribute the reach takes and a value as busk reads it."""
+        takes, where = self.parkable(), self.park_where()
+        if not takes:
+            return
+
+        def given(values: tuple[str, ...] | None) -> None:
+            if values is not None:
+                attribute, value = (text.strip() for text in values)
+                self.post_message(RunLine(commands.park(where, attribute, value)))
+
+        lines = textwrap.wrap("attributes: " + " ".join(takes), 54)
+        note = "\n".join([*lines, "value: 0 to 1 or 50%, degrees, r g b, or an option"])
+        fields = (("attribute", takes[0]), ("value", "0"))  # busk's order: intensity first
+        self.app.push_screen(FormDialog(f"PARK · {where}", fields, check_park(takes), note), given)
+
     def _orient(self, key: str, value: bool | float) -> None:
         """A ``thru`` line per span with a fixture not at ``value`` yet."""
         spans = self.spans_with(partial(_differs, key, value))
@@ -736,6 +837,8 @@ class FixturePanel(VerticalScroll):
                 stops += row.stops(name)
             if not self.no_limits.inert:
                 stops.append(Stop(Item("no limits", action=self.drop_limits), self.no_limits))
+            if not self.park.inert:
+                stops.append(Stop(Item("park…", action=self.ask_park), self.park))
             for button in self.toggles.values():
                 if button.display:
                     stops.append(Stop(Item(button.label, action=button.action), button))

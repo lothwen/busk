@@ -24,7 +24,7 @@ type RouteState = Literal["ok", "failed", "disabled", "ignored"]
 
 type SurfaceState = Literal["ok", "failed", "ignored"]
 
-type Source = Literal["programmer", "playback", "effect", "none"]
+type Source = Literal["park", "programmer", "playback", "effect", "none"]
 """What drives a family of a fixture element's attributes (busk's
 ``FixtureOutput.source``)."""
 
@@ -143,6 +143,7 @@ class LiveState:
 class GroupInfo:
     number: int
     name: str
+    members: tuple[tuple[int, int], ...] = ()  # (fixture number, element) pairs, in order
 
 
 @dataclass(frozen=True, slots=True)
@@ -535,6 +536,17 @@ class Orientation:
 
 
 @dataclass(frozen=True, slots=True)
+class Parked:
+    """A value park holds on one attribute of one fixture element (an entry of
+    the show's ``park``)."""
+
+    number: int  # the fixture's
+    element: int  # counted from 1
+    attribute: str
+    value: Value
+
+
+@dataclass(frozen=True, slots=True)
 class FixtureInfo:
     number: int
     elements: int
@@ -603,6 +615,10 @@ class ShowModel:
     templates: tuple[TemplateInfo, ...] = ()  # what effect add takes
     bindings: tuple[BindingInfo, ...] = ()  # in show order
     choices: tuple[ProfileChoice, ...] = ()  # what fixture add takes
+    park: tuple[Parked, ...] = ()  # in show order
+
+    def group(self, number: int) -> GroupInfo | None:
+        return next((info for info in self.groups if info.number == number), None)
 
     def playback(self, number: int) -> PlaybackInfo | None:
         return next((info for info in self.playbacks if info.number == number), None)

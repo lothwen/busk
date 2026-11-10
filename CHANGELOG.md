@@ -10,6 +10,17 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- F3's edit mode edits groups and park from controls. A GROUPS panel under the table has a row per
+  group with its members; a click chooses one and keeps the selection. `[record…]` makes a group of
+  the selection, `[merge]`, `[replace]` and `[remove]` change the chosen one with it (the last two
+  ask first, and each is grey while it would change nothing), and `[rename…]`, `[number…]` and
+  `[delete]` (busk's question) are there too. The FIXTURE panel has a PARK section: what park holds
+  on the fixture, and `[park…]`, a form of an attribute and a value, which reaches the selected
+  elements, so one pixel of a bar can be parked.
+- F7 has a PARKED panel: a row per value park holds, each with `[unpark]`, and `[unpark all]`, after
+  a question.
+- F3's source column reads `park`, in amber, for a parked value, before anything else that drives
+  it, and its legend says so.
 - F1's edit mode adds, places and deletes playbacks, and manages pages, from controls. A click on a
   slot takes it in hand: `[new playback…]` on an empty one asks for a cue list, a number and a name;
   `[place…]` puts any playback on it from a picker that says where each one sits; `[clear]` empties

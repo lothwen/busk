@@ -481,10 +481,10 @@ changes any of them, and `[+ add]` adds new ones.
  │ ▸  201 LED ML-56 RGBW 36x3W … Eurolite LED ML-56 RGBW par    4-channel 1.33          40% ██                            prog    │
  │ ▸  202 LED ML-56 RGBW 36x3W … Eurolite LED ML-56 RGBW par    4-channel 1.37          40% ██                            prog    │
  │    203 LED ML-56 RGBW 36x3W … Eurolite LED ML-56 RGBW par    4-channel 1.41          64% ██                            P1      │
- │    204 LED ML-56 RGBW 36x3W … Eurolite LED ML-56 RGBW par    4-channel 1.45           0% ██                            —       │
+ │    204 LED ML-56 RGBW 36x3W … Eurolite LED ML-56 RGBW par    4-channel 1.45           0% ██                            park    │
  │    301 COLORband PiX 301      Chauvet DJ COLORband P… pixel  36-CH     1.49          50% ████████████                  P1      │
  │                                                                                                                                │
- │ ■ programmer   ■ playback   ■ effect   ■ nothing   — unpatched   ▸ selected                                                    │
+ │ ■ park   ■ programmer   ■ playback   ■ effect   ■ nothing   — unpatched   ▸ selected                                           │
  └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -498,12 +498,14 @@ what busk outputs for it now, after the masters, blackout, park and limits:
   it is out;
 - `pan`, `tilt` and `zoom` in degrees, on fixtures that have them (before the fixture's
   orientation);
-- `src`: what drives its intensity: `prog` (the programmer), `P9` (playback 9's cue), `fx
-  P13` (an effect of playback 13's cue), `fx` (a programmer effect), `—` (nothing).
+- `src`: what drives its intensity: `park` (a parked value holds it), `prog` (the programmer),
+  `P9` (playback 9's cue), `fx P13` (an effect of playback 13's cue), `fx` (a programmer
+  effect), `—` (nothing).
 
-The values are coloured by what drives them: magenta the programmer, white a playback, green
-an effect, grey nothing (the intensity and `src` by what drives the intensity, pan and tilt
-by what drives the position, zoom by the beam's). A parked value counts as nothing here.
+The values are coloured by what drives them: amber park, magenta the programmer, white a
+playback, green an effect, grey nothing (the intensity and `src` by what drives the intensity,
+pan and tilt by what drives the position, zoom by the beam's). Park comes first, whatever else
+drives the value, as busk outputs it, and one parked element is enough for the fixture.
 
 A click on a row selects the fixture (`sel fixture 101`); Shift-click adds it to the
 selection, or takes it out when it is in (`sel + fixture 101`, `sel - fixture 101`). The pane
@@ -515,10 +517,11 @@ cursor stops on `[+ add]`, `[edit]` and each row (Enter selects it, and the curs
 of the panel, turns it off. The live columns give way to the rig's, and the page stops reading
 the output: `limits` says what the fixture limits (`tilt`, `pan tilt`, `int`), and `place`
 whether it has a location (`●`, else `·`). A click still selects, and the panel shows the
-fixture clicked last, whose number is lit: several selected rows look alike.
+fixture clicked last, whose number is lit: several selected rows look alike. The
+[GROUPS](#groups) panel is under the table.
 
 ```
- 7 fixtures · 1 selected · click chooses, Shift-click adds to the selection                                        [+ add] [edit ●]
+ 7 fixtures · 2 selected · click chooses, Shift-click adds to the selection                                        [+ add] [edit ●]
 
  ┌─ FIXTURES ────────────────────────────────────────────────────────────────┐ ┌─ FIXTURE · 102 Spot 102 ─────────────────────────┐
  │      # name          profile         mode      patch   limits       place │ │ [rename…] [number…] [delete]                     │
@@ -528,21 +531,25 @@ fixture clicked last, whose number is lit: several selected rows look alike.
  │    202 LED ML-56 RG… Eurolite LED M… 4-channel 1.37                 ·     │ │                                                  │
  │    203 LED ML-56 RG… Eurolite LED M… 4-channel 1.41                 ·     │ │ category of 2 fixtures                           │
  │    204 LED ML-56 RG… Eurolite LED M… 4-channel 1.45                 ·     │ │ [par] [spot] [wash] [pixel] [strobe] [beam]      │
- │    301 COLORband Pi… Chauvet DJ COL… 36-CH     1.49    int          ·     │ │ [blinder] [dimmer] [effect] [fog] [other] [none] │
+ │ ▸  301 COLORband Pi… Chauvet DJ COL… 36-CH     1.49    int          ·     │ │ [blinder] [dimmer] [effect] [fog] [other] [none] │
  └───────────────────────────────────────────────────────────────────────────┘ │                                                  │
                                                                                │ PATCH 1.17–1.32                                  │
-                                                                               │ universe [none] [1 Stage]                        │
-                                                                               │ address  85 [address…] [next free]               │
-                                                                               │ takes 1.85–1.100 · free                          │
-                                                                               │ [patch]                                          │
+ ┌─ GROUPS ──────────────────────────────────────────────────────────────────┐ │ universe [none] [1 Stage]                        │
+ │ 4 groups · click chooses, and keeps the selection              [record…]  │ │ address  17 [address…] [next free]               │
+ │    # name             members                                             │ │ takes 1.17–1.32 · free                           │
+ │    1 Heads            101 thru 102                                        │ │ [patch]                                          │
+ │    2 Washes           201 thru 204                                        │ │                                                  │
+ │    3 Bar              301                                                 │ │ LIMITS · 102, 301 (2)                            │
+ │    4 All              101 thru 102, 201 thru 204, 301                     │ │ pan         none               [limit…]          │
+ │                                                                           │ │ tilt        -90° to 10°        [limit…] [none]   │
+ │ group 4 All [rename…] [number…] [delete]                                  │ │ intensity   none               [limit…] [none]   │
+ │ selection 102, 301.2 [merge] [replace] [remove]                           │ │ [no limits]                                      │
+ └───────────────────────────────────────────────────────────────────────────┘ │                                                  │
+                                                                               │ PARK · 102, 301.2                                │
+                                                                               │ nothing parked                                   │
+                                                                               │ [park…]                                          │
                                                                                │                                                  │
-                                                                               │ LIMITS · 102                                     │
-                                                                               │ pan         none               [limit…]          │
-                                                                               │ tilt        -90° to 10°        [limit…] [none]   │
-                                                                               │ intensity   none               [limit…]          │
-                                                                               │ [no limits]                                      │
-                                                                               │                                                  │
-                                                                               │ ORIENTATION · 102                                │
+                                                                               │ ORIENTATION · 102, 301 (2)                       │
                                                                                │ [invert pan] [invert tilt] [swap pan/tilt]       │
                                                                                │ pan offset  0°                 [offset…]         │
                                                                                │ tilt offset 0°                 [offset…]         │
@@ -586,6 +593,15 @@ nothing. From the top:
   the profile's range, or for intensity `at most` a level (`50` or `50%`). A limit past the
   profile's range is busk's warning, in the log. `[none]` removes that limit and keeps the others,
   and `[no limits]` removes them all.
+- **PARK:** what park holds on the fixture, a line per attribute and value (`intensity 0%`), with
+  the elements when it is not all of them (`intensity 0% · 301.2 thru 301.3`), or `nothing
+  parked`. `[park…]` is a form of an attribute and a value, starting at `intensity` (or the
+  first attribute the fixtures take) and `0`; its note lists the attributes the fixtures'
+  profiles take, and it refuses another. The value goes
+  as typed, as busk reads it after `set`: `0.5` or `50%`, `-45` in degrees, `1 0 0` for a colour,
+  an option's name. busk refuses what it cannot read, in the log. It sends `park fixture 102,
+  fixture 301.2 intensity 0`. A parked value holds whatever else drives the attribute, until
+  [F7](#f7-masters) unparks it.
 - **ORIENTATION**, on a fixture with pan or tilt: `[invert pan]`, `[invert tilt]` and, with both,
   `[swap pan/tilt]`, lit from the fixture, send at once (`fixture 102 orientation.invertPan
   true`). `[offset…]` is a dialog, in degrees.
@@ -596,12 +612,14 @@ nothing. From the top:
 
 LIMITS and ORIENTATION act on every selected fixture while the fixture shown is selected, as
 their headings say (`LIMITS · 101 thru 102 (2)`); the rest of the panel acts on the fixture shown
-alone. Each goes out as one line per run of the numbers selected, and each line is one `undo`
-step: 101 and 102 give `fixture 101 thru 102 limits tilt -90 10`, and a fixture left out between
-two selected ones gives two lines, so it stays as it is. A toggle sets them all to the opposite of
-the fixture shown, so it also brings those that differ into line. If a fixture of a run cannot take
-a line, busk refuses the line, in the log, and the run stays as it was: `[swap pan/tilt]` does this
-with a fixture that has pan alone.
+alone, but PARK. Each goes out as one line per run of the numbers selected, and each line is one
+`undo` step: 101 and 102 give `fixture 101 thru 102 limits tilt -90 10`, and a fixture left out
+between two selected ones gives two lines, so it stays as it is. A toggle sets them all to the
+opposite of the fixture shown, so it also brings those that differ into line. If a fixture of a
+run cannot take a line, busk refuses the line, in the log, and the run stays as it was: `[swap
+pan/tilt]` does this with a fixture that has pan alone. PARK acts on the selected elements while
+the fixture shown is selected, in one line, so it can hold one pixel of a bar (`PARK · 102,
+301.2`), and on all of the fixture shown otherwise.
 
 **A new fixture.** `[+ add]`, in or out of edit mode, shows the form in the panel.
 [F8's map](#f8-patch) can open it too, at a free channel.
@@ -640,6 +658,32 @@ on a row.
 The pane cursor stops on every control of the panel in reading order, and a row's Enter chooses
 it as well as selecting it. The panel is beside the table from 100 columns, and under it below
 that; there, a click scrolls down to it.
+
+#### GROUPS
+
+In edit mode, the GROUPS panel is under the table: a row per group, with its number, name and
+members as you would select them (`101 thru 102, 301.2`; `—` for a group left with none). A click
+on a row chooses the group, which `group 4 All` names under the rows, and sends nothing: the
+selection stays as it was. So you can choose a group, then click fixtures in the table, or the
+other way round.
+
+- `[record…]` makes a group of the selection: a form of a number (after the highest) and a name,
+  then `record group 5 "Floor"`; without a name busk calls it `Group 5`. The new group is chosen.
+  It is grey while nothing is selected.
+- `[rename…]` and `[number…]`, each a dialog, then one line (`rename group 4 "…"`, `group 4
+  number 7`). The panel follows the group to its new number.
+- `[delete]` sends `delete group 4 cascade`, after busk's question, which names the cues and
+  masters it leaves: the cue entries, effects and releases that target the group go with it, and
+  so does its master. One `undo` brings it all back.
+- `selection 102, 301.2` says what the three buttons after it take. `[merge]` adds the selected
+  elements the group lacks (`record group 4 merge`). `[replace]` makes the selection its members,
+  and `[remove]` takes the selected out, each after a question; a group left with no members
+  stays. Each is grey while it would change nothing, since busk would still spend an `undo` step
+  on it. A new fixture joins a group this way: select it, choose the group, `[merge]`.
+
+The pane cursor stops on `[record…]`, each group, then the chosen group's controls, after the
+table's rows and before the FIXTURE panel. Below 100 columns the GROUPS panel comes between the
+table and the FIXTURE panel.
 
 ## F4 Cues
 
@@ -972,6 +1016,10 @@ Every master, one panel per kind, three across on a wide terminal:
   1.6 s`, or `off`).
 - **PANIC**: whether the output is on, `[release all]`, `[OUTPUT OFF]` (busk asks first, as
   for a typed `output off`) and `[OUTPUT ON]`.
+- **PARKED**: a row per value park holds, by fixture (`204 intensity 0%`, `301.2 thru 301.3
+  intensity 0%`), each with `[unpark]`, which sends `unpark fixture 204 intensity` at once. `[unpark
+  all]` sends `unpark all` after a question (`Unpark everything? Park holds 2 values.`), and is grey
+  with nothing parked. You park on [F3's FIXTURE panel](#edit-mode-and-the-fixture-panel).
 
 ## F8 Patch
 

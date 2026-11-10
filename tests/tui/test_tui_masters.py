@@ -16,10 +16,12 @@ import busk
 from busk_tui import colors
 from busk_tui.model import (
     Beat,
+    FixtureInfo,
     GroupInfo,
     LiveChanged,
     MasterLevel,
     MasterView,
+    Parked,
     ShowChanged,
     SpeedView,
 )
@@ -30,6 +32,7 @@ from busk_tui.widgets.dialogs import ConfirmDialog
 from busk_tui.widgets.log import LogView
 from busk_tui.widgets.masters import BlackoutButton, MasterBar
 from busk_tui.widgets.panel import Panel
+from busk_tui.widgets.parked import ParkedPanel, held_text, parked_rows, row_text
 from busk_tui.widgets.tempo import Tempo
 
 MASTERS = (
@@ -88,6 +91,7 @@ def test_a_panel_per_kind_of_master() -> None:
             "SIZE & GROUP MASTERS",
             "FADE TIME",
             "PANIC",
+            "PARKED",
         ]
         bars = {bar.master.name: bar for bar in page(app).query(MasterBar)}
         assert [(name, bar.level, bar.bar.color) for name, bar in bars.items()] == [
@@ -238,5 +242,137 @@ def test_a_new_master_rebuilds_the_page_and_keyboard_reaches_each_control() -> N
         assert all(
             isinstance(b, CommandButton) for b in (page(app).release_all, page(app).output_on)
         )
+
+    drive(app, body)
+
+
+# --------------------------------------------- PARKED (pending plan Phase 12)
+
+RED = (("r", 1.0), ("g", 0.0), ("b", 0.0))
+RIG = (
+    FixtureInfo(101, 1, "Spot 101"),
+    FixtureInfo(204, 1, "Wash 4"),
+    FixtureInfo(301, 12, "Bar 301"),
+)
+PARK = (
+    Parked(204, 1, "intensity", 0.0),
+    Parked(301, 2, "intensity", 0.0),
+    Parked(101, 1, "gobo1", "open"),
+    Parked(301, 3, "intensity", 0.0),
+    Parked(301, 5, "intensity", 0.5),
+    *(Parked(301, element, "color", RED) for element in range(1, 13)),
+)
+
+
+def on_parked(bridge: FakeBridge, park: tuple[Parked, ...] = PARK) -> BuskApp:
+    show = show_model(masters=MASTERS, fixtures=RIG, park=park)
+    bridge.events += [ShowChanged(show), LiveChanged(live())]
+    return make_app(bridge, page=7)
+
+
+def test_a_row_per_fixture_attribute_and_value_by_fixture_number() -> None:
+    rows = parked_rows(PARK, RIG)
+    assert [row_text(row).plain for row in rows] == [
+        "101 gobo1 open",
+        "204 intensity 0%",
+        "301.2 thru 301.3 intensity 0%",
+        "301.5 intensity 50%",
+        "301 color 1.00 0.00 0.00",
+    ]
+    assert [row.whole() for row in rows] == [True, True, False, False, True]
+    assert held_text(rows[1]).spans[-1].style == colors.AMBER
+    assert parked_rows((), RIG) == ()
+    late_first = parked_rows((PARK[3], PARK[1]), RIG)  # 301.3 parked before 301.2
+    assert [row.where for row in late_first] == ["301.2 thru 301.3"]
+
+
+def test_the_parked_panel_unparks_each_row_and_everything_after_a_question() -> None:
+    bridge = FakeBridge()
+    app = on_parked(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        panel = page(app).parked
+        assert str(panel.border_title) == "PARKED"
+        assert [plain(text) for text in panel.query(".pk-text").results(Static)][:2] == [
+            "101 gobo1 open",
+            "204 intensity 0%",
+        ]
+        assert [button.line.text for button in panel.unparks] == [
+            "unpark fixture 101 gobo1",
+            "unpark fixture 204 intensity",
+            "unpark fixture 301.2 thru 301.3 intensity",
+            "unpark fixture 301.5 intensity",
+            "unpark fixture 301 color",
+        ]
+        panel.unparks[2].scroll_visible(animate=False)
+        await pilot.pause()
+        await pilot.click(panel.unparks[2])
+        assert bridge.lines() == ["unpark fixture 301.2 thru 301.3 intensity"]  # no question
+        bridge.sent.clear()
+        panel.unpark_all.scroll_visible(animate=False)
+        await pilot.pause()
+        await pilot.click(panel.unpark_all)
+        await pilot.pause()
+        dialog = app.screen
+        assert isinstance(dialog, ConfirmDialog)
+        assert dialog.question == "Unpark everything? Park holds 17 values."
+        await pilot.press("n")
+        await settle(pilot, app)
+        assert bridge.sent == []
+        await pilot.click(panel.unpark_all)
+        await pilot.pause()
+        await pilot.press("y")
+        await settle(pilot, app)
+        assert bridge.lines() == ["unpark all"]
+
+    drive(app, body)
+
+
+def test_the_parked_panel_is_built_again_only_when_what_park_holds_changes() -> None:
+    bridge = FakeBridge()
+    app = on_parked(bridge, PARK[:1])
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        first = page(app).parked
+        assert len(first.unparks) == 1
+        bridge.events.append(ShowChanged(show_model(masters=MASTERS, fixtures=RIG, park=PARK[:1])))
+        await settle(pilot, app)
+        assert page(app).parked is first  # an equal show: nothing to build
+        bridge.events.append(ShowChanged(show_model(masters=MASTERS, fixtures=RIG, park=())))
+        await settle(pilot, app)
+        empty = page(app).parked
+        assert empty is not first
+        assert empty.unparks == []
+        assert plain(empty.query_one(".pk-empty", Static)) == (
+            "nothing parked · [park…] on F3, in edit mode"
+        )
+        assert empty.unpark_all.inert
+        await pilot.click(empty.unpark_all)
+        await pilot.pause()
+        assert not isinstance(app.screen, ConfirmDialog)
+        empty.ask_unpark_all()  # a pane cursor's stale stop
+        await pilot.pause()
+        assert not isinstance(app.screen, ConfirmDialog)
+        assert bridge.sent == []
+        assert len(page(app).query(ParkedPanel)) == 1
+        items = [item.label for item in page(app).items()]
+        assert items[-1] == "OUTPUT ON"  # no stop on a grey [unpark all]
+
+    drive(app, body)
+
+
+def test_the_pane_cursor_reaches_each_unpark() -> None:
+    bridge = FakeBridge()
+    app = on_parked(bridge, PARK[:2])
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        items = page(app).items()
+        assert [item.label for item in items][-3:] == [
+            "unpark 204 intensity", "unpark 301.2 intensity", "unpark all",
+        ]  # fmt: skip
+        assert items[-2].line == "unpark fixture 301.2 intensity"
 
     drive(app, body)

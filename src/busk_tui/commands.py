@@ -164,7 +164,7 @@ def sel_fixture(fixture: int, *, add: bool = False, remove: bool = False) -> Lin
 def sel_targets(compressed: str) -> Line:
     """Elements as :func:`~busk_tui.formats.selection_text` writes them, in
     their order: ``sel fixture 101 thru 102, fixture 301.2``."""
-    return Line("sel " + ", ".join(f"fixture {part}" for part in compressed.split(", ")))
+    return Line(f"sel {targets(compressed)}")
 
 
 def sel_fixtures(fixtures: Sequence[int], *, add: bool = False) -> Line:
@@ -498,6 +498,64 @@ def delete_route(route: str) -> Line:
 def route_on(route: str, on: bool) -> Line:
     """``route r-1 on``; busk asks before ``off``."""
     return Line(f"route {word(route)} {'on' if on else 'off'}")
+
+
+# ----------------------------------------------------------------- groups
+
+
+def record_group(
+    group: int,
+    merge: Literal["merge", "replace", "remove"] | None = None,
+    name: str | None = None,
+) -> Line:
+    """The selection as a new group: ``record group 5 "Floor"`` (without a
+    name busk names it ``Group 5``); or with one that exists, ``merge`` adds
+    the selected elements it lacks, ``replace`` makes them its members, and
+    ``remove`` takes them out: ``record group 2 merge``."""
+    words = ["record", "group", str(group)]
+    if merge is not None:
+        words.append(merge)
+    if name is not None:
+        words.append(quoted(name))
+    return Line(" ".join(words))
+
+
+def rename_group(group: int, name: str) -> Line:
+    return Line(f"rename group {group} {quoted(name)}")
+
+
+def renumber_group(group: int, new_number: int) -> Line:
+    """``group 2 number 7``."""
+    return Line(f"group {group} number {new_number}")
+
+
+def delete_group(group: int) -> Line:
+    """``delete group 2 cascade``: busk asks, naming what it leaves."""
+    return Line(f"delete group {group} cascade")
+
+
+# ------------------------------------------------------------------- park
+
+
+def targets(compressed: str) -> str:
+    """Elements as :func:`~busk_tui.formats.selection_text` writes them, as
+    busk's targets: ``fixture 101 thru 102, fixture 301.2``."""
+    return ", ".join(f"fixture {part}" for part in compressed.split(", "))
+
+
+def park(compressed: str, attribute: str, value: str) -> Line:
+    """``park fixture 204 intensity 0``: the value as typed, which busk reads
+    (``0.5``, ``50%``, ``-45``, ``1 0 0``, ``open``)."""
+    return Line(f"park {targets(compressed)} {attribute} {value}")
+
+
+def unpark(compressed: str, attribute: str) -> Line:
+    """``unpark fixture 301.2 thru 301.5 intensity``."""
+    return Line(f"unpark {targets(compressed)} {attribute}")
+
+
+def unpark_all() -> Line:
+    return Line("unpark all")
 
 
 # ------------------------------------------------------------------- cues

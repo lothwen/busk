@@ -829,12 +829,77 @@ Needs GAP-22 and GAP-36. Code: `src/busk_tui/pages/fixtures.py`, `src/busk_tui/p
 1. **GROUPS in F3's edit mode:** number, name and members. `[record…]` from the selection (`record
    group N ["name"]`), `[merge]`, `[replace]` and `[remove]` with the selection, `[rename…]`,
    `[number…]`, `[delete]` (`delete group N cascade`).
+
+   **Done** (2026-11-10). As planned: `GroupPanel` in the new `src/busk_tui/widgets/group_panel.py`,
+   under the table in F3's edit mode, and `GroupInfo.members`. Which the user may veto:
+   - **A click on a group chooses it and sends nothing.** The selection stays, so the group can be
+     chosen before or after its fixtures are clicked. There is no `[select]`, which the plan did not
+     name: `sel group N` is typed, or F1's and F2's group buttons send it.
+   - **`[merge]`, `[replace]` and `[remove]` are grey while they would change nothing**, which the
+     plan did not name: busk spends an undo step on a merge of members and a remove of what is not
+     one. `[replace]` and `[remove]` ask the TUI's question (§1), and the second says how many
+     members stay, or that the group stays with none.
+   - `[record…]` starts at the number after the highest, as F4's `[+ list…]` and F1's `[+ page…]`
+     do. Its note lists the members the selection gives. The new group is chosen.
+   - `[delete]` always sends `cascade`: busk asks even for a group nothing uses (`Delete group 5
+     "Five"?`).
+   - A choice the show lacks is dropped only when a new show comes, since a record's or a
+     renumber's done may come before its show.
+   - Below 100 columns the panel is between the table and the FIXTURE panel. On a short terminal the
+     page now scrolls for it, where the table alone did not.
+   - `GroupInfo` holds its members in a cue's and a master's targets too, so the conversion tests
+     that build one name its members.
 2. **Park:** `[park…]` on F3's FIXTURE panel, an attribute and a value for the selection (`park
    <targets> <attribute> <value>`). A PARKED panel on F7 with `[unpark]` on each, and `[unpark
    all]` with `ask`. F3's source column reads `park` and the guide's note about it goes.
 
+   **Done** (2026-11-10). As planned: a PARK section in `FixturePanel`, `ParkedPanel` and
+   `parked_rows` in the new `src/busk_tui/widgets/parked.py`, `ShowModel.park` (`Parked`), and
+   `park` in `Source`, `_RANK`, `SOURCE_COLORS`, `source_text` and the legend. The bridge's `park →
+   none` is gone. Which the user may veto:
+   - **PARK reaches the selected elements**, not fixtures, while the chosen fixture is selected,
+     so a pixel can be parked (`PARK · 102, 301.2`); else all of the chosen fixture. LIMITS reaches
+     by fixture. It is always one line, since `park` takes a list of targets.
+   - **The section shows what park holds on the chosen fixture**, which the plan did not name, with
+     no `[unpark]`: F7 unparks, where the plan puts it.
+   - `[park…]`'s form takes the attribute as a word, checked against what the reach's profiles take
+     (its note lists them). The value goes as typed, and busk refuses in the log what it cannot
+     read, as for F4's `[release…]`. A colour's component is not offered: busk's `park` refuses
+     `color.w`, and `color 1 0 0 w 0.5` takes the white. The form starts at `intensity` and `0`, a
+     broken fixture held dark, not at what is parked. It is grey where no profile of the reach
+     says what it takes.
+   - **F7 has a row per fixture, attribute and value**, the elements compressed, so a bar parked
+     whole is one row and one `unpark fixture 301 color`. A row per entry would be twelve.
+   - `[unpark]` asks nothing: busk asks nothing, §1 does not name it, and `undo` brings it back.
+     `[unpark all]` asks, and counts the values: `Unpark everything? Park holds 2 values.`
+   - PARKED is F7's last panel, after PANIC, on every show: with nothing parked it says where
+     parking is.
+   - Park reads amber, above the programmer as busk ranks it, and one parked element is enough
+     for the fixture's `src`.
+
 Verify: a group left empty by a cascade; a group master; a parked family and one attribute; a
 parked pixel element.
+
+**Phase 12 checks** (2026-11-10). The whole suite: 6,098 passed and 1 skipped, in 6:47 with `uv run
+pytest -n 6`. `ruff check`, `ruff format --check` and `mypy src` clean. No change to `src/busk/` or
+the engine's tests. The five TUI test files the phase touched and the new test on the real engine,
+534 tests, pass on Textual 8.2.0. The perf gate: 7 passed, no overruns, F3 at +0.185 core, F1 B at
++0.191, A at +0.201 and C at +0.217 (F1's code did not change). 81 mutations of the new code: 70
+caught at once, 7 by tests the first run's selection had left out, 3 needed a test of their own
+(groups out of number order, park entries out of element order, a note long enough to wrap), which
+is in, and 1 was equivalent: busk's order puts `intensity` first, so the park form now starts at the
+first attribute. The new test in `tests/tui/test_tui_e2e.py` runs on the real engine: `src` reads
+`park` on wash 4, a group recorded from the bar, merged, removed from with the question, renamed,
+renumbered and deleted with busk's, the bar's group left with no members by a typed cascade and
+`undo`, two pixels parked from the FIXTURE panel and `src` reading `park`, F7's `[unpark]` and
+`[unpark all]` with its question, `undo`, and a parked tilt turning the pan cell amber. A real
+`busk-tui --state-dir …` under `busk run` on the club show, with real mouse clicks in a pty: at 150
+columns in layout B, the same walk through GROUPS, PARK and F7; at 99 columns in layout A, GROUPS
+between the table and the FIXTURE panel, a group chosen and merged, a row's click bringing the panel
+into sight, wash 4 parked again at 50%, and F7 in one column. No error in the log. Docs:
+`docs/tui/guide.md` (F3's `src` and legend, its edit-mode diagram, PARK and GROUPS; F7's PARKED),
+the report's rows and "In short", GAP-22's entry in `docs/dev/tui/engine-gaps.md`, and
+`CHANGELOG.md`.
 
 ### Phase 13: Rig extras
 
@@ -906,6 +971,9 @@ Left out because the five places do not name them. Say if any should join a phas
 - With `--faders` below a page's slot count, ← → and the selection that follows a change of slots
   use only the first `faders` slots, in edit mode too, where the grid has them all: a change of those
   slots moves a selection past them to the first. Found on 2026-11-10.
+- `rename group N "…"` and `group N number M` reply with a path too (`set groups[4].name to "V"`),
+  and F3's GROUPS now puts that in the log. So does a plain `delete group N` (`deleted
+  groups[4]`), which F3 does not send. Found on 2026-11-10.
 - `commands.effect_stop`, `effect_run` and `effect_remove` do not quote an id, so those controls
   fail on an effect id of two words, which only `id "my fx"` makes. `_rate_text` in the bridge does
   not escape a quote in a master's name. Found on 2026-11-09.

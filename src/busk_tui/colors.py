@@ -197,6 +197,7 @@ def profile_colors(profiles: Sequence[tuple[str, str | None]]) -> dict[str, str]
 
 
 SOURCE_COLORS: Final[dict[str, str]] = {
+    "park": AMBER,
     "programmer": MAGENTA,
     "playback": FG,
     "effect": GREEN,

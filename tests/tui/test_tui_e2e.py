@@ -53,6 +53,7 @@ from busk_tui.pages.busk_stack import StackLayout
 from busk_tui.pages.busk_stage import StageLayout, StagePlot
 from busk_tui.pages.cues import CuesPage
 from busk_tui.pages.fixtures import FixturesPage
+from busk_tui.pages.masters import MastersPage
 from busk_tui.pages.patch import PatchPage, RoutesTable, UniverseTable
 from busk_tui.pages.presets import PresetsPage
 from busk_tui.pages.program import EncoderPanel
@@ -360,6 +361,121 @@ def test_f3_renames_renumbers_recategorises_and_deletes_from_controls_on_the_rea
         assert panel.chosen is None
         await tap(pilot, panel.done)
         await until(pilot, lambda: page.table.display and len(page.table.rows) == 7)
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_f3_and_f7_record_groups_park_and_unpark_from_controls_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """GROUPS records, merges, removes, renames, renumbers and deletes; PARK
+    holds two pixels of the bar; F3's source column reads park; F7 unparks
+    one row, then everything; ``undo`` brings it back (pending plan Phase 12)."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=3), standalone=True)
+
+    def group(number: int) -> Any:
+        return None if app.view.show is None else app.view.show.group(number)
+
+    def parked() -> list[tuple[int, int, str]]:
+        show = app.view.show
+        return [] if show is None else [(p.number, p.element, p.attribute) for p in show.park]
+
+    async def answer(pilot: Pilot[int], key: str) -> None:
+        await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+        await pilot.press(key)
+        await until(pilot, lambda: not isinstance(app.screen, ConfirmDialog))
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: group(4) is not None)
+        page = app.query_one(FixturesPage)
+        await until(pilot, lambda: column(page.table, "source")[5:6] == ["park"])  # wash 4
+
+        await tap(pilot, page.edit)
+        await until(pilot, lambda: page.editing and len(page.groups.table.rows) == 4)
+        groups, panel = page.groups, page.panel
+        assert column(groups.table, "members")[3] == "101 thru 102, 201 thru 204, 301"
+        await click_cell(pilot, page.rig, 6, "name")  # the bar, all of it
+        await until(pilot, lambda: not groups.record.inert)
+        await tap(pilot, groups.record)
+        await until(pilot, lambda: isinstance(app.screen, FormDialog))
+        await pilot.press("tab", *"Pixels", "enter")
+        await until(pilot, lambda: group(5) is not None and groups.chosen == 5)
+        assert group(5).members == tuple((301, element) for element in range(1, 13))
+        await until(pilot, lambda: str(groups.label.content) == "group 5 Pixels")
+
+        await pilot.click(page.rig, offset=(10, 1), shift=True)  # and 101
+        await until(pilot, lambda: not groups.writes["merge"].inert)
+        await tap(pilot, groups.writes["merge"])
+        await until(pilot, lambda: len(group(5).members) == 13)
+        await click_cell(pilot, page.rig, 0, "name")  # 101 alone
+        await until(pilot, lambda: groups.writes["merge"].inert)
+        await tap(pilot, groups.writes["remove"])
+        await answer(pilot, "y")
+        await until(pilot, lambda: len(group(5).members) == 12)
+
+        await tap(pilot, groups.rename)
+        await until(pilot, lambda: isinstance(app.screen, TextDialog))
+        await pilot.press("ctrl+u", *"Bar too", "enter")
+        await until(pilot, lambda: group(5).name == "Bar too")
+        await tap(pilot, groups.renumber)
+        await until(pilot, lambda: isinstance(app.screen, TextDialog))
+        await pilot.press("ctrl+u", "7", "enter")
+        await until(pilot, lambda: group(7) is not None and groups.chosen == 7)
+        await until(pilot, lambda: str(groups.label.content) == "group 7 Bar too")
+        await tap(pilot, groups.delete)
+        await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+        assert app.screen.question == 'Delete group 7 "Bar too"?'  # type: ignore[attr-defined]
+        await answer(pilot, "y")
+        await until(pilot, lambda: group(7) is None and groups.chosen is None)
+        await pilot.press(*"delete fixture 301 cascade", "enter")  # Bar left with no members
+        await answer(pilot, "y")
+        await until(pilot, lambda: column(groups.table, "members")[2] == "—")
+        await pilot.press(*"undo", "enter")
+        await until(pilot, lambda: column(groups.table, "members")[2] == "301")
+
+        await click_cell(pilot, page.rig, 6, "name")  # the bar chosen,
+        await pilot.press(*"sel fixture 301.2 thru 301.3", "enter")  # two of its pixels selected
+        await until(pilot, lambda: panel.park_where() == "301.2 thru 301.3")
+        await tap(pilot, panel.park)
+        await until(pilot, lambda: isinstance(app.screen, FormDialog))
+        await pilot.press("enter")  # intensity 0
+        await until(pilot, lambda: (301, 3, "intensity") in parked())
+        assert parked() == [
+            (204, 1, "intensity"), (203, 1, "color"), (301, 2, "intensity"), (301, 3, "intensity"),
+        ]  # fmt: skip
+        await until(pilot, lambda: "intensity 0% · 301.2 thru 301.3" in str(panel.parked.content))
+        await tap(pilot, panel.done)
+        await until(pilot, lambda: column(page.table, "source")[6:7] == ["park"])
+
+        await pilot.press("f7")
+        masters = app.query_one(MastersPage)
+        await until(pilot, lambda: len(masters.parked.unparks) == 3)
+        assert [b.line.text for b in masters.parked.unparks] == [
+            "unpark fixture 203 color",
+            "unpark fixture 204 intensity",
+            "unpark fixture 301.2 thru 301.3 intensity",
+        ]
+        await tap(pilot, masters.parked.unparks[2])
+        await until(pilot, lambda: len(parked()) == 2)
+        await until(pilot, lambda: len(masters.parked.unparks) == 2)
+        await tap(pilot, masters.parked.unpark_all)
+        await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+        assert app.screen.question == "Unpark everything? Park holds 2 values."  # type: ignore[attr-defined]
+        await answer(pilot, "y")
+        await until(pilot, lambda: parked() == [] and masters.parked.unpark_all.inert)
+        await pilot.press(*"undo", "enter")
+        await until(pilot, lambda: len(parked()) == 2 and len(masters.parked.unparks) == 2)
+        await pilot.press("f3")
+        await until(pilot, lambda: column(page.table, "source")[5:6] == ["park"])
+        assert str(page.table.rows[0]["pan"].spans[0].style) != colors.AMBER
+        await pilot.press(*"park fixture 101 tilt 0", "enter")  # one attribute: all the position
+        await until(pilot, lambda: str(page.table.rows[0]["pan"].spans[0].style) == colors.AMBER)
 
     try:
         drive(app, body)

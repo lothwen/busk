@@ -108,14 +108,16 @@ def stored_text(value: StoredValue) -> str:
     if value.kind == "spread":
         if value.value is None or value.to is None or isinstance(value.value, tuple):
             return "spread"
-        first = _value_text(value.attribute, value.value)
-        return f"spread {first}→{_value_text(value.attribute, value.to)}"
+        first = value_text(value.attribute, value.value)
+        return f"spread {first}→{value_text(value.attribute, value.to)}"
     if value.value is None:
         return value.kind
-    return _value_text(value.attribute, value.value)
+    return value_text(value.attribute, value.value)
 
 
-def _value_text(attribute: str, value: float | str | tuple[tuple[str, float], ...]) -> str:
+def value_text(attribute: str, value: float | str | tuple[tuple[str, float], ...]) -> str:
+    """A value in its attribute's unit (``55%``, ``-45°``), an option by its
+    name, a colour by its components."""
     if isinstance(value, tuple):
         return attributes.rgb_text(value)
     return attributes.summary_text(attribute, value)

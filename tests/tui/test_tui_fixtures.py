@@ -8,6 +8,7 @@ bridge."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 import pytest
@@ -28,16 +29,18 @@ from tui_fakes import (
 )
 
 import busk
-from busk_tui import colors
+from busk_tui import attributes, colors
 from busk_tui.model import (
     CommandDone,
     ElementOutput,
     FixtureInfo,
+    GroupInfo,
     Limits,
     ModeInfo,
     Orientation,
     OutputChanged,
     OutputModel,
+    Parked,
     ProfileInfo,
     ProgrammerChanged,
     ShowChanged,
@@ -50,9 +53,11 @@ from busk_tui.widgets.dialogs import ConfirmDialog, FormDialog, TextDialog
 from busk_tui.widgets.fixture_panel import (
     CATEGORIES,
     check_level,
+    check_park,
     check_span,
     limit_text,
     location_text,
+    parked_text,
     read_level,
     spans_text,
     what_text,
@@ -60,11 +65,13 @@ from busk_tui.widgets.fixture_panel import (
 from busk_tui.widgets.fixturetable import (
     FixtureTable,
     fixture_cells,
+    legend,
     limits_text,
     rig_cells,
     source_text,
     swatches,
 )
+from busk_tui.widgets.group_panel import WRITES, changes, group_cells
 from busk_tui.widgets.legend import Legend
 from busk_tui.widgets.location_form import check_place
 from busk_tui.widgets.log import LogView
@@ -817,7 +824,10 @@ def test_a_long_panel_scrolls_on_its_own_beside_the_table() -> None:
         page = await enter(pilot, app)
         assert page.panel.region.height <= 20
         assert page.panel.max_scroll_y > 0
-        assert page.max_scroll_y == 0
+        assert page.max_scroll_y > 0  # for GROUPS, under the table
+        page.groups.display = False
+        await pilot.pause()
+        assert page.max_scroll_y == 0  # never for the panel
 
     drive(app, body, size=(150, 26))
 
@@ -838,6 +848,7 @@ def test_the_pane_cursor_stops_on_every_control_and_no_inert_one() -> None:
             *chips,
             "[none]", "address…", "next free",
             "pan limit…", "tilt limit…", "intensity limit…",  # no fixture here has one to remove
+            "park…",
             "invert pan", "invert tilt", "swap pan/tilt",
             "pan offset…", "tilt offset…",
             "location…",
@@ -1335,5 +1346,528 @@ def test_a_first_location_a_change_and_no_place() -> None:
         bridge.sent.clear()
         await tap(pilot, panel.no_place, app)
         assert bridge.lines() == ["fixture 102 location none"]
+
+    drive(app, body)
+
+
+# ---------------------------------------- groups and park (pending plan Phase 12)
+
+GROUPS = (
+    GroupInfo(1, "Heads", ((101, 1), (102, 1), (103, 1))),
+    GroupInfo(2, "Floor", ((201, 1), (301, 1))),
+    GroupInfo(5, "Empty"),
+)
+STRIP = ProfileInfo("Strip", frozenset({"intensity", "color", "color.w"}), (), "pixel")
+PIXELS = FixtureInfo(501, 4, "Strip 1", "Strip", "16ch", 16, (2, 1))
+
+
+def grouped_rig(**changes: Any) -> ShowModel:
+    """The rig above with three groups and a strip of four pixels."""
+    rig = editing_rig(*FIXTURES, PIXELS)
+    parts: dict[str, Any] = {"groups": GROUPS, "profiles": (*rig.profiles, STRIP)}
+    parts.update(changes)
+    return replace(rig, **parts)
+
+
+def on_the_groups(bridge: FakeBridge, *selected: tuple[int, int], **changes: Any) -> BuskApp:
+    """F3 on :func:`grouped_rig`, with ``selected`` elements selected."""
+    bridge.events += [
+        ShowChanged(grouped_rig(**changes)),
+        ProgrammerChanged(programmer(selection=selected)),
+    ]
+    return make_app(bridge, page=3)
+
+
+def select(bridge: FakeBridge, *selected: tuple[int, int]) -> None:
+    bridge.events.append(ProgrammerChanged(programmer(selection=selected)))
+
+
+def test_a_groups_row_and_what_merge_replace_and_remove_would_change() -> None:
+    heads, _, empty = GROUPS
+    cells = group_cells(heads, True, FIXTURES)
+    assert [cells[name].plain for name in ("number", "name", "members")] == [
+        "1", "Heads", "101 thru 103",
+    ]  # fmt: skip
+    assert str(cells["number"].spans[0].style) == LIT
+    assert str(group_cells(heads, False, FIXTURES)["number"].spans[0].style) == colors.MID
+    assert group_cells(empty, False, FIXTURES)["members"].plain == "—"
+    pixels = GroupInfo(7, "Ends", ((501, 1), (501, 4), (501, 2)))
+    assert group_cells(pixels, False, (PIXELS,))["members"].plain == "501.1, 501.4, 501.2"
+    members = ((101, 1), (102, 1))
+    table = [
+        (how, selection, changes(how, members, selection))
+        for how in WRITES
+        for selection in ((), ((101, 1),), ((102, 1), (101, 1)), ((101, 1), (102, 1)),
+                          ((301, 1),), ((101, 1), (301, 1)))
+    ]  # fmt: skip
+    assert [found for *_, found in table] == [
+        False, False, False, False, True, True,  # merge: something they lack
+        False, True, True, False, True, True,  # replace: not them, in their order
+        False, True, True, True, False, True,  # remove: one of them
+    ]  # fmt: skip
+
+
+def test_groups_show_in_edit_mode_under_the_table_and_a_click_only_chooses() -> None:
+    bridge = FakeBridge()
+    app = on_the_groups(bridge, (201, 1))
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        page = app.query_one(FixturesPage)
+        assert not page.groups.display
+        page = await enter(pilot, app, None)
+        groups = page.groups
+        assert groups.display
+        assert groups.region.y >= page.sheet.region.bottom
+        assert str(groups.border_title) == "GROUPS"
+        assert "3 groups · click chooses" in str(groups.count.content)
+        assert column(groups.table, "number") == ["1", "2", "5"]
+        assert column(groups.table, "members") == ["101 thru 103", "201, 301", "—"]
+        bridge.events.append(ShowChanged(grouped_rig(groups=GROUPS[::-1])))  # a renumber's order
+        await settle(pilot, app)
+        assert column(groups.table, "number") == ["1", "2", "5"]
+        assert not groups.choice.display
+        assert not groups.with_row.display
+        await click_cell(pilot, groups.table, 1, "name")
+        await settle(pilot, app)
+        assert bridge.sent == []  # the selection stays
+        assert page.panel.chosen is None  # the rig's choice too
+        assert groups.chosen == 2
+        assert groups.table.chosen == 1
+        assert str(groups.label.content) == "group 2 Floor"
+        assert str(groups.with_words.content) == "selection 201"
+        page.set_editing(False)
+        await pilot.pause()
+        assert not groups.display
+
+    drive(app, body)
+
+
+def test_below_100_columns_groups_come_between_the_table_and_the_panel() -> None:
+    bridge = FakeBridge()
+    app = on_the_groups(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app)
+        assert page.sheet.region.bottom <= page.groups.region.y
+        assert page.groups.region.bottom <= page.panel.region.y
+        assert page.groups.region.width == page.sheet.region.width
+
+    drive(app, body, size=(99, 80))
+
+
+def test_record_takes_the_selection_as_a_new_group_and_chooses_it() -> None:
+    bridge = FakeBridge()
+    app = on_the_groups(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app, None)
+        groups = page.groups
+        assert groups.record.inert  # nothing selected
+        await tap(pilot, groups.record, app)
+        assert not isinstance(app.screen, FormDialog)
+        groups.ask_record()  # a pane cursor's stale stop
+        await pilot.pause()
+        assert not isinstance(app.screen, FormDialog)
+        select(bridge, (301, 1), (101, 1))
+        await settle(pilot, app)
+        assert not groups.record.inert
+        await tap(pilot, groups.record, app)
+        dialog = app.screen
+        assert isinstance(dialog, FormDialog)
+        assert [field.value for field in dialog.inputs] == ["6", ""]
+        assert dialog.note.splitlines() == [
+            "taken: 1–2, 5",
+            "members: 301, 101",
+            "no name: busk names it Group <number>",
+        ]
+        await pilot.press("ctrl+u", "2", "tab", *"Spots", "enter")
+        assert "2 is taken" in str(dialog.error.content)
+        await pilot.press("shift+tab", "ctrl+u", "8", "enter")
+        await settle(pilot, app)
+        assert bridge.lines() == ['record group 8 "Spots"']
+        assert groups.chosen == 8  # before the show has it: nothing shows for it yet
+        assert not groups.choice.display
+        new = GroupInfo(8, "Spots", ((301, 1), (101, 1)))
+        bridge.events.append(ShowChanged(grouped_rig(groups=(*GROUPS, new))))
+        await settle(pilot, app)
+        assert groups.table.chosen == 3
+        assert str(groups.label.content) == "group 8 Spots"
+        bridge.sent.clear()
+        await tap(pilot, groups.record, app)
+        await pilot.press("enter")  # no name: busk's
+        await settle(pilot, app)
+        assert bridge.lines() == ["record group 9"]  # after the highest, as F4 and F1 do
+
+    drive(app, body)
+
+
+def test_merge_runs_replace_and_remove_ask_and_each_is_grey_when_it_changes_nothing() -> None:
+    bridge = FakeBridge()
+    app = on_the_groups(bridge, (102, 1))
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app, None)
+        groups = page.groups
+        groups.choose(1)
+        await pilot.pause()
+
+        def inert() -> list[str]:
+            return [how for how, button in groups.writes.items() if button.inert]
+
+        assert inert() == ["merge"]  # 102 is a member
+        await tap(pilot, groups.writes["merge"], app)
+        assert bridge.sent == []
+        await tap(pilot, groups.writes["remove"], app)
+        dialog = app.screen
+        assert isinstance(dialog, ConfirmDialog)
+        assert dialog.question.splitlines() == [
+            'Take the selection out of group 1 "Heads"?',
+            "It keeps 2 of its 3 members.",
+        ]
+        await pilot.press("y")
+        await settle(pilot, app)
+        assert bridge.lines() == ["record group 1 remove"]
+        bridge.sent.clear()
+        await tap(pilot, groups.writes["replace"], app)
+        dialog = app.screen
+        assert isinstance(dialog, ConfirmDialog)
+        assert dialog.question == 'Replace the members of group 1 "Heads" with the selection?'
+        await pilot.press("n")
+        await settle(pilot, app)
+        assert bridge.sent == []
+        select(bridge, (201, 1), (101, 1))
+        await settle(pilot, app)
+        assert inert() == []
+        await tap(pilot, groups.writes["merge"], app)  # no question
+        assert bridge.lines() == ["record group 1 merge"]
+        select(bridge, (401, 1))
+        await settle(pilot, app)
+        assert inert() == ["remove"]
+        select(bridge, (101, 1), (102, 1), (103, 1))
+        await settle(pilot, app)
+        assert inert() == ["merge", "replace"]
+        await tap(pilot, groups.writes["remove"], app)
+        dialog = app.screen
+        assert isinstance(dialog, ConfirmDialog)
+        assert dialog.question.splitlines()[1] == "It stays, with no members."
+        await pilot.press("n")
+        select(bridge)
+        await settle(pilot, app)
+        assert inert() == list(WRITES)
+        assert str(groups.with_words.content) == "selection nothing"
+        bridge.sent.clear()
+        for how in WRITES:  # a pane cursor's stale stop sends nothing either
+            groups.write(how)
+        await settle(pilot, app)
+        assert bridge.sent == []
+
+    drive(app, body)
+
+
+def test_rename_and_renumber_a_group_and_the_choice_follows() -> None:
+    bridge = FakeBridge()
+    app = on_the_groups(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app, None)
+        groups = page.groups
+        groups.choose(2)
+        await pilot.pause()
+        await tap(pilot, groups.rename, app)
+        assert isinstance(app.screen, TextDialog)
+        await pilot.press("enter")  # the name it has
+        await settle(pilot, app)
+        await tap(pilot, groups.rename, app)
+        await pilot.press("ctrl+u", "enter")
+        dialog = app.screen
+        assert isinstance(dialog, TextDialog)
+        assert "cannot be empty" in str(dialog.error.content)
+        await pilot.press(*"Floor 'n' bar", "enter")
+        await settle(pilot, app)
+        assert bridge.lines() == ["rename group 2 \"Floor 'n' bar\""]
+        bridge.sent.clear()
+        await tap(pilot, groups.renumber, app)
+        dialog = app.screen
+        assert isinstance(dialog, TextDialog)
+        assert dialog.note == "taken: 1, 5"
+        await pilot.press("ctrl+u", "5", "enter")
+        assert "5 is taken" in str(dialog.error.content)
+        await pilot.press("ctrl+u", "2", "enter")  # its own: nothing to send
+        await settle(pilot, app)
+        assert bridge.sent == []
+        await tap(pilot, groups.renumber, app)
+        await pilot.press("ctrl+u", "9", "enter")
+        await settle(pilot, app)
+        assert bridge.lines() == ["group 2 number 9"]
+        assert groups.chosen == 9
+        select(bridge, (101, 1))  # the old show still: the choice waits for the new one
+        await settle(pilot, app)
+        assert groups.chosen == 9
+        moved = (GROUPS[0], GroupInfo(9, "Floor", GROUPS[1].members), GROUPS[2])
+        bridge.events.append(ShowChanged(grouped_rig(groups=moved)))
+        await settle(pilot, app)
+        assert str(groups.label.content) == "group 9 Floor"
+
+    drive(app, body)
+
+
+def test_delete_asks_busk_and_a_group_that_leaves_the_show_is_chosen_no_more(
+    club: busk.OfflineShow,
+) -> None:
+    bridge = FakeBridge(show=club)
+    app = on_the_groups(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app, None)
+        groups = page.groups
+        groups.choose(2)
+        await pilot.pause()
+        await tap(pilot, groups.delete, app)
+        dialog = app.screen
+        assert isinstance(dialog, ConfirmDialog)
+        assert dialog.question == club.confirmation("delete group 2 cascade")
+        assert "master" in dialog.question
+        await pilot.press("n")
+        await settle(pilot, app)
+        assert bridge.sent == []
+        assert groups.chosen == 2
+        await tap(pilot, groups.delete, app)
+        await pilot.press("y")
+        await settle(pilot, app)
+        assert bridge.lines() == ["delete group 2 cascade"]
+        assert groups.chosen is None
+        assert not groups.choice.display
+        groups.choose(1)
+        bridge.events.append(ShowChanged(grouped_rig(groups=GROUPS[1:])))
+        await settle(pilot, app)
+        assert groups.chosen is None
+        assert column(groups.table, "number") == ["2", "5"]
+
+    drive(app, body)
+
+
+@pytest.mark.parametrize("button", ["rename", "renumber"])
+def test_a_group_that_leaves_the_show_under_its_dialog_gets_no_line(button: str) -> None:
+    bridge = FakeBridge()
+    app = on_the_groups(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app, None)
+        groups = page.groups
+        groups.choose(2)
+        await pilot.pause()
+        await tap(pilot, getattr(groups, button), app)
+        assert isinstance(app.screen, TextDialog)
+        bridge.events.append(ShowChanged(grouped_rig(groups=GROUPS[:1])))  # deleted meanwhile
+        await settle(pilot, app)
+        assert groups.chosen is None
+        await pilot.press("ctrl+u", "8", "enter")
+        await settle(pilot, app)
+        assert bridge.sent == []
+
+    drive(app, body)
+
+
+def test_a_refused_delete_or_renumber_keeps_the_group_chosen() -> None:
+    bridge = FakeBridge(
+        replies={
+            "delete group 1 cascade": Reply(False, "error: no"),
+            "group 1 number 4": Reply(False, "error: no"),
+        }
+    )
+    app = on_the_groups(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app, None)
+        groups = page.groups
+        groups.choose(1)
+        await pilot.pause()
+        await tap(pilot, groups.delete, app)
+        await tap(pilot, groups.renumber, app)
+        await pilot.press("ctrl+u", "4", "enter")
+        await settle(pilot, app)
+        assert bridge.lines() == ["delete group 1 cascade", "group 1 number 4"]
+        assert groups.chosen == 1
+
+    drive(app, body)
+
+
+def test_the_pane_cursor_stops_on_the_groups() -> None:
+    bridge = FakeBridge()
+    app = on_the_groups(bridge, (102, 1))
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app, None)
+        rows = [f"fixture {f.number} {f.name}" for f in (*FIXTURES, PIXELS)]
+        labels = [item.label for item in page.items()]
+        assert labels == [
+            "+ add", "edit", *rows,
+            "record group…", "group 1 Heads", "group 2 Floor", "group 5 Empty",
+            "done",
+        ]  # fmt: skip
+        page.groups.choose(1)
+        await pilot.pause()
+        labels = [item.label for item in page.items()]
+        assert labels[len(rows) + 6 : -1] == [
+            "group rename…", "group number…", "group delete", "group replace", "group remove",
+        ]  # fmt: skip
+        assert len(labels) == len(set(labels))
+        page.items()[len(rows) + 4].action()  # group 2
+        await pilot.pause()
+        assert page.groups.chosen == 2
+
+    drive(app, body)
+
+
+def test_the_source_column_reads_park_first_in_amber() -> None:
+    parked = out(101, sources=(("intensity", "park"), ("position", "programmer")), playback=None)
+    head = fixture_cells(SPOT, (parked, HEAD), False, "spot", "256")
+    assert head["source"].plain == "park"
+    assert styles(head, "intensity") == colors.AMBER
+    assert styles(head, "pan") == colors.MAGENTA
+    assert source_text("park", None) == "park"
+    keys = [text.plain for text in legend()]
+    assert keys[:5] == ["■ park", "■ programmer", "■ playback", "■ effect", "■ nothing"]
+    assert str(legend()[0].spans[0].style) == colors.AMBER
+
+
+def test_what_park_holds_on_a_fixture_and_the_park_forms_check() -> None:
+    red = (("r", 1.0), ("g", 0.0), ("b", 0.0))
+    park = (
+        Parked(501, 1, "intensity", 0.0),
+        Parked(201, 1, "intensity", 0.5),
+        Parked(501, 2, "intensity", 0.0),
+        Parked(501, 1, "color", red),
+        Parked(501, 2, "color", red),
+        Parked(501, 3, "color", red),
+        Parked(501, 4, "color", red),
+    )
+    show = grouped_rig(park=park)
+    assert parked_text(PIXELS, show).plain.splitlines() == [
+        "intensity 0% · 501.1 thru 501.2",
+        "color 1.00 0.00 0.00",
+    ]
+    assert parked_text(FIXTURES[0], show).plain == "nothing parked"
+    assert parked_text(FIXTURES[0], None).plain == "nothing parked"
+    check = check_park(("intensity", "color"))
+    assert check(("intensity", "0")) is None
+    assert check((" color ", "1 0 0")) is None
+    assert check(("pan", "0")) == "an attribute these fixtures take, as the note lists them"
+    assert check(("color.w", "0.5")) is not None
+    assert check(("intensity", " ")) == "a value: 0, 50%, -45, 1 0 0, or an option"
+
+
+def test_park_through_its_dialog_on_the_chosen_fixture() -> None:
+    bridge = FakeBridge()
+    app = on_the_groups(bridge, park=(Parked(101, 1, "pan", -45.0),))
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app, 101)
+        panel = page.panel
+        assert str(panel.park_heading.content) == "PARK · 101"
+        assert str(panel.parked.content) == "pan -45°"
+        assert panel.parkable() == ("intensity", "pan", "tilt")
+        await tap(pilot, panel.park, app)
+        dialog = app.screen
+        assert isinstance(dialog, FormDialog)
+        assert dialog.title_text == "PARK · 101"
+        assert [field.value for field in dialog.inputs] == ["intensity", "0"]
+        assert dialog.note.splitlines() == [
+            "attributes: intensity pan tilt",
+            "value: 0 to 1 or 50%, degrees, r g b, or an option",
+        ]
+        await pilot.press("ctrl+u", *"gobo1", "enter")
+        assert "an attribute these fixtures take" in str(dialog.error.content)
+        assert bridge.sent == []
+        await pilot.press("ctrl+u", *"tilt", "tab", "ctrl+u", *"-20", "enter")
+        await settle(pilot, app)
+        assert bridge.lines() == ["park fixture 101 tilt -20"]
+
+    drive(app, body)
+
+
+def test_a_long_list_of_attributes_wraps_in_the_park_form_and_it_starts_at_the_first() -> None:
+    many = frozenset(attributes.FAMILY_OF) - {"control"}
+    big = ProfileInfo("Big", many, (), "spot")
+    mover = ProfileInfo("Mover", frozenset({"tilt", "pan"}), (), "spot")
+    show = editing_rig(
+        *FIXTURES,
+        FixtureInfo(601, 1, "Big 1", "Big", "16ch", 16, (3, 1)),
+        FixtureInfo(602, 1, "Mover 1", "Mover", "2ch", 2, (3, 20)),
+    )
+    bridge = FakeBridge()
+    bridge.events.append(ShowChanged(replace(show, profiles=(*show.profiles, big, mover))))
+    app = make_app(bridge, page=3)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app, 601)
+        await tap(pilot, page.panel.park, app)
+        dialog = app.screen
+        assert isinstance(dialog, FormDialog)
+        *lines, _ = dialog.note.splitlines()
+        assert len(lines) > 1
+        assert all(len(line) <= 54 for line in lines)
+        assert " ".join(lines).split()[1:] == [a for a in attributes.FAMILY_OF if a in many]
+        assert dialog.inputs[0].value == "intensity"
+        await pilot.press("escape")
+        page.panel.choose(602)  # no intensity: busk's order, pan first
+        await pilot.pause()
+        assert page.panel.parkable() == ("pan", "tilt")
+        await tap(pilot, page.panel.park, app)
+        dialog = app.screen
+        assert isinstance(dialog, FormDialog)
+        assert dialog.inputs[0].value == "pan"
+
+    drive(app, body)
+
+
+def test_park_reaches_the_selected_elements_while_the_chosen_fixture_is_selected() -> None:
+    bridge = FakeBridge()
+    app = on_the_groups(bridge, (101, 1), (102, 1), (501, 2), (501, 3))
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app, 501)
+        panel = page.panel
+        assert str(panel.park_heading.content) == "PARK · 101 thru 102, 501.2 thru 501.3"
+        assert panel.parkable() == ("intensity", "pan", "tilt", "color")
+        await tap(pilot, panel.park, app)
+        await pilot.press("tab", "ctrl+u", *"50%", "enter")
+        await settle(pilot, app)
+        assert bridge.lines() == [
+            "park fixture 101 thru 102, fixture 501.2 thru 501.3 intensity 50%"
+        ]
+        bridge.sent.clear()
+        panel.choose(201)  # not selected: the whole of it
+        await pilot.pause()
+        assert str(panel.park_heading.content) == "PARK · 201"
+        assert panel.parkable() == ("intensity",)
+        await tap(pilot, panel.park, app)
+        await pilot.press("enter")
+        await settle(pilot, app)
+        assert bridge.lines() == ["park fixture 201 intensity 0"]
+        bridge.sent.clear()
+        panel.choose(501)
+        select(bridge, (502, 1))
+        await settle(pilot, app)
+        assert str(panel.park_heading.content) == "PARK · 501"  # every pixel
+
+    drive(app, body)
+
+
+def test_park_is_grey_where_the_profile_says_nothing() -> None:
+    bridge = FakeBridge()
+    bridge.events.append(ShowChanged(rig()))  # profiles with no attributes
+    app = make_app(bridge, page=3)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app, 101)
+        assert page.panel.park.inert
+        await tap(pilot, page.panel.park, app)
+        assert not isinstance(app.screen, FormDialog)
+        page.panel.ask_park()  # a pane cursor's stale stop
+        await pilot.pause()
+        assert not isinstance(app.screen, FormDialog)
+        assert "park…" not in [item.label for item in page.items()]
 
     drive(app, body)
