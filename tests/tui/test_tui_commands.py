@@ -5,6 +5,7 @@ the club-night show (plan §4.6)."""
 from __future__ import annotations
 
 import copy
+import json
 from pathlib import Path
 from typing import Any, get_args, get_type_hints
 
@@ -16,6 +17,7 @@ from busk.model.attributes import ATTRIBUTES
 from busk.model.playback import ButtonFunction, FaderFunction, Playback
 from busk.output import dmxusb
 from busk_tui import attributes, commands, config
+from busk_tui import bridge as bridge_module
 from busk_tui.bridge import show_model
 from busk_tui.commands import Line
 from busk_tui.widgets import route_dialog
@@ -37,6 +39,14 @@ NEW_WAVE_JSON = (
 )
 
 TUPPER = Path(__file__).resolve().parents[2] / "examples" / "tupperdmx" / "tupper-demo.show"
+
+OFL_DIMMER = {
+    "name": "Test",
+    "meta": {"lastModifyDate": "2026-01-02"},
+    "availableChannels": {"Dimmer": {"capability": {"type": "Intensity"}}},
+    "modes": [{"name": "All", "channels": ["Dimmer"]}],
+}
+"""An Open Fixture Library fixture: busk names it after its folder."""
 
 ROUTE = "r-club"
 """The id the show of the contract test gives its route."""
@@ -358,6 +368,16 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
     "renumber fixture": (commands.renumber_fixture(904, 950), "fixture 904 number 950", False),
     "patch fixture": (commands.patch_fixture(950, (7, 100)), "fixture 950 patch 7.100", False),
     "unpatch fixture": (commands.patch_fixture(950, None), "fixture 950 patch none", False),
+    "patch run": (
+        commands.patch_fixture(901, (7, 200), 902),
+        "fixture 901 thru 902 patch 7.200",
+        False,
+    ),
+    "unpatch run": (
+        commands.patch_fixture(901, None, 902),
+        "fixture 901 thru 902 patch none",
+        False,
+    ),
     "limit range": (
         commands.limit_range(101, 102, "pan", -180.0, 180.5),
         "fixture 101 thru 102 limits pan -180 180.5",
@@ -428,9 +448,15 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
         "route add 7 dmxusb enttecPro /dev/ttyUSB7 hz 30",
         False,
     ),
+    "route change": (
+        commands.route_change(ROUTE, 1, "sacn", "9", "unicast 10.0.0.9"),
+        f"route {ROUTE} change 1 sacn 9 unicast 10.0.0.9",
+        False,
+    ),
     "route off": (commands.route_on(ROUTE, False), f"route {ROUTE} off", False),
     "route on": (commands.route_on(ROUTE, True), f"route {ROUTE} on", False),
     "delete route": (commands.delete_route(ROUTE), f"delete route {ROUTE}", False),
+    "delete run": (commands.delete_fixture(902, 903), "delete fixture 902 thru 903 cascade", False),
     "delete fixture": (commands.delete_fixture(901), "delete fixture 901 cascade", False),
     "delete universe": (commands.delete_universe(7), "delete universe 7 cascade", False),
 }
@@ -530,6 +556,8 @@ def test_a_route_id_that_is_more_than_a_word_reaches_busk(club_path: Path) -> No
     show = busk.OfflineShow(document)
     assert show.execute(commands.route_on("main out", False).text).ok
     assert not show.show["output"]["routes"][0]["enabled"]
+    assert show.execute(commands.route_change("main out", 1, "sacn", "9").text).ok
+    assert show.show["output"]["routes"][0]["universe"] == 9
     assert show.execute(commands.delete_route("main out").text).ok
     assert show.show["output"]["routes"] == []
 
@@ -618,7 +646,7 @@ def test_busk_accepts_every_builders_line(show: busk.OfflineShow) -> None:
         assert reply.ok, (name, reply.text)
     assert 7 not in [universe["number"] for universe in show.show["universes"]]
     assert show.show["output"]["routes"] == []  # the club's, and the ones on universe 7
-    assert 901 not in [fixture["number"] for fixture in show.show["fixtures"]]
+    assert {901, 902, 903}.isdisjoint(fixture["number"] for fixture in show.show["fixtures"])
 
 
 ROUTE_FORM: dict[str, tuple[Line, str, dict[str, Any]]] = {
@@ -685,6 +713,53 @@ def test_busk_stores_what_the_route_form_says(show: busk.OfflineShow, name: str)
     route = show.show["output"]["routes"][-1]
     assert {key: route[key] for key in stored} == stored
     assert route["enabled"]
+
+
+EDIT_FORM: dict[str, tuple[Line, str, dict[str, Any]]] = {
+    # name: (the edit form's line for the club's route, its text, what busk stores of it)
+    "sacn": (
+        network_line(1, "sacn", "20", "multicast", "eth1", ROUTE),
+        f"route {ROUTE} change 1 sacn 20 multicast eth1",
+        {"protocol": "sacn", "universe": 20, "priority": 100,
+         "destination": {"kind": "multicast", "iface": "eth1"}},
+    ),
+    "artnet": (
+        network_line(1, "artnet", "0.1.2", "unicast", "10.0.0.50", ROUTE),
+        f"route {ROUTE} change 1 artnet 0.1.2 unicast 10.0.0.50",
+        {"protocol": "artnet", "portAddress": {"net": 0, "subNet": 1, "universe": 2},
+         "destination": {"kind": "unicast", "host": "10.0.0.50"}},
+    ),
+    "dmxusb": (
+        usb_line(1, "dmxking", "USB port", 30.5, ROUTE),
+        f'route {ROUTE} change 1 dmxusb dmxking "USB port" hz 30.5',
+        {"protocol": "dmxUsb", "device": {"driver": "dmxking", "port": "USB port"},
+         "refreshHz": 30.5},
+    ),
+}  # fmt: skip
+
+
+@pytest.mark.parametrize("name", sorted(EDIT_FORM))
+def test_busk_changes_the_route_as_the_edit_form_says(show: busk.OfflineShow, name: str) -> None:
+    """The route keeps its id, its place and whether it is on; another
+    protocol leaves none of the old one's keys."""
+    line, text, stored = EDIT_FORM[name]
+    assert line.text == text
+    assert not line.performance
+    (before,) = show.show["output"]["routes"]
+    reply = show.execute(line.text)
+    assert reply.ok, reply.text
+    (route,) = show.show["output"]["routes"]
+    assert {key: route[key] for key in stored} == stored
+    assert (route["id"], route["enabled"]) == (ROUTE, before["enabled"])
+    keys = {"id", "universeId", "enabled", "protocol"}
+    assert set(route) == keys | set(stored)
+
+
+def test_the_form_reads_the_protocol_as_the_bridge_names_it() -> None:
+    assert {
+        name: key.lower() for key, name in bridge_module._PROTOCOLS.items()
+    } == route_dialog.KEYS
+    assert set(route_dialog.KEYS.values()) == set(route_dialog.PROTOCOLS)
 
 
 @pytest.mark.parametrize(
@@ -772,6 +847,34 @@ def test_the_route_forms_host_and_port_are_only_not_empty() -> None:
     for text in ("", "  "):
         assert route_dialog.check_host(text) is not None
         assert route_dialog.check_port(text) is not None
+
+
+def test_busk_imports_the_file_at_the_path_the_picker_sends(
+    show: busk.OfflineShow, tmp_path: Path
+) -> None:
+    """A path with a space, a quote and a backslash reaches busk whole."""
+    folder = tmp_path / 'my "rig" \\ files' / "acme"
+    folder.mkdir(parents=True)
+    file = folder / "dim.json"
+    file.write_text(json.dumps(OFL_DIMMER))
+    line = commands.profile_import(str(file))
+    assert line.text == f"profile import {json.dumps(str(file))}"
+    assert not line.performance
+    reply = show.execute(line.text)
+    assert reply.ok, reply.text
+    assert show.show["profiles"][-1]["name"] == "acme Test"
+
+
+def test_busk_updates_the_profile_the_panel_names(club_path: Path) -> None:
+    document, _ = busk.load_show(club_path)
+    document = copy.deepcopy(document)
+    document["profiles"][0]["revision"] = "7"
+    show = busk.OfflineShow(document)
+    line = commands.profile_update(document["profiles"][0]["name"])
+    assert line.text == 'profile update "Generic Spot 16ch"'
+    reply = show.execute(line.text)
+    assert reply.ok, reply.text
+    assert show.show["profiles"][0]["revision"] == "1"
 
 
 def test_the_category_chips_are_what_busk_takes(club: busk.OfflineShow) -> None:

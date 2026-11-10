@@ -6,15 +6,19 @@ chosen in edit mode.
   the panel's place, until its ``[done]``, or a click chooses a fixture.
 * ``[rename…]`` and ``[number…]``, each a dialog and then one line
   (``rename fixture 102 "…"``, ``fixture 102 number 150``), and ``[delete]``:
-  ``delete fixture 102 cascade``, after busk's question, which says what goes.
+  ``delete fixture 102 cascade``, or ``[delete 101 thru 104]`` for a run,
+  after busk's question, which says what goes.
 * What it is: its profile, mode and channels, and where the profile has two
   modes or more, a chip per mode (``fixture 102 mode "8ch"``). ``[profile…]``
   opens the picker, then shows that profile's modes and ``[change]``:
-  ``fixture 102 profile "RGB Par 3ch" mode "3ch"``.
+  ``fixture 102 profile "RGB Par 3ch" mode "3ch"``. ``[update profile]``, grey
+  unless the library's revision of the profile differs from the show's: ``profile
+  update "Generic Spot 16ch"``, for every fixture of the profile.
 * Its profile's category, which every fixture of the profile shares: a chip
   per word (``profile "Generic Spot 16ch" category wash``).
 * PATCH (:mod:`busk_tui.widgets.patch_chooser`): where it is, a choice of where
-  to put it, and ``[patch]``: ``fixture 102 patch 1.85``, or ``… patch none``.
+  to put it, and ``[patch]``: ``fixture 102 patch 1.85``, or ``… patch none``;
+  for a run, ``fixture 101 thru 104 patch 1.85``, each after the one before.
 * LIMITS: a row per limit the fixture can use (pan and tilt where the profile
   takes them, intensity always). ``[limit…]`` is a form that starts at the
   limit, else at the profile's range; ``[none]`` removes that limit, and
@@ -29,12 +33,16 @@ chosen in edit mode.
   ``[no place]``.
 * ``[done]`` leaves edit mode.
 
-Two reaches (the plan's §4 call 4). The header, the mode, the profile, PATCH and
-the location act on the chosen fixture. LIMITS and ORIENTATION act on every selected fixture
-while the chosen one is selected, as their headings say: a ``thru`` line per run
-of the show's numbers that are all selected. PARK acts on the selected elements
-while the chosen fixture is selected, so a pixel can be parked, else on the
-chosen fixture; one line, its targets as its heading says.
+Two reaches (the plan's §4 call 4). ``[rename…]``, ``[number…]``, the mode, the
+profile and the location act on the chosen fixture. LIMITS and ORIENTATION act
+on every selected fixture while the chosen one is selected, as their headings
+say: a ``thru`` line per run of the show's numbers that are all selected.
+``[delete]`` and PATCH act on the same fixtures while they are one run, in one
+``thru`` line, and are grey while they are several
+(``docs/plans/tui-pending-plan.md`` §5 call 7): several lines would be several
+undo steps. PARK acts on the selected elements while the chosen fixture is
+selected, so a pixel can be parked, else on the chosen fixture; one line, its
+targets as its heading says.
 """
 
 from __future__ import annotations
@@ -75,7 +83,7 @@ from busk_tui.widgets.fixturetable import profile_text
 from busk_tui.widgets.location_form import PLACE, open_location_form
 from busk_tui.widgets.options import LIT, pick_chips
 from busk_tui.widgets.parked import held_text, parked_rows
-from busk_tui.widgets.patch_chooser import PatchChooser, channels_text, span_text
+from busk_tui.widgets.patch_chooser import PatchChooser, channels_text, layout, span_text
 from busk_tui.widgets.preset_panel import PANEL_WIDTH
 from busk_tui.widgets.profile_picker import ProfileDialog
 from busk_tui.widgets.quick import strip_stops
@@ -150,6 +158,21 @@ def patch_heading(fixture: FixtureInfo) -> Text:
         text.append("none", style=colors.DIM)
     else:
         text.append(span_text(*fixture.patch, fixture.footprint), style=colors.FG)
+    return text
+
+
+def run_heading(run: Sequence[FixtureInfo]) -> Text:
+    """Where a run is: ``PATCH · 101 thru 104 (4) · 1.1–1.64`` while it is
+    one block as ``thru`` lays it out, else ``none`` or ``not in one block``."""
+    text = heading("PATCH", [(run[0].number, run[-1].number)], len(run))
+    text.append(" · ", style=colors.FG)
+    start, now = run[0].patch, tuple(fixture.patch for fixture in run)
+    if start is not None and layout(run, start) == now:
+        text.append(span_text(*start, sum(f.footprint for f in run)), style=colors.FG)
+    elif all(patch is None for patch in now):
+        text.append("none", style=colors.DIM)
+    else:
+        text.append("not in one block", style=colors.DIM)
     return text
 
 
@@ -296,6 +319,7 @@ class FixturePanel(VerticalScroll):
         self.delete = ActionButton("delete", self.ask_delete, "danger")
         self.what = Static("", classes="fp-text")
         self.ask_swap = ActionButton("profile…", self.ask_profile)
+        self.update_profile = ActionButton("update profile", self.send_update, inert=True)
         self.swap: tuple[str, str | None] | None = None  # the profile to change to, and its mode
         self.swap_words = Static("", classes="fp-text fp-crop")
         self.swap_modes = ButtonStrip()
@@ -312,7 +336,9 @@ class FixturePanel(VerticalScroll):
         self.category = Static("", classes="fp-text")
         self.categories = ButtonStrip()
         self.patch_words = Static("", classes="fp-text fp-crop")
+        self.patch_note = Static("", classes="fp-text")
         self.patching = PatchChooser(self._draw_send)
+        self._placing: tuple[int, ...] = ()  # the numbers PATCH places now
         self.send_patch = ActionButton("patch", self.patch, "go", inert=True)
         self.limits_heading = Static("", classes="fp-text fp-crop")
         self.limits = {
@@ -351,7 +377,7 @@ class FixturePanel(VerticalScroll):
             Horizontal(self.rename, self.renumber, self.delete, classes="fp-row fp-section"),
             Vertical(
                 self.what,
-                Horizontal(self.ask_swap, classes="fp-row"),
+                Horizontal(self.ask_swap, self.update_profile, classes="fp-row"),
                 self.swapping,
                 self.modes,
                 classes="fp-section",
@@ -359,6 +385,7 @@ class FixturePanel(VerticalScroll):
             Vertical(self.category, self.categories, classes="fp-section"),
             Vertical(
                 self.patch_words,
+                self.patch_note,
                 self.patching,
                 Horizontal(self.send_patch, classes="fp-row"),
                 classes="fp-section",
@@ -425,6 +452,10 @@ class FixturePanel(VerticalScroll):
             self.border_title = Text("FIXTURE")
             return
         self.border_title = Text(f"FIXTURE · {fixture.number} {fixture.name}".rstrip())
+        run = self.run()
+        many = run is not None and len(run) > 1
+        label = f"delete {spans_text(self.spans())}" if many else "delete"
+        self.delete.change(label=label, inert=run is None)
         self._draw_what(fixture)
         self._draw_patch(fixture)
         self._draw_limits(fixture)
@@ -435,6 +466,8 @@ class FixturePanel(VerticalScroll):
 
     def _draw_what(self, fixture: FixtureInfo) -> None:
         put(self.what, what_text(fixture))
+        choice = find_choice(self.show, fixture.profile)
+        self.update_profile.change(inert=choice is None or not choice.outdated())
         self._draw_swap(fixture)
         profile = self.profile()
         modes = [] if profile is None else [mode.name for mode in profile.modes]
@@ -471,14 +504,37 @@ class FixturePanel(VerticalScroll):
         self.swap_send.change(inert=(choice.name, mode.name) == (fixture.profile, fixture.mode))
 
     def _draw_patch(self, fixture: FixtureInfo) -> None:
-        put(self.patch_words, patch_heading(fixture))
-        self.patching.view(self.show, fixture.footprint, fixture)
+        """The chosen fixture's patch, or the run's; a reach of several runs
+        says what ``thru`` would take too."""
+        run = self.run()
+        self.patching.display = run is not None
+        self.patch_note.display = run is None
+        if run is None:
+            put(self.patch_words, heading("PATCH", self.spans(), len(self.reached())))
+            put(self.patch_note, Text(f"not one run: {self._between()}", style=colors.DIM))
+            self.send_patch.change(inert=True)
+            return
+        placing = tuple(f.number for f in run)
+        if placing != self._placing:
+            self.patching.held = False  # a choice made for other fixtures
+            self._placing = placing
+        put(self.patch_words, patch_heading(fixture) if len(run) == 1 else run_heading(run))
+        self.patching.view(self.show, sum(f.footprint for f in run), run)
         self._draw_send()
 
+    def _between(self) -> str:
+        """The fixtures a ``thru`` from the reach's first to its last would take
+        that are not in it: ``thru would take 102 too``."""
+        reach, found = self.reach(), () if self.show is None else self.show.fixtures
+        first, last = min(reach), max(reach)
+        left = [f.number for f in found if first < f.number < last and f.number not in reach]
+        return f"thru would take {numbers_text(left)} too"
+
     def _draw_send(self) -> None:
-        """``[patch]`` is inert while the choice equals the patch, or does not fit."""
-        fixture = self.fixture()
-        same = fixture is None or self.patching.at == fixture.patch
+        """``[patch]`` is inert while the choice would change nothing, or does
+        not fit."""
+        run = self.run()
+        same = run is None or layout(run, self.patching.at) == tuple(f.patch for f in run)
         self.send_patch.change(inert=same or not self.patching.ready())
 
     def _draw_limits(self, fixture: FixtureInfo) -> None:
@@ -533,6 +589,11 @@ class FixturePanel(VerticalScroll):
         return runs(
             self.reach(), [] if self.show is None else [f.number for f in self.show.fixtures]
         )
+
+    def run(self) -> list[FixtureInfo] | None:
+        """What ``[delete]`` and PATCH act on: the reach while it is one span,
+        which ``thru`` takes whole, else ``None``."""
+        return self.reached() if len(self.spans()) == 1 else None
 
     def park_reach(self) -> tuple[tuple[int, int], ...]:
         """What ``[park…]`` acts on: the selected elements while the chosen
@@ -645,17 +706,20 @@ class FixturePanel(VerticalScroll):
         self.app.push_screen(TextDialog(title, str(fixture.number), check, note), given)
 
     def ask_delete(self) -> None:
-        """``[delete]``: ``delete fixture 102 cascade``, after busk's question.
-        Once it has gone nothing is chosen, so a second click reaches nothing."""
-        fixture = self.fixture()
-        if fixture is None:
+        """``[delete]``: ``delete fixture 102 cascade``, or ``delete fixture 101
+        thru 104 cascade`` for a run, after busk's question. Once it has gone
+        nothing is chosen, so a second click reaches nothing."""
+        run = self.run()
+        if not run:
             return
+        numbers = {fixture.number for fixture in run}
 
         def deleted(ok: bool) -> None:
-            if ok and self.chosen == fixture.number:
+            if ok and self.chosen in numbers:
                 self.choose(None)
 
-        self.post_message(RunLine(commands.delete_fixture(fixture.number), done=deleted))
+        line = commands.delete_fixture(run[0].number, run[-1].number)
+        self.post_message(RunLine(line, done=deleted))
 
     def ask_profile(self) -> None:
         """``[profile…]``: the picker, which sends nothing. The fixture's own
@@ -671,6 +735,13 @@ class FixturePanel(VerticalScroll):
 
         start = fixture.profile if self.swap is None else self.swap[0]
         self.app.push_screen(ProfileDialog(self.show.choices, start), given)
+
+    def send_update(self) -> None:
+        """``[update profile]``: ``profile update "Generic Spot 16ch"``. busk
+        does not ask: ``undo`` takes it back."""
+        fixture = self.fixture()
+        if fixture is not None:
+            self.post_message(RunLine(commands.profile_update(fixture.profile)))
 
     def pick_swap_mode(self, mode: str) -> None:
         if self.swap is not None:
@@ -697,10 +768,12 @@ class FixturePanel(VerticalScroll):
         self.post_message(RunLine(line, done=changed))
 
     def patch(self) -> None:
-        """``[patch]``: ``fixture 102 patch 1.85``, or ``fixture 102 patch none``."""
-        fixture = self.fixture()
-        if fixture is not None:
-            self.post_message(RunLine(commands.patch_fixture(fixture.number, self.patching.at)))
+        """``[patch]``: ``fixture 102 patch 1.85``, or ``fixture 102 patch none``;
+        ``fixture 101 thru 104 patch 1.85`` for a run."""
+        run = self.run()
+        if run:
+            line = commands.patch_fixture(run[0].number, self.patching.at, run[-1].number)
+            self.post_message(RunLine(line))
 
     def ask_limit(self, name: str) -> None:
         """``[limit…]``: a line per span of the reach."""
@@ -819,8 +892,10 @@ class FixturePanel(VerticalScroll):
             return self.form.stops()
         stops: list[Stop] = []
         if self.fixture() is not None:
-            for button in (self.rename, self.renumber, self.delete, self.ask_swap):
-                stops.append(Stop(Item(button.label, action=button.action), button))
+            buttons = (self.rename, self.renumber, self.delete, self.ask_swap, self.update_profile)
+            for button in buttons:
+                if not button.inert:
+                    stops.append(Stop(Item(button.label, action=button.action), button))
             if self.swapping.display:
                 stops += strip_stops(self.swap_modes)
                 for button in (self.swap_send, self.swap_keep):
@@ -830,7 +905,8 @@ class FixturePanel(VerticalScroll):
                 stops += strip_stops(self.modes)
             if self.categories.display:
                 stops += strip_stops(self.categories)
-            stops += self.patching.stops()
+            if self.patching.display:  # not for several runs
+                stops += self.patching.stops()
             if not self.send_patch.inert:
                 stops.append(Stop(Item("patch", action=self.patch), self.send_patch))
             for name, row in self.limits.items():

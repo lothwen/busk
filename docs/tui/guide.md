@@ -524,32 +524,32 @@ fixture clicked last, whose number is lit: several selected rows look alike. The
  7 fixtures · 2 selected · click chooses, Shift-click adds to the selection                                        [+ add] [edit ●]
 
  ┌─ FIXTURES ────────────────────────────────────────────────────────────────┐ ┌─ FIXTURE · 102 Spot 102 ─────────────────────────┐
- │      # name          profile         mode      patch   limits       place │ │ [rename…] [number…] [delete]                     │
- │    101 Spot 101      Generic Spot 1… 16ch      1.1     tilt         ·     │ │                                                  │
+ │      # name          profile         mode      patch   limits       place │ │ [rename…] [number…] [delete 101 thru 102]        │
+ │ ▸  101 Spot 101      Generic Spot 1… 16ch      1.1     tilt         ·     │ │                                                  │
  │ ▸  102 Spot 102      Generic Spot 1… 16ch      1.17    tilt         ·     │ │ Generic Spot 16ch · 16ch · 16 channels           │
- │    201 LED ML-56 RG… Eurolite LED M… 4-channel 1.33                 ·     │ │ [profile…]                                       │
+ │    201 LED ML-56 RG… Eurolite LED M… 4-channel 1.33                 ·     │ │ [profile…] [update profile]                      │
  │    202 LED ML-56 RG… Eurolite LED M… 4-channel 1.37                 ·     │ │                                                  │
  │    203 LED ML-56 RG… Eurolite LED M… 4-channel 1.41                 ·     │ │ category of 2 fixtures                           │
  │    204 LED ML-56 RG… Eurolite LED M… 4-channel 1.45                 ·     │ │ [par] [spot] [wash] [pixel] [strobe] [beam]      │
- │ ▸  301 COLORband Pi… Chauvet DJ COL… 36-CH     1.49    int          ·     │ │ [blinder] [dimmer] [effect] [fog] [other] [none] │
+ │    301 COLORband Pi… Chauvet DJ COL… 36-CH     1.49    int          ·     │ │ [blinder] [dimmer] [effect] [fog] [other] [none] │
  └───────────────────────────────────────────────────────────────────────────┘ │                                                  │
-                                                                               │ PATCH 1.17–1.32                                  │
+                                                                               │ PATCH · 101 thru 102 (2) · 1.1–1.32              │
  ┌─ GROUPS ──────────────────────────────────────────────────────────────────┐ │ universe [none] [1 Stage]                        │
- │ 4 groups · click chooses, and keeps the selection              [record…]  │ │ address  17 [address…] [next free]               │
- │    # name             members                                             │ │ takes 1.17–1.32 · free                           │
+ │ 4 groups · click chooses, and keeps the selection              [record…]  │ │ address  1 [address…] [next free]                │
+ │    # name             members                                             │ │ takes 1.1–1.32 · free                            │
  │    1 Heads            101 thru 102                                        │ │ [patch]                                          │
  │    2 Washes           201 thru 204                                        │ │                                                  │
- │    3 Bar              301                                                 │ │ LIMITS · 102, 301 (2)                            │
+ │    3 Bar              301                                                 │ │ LIMITS · 101 thru 102 (2)                        │
  │    4 All              101 thru 102, 201 thru 204, 301                     │ │ pan         none               [limit…]          │
  │                                                                           │ │ tilt        -90° to 10°        [limit…] [none]   │
- │ group 4 All [rename…] [number…] [delete]                                  │ │ intensity   none               [limit…] [none]   │
- │ selection 102, 301.2 [merge] [replace] [remove]                           │ │ [no limits]                                      │
+ │ group 4 All [rename…] [number…] [delete]                                  │ │ intensity   none               [limit…]          │
+ │ selection 101 thru 102 [merge] [replace] [remove]                         │ │ [no limits]                                      │
  └───────────────────────────────────────────────────────────────────────────┘ │                                                  │
-                                                                               │ PARK · 102, 301.2                                │
+                                                                               │ PARK · 101 thru 102                              │
                                                                                │ nothing parked                                   │
                                                                                │ [park…]                                          │
                                                                                │                                                  │
-                                                                               │ ORIENTATION · 102, 301 (2)                       │
+                                                                               │ ORIENTATION · 101 thru 102 (2)                   │
                                                                                │ [invert pan] [invert tilt] [swap pan/tilt]       │
                                                                                │ pan offset  0°                 [offset…]         │
                                                                                │ tilt offset 0°                 [offset…]         │
@@ -571,14 +571,19 @@ nothing. From the top:
   `Delete fixture 501? It leaves groups 4, 5. The programmer holds it.` The fixture leaves every
   group, preset, cue, park entry and binding that names it. A cue entry, a cue effect, a release
   or a binding left with no target goes with it. A group, preset or cue left empty stays, for you
-  to keep or delete. One `undo` brings it all back.
+  to keep or delete. One `undo` brings it all back. With a run selected (see below), it reads
+  `[delete 101 thru 102]` and sends `delete fixture 101 thru 102 cascade`: one question, one line
+  and one `undo` for them all.
 - **What it is:** its profile, mode and channels. With several modes, a chip per mode sends
   `fixture 102 mode "8ch"`. `[profile…]` opens the [picker](#questions-dialogs-and-quitting). The
   panel then shows what the fixture would become (`to RGB Par 3ch · 3 channels`), that profile's
   mode chips, `[change]` and `[cancel]`. `[change]` sends `fixture 102 profile "RGB Par 3ch" mode
   "3ch"`, and a library profile comes into the show with it. busk refuses a mode that would run
   past channel 512, or that loses elements a group, preset or cue uses, and an overlap is a
-  warning in the log.
+  warning in the log. `[update profile]` is grey unless the library holds the profile at another
+  revision than the show's copy. Then it sends `profile update "Generic Spot 16ch"`, which brings
+  the library's revision to every fixture of the profile, as one `undo` step. busk refuses it
+  while a fixture runs a mode that revision lacks.
 - **category:** a chip per word, the profile's lit (`profile "Generic Spot 16ch" category wash`).
   It belongs to the profile: `category of 2 fixtures` says how many it changes.
 - **PATCH**, where the fixture is, then where to put it. Nothing goes until `[patch]`, which sends
@@ -587,7 +592,11 @@ nothing. From the top:
   back its patch. `[next free]` proposes the first free run outside the fixture's own channels,
   and `[address…]` takes any address. The `takes` line reads the choice: `free`, `overlaps fixture
   301` (amber: busk allows it), or `past channel 512` (red: `[patch]` is grey). With no universe,
-  the chips say that F8 adds one.
+  the chips say that F8 adds one. On a run (see below), PATCH places the whole run from its first
+  fixture, each after the one before, as `thru` lays them out. Its heading says where the run is
+  now (`PATCH · 101 thru 102 (2) · 1.1–1.32`, or `none`, or `not in one block`), the choice
+  starts at the first fixture's patch, the run's own channels are free to it, and `[patch]` sends
+  `fixture 101 thru 102 patch 1.85`.
 - **LIMITS:** a row per limit the fixture can use: `pan` and `tilt` where the profile takes them,
   `intensity` always. `[limit…]` is a form: `from` and `to` in degrees, starting at the limit or
   the profile's range, or for intensity `at most` a level (`50` or `50%`). A limit past the
@@ -611,15 +620,19 @@ nothing. From the top:
   has a place, and its `[location…]` opens this form.
 
 LIMITS and ORIENTATION act on every selected fixture while the fixture shown is selected, as
-their headings say (`LIMITS · 101 thru 102 (2)`); the rest of the panel acts on the fixture shown
-alone, but PARK. Each goes out as one line per run of the numbers selected, and each line is one
-`undo` step: 101 and 102 give `fixture 101 thru 102 limits tilt -90 10`, and a fixture left out
-between two selected ones gives two lines, so it stays as it is. A toggle sets them all to the
-opposite of the fixture shown, so it also brings those that differ into line. If a fixture of a
-run cannot take a line, busk refuses the line, in the log, and the run stays as it was: `[swap
-pan/tilt]` does this with a fixture that has pan alone. PARK acts on the selected elements while
-the fixture shown is selected, in one line, so it can hold one pixel of a bar (`PARK · 102,
-301.2`), and on all of the fixture shown otherwise.
+their headings say (`LIMITS · 101 thru 102 (2)`). Each goes out as one line per run of the
+numbers selected, and each line is one `undo` step: 101 and 102 give `fixture 101 thru 102 limits
+tilt -90 10`, and a fixture left out between two selected ones gives two lines, so it stays as it
+is. A toggle sets them all to the opposite of the fixture shown, so it also brings those that
+differ into line. If a fixture of a run cannot take a line, busk refuses the line, in the log, and
+the run stays as it was: `[swap pan/tilt]` does this with a fixture that has pan alone.
+
+`[delete]` and PATCH act on the same fixtures while they are one run, in one line, and are grey
+while they are not, since two lines would be two `undo` steps: PATCH then says what `thru` would
+take as well (`not one run: thru would take 202 too`). A gap in the numbers does not part a run,
+as `thru` takes only the fixtures the show has. PARK acts on the selected elements while the
+fixture shown is selected, in one line, so it can hold one pixel of a bar (`PARK · 102, 301.2`),
+and on all of the fixture shown otherwise. The rest of the panel acts on the fixture shown alone.
 
 **A new fixture.** `[+ add]`, in or out of edit mode, shows the form in the panel.
 [F8's map](#f8-patch) can open it too, at a free channel.
@@ -675,7 +688,7 @@ other way round.
 - `[delete]` sends `delete group 4 cascade`, after busk's question, which names the cues and
   masters it leaves: the cue entries, effects and releases that target the group go with it, and
   so does its master. One `undo` brings it all back.
-- `selection 102, 301.2` says what the three buttons after it take. `[merge]` adds the selected
+- `selection 101 thru 102` says what the three buttons after it take. `[merge]` adds the selected
   elements the group lacks (`record group 4 merge`). `[replace]` makes the selection its members,
   and `[remove]` takes the selected out, each after a question; a group left with no members
   stays. Each is grey while it would change nothing, since busk would still spend an `undo` step
@@ -1031,7 +1044,7 @@ fixture.
  ┌─ UNIVERSES ───────────────────────────────────────────────────┐┌─ ROUTES ──────────────────────────────────────────────────────┐
  │     U name                          fixtures    used overlaps ││     U proto   address   destination     tx       state        │
  │     1 Stage                               11  66/512        2 ││ ▸   1 ArtNet  0.0.0     unicast 127.0.… ● 1/s    open         │
- │ ▸   2 Balcony                              0   0/512        0 ││ [+ route…] U1 ArtNet 0.0.0 [off] [delete]                     │
+ │ ▸   2 Balcony                              0   0/512        0 ││ [+ route…] U1 ArtNet 0.0.0 [edit…] [off] [delete]             │
  │ [+ universe…] U2 Balcony [rename…] [number…] [delete]         │└───────────────────────────────────────────────────────────────┘
  └───────────────────────────────────────────────────────────────┘
   place 1.9 · 24 free from here · [patch 101 here] [add fixture here…]
@@ -1063,10 +1076,10 @@ second, and its state: `open` (with the send errors, if any), `failed:` and busk
 `disabled`, `ignored:` and why. busk keeps opening a failed route again. An Art-Net or sACN
 route sends an unchanged universe once a second, so an idle look shows `1/s`.
 
-A click chooses a route (`▸`). The strip under the table then has `[off]` or `[on]` (`route
-r-c948753c3bac off`) and `[delete]` (`delete route r-c948753c3bac`), and busk asks before `off`
-and `delete`, since they stop what the universe sends. A route that is off stays in the show. To
-change a route, delete it and add another: busk has no line that edits one.
+A click chooses a route (`▸`). The strip under the table then has `[edit…]` (below), `[off]` or
+`[on]` (`route r-c948753c3bac off`) and `[delete]` (`delete route r-c948753c3bac`), and busk asks
+before `off` and `delete`, since they stop what the universe sends. A route that is off stays in
+the show.
 
 `[+ route…]` is a form for the chosen universe, else the first:
 
@@ -1094,6 +1107,13 @@ The protocol's chips choose the fields:
 
 It sends `route add 2 sacn 2 multicast eth0`. What only busk can tell, such as an sACN universe
 another universe sends, or a route the universe has already, is refused in the log.
+
+`[edit…]` opens the same form for the chosen route, `EDIT ROUTE r-c948753c3bac · U1 Stage`,
+filled in with what it holds, for its own universe: the protocol, the address, how it sends and
+where, or the driver, port and rate. Any field or chip can change, the protocol too. It sends
+`route r-c948753c3bac change 1 sacn 9 multicast eth0`, one `undo` step that keeps the route's id
+and whether it is on; under `busk run` the old sender closes and the new one opens. A form that
+changes nothing sends nothing.
 
 **DMX MAP**, one per universe: 64 channels to a row (32 on a narrow screen), the first one's
 address on the left. A fixture's start address is `█` and the rest of its footprint `▓`, in
@@ -1168,18 +1188,26 @@ F8's `[delete]`, F8's `[off]`, F4's `[delete]` of a list and F6's `[delete]` of 
 such lines. F4's `[delete]` of a cue, `[replace]` and `[remove]`, and F6's `[delete]` of a preset
 nothing uses, ask the TUI's own question the same way.
 
-A name or a number (`[rename…]`, `[number…]`, `[address…]`, `[offset…]`) is typed in a small
-dialog: Enter takes it, Esc cancels. What it refuses shows in red, and the dialog stays open.
-A form of several fields (`[limit…]`, `[location…]`, `[+ universe…]`, `[+ route…]`, `[+ list…]`,
-`[record at…]`, `[release…]`, `[chase…]`) works the same way: Tab moves between the fields, and
-Enter, in any of them, takes the form. In `[+ route…]` and `[chase…]`, Tab also reaches the chips,
-and ← → move them.
+A name, a number or a path (`[rename…]`, `[number…]`, `[address…]`, `[offset…]`, the picker's
+`[import…]`) is typed in a small dialog: Enter takes it, Esc cancels. What it refuses shows in red,
+and the dialog stays open. A form of several fields (`[limit…]`, `[location…]`, `[+ universe…]`,
+`[+ route…]` and a route's `[edit…]`, `[+ list…]`, `[record at…]`, `[release…]`, `[chase…]`) works
+the same way: Tab moves between the fields, and Enter, in any of them, takes the form. In the
+route form and `[chase…]`, Tab also reaches the chips, and ← → move them.
 
 **The profile picker** (F3's `[profile…]` and `[choose…]`) lists what `fixture add` takes: the
 show's own profiles first, marked `●`, then the library's, with the maker, the name, and the modes
 with what each takes (`3ch (3), 8ch (8)`). Type to filter by maker and name, in any order. ↑ ↓ and
 PgUp PgDn move, Enter or a click chooses, Esc cancels. It sends nothing: the form or the panel
 that opened it does.
+
+`[import…]` under the list, or Ctrl+O, brings in a profile from a file: an Open Fixture Library
+`.json`, a `.gdtf` or a busk profile `.json`. A dialog takes the path (`~` works, and a relative
+path starts where busk-tui runs) and refuses one with no file there. It sends `profile import
+"/home/me/fixtures/spot.gdtf"`: the profile comes into the show, as one `undo` step, and the
+picker stays open with the profile in its list, marked `●`, the filter cleared and the list on
+it. What busk refuses, such as a file it cannot read or a profile the show holds already, shows
+in red under the list, as the log is behind the picker.
 
 `quit`, `exit` (also from a script you `source`), Ctrl+C twice and Ctrl+Q open the quit
 dialog. With unsaved edits it offers **s** Save and quit, **q** Quit without saving and **c**

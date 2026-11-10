@@ -10,12 +10,14 @@ fixture 301`` (allowed, as busk allows it), ``past channel 512`` (not ready), or
 ``no room for 64 channels``.
 
 The choice follows the show until the operator makes one (:attr:`PatchChooser.held`):
-in the panel it is the fixture's patch, and in the form the universe's free room.
+in the panel it is the patch of the fixture, or of a run's first fixture, and in
+the form the universe's free room. A run is placed as ``fixture N thru M patch``
+lays it out (:func:`layout`), and its own channels are free to it.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Collection, Sequence
 from functools import cache, partial
 from typing import Final
 
@@ -53,10 +55,14 @@ def span_text(universe: int, address: int, size: int) -> str:
 
 
 def takes_text(
-    universe: int, address: int | None, size: int, prints: Sequence[Footprint], own: int | None
+    universe: int,
+    address: int | None,
+    size: int,
+    prints: Sequence[Footprint],
+    own: Collection[int] = (),
 ) -> Text:
     """What ``size`` channels from ``address`` would mean (``None``: there is
-    no room for them), ``own`` being the fixture to place."""
+    no room for them), ``own`` being the fixtures to place."""
     if address is None:
         return Text.assemble((f"no room for {channels_text(size)}", colors.RED))
     text = Text.assemble((f"takes {span_text(universe, address, size)} · ", colors.DIM))
@@ -69,6 +75,22 @@ def takes_text(
     else:
         text.append("free", style=colors.GREEN)
     return text
+
+
+def layout(
+    fixtures: Sequence[FixtureInfo], at: tuple[int, int] | None
+) -> tuple[tuple[int, int] | None, ...]:
+    """Where ``fixture N thru M patch U.A`` puts each of ``fixtures``, in
+    number order: each after the one before, by its footprint. ``None``:
+    ``patch none``, which unpatches them all."""
+    if at is None:
+        return (None,) * len(fixtures)
+    universe, address = at
+    places: list[tuple[int, int] | None] = []
+    for fixture in fixtures:
+        places.append((universe, address))
+        address += fixture.footprint
+    return tuple(places)
 
 
 def check_address(text: str) -> str | None:
@@ -97,7 +119,7 @@ class PatchChooser(Vertical):
         self.changed = changed
         self.show: ShowModel | None = None
         self.channels: int | None = 1  # how many to place; None: not known yet
-        self.own: FixtureInfo | None = None  # the fixture to place; None: new fixtures
+        self.own: tuple[FixtureInfo, ...] = ()  # the fixtures to place; none: new ones
         self.universe: int | None = None
         self.address: int | None = None  # None: no universe, or no room in it
         self.held = False  # the operator's choice: the show changing leaves it
@@ -122,14 +144,15 @@ class PatchChooser(Vertical):
     # ------------------------------------------------------------ drawing
 
     def view(
-        self, show: ShowModel | None, size: int | None, own: FixtureInfo | None = None
+        self, show: ShowModel | None, size: int | None, own: Sequence[FixtureInfo] = ()
     ) -> None:
-        """Redraw for ``size`` channels of ``own``, or of new fixtures."""
-        self.show, self.channels, self.own = show, size, own
+        """Redraw for ``size`` channels of ``own``, a fixture or a run in
+        number order, or of new fixtures."""
+        self.show, self.channels, self.own = show, size, tuple(own)
         if self.universe is not None and self.universe not in self.numbers():
             self.universe, self.address, self.held = None, None, False
-        if own is not None:
-            patch = own.patch or (None, None)
+        if own:
+            patch = own[0].patch or (None, None)
             if not self.held or (self.universe, self.address) == patch:
                 self.universe, self.address = patch
                 self.held = False
@@ -171,7 +194,7 @@ class PatchChooser(Vertical):
             return Text.assemble(("no patch", colors.DIM))
         if self.channels is None:
             return Text.assemble(("choose a profile", colors.DIM))
-        own = None if self.own is None else self.own.number
+        own = {fixture.number for fixture in self.own}
         return takes_text(self.universe, self.address, self.channels, self.prints(), own)
 
     # ---------------------------------------------------------- the choice
@@ -199,10 +222,11 @@ class PatchChooser(Vertical):
         self.changed()
 
     def pick(self, universe: int | None) -> None:
-        """A universe chip. The fixture's own universe gives back its patch."""
-        own = self.own
-        if own is not None and own.patch is not None and own.patch[0] == universe:
-            self._choose(*own.patch, False)
+        """A universe chip. The fixture's own universe gives back its patch
+        (a run's, its first fixture's)."""
+        patch = self.own[0].patch if self.own else None
+        if patch is not None and patch[0] == universe:
+            self._choose(*patch, False)
             return
         self.universe = universe
         self.propose()
@@ -211,7 +235,7 @@ class PatchChooser(Vertical):
         """The first run of free channels that fits, the fixture's own not
         among them: ``[next free]`` is for moving it."""
         found = None if self.universe is None else first_free(self.prints(), self.channels or 1)
-        self._choose(self.universe, found, self.own is not None)
+        self._choose(self.universe, found, bool(self.own))
 
     def ask_address(self) -> None:
         """``[address…]``: any address, which the ``takes`` line then reads."""

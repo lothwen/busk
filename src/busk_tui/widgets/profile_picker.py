@@ -4,24 +4,32 @@ what ``fixture add`` takes, from ``ShowModel.choices``, with a filter.
 A modal dialog, because its filter is typed and only a modal has the keyboard.
 It chooses and sends nothing: the form that opened it does. The show's own
 profiles come first, marked. ↑ ↓ move, Enter or a click chooses, Esc cancels.
+
+``[import…]`` (or Ctrl+O) is a path dialog, then ``profile import "<path>"``
+(GAP-39), the one line the picker sends. The app hands an open picker the
+show's profiles as they change (:meth:`ProfileDialog.offer`), so the profile
+imported shows at once, and the list lands on it. busk's refusal shows under
+the list, since the log is behind the dialog.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 from typing import ClassVar, Final
 
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding, BindingType
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Input, OptionList, Static
 from textual.widgets.option_list import Option
 
-from busk_tui import colors
+from busk_tui import colors, commands
 from busk_tui.model import ProfileChoice
-from busk_tui.widgets.dialogs import dialog_css
+from busk_tui.widgets.controls import ActionButton, RunLine
+from busk_tui.widgets.dialogs import TextDialog, dialog_css
 
 MARK: Final = "●"
 MAKER_CELLS: Final = 16
@@ -29,6 +37,7 @@ NAME_CELLS: Final = 28
 MODES_CELLS: Final = 20
 ROWS: Final = 12
 PAGE: Final = ROWS - 1
+FILES: Final = "an OFL .json, a .gdtf or a busk profile .json"
 
 
 def modes_text(choice: ProfileChoice) -> str:
@@ -50,6 +59,20 @@ def choice_text(choice: ProfileChoice) -> Text:
         text.append(" ")
         text.append_text(piece)
     return text
+
+
+def profile_path(text: str) -> Path:
+    """A path as typed: ``~`` expanded, and a relative one from the TUI's own
+    folder, so that busk reads the same file."""
+    return Path(text.strip()).expanduser().absolute()
+
+
+def check_path(text: str) -> str | None:
+    """An import's path: a file there. What is in it is busk's to read."""
+    if not text.strip():
+        return f"a path to {FILES}"
+    path = profile_path(text)
+    return None if path.is_file() else f"no file at {path}"
 
 
 def matches(choice: ProfileChoice, words: Sequence[str]) -> bool:
@@ -75,6 +98,8 @@ class ProfileDialog(ModalScreen[str | None]):
         background: {colors.SEL}; text-style: none;
     }}
     ProfileDialog .none {{ height: {ROWS}; color: {colors.DIM}; }}
+    ProfileDialog .import > .note {{ margin-left: 1; }}
+    ProfileDialog .error {{ color: {colors.RED}; width: 100%; height: auto; }}
     """
     )
     BINDINGS: ClassVar[list[BindingType]] = [
@@ -83,6 +108,7 @@ class ProfileDialog(ModalScreen[str | None]):
         Binding("down", "move(1)", "Down", show=False),
         Binding("pageup", f"move(-{PAGE})", "Page up", show=False),
         Binding("pagedown", f"move({PAGE})", "Page down", show=False),
+        Binding("ctrl+o", "import", "Import", show=False),
     ]
 
     def __init__(self, choices: Sequence[ProfileChoice], chosen: str | None = None) -> None:
@@ -94,6 +120,10 @@ class ProfileDialog(ModalScreen[str | None]):
         self.list = OptionList()
         self.list.can_focus = False  # the filter keeps the keyboard
         self.none = Static("", classes="none")
+        self.importer = ActionButton("import…", self.action_import)
+        self.error = Static("", classes="error")
+        self.error.display = False
+        self.importing = False  # an import is on its way: the list lands on what it brings
 
     def compose(self) -> ComposeResult:
         with Vertical() as box:
@@ -101,6 +131,10 @@ class ProfileDialog(ModalScreen[str | None]):
             yield self.field
             yield self.list
             yield self.none
+            with Horizontal(classes="import"):
+                yield self.importer
+                yield Static(f"Ctrl+O · {FILES}", classes="note")
+            yield self.error
             yield Static(
                 f"{MARK} in this show · ↑ ↓: move · Enter: choose · Esc: cancel", classes="note"
             )
@@ -120,6 +154,43 @@ class ProfileDialog(ModalScreen[str | None]):
         self.list.display = bool(names)
         self.none.display = not names
         self.none.update(Text(f"no profile has {self.field.value.strip()!r}"))
+
+    def offer(self, choices: Sequence[ProfileChoice]) -> None:
+        """The show's profiles as they are now, on the row it was on. After an
+        import, on the profile the show has gained, the filter cleared."""
+        given = tuple(choices)
+        held = {choice.name for choice in self.choices if choice.source == "show"}
+        self.choices = given
+        new = next((c.name for c in given if c.source == "show" and c.name not in held), None)
+        if self.importing and new is not None:
+            self.importing = False
+            self.field.value = ""
+            self._fill(new)
+            return
+        index = self.list.highlighted
+        self._fill(None if index is None else self.shown[index].name)
+
+    def action_import(self) -> None:
+        """``[import…]``: a path, then ``profile import "<path>"``."""
+
+        def given(text: str | None) -> None:
+            if text is None:
+                return
+            self.importing = True
+            self.error.display = False
+            line = commands.profile_import(str(profile_path(text)))
+            self.post_message(RunLine(line, done=self._imported, refused=self._refused))
+
+        note = f"{FILES}\nrelative to {Path.cwd()}"
+        self.app.push_screen(TextDialog("IMPORT PROFILE", "", check_path, note), given)
+
+    def _imported(self, ok: bool) -> None:
+        if not ok:
+            self.importing = False
+
+    def _refused(self, reply: str) -> None:
+        self.error.update(Text(reply))
+        self.error.display = True
 
     def on_input_changed(self, event: Input.Changed) -> None:
         event.stop()

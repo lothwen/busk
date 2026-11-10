@@ -3,8 +3,9 @@ show's double-patched heads give two) and the used count; the DMX map's
 glyphs and colours by category, or by profile without one; the hover text
 and the click lines; the route states, their lights and packet rates; the
 universes' strip, the place a click on a free channel arms, and the routes'
-strip and form (``docs/plans/tui-rig-plan.md`` §6.3, §6.7). Headless, with a
-fake bridge."""
+strip and form (``docs/plans/tui-rig-plan.md`` §6.3, §6.7), and a route
+edited through the form filled in (``docs/plans/tui-pending-plan.md`` Phase
+13). Headless, with a fake bridge."""
 
 from __future__ import annotations
 
@@ -178,9 +179,10 @@ def test_what_a_place_clashes_with_leaves_out_the_fixture_itself() -> None:
     assert clashes(prints, 1, 10) == (1,)
     assert clashes(prints, 13, 1) == (1, 3)
     assert clashes(prints, 13, 2) == (1, 2, 3)
-    assert clashes(prints, 13, 2, own=3) == (1, 2)
+    assert clashes(prints, 13, 2, own={3}) == (1, 2)
+    assert clashes(prints, 13, 2, own={1, 3}) == (2,)
     assert clashes(prints, 18, 4) == ()
-    assert clashes(prints, 10, 4, own=1) == (3,)
+    assert clashes(prints, 10, 4, own={1}) == (3,)
 
 
 def test_the_thru_runs_of_a_selection() -> None:
@@ -1025,11 +1027,13 @@ def test_a_click_chooses_a_route_and_the_strip_follows_it() -> None:
         await choose_route(pilot, app, 0)
         assert table.chosen == 0
         assert column(table, "marker") == ["▸", ""]
-        assert route_words(app) == ["[+ route…]", "U1 sACN 1", "[off]", "[delete]"]
+        assert route_words(app) == ["[+ route…]", "U1 sACN 1", "[edit…]", "[off]", "[delete]"]
         await choose_route(pilot, app, 1)
         assert table.chosen == 1
         assert column(table, "marker") == ["", "▸"]
-        assert route_words(app) == ["[+ route…]", "U2 ArtNet 0.0.0", "[on]", "[delete]"]
+        assert route_words(app) == [
+            "[+ route…]", "U2 ArtNet 0.0.0", "[edit…]", "[on]", "[delete]"
+        ]  # fmt: skip
         assert bridge.lines() == []
 
     drive(app, body)
@@ -1077,12 +1081,12 @@ def test_the_strip_follows_a_route_switched_from_elsewhere() -> None:
     async def body(pilot: Pilot[int]) -> None:
         await settle(pilot, app)
         await choose_route(pilot, app, 0)
-        assert route_words(app)[2] == "[off]"
-        assert str(route_strip(app).buttons[2].label.style) == colors.AMBER
+        assert route_words(app)[3] == "[off]"
+        assert str(route_strip(app).buttons[3].label.style) == colors.AMBER
         bridge.events.append(RoutesChanged((replace(first, enabled=False, state="disabled"),)))
         await settle(pilot, app)
-        assert route_words(app)[2] == "[on]"
-        assert str(route_strip(app).buttons[2].label.style) == colors.GREEN
+        assert route_words(app)[3] == "[on]"
+        assert str(route_strip(app).buttons[3].label.style) == colors.GREEN
 
     drive(app, body)
 
@@ -1452,9 +1456,9 @@ def test_the_pane_cursor_stops_on_the_routes_and_their_strip(columns: int) -> No
         assert app.cursor.current is not None
         assert app.cursor.current.label == "route r-1 U1 sACN 1"  # it stays on the row
         labels = [item.label for item in app.current_page.items()]
-        assert labels[5:8] == ["[+ route…]", "route r-1 off", "delete route r-1"]
-        await pilot.press("down", "down", "down")  # past the strip's note
-        assert route_strip(app)._marked == 2
+        assert labels[5:9] == ["[+ route…]", "[edit…]", "route r-1 off", "delete route r-1"]
+        await pilot.press("down", "down", "down", "down")  # past the strip's note
+        assert route_strip(app)._marked == 3
         await pilot.press("enter")
         await settle(pilot, app)
         assert bridge.lines() == ["route r-1 off"]
@@ -1462,13 +1466,15 @@ def test_the_pane_cursor_stops_on_the_routes_and_their_strip(columns: int) -> No
             RoutesChanged((replace(first, enabled=False, state="disabled"), second))
         )
         await settle(pilot, app)
-        assert route_strip(app)._marked == 2  # the same place, in its other word
+        assert route_strip(app)._marked == 3  # the same place, in its other word
         await pilot.press("enter")
         await settle(pilot, app)
         assert bridge.lines()[1:] == ["route r-1 on"]
         await pilot.press("up", "enter")
         await pilot.pause()
         assert isinstance(app.screen, RouteDialog)
+        assert app.screen.route is not None
+        assert app.screen.route.id == "r-1"
 
     drive(app, body)
 
@@ -1500,6 +1506,155 @@ def test_the_routes_strip_keeps_the_pane_cursor_only_when_it_is_there() -> None:
         bridge.events.append(RoutesChanged(TWO_ROUTES[:1]))
         await settle(pilot, app)
         assert route_strip(app)._marked is None
+
+    drive(app, body)
+
+
+# ---------------------------------------------------------- editing a route
+
+ROUTES_OF_EACH_KIND = (
+    route("ok", protocol="sACN", address="1", destination="multicast eth0"),
+    route("ok", id="r-2", protocol="sACN", address="7", destination="unicast 10.0.0.50"),
+    route("ok", id="r-3", universe=2, address="0.1.2", destination='broadcast Ethernet 2'),
+    route("ok", id="r-4", universe=2, address="0.0.1", destination="unicast 10.0.0.9"),
+    route(
+        "ok", id="r 5", protocol="DMX-USB", address="dmxking", destination="/dev/ttyUSB3",
+        rate=30.5,
+    ),
+)  # fmt: skip
+
+FILLED = {
+    # row: (title, protocol, its address field, way, where, driver, port, rate)
+    0: ("EDIT ROUTE r-1 · U1 Stage", "sacn", "1", "open", "eth0", None, "", "40"),
+    1: ("EDIT ROUTE r-2 · U1 Stage", "sacn", "7", "unicast", "10.0.0.50", None, "", "40"),
+    2: ("EDIT ROUTE r-3 · U2 Pixels", "artnet", "0.1.2", "open", "Ethernet 2", None, "", "40"),
+    3: ("EDIT ROUTE r-4 · U2 Pixels", "artnet", "0.0.1", "unicast", "10.0.0.9", None, "", "40"),
+    4: ("EDIT ROUTE r 5 · U1 Stage", "dmxusb", None, "open", "", "dmxking", "/dev/ttyUSB3",
+        "30.5"),
+}  # fmt: skip
+
+
+async def edit_form(pilot: Pilot[int], app: BuskApp, row: int) -> RouteDialog:
+    await choose_route(pilot, app, row)
+    await tap_route(pilot, app, "edit…")
+    dialog = app.screen
+    assert isinstance(dialog, RouteDialog)
+    return dialog
+
+
+@pytest.mark.parametrize("row", sorted(FILLED))
+def test_edit_opens_the_form_filled_in_with_what_the_route_holds(row: int) -> None:
+    bridge = FakeBridge()
+    app = on_f8(bridge, ROUTES_OF_EACH_KIND)
+    title, protocol, address, way, where, driver, port, rate = FILLED[row]
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        dialog = await edit_form(pilot, app, row)
+        assert dialog.title_text.plain == title
+        assert dialog.universe == ROUTES_OF_EACH_KIND[row].universe
+        assert dialog.protocol.chosen == protocol
+        fields = {"sacn": dialog.sacn, "artnet": dialog.artnet}
+        if address is not None:
+            assert fields[protocol].value == address
+        assert (dialog.way.chosen, dialog.where.value) == (way, where)
+        if driver is not None:
+            assert dialog.driver.chosen == driver
+        assert (dialog.port.value, dialog.rate.value) == (port, rate)
+        shown = [p.display for p in (dialog.sacn_row, dialog.artnet_row, dialog.usb)]
+        assert shown == [protocol == "sacn", protocol == "artnet", protocol == "dmxusb"]
+        await pilot.press("escape")
+        await settle(pilot, app)
+        assert not isinstance(app.screen, RouteDialog)
+        assert bridge.lines() == []
+
+    drive(app, body)
+
+
+def test_a_form_that_changes_nothing_sends_nothing() -> None:
+    """Each kind, as filled in: busk would refuse it, ``already sends that``."""
+    bridge = FakeBridge()
+    app = on_f8(bridge, ROUTES_OF_EACH_KIND)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        for row in range(len(ROUTES_OF_EACH_KIND)):
+            await edit_form(pilot, app, row)
+            await pilot.press("enter")
+            await settle(pilot, app)
+            assert not isinstance(app.screen, RouteDialog), row
+        assert bridge.lines() == []
+
+    drive(app, body)
+
+
+EDIT_KEYS = {
+    # row: (keys, then the line)
+    0: (("tab", *"15", "enter"), "route r-1 change 1 sacn 15 multicast eth0"),
+    1: (("tab", "tab", "left", "enter"), "route r-2 change 1 sacn 7 multicast 10.0.0.50"),
+    2: (("right", "enter"), 'route r-3 change 2 dmxusb enttecPro /dev/ttyUSB0 hz 40'),
+    3: (("left", "enter"), "route r-4 change 2 sacn 2 unicast 10.0.0.9"),
+    4: (("tab", "left", "enter"), 'route "r 5" change 1 dmxusb enttecPro /dev/ttyUSB3 hz 30.5'),
+}  # fmt: skip
+
+
+def test_the_filled_form_makes_a_change_line_for_its_own_route_and_universe() -> None:
+    """A field typed over (Tab selects what it holds), a chip moved; the id
+    of two words quoted. Art-Net to DMX-USB: the port is typed in."""
+    bridge = FakeBridge()
+    app = on_f8(bridge, ROUTES_OF_EACH_KIND)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        for row, (keys, line) in EDIT_KEYS.items():
+            dialog = await edit_form(pilot, app, row)
+            if row == 2:
+                dialog.port.value = "/dev/ttyUSB0"
+            await pilot.press(*keys)
+            await settle(pilot, app)
+            assert not isinstance(app.screen, RouteDialog), line
+            assert bridge.lines() == [line]
+            bridge.sent.clear()
+
+    drive(app, body)
+
+
+def test_a_change_is_checked_as_a_new_route_is() -> None:
+    bridge = FakeBridge()
+    app = on_f8(bridge, ROUTES_OF_EACH_KIND)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        dialog = await edit_form(pilot, app, 4)
+        dialog.rate.value = "44"  # an old show's rate: busk runs the widget at 40
+        await pilot.press("enter")
+        await pilot.pause()
+        assert isinstance(app.screen, RouteDialog)
+        assert str(dialog.error.content) == "a rate from 1 to 40 Hz"
+        dialog.rate.value = "40"
+        await pilot.press("enter")
+        await settle(pilot, app)
+        assert bridge.lines() == ['route "r 5" change 1 dmxusb dmxking /dev/ttyUSB3 hz 40']
+
+    drive(app, body)
+
+
+def test_the_choice_stays_on_a_changed_route() -> None:
+    """busk keeps the id, so the strip goes on acting on it."""
+    bridge = FakeBridge()
+    first, second = TWO_ROUTES
+    app = on_f8(bridge, TWO_ROUTES)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        await edit_form(pilot, app, 0)
+        await pilot.press("tab", *"10", "enter")
+        await settle(pilot, app)
+        assert bridge.lines() == ["route r-1 change 1 sacn 10 multicast eth0"]
+        bridge.events.append(RoutesChanged((replace(first, address="10"), second)))
+        await settle(pilot, app)
+        assert app.query_one(RoutesTable).chosen == 0
+        assert route_words(app)[1] == "U1 sACN 10"
 
     drive(app, body)
 

@@ -764,10 +764,29 @@ def test_the_profiles_fixture_add_takes(club: busk.OfflineShow) -> None:
         ("Stairville MH-X25 LED Spot", "library"),
     ]
     assert choices[3] == ProfileChoice(
-        "RGB Par 3ch", "library", "Generic", (ModeInfo("3ch", 3, 1),)
+        "RGB Par 3ch", "library", "Generic", (ModeInfo("3ch", 3, 1),), "1", "1"
     )
     assert choices[2].modes == (ModeInfo("36-CH", 36, 12),)
     assert show_model(club.show).choices == ()
+    assert not any(choice.outdated() for choice in choices)
+
+
+def test_a_profile_at_another_revision_than_the_librarys_is_outdated(club_path: Path) -> None:
+    """``profile update`` has something to do; a profile only the show
+    holds, or one only the library has, never."""
+    document, _ = busk.load_show(club_path)
+    document = copy.deepcopy(document)
+    document["profiles"][0]["revision"] = "7"
+    show = busk.OfflineShow(document)
+    choices = {c.name: c for c in show_model(show.show, (), show.fixture_profiles).choices}
+    spot = choices["Generic Spot 16ch"]
+    assert (spot.revision, spot.library_revision, spot.outdated()) == ("7", "1", True)
+    assert not choices["RGB Par 3ch"].outdated()  # the library's, not in the show
+    own = ProfileChoice("Own", "show", "Me", (), "1", None)
+    assert not own.outdated()
+    assert show.execute('profile update "Generic Spot 16ch"').ok
+    choices = {c.name: c for c in show_model(show.show, (), show.fixture_profiles).choices}
+    assert not choices["Generic Spot 16ch"].outdated()
 
 
 def test_the_templates_effect_add_takes(club: busk.OfflineShow) -> None:
@@ -947,6 +966,7 @@ def test_routes_in_the_words_of_route_add(show: busk.OfflineShow) -> None:
         "failed", "no route to host", 10, 3
     )  # fmt: skip
     assert views[0].state is None  # no status: nothing runs it
+    assert [view.rate for view in views] == [None, None, 40.0, None]  # DMX-USB's alone
     ids = [route["id"] for route in show.show["output"]["routes"]]
     assert [view.id for view in views] == ids
     assert all(view.id in show.execute("list routes").text for view in views)

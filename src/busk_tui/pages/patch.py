@@ -15,10 +15,10 @@ it fails, grey when disabled or while nothing runs the output) with the
 packets sent per second, and the state with busk's word for why (``failed:
 …``, the send errors). A click chooses a route (``▸``); nothing is chosen at
 first. The strip under the table holds ``[+ route…]``, a form for ``route add``
-for the chosen universe, else the first, and for the chosen route ``[off]`` or
-``[on]`` and ``[delete]``. busk asks before ``off`` and ``delete``. To change a
-route, the operator deletes it and adds another: busk has no line that edits
-one.
+for the chosen universe, else the first, and for the chosen route ``[edit…]``,
+the same form filled in with what the route holds, which sends ``route <id>
+change …``, ``[off]`` or ``[on]``, and ``[delete]``. busk asks before ``off`` and
+``delete``.
 
 A DMX MAP per universe (:mod:`busk_tui.widgets.dmxmap`), and a legend of
 the fixture types it shows. A click on a fixture's channels selects it
@@ -303,8 +303,10 @@ class PatchPage(Page):
         if route is not None:
             name = Text(f"U{route.universe} {route.protocol} {route.address}", style=colors.FG)
             word, color = ("off", colors.AMBER) if route.enabled else ("on", colors.GREEN)
+            edit = button_label("edit…", colors.MID)
             buttons += [
                 StripButton(name, Line(""), note=True),
+                StripButton(edit, Line(""), action=self.ask_edit_route),
                 StripButton(
                     button_label(word, color), commands.route_on(route.id, not route.enabled)
                 ),
@@ -333,6 +335,20 @@ class PatchPage(Page):
                 self.post_message(RunLine(line))
 
         self.app.push_screen(RouteDialog(universe.number, universe.name), given)
+
+    def ask_edit_route(self) -> None:
+        """``[edit…]``: the form, filled in with what the chosen route holds:
+        ``route r-1 change …``. A form that changes nothing sends nothing."""
+        route = self.chosen_route()
+        if route is None:
+            return
+
+        def given(line: Line | None) -> None:
+            if line is not None:
+                self.post_message(RunLine(line))
+
+        name = next((u.name for u in self.shown_universes if u.number == route.universe), "")
+        self.app.push_screen(RouteDialog(route.universe, name, route), given)
 
     # ----------------------------------------------------------- patch
 

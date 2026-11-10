@@ -19,7 +19,7 @@ would overlap. The pane cursor marks one footprint (:meth:`DmxMap.mark`).
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from typing import Final
 
@@ -118,15 +118,15 @@ def free_from(prints: Sequence[Footprint], channel: int) -> int:
 
 
 def clashes(
-    prints: Sequence[Footprint], start: int, size: int, own: int | None = None
+    prints: Sequence[Footprint], start: int, size: int, own: Collection[int] = ()
 ) -> tuple[int, ...]:
     """The fixtures on the ``size`` channels from ``start``, by address, but
-    ``own``, the fixture being placed."""
+    ``own``, the fixtures being placed."""
     end = start + size - 1
     return tuple(
         print_.fixture
         for print_ in prints
-        if print_.fixture != own and print_.start <= end and start <= print_.end
+        if print_.fixture not in own and print_.start <= end and start <= print_.end
     )
 
 

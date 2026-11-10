@@ -2,8 +2,9 @@
 
 The real app, headless, on busk run's show: a par at full in the programmer,
 moved by F3's PATCH and then by a place on F8's map, then a route added, switched
-off and on, and deleted from F8's strip. What the frames hold after each patch
-and the route's state after each step go to the JSON file
+off and on, changed to another sACN universe through its filled form, and
+deleted from F8's strip. What the frames hold after each patch, the route's
+state after each step and its address after the change go to the JSON file
 ``$BUSK_TUI_TEST_REPORT``.
 """
 
@@ -33,7 +34,7 @@ WAIT_S = 15.0
 
 
 def main(show: Any) -> None:
-    report: dict[str, Any] = {"timeout": None, "frames": [], "routes": []}
+    report: dict[str, Any] = {"timeout": None, "frames": [], "routes": [], "changed": None}
     bridge = Bridge.attached(show)
     app = BuskApp(bridge, config.Settings(page=3))
 
@@ -108,6 +109,14 @@ def main(show: Any) -> None:
         await tap(pilot, patch.route_edits, "on")
         await until(pilot, "the route on", lambda: state() == "ok")
         report["routes"].append(state())
+        await tap(pilot, patch.route_edits, "edit…")
+        await until(pilot, "the filled form", lambda: isinstance(app.screen, RouteDialog))
+        await pilot.press("tab", *"7", "enter")
+        await until(pilot, "the route changed", lambda: app.view.routes[0].address == "7")
+        await until(pilot, "the new sender open", lambda: state() == "ok")
+        report["routes"].append(state())
+        route = app.view.routes[0]
+        report["changed"] = [route.address, route.destination, route.enabled]
         await tap(pilot, patch.route_edits, "delete")
         await until(pilot, "the question", lambda: isinstance(app.screen, ConfirmDialog))
         await pilot.press("y")

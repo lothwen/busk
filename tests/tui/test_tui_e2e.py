@@ -11,9 +11,11 @@
   layouts A and C show the output, and select from it; F3's FIXTURE panel
   renames, renumbers and deletes a fixture, sets a profile's category, a
   fixture's mode, its limits, orientation and location, patches it, changes
-  its profile and adds new ones from the library; F8 adds, renames, renumbers
-  and deletes universes, and patches and adds at a place on its map; a new show
-  gets a rig from controls alone.
+  its profile and adds new ones from the library, patches and deletes a run of
+  fixtures in one line each, imports a profile through the picker and brings
+  a profile to the library's revision; F8 adds, renames, renumbers and deletes
+  universes, edits a route through every protocol, and patches and adds at a
+  place on its map; a new show gets a rig from controls alone.
 * On a running show with its output open (``--standalone``): F8 adds a route to
   a new universe, a fixture patched in it reaches a real receiver, and the route
   goes off, on and away.
@@ -24,6 +26,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import threading
 import time
@@ -978,6 +981,195 @@ def test_busk_refuses_a_route_in_the_log_and_the_table_stays(
         assert any(kind == "error" and "sACN universe 1" in text for kind, text in log.entries)
         assert len(app.view.routes) == 1
         assert len(app.query_one(RoutesTable).rows) == 1
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_f8_edits_a_route_through_its_filled_form_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """The club's route, from its own words: unchanged sends nothing; then
+    sACN 9, Art-Net to a host, DMX-USB, and sACN again, each one ``route <id>
+    change`` line that keeps the id; ``undo`` takes the last back."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=8), standalone=True)
+
+    def now() -> tuple[str, str, str, float | None]:
+        (route,) = app.view.routes
+        return route.protocol, route.address, route.destination, route.rate
+
+    async def edit(pilot: Pilot[int], page: PatchPage) -> RouteDialog:
+        await tap_button(pilot, page.route_edits, "edit…")
+        await until(pilot, lambda: isinstance(app.screen, RouteDialog))
+        assert isinstance(app.screen, RouteDialog)
+        return app.screen
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: len(app.view.routes) == 1)
+        page = app.query_one(PatchPage)
+        log = app.query_one(LogView)
+        (route,) = app.view.routes
+        await click_cell(pilot, app.query_one(RoutesTable), 0, "protocol")
+        await until(pilot, lambda: page.route_id == route.id)
+        dialog = await edit(pilot, page)
+        assert dialog.title_text.plain == f"EDIT ROUTE {route.id} · U1 Stage"
+        assert (dialog.protocol.chosen, dialog.sacn.value) == ("sacn", "1")
+        assert (dialog.way.chosen, dialog.where.value) == ("open", "eth0")
+        await pilot.press("enter")
+        await until(pilot, lambda: not isinstance(app.screen, RouteDialog))
+        assert not any("change" in text for kind, text in log.entries if kind == "ui")
+
+        await edit(pilot, page)
+        await pilot.press("tab", *"9", "enter")
+        await until(pilot, lambda: now() == ("sACN", "9", "multicast eth0", None))
+        assert ("ui", f"route {route.id} change 1 sacn 9 multicast eth0") in log.entries
+
+        await edit(pilot, page)
+        await pilot.press("right", "tab", "tab", "right", "tab", *"10.0.0.50", "enter")
+        await until(pilot, lambda: now() == ("ArtNet", "0.0.0", "unicast 10.0.0.50", None))
+
+        dialog = await edit(pilot, page)
+        assert (dialog.protocol.chosen, dialog.artnet.value) == ("artnet", "0.0.0")
+        assert (dialog.way.chosen, dialog.where.value) == ("unicast", "10.0.0.50")
+        await pilot.press("right", "tab", "tab", *"/dev/ttyUSB9", "tab", *"25", "enter")
+        await until(pilot, lambda: now() == ("DMX-USB", "enttecPro", "/dev/ttyUSB9", 25.0))
+
+        dialog = await edit(pilot, page)
+        assert (dialog.driver.chosen, dialog.port.value, dialog.rate.value) == (
+            "enttecPro", "/dev/ttyUSB9", "25"
+        )  # fmt: skip
+        await pilot.press("left", "left", "enter")
+        await until(pilot, lambda: now() == ("sACN", "1", "multicast eth0", None))
+        assert [r.id for r in app.view.routes] == [route.id]
+
+        await pilot.press(*"undo", "enter")
+        await until(pilot, lambda: now() == ("DMX-USB", "enttecPro", "/dev/ttyUSB9", 25.0))
+        assert not [text for kind, text in log.entries if kind == "error"]
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+OFL_DIMMER = {
+    "name": "Test",
+    "meta": {"lastModifyDate": "2026-01-02"},
+    "availableChannels": {"Dimmer": {"capability": {"type": "Intensity"}}},
+    "modes": [{"name": "All", "channels": ["Dimmer"]}],
+}
+
+
+def test_f3_patches_and_deletes_a_run_and_imports_and_updates_profiles_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """The spots' copy of their profile at revision 7: ``[update profile]``
+    brings the library's. The pars, 201 thru 204, patched in one line and
+    deleted in one; a hole between them greys both. The picker imports a
+    profile, after a missing path and a file busk refuses."""
+    document, _ = busk.load_show(club_path)
+    document = copy.deepcopy(document)
+    document["profiles"][0]["revision"] = "7"
+    path = tmp_path / "club.show"
+    busk.save_show(document, path, backups=False)
+    (tmp_path / "acme").mkdir()
+    good = tmp_path / "acme" / "dim.json"
+    good.write_text(json.dumps(OFL_DIMMER))
+    bad = tmp_path / "bad.json"
+    bad.write_text("{")
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=3), standalone=True)
+    pars = [201, 202, 203, 204]
+
+    def patches() -> list[tuple[int, int] | None]:
+        show = app.view.show
+        assert show is not None
+        return [f.patch for f in show.fixtures if f.number in pars]
+
+    def outdated() -> bool:
+        show = app.view.show
+        assert show is not None
+        return next(c for c in show.choices if c.name == "Generic Spot 16ch").outdated()
+
+    async def typed(pilot: Pilot[int], line: str) -> None:
+        await pilot.press(*line, "enter")
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.view.show is not None)
+        page = app.query_one(FixturesPage)
+        panel = page.panel
+        log = app.query_one(LogView)
+        await tap(pilot, page.edit)
+        await until(pilot, lambda: page.editing and len(page.rig.rows) == 7)
+
+        await click_cell(pilot, page.rig, 0, "name")  # 101, a spot
+        await until(pilot, lambda: panel.chosen == 101 and not panel.update_profile.inert)
+        await tap(pilot, panel.update_profile)
+        await until(pilot, lambda: not outdated() and panel.update_profile.inert)
+        assert ("ui", 'profile update "Generic Spot 16ch"') in log.entries
+
+        await click_cell(pilot, page.rig, 2, "name")  # 201
+        for y in (4, 5, 6):  # 202 thru 204
+            await pilot.click(page.rig, offset=(10, y), shift=True)
+        await until(pilot, lambda: panel.selected == set(pars))
+        assert panel.delete.label == "delete 201 thru 204"
+        assert str(panel.patch_words.content) == "PATCH · 201 thru 204 (4) · 1.33–1.48"
+        await tap(pilot, panel.patching.next_free)
+        assert panel.patching.at == (1, 85)
+        await tap(pilot, panel.send_patch)
+        await until(pilot, lambda: patches() == [(1, 85), (1, 89), (1, 93), (1, 97)])
+        assert ("ui", "fixture 201 thru 204 patch 1.85") in log.entries
+
+        await typed(pilot, "sel fixture 201, fixture 203 thru 204")
+        await until(pilot, lambda: panel.selected == {201, 203, 204})
+        assert (panel.delete.label, panel.delete.inert) == ("delete", True)
+        assert str(panel.patch_note.content) == "not one run: thru would take 202 too"
+        assert panel.send_patch.inert
+
+        await typed(pilot, "sel fixture 201 thru 204")
+        await until(pilot, lambda: not panel.delete.inert)
+        await tap(pilot, panel.delete)
+        await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+        assert isinstance(app.screen, ConfirmDialog)
+        assert app.screen.question.startswith("Delete 4 fixtures from 201 to 204?")
+        await pilot.press("y")
+        await until(pilot, lambda: len(page.rig.rows) == 3)
+        assert panel.chosen is None
+        await typed(pilot, "undo")
+        await until(pilot, lambda: len(page.rig.rows) == 7)
+        assert patches() == [(1, 85), (1, 89), (1, 93), (1, 97)]
+
+        await click_cell(pilot, page.rig, 0, "name")
+        await until(pilot, lambda: panel.chosen == 101)
+        await tap(pilot, panel.ask_swap)
+        await until(pilot, lambda: isinstance(app.screen, ProfileDialog))
+        picker = app.screen
+        assert isinstance(picker, ProfileDialog)
+        await pilot.press("ctrl+o")
+        await answer_field(pilot, app, str(tmp_path / "none.json"))
+        await until(pilot, lambda: "no file at" in str(app.screen.query_one(".error").content))
+        await answer_field(pilot, app, str(bad))
+        await until(pilot, lambda: picker.error.display)
+        assert str(picker.error.content).startswith(f"cannot import {str(bad)!r}")
+        await pilot.press("ctrl+o")
+        await answer_field(pilot, app, str(good))
+        await until(pilot, lambda: picker.list.highlighted is not None and
+                    picker.shown[picker.list.highlighted].name == "acme Test")  # fmt: skip
+        assert app.screen is picker
+        assert not picker.error.display
+        await pilot.press("enter")
+        await until(pilot, lambda: panel.swap == ("acme Test", None))
+        await until(pilot, lambda: str(panel.swap_words.content) == "to acme Test · 1 channel")
+        await tap(pilot, panel.swap_keep)
+        assert ("ui", f"profile import {json.dumps(str(good))}") in log.entries
+        errors = [text for kind, text in log.entries if kind == "error"]
+        (error,) = errors
+        assert error.startswith("cannot import")
 
     try:
         drive(app, body)

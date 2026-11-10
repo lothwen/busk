@@ -2468,6 +2468,8 @@ id and whether the route is on.
 
 **TUI until then:** F8 has no `[edit…]`.
 
+**TUI since** 2026-11-10: F8's `[edit…]`, the route form filled in (Phase 13 of the pending plan).
+
 **Done** (2026-11-08). In `_route_change` of `src/busk/console/parser.py`, which shares
 `_route_fields` with `route add`. What it settles:
 
@@ -2503,6 +2505,9 @@ laid out by footprint. One undo step each, and all or nothing.
 **Priority:** nice-to-have.
 
 **TUI until then:** F3's `[delete]` and PATCH take one fixture.
+
+**TUI since** 2026-11-10: F3's `[delete]` and PATCH send `thru` on a selected run, and are grey on
+a selection of several runs (Phase 13 of the pending plan).
 
 **Done** (2026-11-08). In `_patch` and `_delete_fixtures` of `src/busk/console/parser.py`, and
 `fixture_cascade`, which now walks several fixtures. What it settles:
@@ -2541,6 +2546,9 @@ revision, so nothing tells a control that `profile update` has something to do.
 **Priority:** nice-to-have.
 
 **TUI until then:** F3's picker lists what the library held when the run started.
+
+**TUI since** 2026-11-10: the picker's `[import…]`, and F3's `[update profile]` from the two
+revisions (Phase 13 of the pending plan).
 
 **Done** (2026-11-08). `read_profile` in `src/busk/session/library.py` holds what
 `ProfileLibrary._load` did, and both use it. `ImportProfile` is a new action of the parser, and

@@ -3,8 +3,8 @@ multi-element, patched, split and unpatched; the live cells and their source
 colours from an ``OutputModel``; the selection marker; clicks, Shift-clicks and
 the pane cursor. Edit mode (``docs/plans/tui-rig-plan.md`` §6.4, §6.5): the
 rig's table and the FIXTURE panel, its header, category and mode, its limits,
-orientation and location, and how far each reaches. Headless, with a fake
-bridge."""
+orientation and location, and how far each reaches, a run's ``[delete]``
+included. Headless, with a fake bridge."""
 
 from __future__ import annotations
 
@@ -610,6 +610,61 @@ def test_a_refused_delete_keeps_the_choice() -> None:
         page = await enter(pilot, app)
         await tap(pilot, page.panel.delete, app)
         assert page.panel.chosen == 101
+
+    drive(app, body)
+
+
+def test_delete_on_a_run_asks_busk_and_sends_one_line(club: busk.OfflineShow) -> None:
+    """101 thru 102 selected, with 102 chosen: one ``thru`` line, one ``undo``."""
+    bridge = FakeBridge(show=club)
+    app = on_the_rig(bridge, 101, 102)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app, 102)
+        panel = page.panel
+        assert (panel.delete.label, panel.delete.inert) == ("delete 101 thru 102", False)
+        await tap(pilot, panel.delete, app)
+        dialog = app.screen
+        assert isinstance(dialog, ConfirmDialog)
+        assert dialog.question == club.confirmation("delete fixture 101 thru 102 cascade")
+        assert dialog.question.startswith("Delete 2 fixtures from 101 to 102?")
+        await pilot.press("y")
+        await settle(pilot, app)
+        assert bridge.lines() == ["delete fixture 101 thru 102 cascade"]
+        assert panel.chosen is None
+
+    drive(app, body)
+
+
+def test_a_refused_run_delete_keeps_the_choice() -> None:
+    bridge = FakeBridge(replies={"delete fixture 101 thru 103 cascade": Reply(False, "error: no")})
+    app = on_the_rig(bridge, 101, 102, 103)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app, 102)
+        await tap(pilot, page.panel.delete, app)
+        assert bridge.lines() == ["delete fixture 101 thru 103 cascade"]
+        assert page.panel.chosen == 102
+
+    drive(app, body)
+
+
+def test_delete_follows_the_reach_of_limits(club: busk.OfflineShow) -> None:
+    """A run while the chosen fixture is selected; it alone when it is not;
+    grey with a fixture left out between."""
+    bridge = FakeBridge(show=club)
+    app = on_the_rig(bridge, 101, 103)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app, 201)
+        panel = page.panel
+        assert (panel.delete.label, panel.delete.inert) == ("delete", False)
+        panel.choose(101)
+        await pilot.pause()
+        assert (panel.delete.label, panel.delete.inert) == ("delete", True)
+        assert str(panel.limits_heading.content.plain) == "LIMITS · 101, 103 (2)"
+        await tap(pilot, panel.delete, app)
+        assert bridge.lines() == []
 
     drive(app, body)
 

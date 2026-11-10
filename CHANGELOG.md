@@ -10,6 +10,16 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- F8's `[edit…]` changes a route: the route form, filled in with what the route holds, sends `route
+  <id> change …`, which keeps its id and whether it is on. A form that changes nothing sends
+  nothing.
+- F3's `[delete]` and PATCH act on the selection while it is one run: `delete fixture 101 thru 104
+  cascade` and `fixture 101 thru 104 patch 1.85`, one line and one undo step each, and PATCH places
+  the run from its first fixture. With a fixture left out between the selected ones, both are grey,
+  and PATCH says what `thru` would take as well.
+- The profile picker imports a profile: `[import…]`, or Ctrl+O, then a path, sends `profile
+  import`, and the list lands on the new profile. busk's refusal shows in the picker. F3's FIXTURE
+  panel has `[update profile]`, live when the library holds the profile at another revision.
 - F3's edit mode edits groups and park from controls. A GROUPS panel under the table has a row per
   group with its members; a click chooses one and keeps the selection. `[record…]` makes a group of
   the selection, `[merge]`, `[replace]` and `[remove]` change the chosen one with it (the last two

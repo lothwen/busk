@@ -2,10 +2,14 @@
 (``docs/plans/tui-rig-plan.md`` §6.5, §6.6): what an address means, a choice that
 sends nothing until ``[patch]`` or ``[add]``, numbers free for a whole block, the
 next ones after an add, and a fixture's profile changed through the picker.
-Headless, with a fake bridge."""
+From ``docs/plans/tui-pending-plan.md`` Phase 13: a run patched in one line, a
+selection with a hole, a profile imported through the picker, and ``[update
+profile]``. Headless, with a fake bridge."""
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -33,11 +37,25 @@ from busk_tui.widgets.controls import ButtonStrip
 from busk_tui.widgets.dialogs import TextDialog
 from busk_tui.widgets.dmxmap import Footprint
 from busk_tui.widgets.fixture_form import mode_labels, range_text, taken_text
-from busk_tui.widgets.fixture_panel import patch_heading, swap_text
+from busk_tui.widgets.fixture_panel import patch_heading, run_heading, swap_text
 from busk_tui.widgets.log import LogView
 from busk_tui.widgets.options import LIT
-from busk_tui.widgets.patch_chooser import channels_text, check_address, span_text, takes_text
-from busk_tui.widgets.profile_picker import ProfileDialog, choice_text, matches, modes_text
+from busk_tui.widgets.patch_chooser import (
+    channels_text,
+    check_address,
+    layout,
+    span_text,
+    takes_text,
+)
+from busk_tui.widgets.profile_picker import (
+    FILES,
+    ProfileDialog,
+    check_path,
+    choice_text,
+    matches,
+    modes_text,
+    profile_path,
+)
 
 STAGE, BALCONY = UniverseView(1, "Stage"), UniverseView(2, "Balcony")
 ONE = (ModeInfo("16ch", 16, 1),)
@@ -156,18 +174,20 @@ def footprint(fixture: int, start: int, size: int) -> Footprint:
 @pytest.mark.parametrize(
     ("address", "size", "own", "text", "color"),
     [
-        (85, 16, None, "takes 1.85–1.100 · free", colors.GREEN),
-        (8, 4, None, "takes 1.8–1.11 · overlaps fixture 7", colors.AMBER),
-        (1, 40, None, "takes 1.1–1.40 · overlaps fixtures 7, 8", colors.AMBER),
-        (8, 4, 7, "takes 1.8–1.11 · free", colors.GREEN),  # it does not overlap itself
-        (505, 16, None, "takes 1.505–1.520 · past channel 512", colors.RED),
-        (512, 1, None, "takes 1.512 · free", colors.GREEN),
-        (None, 64, None, "no room for 64 channels", colors.RED),
-        (None, 1, None, "no room for 1 channel", colors.RED),
+        (85, 16, (), "takes 1.85–1.100 · free", colors.GREEN),
+        (8, 4, (), "takes 1.8–1.11 · overlaps fixture 7", colors.AMBER),
+        (1, 40, (), "takes 1.1–1.40 · overlaps fixtures 7, 8", colors.AMBER),
+        (8, 4, (7,), "takes 1.8–1.11 · free", colors.GREEN),  # it does not overlap itself
+        (1, 40, (7,), "takes 1.1–1.40 · overlaps fixture 8", colors.AMBER),
+        (1, 40, (7, 8), "takes 1.1–1.40 · free", colors.GREEN),  # a run moved over itself
+        (505, 16, (), "takes 1.505–1.520 · past channel 512", colors.RED),
+        (512, 1, (), "takes 1.512 · free", colors.GREEN),
+        (None, 64, (), "no room for 64 channels", colors.RED),
+        (None, 1, (), "no room for 1 channel", colors.RED),
     ],
 )
 def test_what_an_address_means(
-    address: int | None, size: int, own: int | None, text: str, color: str
+    address: int | None, size: int, own: tuple[int, ...], text: str, color: str
 ) -> None:
     takes = takes_text(1, address, size, (footprint(7, 1, 16), footprint(8, 30, 4)), own)
     assert takes.plain == text
@@ -571,6 +591,227 @@ def test_the_pane_cursor_stops_on_patch_controls_and_takes_them() -> None:
     drive(app, body)
 
 
+# ------------------------------------------------------------- a run of fixtures
+
+SPARE = FixtureInfo(302, 1, "Spare 2", "Par", "4ch", 4, None)
+
+
+def selecting(bridge: FakeBridge, *numbers: int) -> None:
+    bridge.events.append(ProgrammerChanged(programmer(selection=tuple((n, 1) for n in numbers))))
+
+
+def test_where_thru_puts_each_fixture_of_a_run() -> None:
+    run = (FIXTURES[2], FIXTURES[3])  # 4 channels each
+    assert layout(run, (1, 33)) == ((1, 33), (1, 37))
+    assert layout(run, None) == (None, None)
+    assert layout(FIXTURES[:2], (2, 100)) == ((2, 100), (2, 116))
+    assert run_heading(FIXTURES[:2]).plain == "PATCH · 101 thru 102 (2) · 1.1–1.32"
+    assert run_heading(run).plain == "PATCH · 201 thru 203 (2) · not in one block"
+    assert run_heading((FIXTURES[4], SPARE)).plain == "PATCH · 301 thru 302 (2) · none"
+    assert (
+        run_heading((FIXTURES[3], FIXTURES[4])).plain
+        == "PATCH · 203 thru 301 (2) · not in one block"
+    )
+
+
+def test_a_run_selected_is_placed_from_its_first_fixture_and_patched_in_one_line() -> None:
+    bridge = FakeBridge()
+    app = on_f3(bridge)
+    selecting(bridge, 101, 102)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app, 102)
+        panel, chooser = page.panel, page.panel.patching
+        assert words(panel.patch_words) == "PATCH · 101 thru 102 (2) · 1.1–1.32"
+        assert chooser.at == (1, 1)
+        assert words(chooser.takes) == "takes 1.1–1.32 · free"  # its own channels
+        assert panel.send_patch.inert  # laid out so already
+        await tap(pilot, chooser.next_free, app)
+        assert chooser.at == (1, 44)  # 32 channels, past its own
+        assert words(chooser.takes) == "takes 1.44–1.75 · free"
+        await tap(pilot, panel.send_patch, app)
+        assert bridge.lines() == ["fixture 101 thru 102 patch 1.44"]
+
+    drive(app, body)
+
+
+def test_a_run_holds_the_numbers_between_and_a_gap_does_not_part_it() -> None:
+    """201 and 203: no 202 in the show, so one run, not in one block."""
+    bridge = FakeBridge()
+    app = on_f3(bridge)
+    selecting(bridge, 201, 203)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app, 203)
+        panel, chooser = page.panel, page.panel.patching
+        assert words(panel.patch_words) == "PATCH · 201 thru 203 (2) · not in one block"
+        assert chooser.at == (1, 33)
+        assert words(chooser.takes) == "takes 1.33–1.40 · free"
+        assert not panel.send_patch.inert  # 203 would move to 37
+        await tap(pilot, panel.send_patch, app)
+        assert bridge.lines() == ["fixture 201 thru 203 patch 1.33"]
+
+    drive(app, body)
+
+
+def test_an_unpatched_run_starts_at_none_and_a_universe_proposes_room_for_it_all() -> None:
+    bridge = FakeBridge()
+    app = on_f3(bridge, rig(fixtures=(*FIXTURES, SPARE)))
+    selecting(bridge, 301, 302)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app, 301)
+        panel, chooser = page.panel, page.panel.patching
+        assert words(panel.patch_words) == "PATCH · 301 thru 302 (2) · none"
+        assert chooser.at is None
+        assert panel.send_patch.inert
+        await tap_chip(pilot, chooser.chips, "1 Stage", app)
+        assert chooser.at == (1, 44)  # 8 channels: not the 3 free at 37
+        await tap(pilot, panel.send_patch, app)
+        assert bridge.lines() == ["fixture 301 thru 302 patch 1.44"]
+
+    drive(app, body)
+
+
+def test_none_unpatches_a_run_and_the_first_fixtures_universe_gives_its_place_back() -> None:
+    bridge = FakeBridge()
+    app = on_f3(bridge)
+    selecting(bridge, 101, 102)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app, 101)
+        panel, chooser = page.panel, page.panel.patching
+        await tap_chip(pilot, chooser.chips, "2 Balcony", app)
+        assert chooser.at == (2, 1)
+        await tap_chip(pilot, chooser.chips, "1 Stage", app)
+        assert chooser.at == (1, 1)
+        assert panel.send_patch.inert
+        await tap_chip(pilot, chooser.chips, "none", app)
+        await tap(pilot, panel.send_patch, app)
+        assert bridge.lines() == ["fixture 101 thru 102 patch none"]
+
+    drive(app, body)
+
+
+def test_a_run_past_channel_512_is_not_sent() -> None:
+    bridge = FakeBridge()
+    app = on_f3(bridge)
+    selecting(bridge, 101, 102)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app, 101)
+        panel, chooser = page.panel, page.panel.patching
+        await tap(pilot, chooser.ask, app)
+        assert isinstance(app.screen, TextDialog)
+        assert app.screen.note == "takes 32 channels"
+        await answer(pilot, app, "490")
+        assert words(chooser.takes) == "takes 1.490–1.521 · past channel 512"
+        assert panel.send_patch.inert
+        await tap(pilot, chooser.ask, app)
+        await answer(pilot, app, "481")
+        assert words(chooser.takes) == "takes 1.481–1.512 · free"
+        await tap(pilot, panel.send_patch, app)
+        assert bridge.lines() == ["fixture 101 thru 102 patch 1.481"]
+
+    drive(app, body)
+
+
+def test_a_choice_made_for_other_fixtures_goes_when_the_run_changes() -> None:
+    bridge = FakeBridge()
+    app = on_f3(bridge)
+    selecting(bridge, 101)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app, 101)
+        chooser = page.panel.patching
+        await tap(pilot, chooser.next_free, app)
+        assert (chooser.at, chooser.held) == ((1, 44), True)
+        selecting(bridge, 101, 102)  # from the prompt: 101 stays chosen
+        await settle(pilot, app)
+        assert (chooser.at, chooser.held) == ((1, 1), False)
+        assert words(page.panel.patch_words) == "PATCH · 101 thru 102 (2) · 1.1–1.32"
+
+    drive(app, body)
+
+
+def test_the_chosen_fixture_out_of_the_selection_is_patched_alone() -> None:
+    bridge = FakeBridge()
+    app = on_f3(bridge)
+    selecting(bridge, 201, 203)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app, 101)
+        panel = page.panel
+        assert words(panel.patch_words) == "PATCH 1.1–1.16"
+        assert str(panel.delete.label) == "delete"
+        await tap(pilot, panel.patching.next_free, app)
+        await tap(pilot, panel.send_patch, app)
+        assert bridge.lines() == ["fixture 101 patch 1.44"]
+
+    drive(app, body)
+
+
+def test_a_selection_with_a_hole_greys_delete_and_patch_and_says_why() -> None:
+    """101 and 201, with 102 between them: ``thru`` would take 102. From a
+    run whose ``[patch]`` was live."""
+    bridge = FakeBridge()
+    app = on_f3(bridge)
+    selecting(bridge, 201, 203)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app, 201)
+        panel = page.panel
+        assert not panel.send_patch.inert  # 201 thru 203, not in one block
+        selecting(bridge, 101, 201)
+        await settle(pilot, app)
+        panel.choose(101)
+        await pilot.pause()
+        assert words(panel.patch_words) == "PATCH · 101, 201 (2)"
+        assert panel.patch_note.display
+        assert words(panel.patch_note) == "not one run: thru would take 102 too"
+        assert not panel.patching.display
+        assert panel.send_patch.inert
+        assert (str(panel.delete.label), panel.delete.inert) == ("delete", True)
+        labels = [item.label for item in page.items()]
+        for label in ("delete", "patch", "[none]", "address…", "next free"):
+            assert label not in labels
+        await tap(pilot, panel.delete, app)
+        await tap(pilot, panel.send_patch, app)
+        assert bridge.lines() == []
+
+        selecting(bridge, 101, 102, 203)  # 201 left out, 102 in
+        await settle(pilot, app)
+        assert words(panel.patch_note) == "not one run: thru would take 201 too"
+
+        selecting(bridge, 101, 102, 103, 201)  # 103 is not in this show: one run
+        await settle(pilot, app)
+        assert words(panel.patch_words) == "PATCH · 101 thru 201 (3) · 1.1–1.36"
+        assert not panel.patch_note.display
+        assert panel.patching.display
+        assert str(panel.delete.label) == "delete 101 thru 201"
+
+    drive(app, body)
+
+
+def test_the_pane_cursor_takes_a_runs_delete_and_patch() -> None:
+    bridge = FakeBridge()
+    app = on_f3(bridge)
+    selecting(bridge, 101, 102)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app, 101)
+        labels = [item.label for item in page.items()]
+        assert "delete 101 thru 102" in labels
+        await pilot.press("tab", *["down"] * labels.index("next free"), "enter")
+        await settle(pilot, app)
+        labels = [item.label for item in page.items()]
+        await pilot.press(*["down"] * (labels.index("patch") - labels.index("next free")), "enter")
+        await settle(pilot, app)
+        assert bridge.lines() == ["fixture 101 thru 102 patch 1.44"]
+
+    drive(app, body)
+
+
 # ---------------------------------------------------------- the profile picker
 
 
@@ -749,6 +990,193 @@ def test_a_long_list_scrolls_to_the_row_and_pages() -> None:
         for _ in range(10):
             await pilot.press("pagedown")
         assert dialog.list.highlighted == 99
+
+    drive(app, body)
+
+
+# ------------------------------------------------------ importing a profile
+
+DIMMER = {
+    "name": "Test",
+    "meta": {"lastModifyDate": "2026-01-02"},
+    "availableChannels": {"Dimmer": {"capability": {"type": "Intensity"}}},
+    "modes": [{"name": "All", "channels": ["Dimmer"]}],
+}
+"""An Open Fixture Library fixture: busk names it after its folder, ``acme Test``."""
+
+IMPORTED = ProfileChoice("acme Test", "show", "acme", (ModeInfo("All", 1, 1),), "x", None)
+
+
+def ofl_file(folder: Path) -> Path:
+    (folder / "acme").mkdir(parents=True, exist_ok=True)
+    file = folder / "acme" / "dim.json"
+    file.write_text(json.dumps(DIMMER))
+    return file
+
+
+def test_a_path_is_taken_as_typed_from_home_or_from_here(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    assert profile_path(" acme/dim.json ") == tmp_path / "acme" / "dim.json"
+    assert profile_path("~/spot.gdtf") == tmp_path / "home" / "spot.gdtf"
+    assert profile_path("/srv/spot.gdtf") == Path("/srv/spot.gdtf")
+    ofl_file(tmp_path)
+    assert check_path("acme/dim.json") is None
+    assert check_path("  ") == f"a path to {FILES}"
+    assert check_path("acme/none.json") == f"no file at {tmp_path / 'acme' / 'none.json'}"
+    assert check_path("acme") == f"no file at {tmp_path / 'acme'}"  # a folder
+
+
+@pytest.mark.parametrize("how", ["click", "ctrl+o"])
+def test_import_is_a_path_dialog_that_sends_one_line_and_the_picker_stays(
+    tmp_path: Path, how: str
+) -> None:
+    file = ofl_file(tmp_path / 'a "rig"')
+    bridge = FakeBridge()
+    app = on_f3(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await open_form(pilot, app)
+        await tap(pilot, page.panel.form.choose, app)
+        dialog = app.screen
+        assert isinstance(dialog, ProfileDialog)
+        if how == "click":
+            await pilot.click(dialog.importer)
+        else:
+            await pilot.press("ctrl+o")
+        await pilot.pause()
+        assert isinstance(app.screen, TextDialog)
+        assert app.screen.title_text == "IMPORT PROFILE"
+        assert app.screen.note.startswith(FILES)
+        await answer(pilot, app, str(tmp_path / "none.json"))
+        assert isinstance(app.screen, TextDialog)  # it stays, saying why
+        assert str(app.screen.error.content) == f"no file at {tmp_path / 'none.json'}"
+        await answer(pilot, app, f" {file} ")
+        assert app.screen is dialog
+        assert bridge.lines() == [f"profile import {json.dumps(str(file))}"]
+        assert dialog.importing
+
+    drive(app, body)
+
+
+def test_the_imported_profile_shows_at_once_and_the_list_lands_on_it(tmp_path: Path) -> None:
+    file = ofl_file(tmp_path)
+    bridge = FakeBridge()
+    app = on_f3(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await open_form(pilot, app)
+        form = page.panel.form
+        await tap(pilot, form.choose, app)
+        dialog = app.screen
+        assert isinstance(dialog, ProfileDialog)
+        await pilot.press(*"rgb")  # a filter that would hide it
+        await pilot.press("ctrl+o")
+        await answer(pilot, app, str(file))
+        bridge.events.append(ShowChanged(rig(choices=(*CHOICES[:2], IMPORTED, *CHOICES[2:]))))
+        await settle(pilot, app)
+        assert app.screen is dialog
+        assert dialog.field.value == ""
+        assert [choice.name for choice in dialog.shown][2] == "acme Test"
+        assert dialog.list.highlighted == 2
+        assert not dialog.importing
+        await pilot.press("enter")
+        await settle(pilot, app)
+        assert form.profile == "acme Test"
+        assert form.chosen_mode() == ModeInfo("All", 1, 1)
+        assert bridge.lines() == [f"profile import {json.dumps(str(file))}"]
+
+    drive(app, body)
+
+
+def test_a_library_profile_imported_into_the_show_is_the_one_landed_on(tmp_path: Path) -> None:
+    """A file of a profile the library has, with its id: its row was there,
+    as the library's, and is the show's now."""
+    file = ofl_file(tmp_path)
+    bridge = FakeBridge()
+    app = on_f3(bridge)
+    embedded = ProfileChoice("Blinder", "show", "Acme", (ModeInfo("2ch", 2, 1),), "1", "1")
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await open_form(pilot, app)
+        await tap(pilot, page.panel.form.choose, app)
+        dialog = app.screen
+        assert isinstance(dialog, ProfileDialog)
+        await pilot.press("ctrl+o")
+        await answer(pilot, app, str(file))
+        bridge.events.append(ShowChanged(rig(choices=(*CHOICES[:2], embedded, *CHOICES[2:3]))))
+        await settle(pilot, app)
+        assert dialog.shown[dialog.list.highlighted or 0].name == "Blinder"
+        assert not dialog.importing
+
+    drive(app, body)
+
+
+def test_the_show_changing_keeps_the_row_the_picker_is_on() -> None:
+    """With no import on its way, the list follows the show and stays put."""
+    bridge = FakeBridge()
+    app = on_f3(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await open_form(pilot, app)
+        await tap(pilot, page.panel.form.choose, app)
+        dialog = app.screen
+        assert isinstance(dialog, ProfileDialog)
+        await pilot.press("down", "down")
+        assert dialog.shown[dialog.list.highlighted or 0].name == "RGB Bar"
+        bridge.events.append(ShowChanged(rig(choices=(*CHOICES[:2], IMPORTED, *CHOICES[2:]))))
+        await settle(pilot, app)
+        assert "acme Test" in [choice.name for choice in dialog.shown]
+        assert dialog.shown[dialog.list.highlighted or 0].name == "RGB Bar"
+
+    drive(app, body)
+
+
+def test_a_refused_import_says_why_under_the_list(tmp_path: Path) -> None:
+    """The log is behind the dialog. The list does not move for a later change."""
+    file = ofl_file(tmp_path)
+    line = f"profile import {json.dumps(str(file))}"
+    why = "error: the show has a profile named 'acme Test'"
+    bridge = FakeBridge(replies={line: Reply(False, why)})
+    app = on_f3(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await open_form(pilot, app)
+        await tap(pilot, page.panel.form.choose, app)
+        dialog = app.screen
+        assert isinstance(dialog, ProfileDialog)
+        assert not dialog.error.display
+        await pilot.press("ctrl+o")
+        await answer(pilot, app, str(file))
+        assert app.screen is dialog
+        assert dialog.error.display
+        assert str(dialog.error.content) == "the show has a profile named 'acme Test'"
+        assert not dialog.importing
+        bridge.events.append(ShowChanged(rig(choices=(*CHOICES[:2], IMPORTED, *CHOICES[2:]))))
+        await settle(pilot, app)
+        assert dialog.list.highlighted == 0
+        bridge.replies.clear()
+        await pilot.press("ctrl+o")
+        await answer(pilot, app, str(file))
+        assert not dialog.error.display  # a new try clears it
+
+    drive(app, body)
+
+
+def test_esc_on_the_path_leaves_the_picker_as_it_was() -> None:
+    bridge = FakeBridge()
+    app = on_f3(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await open_form(pilot, app)
+        await tap(pilot, page.panel.form.choose, app)
+        dialog = app.screen
+        await pilot.press("ctrl+o", "escape")
+        await settle(pilot, app)
+        assert app.screen is dialog
+        assert bridge.lines() == []
 
     drive(app, body)
 
@@ -1548,5 +1976,35 @@ def test_the_rig_table_follows_a_new_fixture() -> None:
         bridge.events.append(ShowChanged(rig(fixtures=(*FIXTURES, added))))
         await settle(pilot, app)
         assert column(page.rig, "number") == ["101", "102", "150", "201", "203", "301"]
+
+    drive(app, body)
+
+
+# ------------------------------------------------------------ update profile
+
+
+def test_update_profile_is_grey_until_the_librarys_revision_differs() -> None:
+    old = ProfileChoice("Head", "show", "Generic", ONE, "7", "1")
+    bridge = FakeBridge()
+    current = ProfileChoice("Head", "show", "Generic", ONE, "1", "1")
+    app = on_f3(bridge, rig(choices=(current, *CHOICES[1:])))
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app)
+        panel = page.panel
+        assert panel.update_profile.inert
+        assert "update profile" not in [item.label for item in page.items()]
+        await tap(pilot, panel.update_profile, app)
+        assert bridge.lines() == []
+        bridge.events.append(ShowChanged(rig(choices=(old, *CHOICES[1:]))))
+        await settle(pilot, app)
+        assert not panel.update_profile.inert
+        labels = [item.label for item in page.items()]
+        assert labels[labels.index("profile…") + 1] == "update profile"
+        await tap(pilot, panel.update_profile, app)
+        assert bridge.lines() == ['profile update "Head"']
+        panel.choose(201)  # a Par: its copy is the library's, or the library has none
+        await pilot.pause()
+        assert panel.update_profile.inert
 
     drive(app, body)

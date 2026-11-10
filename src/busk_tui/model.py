@@ -320,6 +320,7 @@ class RouteView:
     destination: str = ""  # multicast eth0, unicast 10.0.0.50, a DMX-USB port
     errors: int = 0  # the sends that failed since it opened
     id: str = ""  # as list routes prints it: route <id> off, delete route <id>
+    rate: float | None = None  # a DMX-USB route's refresh rate, as hz takes it
 
 
 @dataclass(frozen=True, slots=True)
@@ -580,6 +581,14 @@ class ProfileChoice:
     source: str  # show, library
     manufacturer: str
     modes: tuple[ModeInfo, ...]
+    revision: str = ""  # the show's, for a profile the show holds
+    library_revision: str | None = None  # the library's; None: the library has no such profile
+
+    def outdated(self) -> bool:
+        """Whether ``profile update`` has something to do: the show's copy
+        is at a revision the library's is not. A library profile's two
+        revisions are both the library's."""
+        return self.library_revision not in (None, self.revision)
 
 
 @dataclass(frozen=True, slots=True)

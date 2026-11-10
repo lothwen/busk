@@ -852,6 +852,8 @@ def show_model(
                 modes=tuple(
                     ModeInfo(mode.name, mode.footprint, mode.elements) for mode in profile.modes
                 ),
+                revision=profile.revision,
+                library_revision=profile.library_revision,
             )
             for profile in choices
         ),
@@ -1234,6 +1236,7 @@ def route_views(doc: Show, status: tuple[RouteStatus, ...] | None) -> tuple[Rout
                 destination=destination,
                 errors=0 if found is None else found.errors,
                 id=route["id"],
+                rate=route["refreshHz"] if route["protocol"] == "dmxUsb" else None,
             )
         )
     return tuple(views)

@@ -79,6 +79,7 @@ from busk_tui.widgets.frame import PAGES, KeyLegend, StatusBar, TabBar
 from busk_tui.widgets.help import HelpOverlay
 from busk_tui.widgets.log import LogView
 from busk_tui.widgets.playbacks import PlaybackRow
+from busk_tui.widgets.profile_picker import ProfileDialog
 from busk_tui.widgets.prompt import HintRow, Prompt, PromptRow
 
 DRAIN_S: Final = 0.025
@@ -296,6 +297,9 @@ class BuskApp(App[int]):
                 self.status.refresh()
                 self.view.show = show
                 self._changed.add("show")
+                for screen in self.screen_stack:  # a profile imported there shows at once
+                    if isinstance(screen, ProfileDialog):
+                        screen.offer(show.choices)
             case ProgrammerChanged(programmer=programmer):
                 self.view.programmer = self.status.programmer = programmer
                 self.status.refresh()

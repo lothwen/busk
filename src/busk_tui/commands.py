@@ -378,9 +378,10 @@ def fixture_add(
     return Line(f"fixture add {_span(first, last)} {quoted(profile)} mode {quoted(mode)}{where}")
 
 
-def delete_fixture(fixture: int) -> Line:
-    """``delete fixture 101 cascade``: busk asks, naming what it leaves."""
-    return Line(f"delete fixture {fixture} cascade")
+def delete_fixture(fixture: int, last: int | None = None) -> Line:
+    """``delete fixture 101 cascade``, or with a ``last`` ``delete fixture 101
+    thru 104 cascade``: busk asks, naming what it leaves."""
+    return Line(f"delete fixture {_span(fixture, fixture if last is None else last)} cascade")
 
 
 def rename_fixture(fixture: int, name: str) -> Line:
@@ -392,9 +393,12 @@ def renumber_fixture(fixture: int, new_number: int) -> Line:
     return Line(f"fixture {fixture} number {new_number}")
 
 
-def patch_fixture(fixture: int, at: tuple[int, int] | None) -> Line:
-    """``fixture 101 patch 1.85``; ``at`` ``None``: ``fixture 101 patch none``."""
-    return Line(f"fixture {fixture} patch {'none' if at is None else _address(at)}")
+def patch_fixture(fixture: int, at: tuple[int, int] | None, last: int | None = None) -> Line:
+    """``fixture 101 patch 1.85``; ``at`` ``None``: ``fixture 101 patch none``.
+    With a ``last``, ``fixture 101 thru 104 patch 1.85``: busk places each
+    after the one before."""
+    span = _span(fixture, fixture if last is None else last)
+    return Line(f"fixture {span} patch {'none' if at is None else _address(at)}")
 
 
 def limit_range(first: int, last: int, attribute: str, low: float, high: float) -> Line:
@@ -453,6 +457,18 @@ def category(profile: str, word: str) -> Line:
     return Line(f"profile {quoted(profile)} category {word}")
 
 
+def profile_update(profile: str) -> Line:
+    """``profile update "Generic Spot 16ch"``: the library's revision of a
+    profile the show holds, for every fixture of it."""
+    return Line(f"profile update {quoted(profile)}")
+
+
+def profile_import(path: str) -> Line:
+    """``profile import "/home/me/fixtures/spot.gdtf"``: an OFL ``.json``, a
+    ``.gdtf`` or a busk profile, into the show."""
+    return Line(f"profile import {quoted(path)}")
+
+
 def universe_add(universe: int, name: str | None = None) -> Line:
     """``universe add 2 "Balcony"``; without a name, busk names it (``Universe 2``)."""
     return Line(f"universe add {universe}" + ("" if name is None else f" {quoted(name)}"))
@@ -482,12 +498,36 @@ def route_add(
     """``route add 2 sacn 2``, with the address and destination as
     :class:`~busk_tui.model.RouteView` has them: ``route add 2 artnet 0.0.1
     unicast 10.0.0.50``, ``route add 2 dmxusb enttecPro /dev/ttyUSB0 hz 30``."""
-    words = ["route", "add", str(universe), protocol, address]
+    return Line(f"route add {_route_words(universe, protocol, address, destination, hz)}")
+
+
+def route_change(
+    route: str,
+    universe: int,
+    protocol: Literal["sacn", "artnet", "dmxusb"],
+    address: str,
+    destination: str | None = None,
+    hz: float | None = None,
+) -> Line:
+    """``route r-1 change 2 sacn 2``: what :func:`route_add` takes, for a route
+    of the show. It keeps the id and whether the route is on."""
+    words = _route_words(universe, protocol, address, destination, hz)
+    return Line(f"route {word(route)} change {words}")
+
+
+def _route_words(
+    universe: int,
+    protocol: Literal["sacn", "artnet", "dmxusb"],
+    address: str,
+    destination: str | None,
+    hz: float | None,
+) -> str:
+    words = [str(universe), protocol, address]
     if destination is not None:
         words.append(destination)
     if hz is not None:
         words += ["hz", number(hz)]
-    return Line(" ".join(words))
+    return " ".join(words)
 
 
 def delete_route(route: str) -> Line:

@@ -910,12 +910,96 @@ Needs GAP-37, GAP-38 and GAP-39. Code: `src/busk_tui/widgets/route_dialog.py`,
 
 1. **`[edit…]` on a route** opens `RouteDialog` filled in with what it holds, and sends `route <id>
    change …`.
+
+   **Done** (2026-11-10). As planned: `RouteDialog(universe, name, route)`, `commands.route_change`,
+   and `[edit…]` on F8's strip, between the route's name and `[off]`. `RouteView` gains `rate`, a
+   DMX-USB route's, for the filled form. Which the user may veto:
+   - **The route keeps its universe.** The form has no universe field, as the new one has none: a
+     route moves to another universe by `[delete]` and `[+ route…]`, though `route <id> change`
+     takes one.
+   - **A form that changes nothing closes and sends nothing**, as a rename to the same name does.
+     busk would refuse it (`already sends that`).
+   - The fields of the other protocols start where the new form starts them, so a change of
+     protocol reads as in `[+ route…]`. The interface or host stays when sACN becomes Art-Net.
+   - A DMX-USB rate past 40 (41 to 44 load since Phase 1) is filled in as it is, and the form
+     refuses it until it is changed, as busk does.
+   - `[off]` and `[on]` are one place further along the strip, so the pane cursor reaches them one
+     step later.
 2. **Several fixtures on F3:** `[delete]` and PATCH on a selection that is one run, with `thru`.
+
+   **Done** (2026-11-10). As planned, with the reach of LIMITS: `FixturePanel.run()` is the reach
+   while it is one span. `PatchChooser` places a run (`own` is now a tuple of fixtures), `layout`
+   says where `thru` puts each, and `clashes` and `takes_text` leave out every fixture of the run.
+   `commands.delete_fixture` and `patch_fixture` take a `last`. Which the user may veto:
+   - **A selection of several runs greys `[delete]` and PATCH even for the fixture shown** (§5
+     call 7), where both acted on it alone before this phase. To patch one fixture of such a
+     selection, click it alone. PATCH says why: `not one run: thru would take 202 too`, and its
+     choice and `[next free]` go.
+   - **`[delete]` names a run in its label**, `[delete 101 thru 104]`, since nothing else in the
+     header says how far it reaches.
+   - **PATCH starts a run at its first fixture's patch**, even when the run is not in one block;
+     `[patch]` is then live and lays the run out from there. A run whose first fixture is unpatched
+     starts at none. Its heading says where it is: the span while it is one block as `thru` would
+     lay it out, else `none` or `not in one block`.
+   - A choice made in PATCH goes when the fixtures it places change (a selection from the prompt,
+     say), not only when another fixture is chosen.
+   - `[next free]` counts the run's own channels as taken, as for one fixture (rig plan, group E).
+   - F8's `[patch N here]` stays for one fixture: the plan named F3.
+   - The guide's picture of the FIXTURE panel now has a run selected, `101 thru 102`, where it had
+     `102, 301.2`, which this phase greys.
 3. **Profiles:** `[update profile]` when the library's revision differs (`profile update`), and
    `[import…]` in the picker, a path dialog (`profile import`).
 
+   **Done** (2026-11-10). As planned: `[update profile]` beside `[profile…]`, `[import…]` under the
+   picker's list, `ProfileChoice.revision`, `library_revision` and `outdated()`,
+   `commands.profile_update` and `profile_import`, and `ProfileDialog.offer`, which the app calls on
+   every open picker when the show changes. Which the user may veto:
+   - `[update profile]` always shows, grey unless the library holds the profile at another
+     revision, older or newer. It asks nothing: busk asks nothing, and `undo` takes it back.
+   - **Ctrl+O** opens the path dialog too, which the plan did not name: the picker's filter has the
+     keyboard, and nothing else reaches `[import…]` from it.
+   - **The TUI makes the path whole** (`~` expanded, a relative path from where busk-tui runs), so
+     the log shows the file busk reads. The dialog refuses a path with no file there; what is in it
+     is busk's to read.
+   - **The picker stays open after an import**, and lands on the profile once the show brings it,
+     the filter cleared. Choosing it is still Enter: an import alone changes no fixture. A library
+     profile the file brings into the show under its id is the one landed on too.
+   - **busk's refusal shows in red under the list**, since the log is behind the picker. The
+     importer's `note:` lines go to the log only.
+   - The shell hands the choices to open pickers (`BuskApp.take`): the one place it knows what a
+     dialog shows.
+
 Verify: every protocol through the filled form; a selection with a hole; a bad path; the new profile
 offered at once.
+
+**Phase 13 checks** (2026-11-10). The whole suite: 6,144 passed and 1 skipped, in 8:01 with `uv run
+pytest -n 6`. `ruff check`, `ruff format --check` and `mypy src` clean. No change to `src/busk/` or
+the engine's tests. The seven TUI test files the phase touched and the two new tests on the real
+engine, 735 tests, pass on Textual 8.2.0. The perf gate: 7 passed, no overruns, F3 at +0.181 core,
+F1 B at +0.198, A at +0.214 and C at +0.220. 75 mutations of the new code: 69 caught at once, 4
+needed a test of their own (a route id of two words in `route_change`, a selected fixture between a
+hole's ends, `[patch]` going grey when a live run becomes a hole, a run deleted with another than
+its first fixture chosen), which are in, and 2 were dead code, now gone: a library profile's two
+revisions are both the library's, so `outdated()` needs no `source`, and `offer` needs no guard for
+choices that did not change. Two new tests in `tests/tui/test_tui_e2e.py` run on the real engine:
+F8's route edited through its filled form to sACN 9, Art-Net to a host, DMX-USB and sACN again,
+keeping its id, a form that changes nothing sending nothing, and `undo`; F3's `[update profile]` on
+the spots at revision 7, the pars 201 thru 204 patched in one line, a hole that greys `[delete]` and
+PATCH, the run deleted after busk's question and back with `undo`, and the picker refusing a missing
+path, showing busk's refusal of a bad file, and landing on the imported profile. Under `busk run`
+(`tests/tui/test_tui_host.py`), a route edited from F8 closes its sender and opens the new one. A
+real `busk-tui --state-dir …` under `busk run` on the club show, its spots at revision 7, with real
+mouse clicks in a pty: at 150 columns in layout B, the club's route (failing here: no `eth0`) edited
+to sACN 9, then to Art-Net unicast `127.0.0.1`, which opened and sent, an unchanged form sending
+nothing, two `undo`s; 101 and 102 shift-clicked, `[delete 101 thru 102]`, `[next free]` and `fixture
+101 thru 102 patch 1.85`; 201 and 203 greying both with `not one run: thru would take 202 too`;
+`[update profile]`; and an import through Ctrl+O, the picker listing it among the show's. At 99
+columns in layout A: the route edited to DMX-USB (its `failed` state), a run chosen in the panel
+under the table, a missing `~` path refused, the import, and Enter choosing the new profile. No
+error in the log but the routes' own. Docs: `docs/tui/guide.md` (F3's `[delete]`, PATCH, the reach,
+`[update profile]` and its picture, now of a run; F8's `[edit…]` and its picture; the picker's
+`[import…]`; the dialogs), the report's rows, Summary and "What the TUI is missing", the TUI notes
+of GAP-37 to GAP-39 in `docs/dev/tui/engine-gaps.md`, and `CHANGELOG.md`.
 
 ### Phase 14: Split patch
 

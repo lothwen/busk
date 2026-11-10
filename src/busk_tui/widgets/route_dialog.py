@@ -1,5 +1,7 @@
-"""The new route form (``docs/plans/tui-rig-plan.md`` §6.7): what ``route add``
-takes, by protocol, for one universe.
+"""The route form (``docs/plans/tui-rig-plan.md`` §6.7): what ``route add``
+takes, by protocol, for one universe. Given a route of the show, it starts at
+what the route holds and makes ``route <id> change …`` (GAP-37) of the same
+words, for the route's own universe; a form that changes nothing sends nothing.
 
 - sACN: the sACN universe, starting at the show universe's number, then
   ``multicast`` with an interface or ``unicast`` with a host;
@@ -32,11 +34,14 @@ from textual.widgets import Input, Static
 
 from busk_tui import colors, commands
 from busk_tui.commands import Line
+from busk_tui.model import RouteView
 from busk_tui.widgets.controls import ButtonStrip
 from busk_tui.widgets.dialogs import dialog_css, read_number, read_whole
 from busk_tui.widgets.options import pick_chips
 
 PROTOCOLS: Final = {"sacn": "sACN", "artnet": "Art-Net", "dmxusb": "DMX-USB"}
+KEYS: Final = {"sACN": "sacn", "ArtNet": "artnet", "DMX-USB": "dmxusb"}
+"""Each protocol as :class:`~busk_tui.model.RouteView` names it, and its chip."""
 DRIVERS: Final = {"enttecPro": "enttecPro", "dmxking": "dmxking"}
 OPEN_WAYS: Final = {"sacn": "multicast", "artnet": "broadcast"}
 """How each protocol reaches a network, as opposed to one host."""
@@ -95,15 +100,26 @@ def check_rate(text: str) -> str | None:
 
 
 def network_line(
-    universe: int, protocol: Literal["sacn", "artnet"], address: str, way: str, where: str
+    universe: int,
+    protocol: Literal["sacn", "artnet"],
+    address: str,
+    way: str,
+    where: str,
+    route: str | None = None,
 ) -> Line:
-    """``route add 2 sacn 2 multicast eth0``; no ``where``: ``route add 2 sacn 2``."""
+    """``route add 2 sacn 2 multicast eth0``; no ``where``: ``route add 2 sacn
+    2``. With a ``route``: ``route r-1 change 2 sacn 2 …``."""
     destination = f"{way} {commands.word(where)}" if where else None
+    if route is not None:
+        return commands.route_change(route, universe, protocol, address, destination)
     return commands.route_add(universe, protocol, address, destination)
 
 
-def usb_line(universe: int, driver: str, port: str, rate: float) -> Line:
-    """``route add 2 dmxusb enttecPro /dev/ttyUSB0 hz 40``."""
+def usb_line(universe: int, driver: str, port: str, rate: float, route: str | None = None) -> Line:
+    """``route add 2 dmxusb enttecPro /dev/ttyUSB0 hz 40``; with a ``route``:
+    ``route r-1 change 2 dmxusb …``."""
+    if route is not None:
+        return commands.route_change(route, universe, "dmxusb", driver, commands.word(port), rate)
     return commands.route_add(universe, "dmxusb", driver, commands.word(port), rate)
 
 
@@ -154,10 +170,10 @@ def row(label: Static | str, field: Widget) -> Horizontal:
 
 
 class RouteDialog(ModalScreen[Line | None]):
-    """Closes with a ``route add`` line for ``universe``, or ``None`` (see the
-    module docs). Tab moves between the fields and the chips, ← → move the
-    chips. Enter, anywhere, runs the checks: what is wrong shows, and the
-    dialog stays. Esc cancels."""
+    """Closes with a ``route add`` line for ``universe``, or with ``route``
+    a ``route <id> change`` line, or ``None`` (see the module docs). Tab moves
+    between the fields and the chips, ← → move the chips. Enter, anywhere,
+    runs the checks: what is wrong shows, and the dialog stays. Esc cancels."""
 
     DEFAULT_CSS = (
         dialog_css("RouteDialog")
@@ -177,19 +193,32 @@ class RouteDialog(ModalScreen[Line | None]):
         Binding("enter", "ok", "OK", show=False),
     ]
 
-    def __init__(self, universe: int, name: str) -> None:
+    def __init__(self, universe: int, name: str, route: RouteView | None = None) -> None:
         super().__init__()
         self.universe = universe
-        self.title_text = Text(f"NEW ROUTE · U{universe} {name}")  # a name in it is not markup
-        self.protocol = PickRow(PROTOCOLS)
-        self.sacn = Input(str(universe), compact=True)
-        self.artnet = Input(artnet_address(universe), compact=True)
-        self.way = PickRow(ways("sacn"))
+        self.route = route
+        head = "NEW ROUTE" if route is None else f"EDIT ROUTE {route.id}"
+        self.title_text = Text(f"{head} · U{universe} {name}")  # a name in it is not markup
+        protocol = "sacn" if route is None else KEYS.get(route.protocol, "sacn")
+        addresses = {"sacn": str(universe), "artnet": artnet_address(universe), "dmxusb": ""}
+        if route is not None:
+            addresses[protocol] = route.address
+        address = addresses[protocol]
+        way, _, where = ("", "", "") if route is None else route.destination.partition(" ")
+        usb = protocol == "dmxusb"
+        self.protocol = PickRow(PROTOCOLS, protocol)
+        self.sacn = Input(addresses["sacn"], compact=True)
+        self.artnet = Input(addresses["artnet"], compact=True)
+        self.way = PickRow(
+            ways("sacn" if usb else protocol), "unicast" if way == "unicast" else "open"
+        )
         self.where_label = Static("interface", classes="label")
-        self.where = Input(placeholder=ANY_INTERFACE, compact=True)
-        self.driver = PickRow(DRIVERS)
-        self.port = Input(placeholder=A_PORT, compact=True)
-        self.rate = Input(RATE, compact=True)
+        self.where = Input("" if usb else where, placeholder=ANY_INTERFACE, compact=True)
+        self.driver = PickRow(DRIVERS, address if usb and address in DRIVERS else None)
+        port = route.destination if route is not None and usb else ""
+        self.port = Input(port, placeholder=A_PORT, compact=True)
+        rate = None if route is None else route.rate
+        self.rate = Input(RATE if rate is None else commands.number(rate), compact=True)
         self.error = Static("", classes="error")
         self.sacn_row = row("universe", self.sacn)
         self.artnet_row = row("address", self.artnet)
@@ -197,6 +226,7 @@ class RouteDialog(ModalScreen[Line | None]):
         self.usb = Vertical(
             row("driver", self.driver), row("port", self.port), row("rate (Hz)", self.rate)
         )
+        self.held = None if route is None else self.line()  # what the route sends now
 
     def compose(self) -> ComposeResult:
         with Vertical() as box:
@@ -246,23 +276,28 @@ class RouteDialog(ModalScreen[Line | None]):
     def line(self) -> Line:
         """The line the fields shown make, once they pass."""
         way, where = self.way.labels[self.way.chosen], self.where.value.strip()
+        route, universe = None if self.route is None else self.route.id, self.universe
         match self.protocol.chosen:
             case "sacn":
-                return network_line(self.universe, "sacn", self.sacn.value.strip(), way, where)
+                address = self.sacn.value.strip()
+                return network_line(universe, "sacn", address, way, where, route)
             case "artnet":
-                return network_line(self.universe, "artnet", self.artnet.value.strip(), way, where)
+                address = self.artnet.value.strip()
+                return network_line(universe, "artnet", address, way, where, route)
             case _:
-                rate = float(self.rate.value)
-                return usb_line(self.universe, self.driver.chosen, self.port.value.strip(), rate)
+                port, rate = self.port.value.strip(), float(self.rate.value)
+                return usb_line(universe, self.driver.chosen, port, rate, route)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         event.stop()
         self.action_ok()
 
     def action_ok(self) -> None:
+        """The line, or ``None`` when it is what the route sends already."""
         problem = self.problem()
         if problem is None:
-            self.dismiss(self.line())
+            line = self.line()
+            self.dismiss(None if line == self.held else line)
         else:
             self.error.update(problem)
 

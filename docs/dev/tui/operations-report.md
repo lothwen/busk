@@ -42,8 +42,8 @@ do can already be typed in the TUI. The tables below show how much the screens h
 
 | | SHOW | ADD | DELETE | UPDATE |
 |---|---|---|---|---|
-| Fixtures, patch | control (F3, F8, F1 A/C) | control (F3's form, F8's place) | control (cascades) | control (F3's FIXTURE panel, F8's place) |
-| Universes, routes | control (F8) | control (F8) | control (a universe cascades) | control; editing a route: prompt |
+| Fixtures, patch | control (F3, F8, F1 A/C) | control (F3's form, F8's place) | control (cascades; a run in one line) | control (F3's FIXTURE panel, F8's place) |
+| Universes, routes | control (F8) | control (F8) | control (a universe cascades) | control (F8) |
 | Cues | control (F4) | control | control | control (values, releases); pre-fill (timing, trigger, name) |
 | Cue lists | control (F4) | control | control (cascades) | control; renumber: prompt |
 | Presets | control (F6, colour chips) | control (F6's PRESET panel) | control | control (values, name, number) |
@@ -71,8 +71,8 @@ In short:
 |---|---|---|---|
 | Show | typed `LiveShow.show` and `.output`; `list fixtures` | yes | control: F3 table (profile, mode, patch, live values, source); its edit mode (limits, place) and FIXTURE panel (limits, orientation, location); F8's DMX map; F1 A and C |
 | Add | `fixture add N [thru M] "<profile>" mode <mode> [at U.A]` | yes | control: F3's new fixture form, with a picker from `fixture_profiles` (GAP-27); F8's `[add fixture here…]` opens it at a free channel |
-| Delete | `delete fixture N [thru M] cascade` (GAP-24, GAP-38), `delete fixture N` | yes: a run takes `thru` and always `cascade`. A plain `delete` is refused in one line while anything names it | control: `[delete]`, always `cascade`, after busk's question |
-| Patch, unpatch | `fixture N [thru M] patch U.A`, `fixture N [thru M] patch none` (GAP-38) | yes | control: F3's PATCH; F8's `[patch N here]` on a free channel |
+| Delete | `delete fixture N [thru M] cascade` (GAP-24, GAP-38), `delete fixture N` | yes: a run takes `thru` and always `cascade`. A plain `delete` is refused in one line while anything names it | control: `[delete]`, always `cascade`, after busk's question; on a selected run, `thru` |
+| Patch, unpatch | `fixture N [thru M] patch U.A`, `fixture N [thru M] patch none` (GAP-38) | yes | control: F3's PATCH, on a selected run with `thru`; F8's `[patch N here]` on a free channel |
 | Rename | `rename fixture N "…"` | yes | control: `[rename…]`, a name dialog |
 | Renumber | `fixture N number M` (generic property) | yes | control: `[number…]`, a dialog that refuses a taken number |
 | Limits | `fixture N [thru M] limits …`, `… limits pan\|tilt\|intensity none` (GAP-25), `… limits none` | yes | control: `[limit…]`, `[none]`, `[no limits]`, on the selection |
@@ -81,6 +81,7 @@ In short:
 | Category | `profile "<name>" category …` | yes | control: chips |
 | Change mode | `fixture N mode <mode>` (GAP-26) | yes | control: chips |
 | Change profile | `fixture N profile "<profile>" mode <mode>` (GAP-26) | yes | control: `[profile…]`, the picker, `[change]` |
+| Import, update a profile | `profile import "<path>"`, `profile update "<name>"` (GAP-39) | yes | control: the picker's `[import…]`, a path dialog; F3's `[update profile]`, grey unless the library's revision differs |
 | Groups | `record group N [merge\|replace\|remove] ["name"]`, `rename group N "…"`, `group N number M`, `delete group N cascade` (GAP-36) | yes | control: F3's GROUPS panel in edit mode: `[record…]` from the selection, `[merge]`, `[replace]`, `[remove]` with it, `[rename…]`, `[number…]`, `[delete]` after busk's question |
 | Park | `park <targets> <attribute> <value>`, `unpark <targets> [<attribute>]`, `unpark all` | yes | control: F3's FIXTURE panel shows what is parked and `[park…]` (a form, on the selected elements); F7's PARKED panel, `[unpark]` per value and `[unpark all]`; F3's source column reads `park` (GAP-22) |
 
@@ -96,7 +97,7 @@ In short:
 | Add a route | `route add …` | yes | control: `[+ route…]`, a form per protocol |
 | Delete a route | `delete route <id>` (GAP-23) | yes | control: `[delete]`, after busk's question |
 | Disable, enable | `route <id> on\|off` (GAP-23) | yes | control: `[off]`, after busk's question, and `[on]` |
-| Change a route | `route <id> change <what route add takes>` (GAP-37) | yes | prompt |
+| Change a route | `route <id> change <what route add takes>` (GAP-37) | yes | control: `[edit…]`, the route form filled in with what the route holds |
 
 **Corrections to the first version of this report,** found while planning the rig (2026-11-05):
 
@@ -211,9 +212,9 @@ Candidates for [engine-gaps.md](engine-gaps.md), if the TUI is to cover these:
 ## What the TUI is missing
 
 The last item here, playbacks, is closed: F1's edit mode adds, places and deletes them. The rows
-above that still say **prompt** are editing a route (Phase 13 of
-[the pending plan](../../plans/tui-pending-plan.md)) and renumbering a cue or a list and the options
-of a new effect (its §7), and renumbering a page.
+above that still say **prompt** are renumbering a cue or a list and the options of a new effect
+([the pending plan](../../plans/tui-pending-plan.md)'s §7), and renumbering a page. Editing a
+route left the list with Phase 13 of that plan.
 
 ## Side findings
 
