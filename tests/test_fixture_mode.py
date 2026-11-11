@@ -3,22 +3,26 @@
 ``fixture N mode <mode>`` takes another mode of the fixture's profile, and
 ``fixture N profile "<profile>" mode <mode>`` another profile, found as
 ``fixture add`` finds it, in one undo step with the embedding of a library
-profile. Both leave the rest to the validator. No shipped profile has two
-modes, so the rig below has its own, with three: the name of one needs quotes.
+profile. Both are refused in one line while anything names an element the new
+mode lacks (Phase 24 of ``docs/plans/tui-pending-plan.md``), and leave the rest
+to the validator. No shipped profile has two modes, so the rig below has its
+own, with three: the name of one needs quotes.
 """
 
 from __future__ import annotations
 
+import copy
 import json
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
 from builders import APPENDIX_A, ROOT, channel, fixture, load_doc, mode, profile, show, show_of
 from busk import LiveShow, OfflineShow, ProfileLibrary, new_show
+from busk.commands.types import Command
 from busk.model.show import Show
 
 CLUB_NIGHT = ROOT / "examples" / "club-night.busk"
@@ -148,16 +152,6 @@ def test_a_mode_is_not_asked_about() -> None:
     assert OfflineShow(rig()).confirmation('fixture 1 profile "Two Mode Par" mode Cells') is None
 
 
-@pytest.mark.parametrize(
-    "line",
-    ['record group 7 "Cell 4"', "record cue 1/1", "park fixture 3.4 intensity 0"],
-)
-def test_a_mode_is_refused_while_anything_names_an_element_it_lacks(line: str) -> None:
-    offline = OfflineShow(rig())
-    run(offline, "fixture 3 mode Cells", "sel fixture 3.4", "set intensity 0.5", line, "clear")
-    refused(offline, 'fixture 3 mode "One Channel"', "does not exist")
-
-
 def test_what_the_programmer_holds_on_a_lost_element_goes_dormant() -> None:
     offline = OfflineShow(rig())
     run(offline, "fixture 3 mode Cells", "sel fixture 3", "set intensity 1")
@@ -173,6 +167,221 @@ def test_what_the_programmer_holds_on_a_lost_element_goes_dormant() -> None:
     run(offline, "undo")
     assert len(offline.programmer.selection) == 4
     assert run(offline, "programmer")[0].startswith("selection: 3.1, 3.2, 3.3, 3.4\n")
+
+
+# --------------------------------------------------- elements a mode lacks
+#
+# Phase 24: what names an element the new mode lacks refuses the line in one
+# line, as the validator would refuse it by path, once per element. Fixture 3
+# runs Cells, four elements, and "One Channel" keeps the first.
+
+LOSE = 'fixture 3 mode "One Channel"'
+
+
+def cells(*lines: str) -> OfflineShow:
+    """The rig with fixture 3 on Cells and a surface, after ``lines``, with
+    nothing in the programmer."""
+    offline = OfflineShow(rig())
+    run(offline, 'surface add midi "Pad"', "fixture 3 mode Cells", *lines, "clear", "sel none")
+    return offline
+
+
+def refusal(offline: OfflineShow, line: str = LOSE) -> str:
+    """What ``line`` says, refused, leaving the show as it was."""
+    before = offline.show
+    reply = offline.execute(line)
+    assert not reply.ok, reply.text
+    assert offline.show == before
+    return reply.text
+
+
+def losing(users: str, mode_name: str = "One Channel") -> str:
+    return f"error: fixture 3 cannot run {mode_name}: {users} elements it would lose"
+
+
+def ref(element: int, fixture_id: str = "fx-3") -> dict[str, Any]:
+    return {"fixtureId": fixture_id, "element": element}
+
+
+def bind(offline: OfflineShow, command: dict[str, Any]) -> None:
+    """A binding on the surface whose action is ``command``."""
+    number = len(offline.show["bindings"])
+    binding = {
+        "id": f"b{number}",
+        "surfaceId": offline.show["surfaces"][0]["id"],
+        "input": {"kind": "midiNote", "channel": 1, "note": number},
+        "action": {"kind": "command", "command": command},
+    }
+    result = offline.submit(cast(Command, {"type": "ADD", "path": ["bindings"], "value": binding}))
+    assert result.ok, result.message
+
+
+def select(*refs: dict[str, Any]) -> dict[str, Any]:
+    return {"type": "SELECT", "mode": "replace", "targets": {"kind": "targets", "refs": list(refs)}}
+
+
+def per_target(values: dict[str, float]) -> dict[str, Any]:
+    return {
+        "type": "SET_ATTRIBUTE",
+        "attribute": "intensity",
+        "value": {"kind": "perTarget", "values": values},
+    }
+
+
+@pytest.mark.parametrize(
+    ("lines", "users"),
+    [
+        (["sel fixture 3.4", 'record group 7 "Cell 4"'], "group 7 uses"),
+        (
+            ["sel fixture 3.4", "set intensity 50%", "record preset intensity 1 target"],
+            "preset intensity 1 uses",
+        ),
+        (["sel fixture 3.3 thru 3.4", "set intensity 50%", "record cue 1/1"], "cue 1/1 uses"),
+        (["sel fixture 3.4", 'effect add "Pulse"', "record cue 1/1"], "cue 1/1 uses"),
+        (
+            [
+                *("sel fixture 1", "set intensity 50%", "record cue 1/1"),
+                *("cuelist 1 tracking true", "cue 1/1 release fixture 3.4"),
+            ],
+            "cue 1/1 uses",
+        ),
+        (["park fixture 3.4 intensity 0"], "1 parked value uses"),
+    ],
+    ids=["group", "preset", "cue entry", "cue effect", "cue release", "park"],
+)
+def test_each_user_refuses_the_mode_in_one_line(lines: list[str], users: str) -> None:
+    assert refusal(cells(*lines)) == losing(users)
+
+
+def test_a_cue_entrys_value_per_target_refuses_the_mode() -> None:
+    """Targets by group, of fixture 1; a value for element 3 of fixture 3."""
+    offline = cells("sel fixture 1", 'record group 7 "One"', "set intensity 1", "record cue 1/1")
+    [cue_list] = offline.show["cueLists"]
+    [cue] = cue_list["cues"]
+    entry = {
+        "targets": {"kind": "group", "groupId": offline.show["groups"][0]["id"]},
+        "attribute": "intensity",
+        "value": {"kind": "perTarget", "values": {"fx-3:3": 0.5}},
+    }
+    path = ["cueLists", {"id": cue_list["id"]}, "cues", {"id": cue["id"]}, "entries"]
+    edit = {"type": "SET", "path": path, "value": [entry]}
+    assert offline.submit(cast(Command, edit)).ok
+    assert refusal(offline) == losing("cue 1/1 uses")
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        select(ref(0, "fx-1"), ref(3)),
+        per_target({"fx-1:0": 1, "fx-3:3": 0.5}),
+    ],
+    ids=["select", "values per target"],
+)
+def test_a_bindings_command_refuses_the_mode(command: dict[str, Any]) -> None:
+    offline = cells()
+    bind(offline, command)
+    assert refusal(offline) == losing("1 binding uses")
+
+
+def test_an_effect_a_binding_adds_does_not_refuse_the_mode() -> None:
+    """The validator does not check it either: it is checked when added."""
+    offline = OfflineShow(rig())
+    run(offline, 'surface add midi "Pad"', "fixture 3 mode Cells")
+    run(offline, "sel fixture 3.4", 'effect add "Pulse"')
+    effect = copy.deepcopy(offline.programmer.effects[0])
+    assert effect["targets"]["refs"] == [ref(3)]
+    run(offline, "clear", "sel none")
+    bind(offline, {"type": "ADD_EFFECT", "effect": effect})
+    assert run(offline, LOSE) == ["fixture 3 runs One Channel"]
+
+
+def test_every_user_is_named_in_one_line() -> None:
+    """Cue 1/2 targets group 7: it follows the group, as in a cascade."""
+    offline = cells(
+        *("sel fixture 1, fixture 3.4", 'record group 8 "Pair"', "sel fixture 3.4"),
+        *('record group 7 "4"', "set intensity 50%", "record preset intensity 1 target"),
+        *("clear", "sel fixture 3.3", "set intensity 1", "record cue 1/1"),
+        *("clear", "sel group 7", "set intensity 1", "record cue 1/2"),
+        "park fixture 3.2 intensity 0",
+    )
+    group_7 = next(group["id"] for group in offline.show["groups"] if group["number"] == 7)
+    later = offline.show["cueLists"][0]["cues"][1]
+    assert [entry["targets"] for entry in later["entries"]] == [
+        {"kind": "group", "groupId": group_7}
+    ]
+    bind(offline, select(ref(3)))
+    bind(offline, per_target({"fx-3:1": 1}))
+    assert refusal(offline) == losing(
+        "groups 7, 8; preset intensity 1; cue 1/1; 1 parked value and 2 bindings use"
+    )
+
+
+def test_a_mode_that_loses_only_unused_elements_goes_through() -> None:
+    offline = cells(
+        *("sel fixture 1, fixture 3.1", 'record group 7 "First"'),
+        *("set intensity 1", "record cue 1/1"),
+        "park fixture 3.1 intensity 0",
+    )
+    bind(offline, select(ref(0)))
+    groups = offline.show["groups"]
+    assert run(offline, LOSE) == ["fixture 3 runs One Channel"]
+    assert offline.show["groups"] == groups
+
+
+def test_another_fixtures_elements_are_not_its_own() -> None:
+    offline = cells("fixture 1 mode Cells", "sel fixture 1.4", 'record group 7 "Other"')
+    assert run(offline, LOSE) == ["fixture 3 runs One Channel"]
+
+
+def test_the_profile_line_is_refused_too_and_embeds_nothing() -> None:
+    offline = cells("sel fixture 3.4", 'record group 7 "Cell 4"')
+    line = 'fixture 3 profile "RGB Par 3ch" mode 3ch'
+    assert refusal(offline, line) == losing("group 7 uses", "RGB Par 3ch, 3ch")
+    assert [p["id"] for p in offline.show["profiles"]] == ["prof-two"]
+    line = 'fixture 3 profile "Two Mode Par" mode "One Channel"'
+    assert refusal(offline, line) == losing("group 7 uses", "Two Mode Par, One Channel")
+
+
+def test_a_refusal_spends_no_undo_step() -> None:
+    offline = OfflineShow(rig())
+    run(offline, "fixture 3 mode Cells", "park fixture 3.4 intensity 0")
+    refusal(offline)
+    assert run(offline, "undo", "undo") == [
+        "undid: parked fixture 3.4 intensity at 0",
+        "undid: fixture 3 runs Cells",
+    ]
+    assert offline.show == rig()
+
+
+def test_the_club_shows_bar_is_refused_in_one_line(tmp_path: Path) -> None:
+    offline = OfflineShow(new_show("Club Night"), path=tmp_path / "club.show")
+    offline.run_script(CLUB_NIGHT)
+    for profile_name, mode_name in [("Generic Spot 16ch", "16ch"), ("RGB Par 3ch", "3ch")]:
+        line = f'fixture 301 profile "{profile_name}" mode {mode_name}'
+        assert refusal(offline, line) == (
+            f"error: fixture 301 cannot run {profile_name}, {mode_name}: "
+            "groups 3, 4 use elements it would lose"
+        )
+
+
+def test_profile_update_is_refused_when_a_mode_would_lose_elements(tmp_path: Path) -> None:
+    """Revision 2 gives Cells two elements: group 7 names the third."""
+    two = two_modes(revision="2")
+    two["modes"][2] = {
+        **mode([channel(k, "intensity", element=k) for k in range(2)],
+               mode_id="mode-cells", elements=2),
+        "name": "Cells",
+    }  # fmt: skip
+    (tmp_path / "two.json").write_text(json.dumps(two))
+    offline = OfflineShow(rig(), library=ProfileLibrary([tmp_path]))
+    run(offline, "fixture 3 mode Cells", "sel fixture 3.2 thru 3.3", 'record group 7 "Two"')
+    line = 'profile update "Two Mode Par"'
+    assert refusal(offline, line) == (
+        "error: fixture 3 cannot run revision '2' of 'Two Mode Par': "
+        "group 7 uses elements it would lose"
+    )
+    run(offline, "sel fixture 3.2", 'record group 7 "One" replace')
+    assert run(offline, line) == ["updated profile 'Two Mode Par' to revision '2' (3 fixtures)"]
 
 
 # ------------------------------------------------------------------ profile
@@ -294,13 +503,6 @@ def test_a_profile_past_channel_512_is_refused_and_embeds_nothing() -> None:
     assert reply.text == "error: fixture 3 would end at channel 520, past channel 512"
 
 
-def test_a_bar_is_refused_while_groups_name_its_elements(tmp_path: Path) -> None:
-    path = tmp_path / "club.show"
-    offline = OfflineShow(new_show("Club Night"), path=path)
-    offline.run_script(CLUB_NIGHT)
-    refused(offline, 'fixture 301 profile "RGB Par 3ch" mode 3ch', "does not exist")
-
-
 def test_what_a_new_profile_cannot_do_is_kept_and_does_nothing() -> None:
     """A spot goes to a par: its tilt limit warns and its presets stay."""
     offline = OfflineShow(show_of(load_doc(APPENDIX_A)))
@@ -348,6 +550,18 @@ def eventually(test: Callable[[], bool], within: float = 5.0) -> None:
     while not test():
         assert time.monotonic() < deadline
         time.sleep(0.01)
+
+
+def test_a_running_show_refuses_both_lines_in_one_line() -> None:
+    with LiveShow(rig(), output=False) as live:
+        for line in ("fixture 3 mode Cells", "park fixture 3.4 intensity 0"):
+            assert live.execute(line).ok
+        before = live.show
+        assert live.execute(LOSE).text == losing("1 parked value uses")
+        reply = live.execute('fixture 3 profile "RGB Par 3ch" mode 3ch')
+        assert reply.text == losing("1 parked value uses", "RGB Par 3ch, 3ch")
+        assert live.show == before
+        assert live.execute("undo").text == "undid: parked fixture 3.4 intensity at 0"
 
 
 def test_a_running_show_follows_a_profile_and_undo() -> None:

@@ -1967,7 +1967,13 @@ module docs. `fixture add` now shares its parsing with them. What it settles:
   `BATCH`, so `undo` takes it back too.
 - **The validator decides the rest.** A footprint past channel 512 is refused, and so is a
   mode that lacks an element a group, a cue or a parked value names. The plan named groups
-  only. The whole line is refused, so nothing is embedded. An overlap warns.
+  only. The whole line is refused, so nothing is embedded. An overlap warns. Since then the
+  parser refuses the first in one line (the pending plan's Phase 1), and the second too (its
+  Phase 24, 2026-11-11), where the validator gave one document path per element:
+  `fixture 301 cannot run RGB Par 3ch, 3ch: groups 3, 4 use elements it would lose`. It
+  names a group's members, a preset's values on a target, a cue's entries, effects and
+  releases, a parked value and a binding's selection or values per target, as the
+  validator checks them, and `profile update` is refused the same way.
 - **busk does not ask.** What the new profile cannot do stays and does nothing: a preset's pan
   on a par, a tilt limit, which warns.
 - **What the programmer holds on a lost element goes dormant,** as for a deleted fixture.

@@ -1,7 +1,8 @@
 """``delete … cascade`` (GAP-24 and GAP-36 of ``docs/dev/tui/engine-gaps.md``):
 the edits of one undo step, and the words for them. A pure function of the
 show, like the parser that calls it. The same walk gives the one line a plain
-``delete`` of something in use is refused with.
+``delete`` of something in use is refused with, and the line a mode that lacks
+an element something names is refused with (:func:`element_users`).
 
 Fixtures leave everything that names them, in one walk however many there are
 (``thru``), so a group, a cue or a binding that names several gets one edit. A
@@ -76,16 +77,16 @@ def fixture_cascade(show: Show, fixtures: Sequence[_Doc], programmer: Programmer
     """``fixtures``, in number order, leave ``show``. The question says when
     ``programmer`` holds any."""
     gone = {fixture["id"] for fixture in fixtures}
+    kept = dict.fromkeys(gone, 0)
     commands: list[_Doc] = []
-    groups = _leave_groups(show, gone, commands)
-    presets = _leave_presets(show, gone, commands)
-    changes = (("entries", _entry), ("effects", _targeted), ("releases", _targeted))
-    cues = _leave_cues(show, gone, commands, changes)
-    park = [entry for entry in show["park"] if entry["slot"]["target"]["fixtureId"] not in gone]
+    groups = _leave_groups(show, kept, commands)
+    presets = _leave_presets(show, kept, commands)
+    cues = _leave_cues(show, kept, commands, _CUE_CHANGES)
+    park = [entry for entry in show["park"] if not _lost(entry["slot"]["target"], kept)]
     parked = len(show["park"]) - len(park)
     if parked:
         commands.append(_set(["park"], park))
-    bindings = _binding_edits(show, _fixture_command, gone)
+    bindings = _binding_edits(show, _fixture_command, kept)
     commands += bindings
     commands += [_delete(["fixtures", {"id": fixture["id"]}]) for fixture in fixtures]
 
@@ -110,6 +111,31 @@ def fixture_cascade(show: Show, fixtures: Sequence[_Doc], programmer: Programmer
     return Cascade(
         tuple(commands), _reply(subject, "left ", counted), question, _refused(subject, counted)
     )
+
+
+def element_users(show: Show, kept: Mapping[str, int]) -> str | None:
+    """``groups 3, 4 use``, or ``cue 9/1 uses``: what names an element a
+    fixture would lose, as a fixture's cascade names them, with its verb;
+    ``None`` when nothing does. ``kept`` maps a fixture's id to how many of its
+    elements stay, so element ``kept[id]`` on is lost.
+
+    The walk is the fixture cascade's, kept to what the validator refuses: it
+    does not check an effect a binding adds, so neither does this."""
+    scratch: list[_Doc] = []
+    groups = _leave_groups(show, kept, scratch)
+    presets = _leave_presets(show, kept, scratch)
+    cues = _leave_cues(show, kept, scratch, _CUE_CHANGES)
+    parked = sum(_lost(entry["slot"]["target"], kept) for entry in show["park"])
+    bindings = len(_binding_edits(show, _element_command, kept))
+    named = [
+        _named("group", sorted(groups)),
+        _named_presets(presets),
+        _named("cue", cues),
+        _count(parked, "parked value"),
+        _count(bindings, "binding"),
+    ]
+    users = len(groups) + len(presets) + len(cues) + parked + bindings
+    return f"{_joined(named, '; ')} {'uses' if users == 1 else 'use'}" if users else None
 
 
 def universe_cascade(show: Show, universe: _Doc) -> Cascade:
@@ -252,16 +278,25 @@ def page_cascade(show: Show, page: _Doc) -> Cascade:
 
 
 # ------------------------------------------------------------- a fixture leaves
+#
+# ``kept`` maps a fixture's id to how many of its elements stay: 0 when the
+# fixture goes, the new mode's count when it loses some.
 
 
-def _leave_groups(show: Show, gone: Collection[str], commands: list[_Doc]) -> list[int]:
-    """Edit each group with a member in ``gone``; their numbers."""
+def _lost(ref: _Doc, kept: Mapping[str, int]) -> bool:
+    """Whether target ``ref`` names an element that ``kept`` does not keep."""
+    count = kept.get(ref["fixtureId"])
+    return count is not None and ref["element"] >= count
+
+
+def _leave_groups(show: Show, kept: Mapping[str, int], commands: list[_Doc]) -> list[int]:
+    """Edit each group with a member lost; their numbers."""
     numbers: list[int] = []
     for group in show["groups"]:
         members = group["members"]
         moved: dict[int, int] = {}  # a kept member's old position → its new one
         for k, member in enumerate(members):
-            if member["fixtureId"] not in gone:
+            if not _lost(member, kept):
                 moved[k] = len(moved)
         if len(moved) == len(members):
             continue
@@ -275,21 +310,20 @@ def _leave_groups(show: Show, gone: Collection[str], commands: list[_Doc]) -> li
 
 
 def _leave_presets(
-    show: Show, gone: Collection[str], commands: list[_Doc]
+    show: Show, kept: Mapping[str, int], commands: list[_Doc]
 ) -> list[tuple[str, int]]:
-    """Edit each preset with a value for a target in ``gone``; their pools and numbers."""
+    """Edit each preset with a value for a target lost; their pools and numbers."""
     found: list[tuple[str, int]] = []
     for preset in show["presets"]:
         values = preset["values"]
-        kept = [
+        left = [
             value
             for value in values
-            if value["scope"]["kind"] != "target"
-            or value["scope"]["target"]["fixtureId"] not in gone
+            if value["scope"]["kind"] != "target" or not _lost(value["scope"]["target"], kept)
         ]
-        if len(kept) < len(values):
+        if len(left) < len(values):
             found.append((preset["pool"], preset["number"]))
-            commands.append(_set(["presets", {"id": preset["id"]}, "values"], kept))
+            commands.append(_set(["presets", {"id": preset["id"]}, "values"], left))
     return found
 
 
@@ -314,49 +348,63 @@ def _leave_cues[T](
     return found
 
 
-def _entry(entry: _Doc, gone: Collection[str]) -> _Doc | None:
-    targeted = _targeted(entry, gone)
-    return None if targeted is None else _with(targeted, "value", _source(entry["value"], gone))
+def _entry(entry: _Doc, kept: Mapping[str, int]) -> _Doc | None:
+    targeted = _targeted(entry, kept)
+    return None if targeted is None else _with(targeted, "value", _source(entry["value"], kept))
 
 
-def _targeted(item: _Doc, gone: Collection[str]) -> _Doc | None:
-    """``item``, with ``targets``, left by the fixtures ``gone``."""
-    return _with(item, "targets", _spec(item["targets"], gone))
+def _targeted(item: _Doc, kept: Mapping[str, int]) -> _Doc | None:
+    """``item``, with ``targets``, left by the targets lost."""
+    return _with(item, "targets", _spec(item["targets"], kept))
 
 
-def _spec(spec: _Doc, gone: Collection[str]) -> _Doc | None:
+_CUE_CHANGES: Sequence[tuple[str, _Change[Mapping[str, int]]]] = (
+    ("entries", _entry),
+    ("effects", _targeted),
+    ("releases", _targeted),
+)
+"""What a cue's items do when targets are lost."""
+
+
+def _spec(spec: _Doc, kept: Mapping[str, int]) -> _Doc | None:
     if spec["kind"] == "group":
         return spec  # it follows the group
-    refs = [ref for ref in spec["refs"] if ref["fixtureId"] not in gone]
+    refs = [ref for ref in spec["refs"] if not _lost(ref, kept)]
     if len(refs) == len(spec["refs"]):
         return spec
     return {**spec, "refs": refs} if refs else None
 
 
-def _source(source: _Doc, gone: Collection[str]) -> _Doc | None:
+def _source(source: _Doc, kept: Mapping[str, int]) -> _Doc | None:
     if source["kind"] != "perTarget":
         return source
     values = {
         key: value
         for key, value in source["values"].items()
-        if (ref := parse_target_key(key)) is None or ref["fixtureId"] not in gone
+        if (ref := parse_target_key(key)) is None or not _lost(ref, kept)
     }
     if len(values) == len(source["values"]):
         return source
     return {**source, "values": values} if values else None
 
 
-def _fixture_command(command: _Doc, gone: Collection[str]) -> _Doc | None:
-    """A binding's command, left by the fixtures ``gone``."""
+def _element_command(command: _Doc, kept: Mapping[str, int]) -> _Doc | None:
+    """A binding's command, left by the targets lost, as the validator reads it:
+    a selection and values per target."""
     if command["type"] == "SELECT":
-        return _targeted(command, gone)
-    if command["type"] == "ADD_EFFECT":
-        return _with(command, "effect", _targeted(command["effect"], gone))
+        return _targeted(command, kept)
     if command["type"] == "SET_ATTRIBUTE":
-        return _with(command, "value", _source(command["value"], gone))
-    if command["type"] == "PATCH_FIXTURE" and command["fixtureId"] in gone:
-        return None
+        return _with(command, "value", _source(command["value"], kept))
     return command
+
+
+def _fixture_command(command: _Doc, kept: Mapping[str, int]) -> _Doc | None:
+    """A binding's command, left by the fixtures that go (none of their elements kept)."""
+    if command["type"] == "ADD_EFFECT":
+        return _with(command, "effect", _targeted(command["effect"], kept))
+    if command["type"] == "PATCH_FIXTURE" and kept.get(command["fixtureId"]) == 0:
+        return None
+    return _element_command(command, kept)
 
 
 def _held(programmer: Programmer) -> set[str]:

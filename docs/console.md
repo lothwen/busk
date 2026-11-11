@@ -200,10 +200,15 @@ session, as the web remote's commands do. `help` prints the grammar.
   <mode>` takes another profile, found as `fixture add` finds it: the show's copy when it
   has one, else the library's, which the line embeds. Each is one undo step, and Tab offers
   the profiles and their modes. A mode that would run past channel 512 is refused, and so
-  is one that lacks an element a group, a cue or a parked value names, and so is a line that
-  would change nothing: the mode the fixture runs, or its profile at the revision and mode
-  it has. An overlap warns, as it does for `fixture add`. busk does not ask first: what the new profile cannot do stays
-  and does nothing, as a preset's pan on a par, and `undo` takes the line back.
+  is a line that would change nothing: the mode the fixture runs, or its profile at the
+  revision and mode it has. So is a mode that lacks an element something names, in one line
+  that names what does: `fixture 301 cannot run RGB Par 3ch, 3ch: groups 3, 4 use elements
+  it would lose`. A group's members, a preset's values on a target, a cue's entries, effects
+  and releases, a parked value and a binding's selection or values count; edit them first,
+  or delete the fixture with `cascade`. `profile update` is refused the same way when the new
+  revision gives a fixture's mode fewer elements. An overlap warns, as it does for `fixture
+  add`. busk does not ask first: what the new profile cannot do stays and does nothing, as a
+  preset's pan on a par, and `undo` takes the line back.
 * **Orientation.** `fixture N [thru M] orientation.<key> <value>` sets one key on every
   fixture between the ends and keeps the others, in one undo step. `invertPan`, `invertTilt`
   and `swapPanTilt` take `true` or `false`, and `panOffset` and `tiltOffset` take degrees. A

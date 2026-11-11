@@ -1904,10 +1904,72 @@ Phase 20 while Q6 waits. Code: `src/busk/console/parser.py` (`_fixture_mode`, `_
    Verify: one test per kind of user, and a mix; the club show's line in one line; a mode that
    loses only unused elements still goes through; both lines on `OfflineShow` and on a running
    `LiveShow`; nothing changes and no undo step is spent; `profile … update`; a real `busk run`.
+
+   **Done** (2026-11-11). On the club show, `fixture 301 profile "Generic Spot 16ch" mode 16ch`
+   now replies `error: fixture 301 cannot run Generic Spot 16ch, 16ch: groups 3, 4 use elements
+   it would lose`, where it gave 22 document paths. `fixture N mode` reads `fixture 3 cannot run
+   One Channel: …`. Several users read as a cascade's question names them, with one verb:
+   `groups 7, 8; preset intensity 1; cue 1/1; 1 parked value and 2 bindings use elements it would
+   lose`. A new revision from `profile update` that gives a fixture's mode fewer elements did
+   meet the same paths, and is refused the same way: `fixture 3 cannot run revision '2' of 'Two
+   Mode Par': group 7 uses elements it would lose`.
+
+   In the code: `fixture_cascade`'s walk in `cascade.py` now takes `kept`, how many elements of
+   each fixture stay (0 for a fixture that goes), where it took the ids that go, and `_lost`
+   decides a target. `element_users(show, kept)` runs the same walk on a scratch list and names
+   what it found, with its verb, or `None`. Its binding step is `_element_command`, a selection
+   and values per target, which `_fixture_command` now extends with an added effect and a
+   patch. In `parser.py`, `_keeps_elements` raises the line, after the same-mode check and
+   `_patch_fits`, in `_fixture_mode`, `_fixture_profile` and, for each fixture of the profile,
+   `profile update`.
+
+   Tests, in `test_fixture_mode.py`: each kind of user alone (a group, a preset's target value,
+   a cue's entry, effect and release, a parked value, a cue's value per target under a group
+   target, a binding's selection and its values per target), each in one line; all of them
+   together; a cue that targets a group named through the group; a mode that loses only unused
+   elements, and one where another fixture's element of the same number is used; the profile
+   line, which embeds nothing; no undo step spent; the club show's bar to both profiles; `profile
+   update` refused, then taken once the group no longer names the lost element; both lines on a
+   running `LiveShow`. The two tests that expected the validator's `does not exist` now expect
+   the line. Four mutations each fail a new test: `_lost` without the element, an added effect
+   counted, no check in `profile update`, and the verb always plural.
+
+   Which the user may veto:
+   - **An effect a binding adds does not refuse the line,** as the validator does not check
+     it: its `_command` has no `ADD_EFFECT` branch, so this follows "and no more". The mode goes
+     through, and a press of that binding is refused then, in words (`effect 'fx1': Fixture
+     'fx-3' has 1 element(s); element 3 does not exist`). The cascade still takes such an effect
+     with its fixture.
+   - **A binding's `BATCH` is not a case of its own:** it may hold only show edits (`ADD`, `SET`,
+     `RECORD_GROUP`, …), none of which names an element, so it can never refuse the line.
+   - **A cue that targets a group is not named;** the group is, as the validator reports the
+     group's member and not the cue.
+   - **`profile update` names the first fixture that would lose elements in use,** in the show's
+     order, and stops there, as its refusal of a missing mode does. A second fixture with users
+     shows on the next try. Its words keep the single quotes of that line's other replies.
+   - **The programmer counts for nothing:** what it holds on a lost element goes dormant, as
+     GAP-26 settled.
 2. **The docs:** `docs/console.md`'s note on mode and profile, the parser's module docs (GAP-26's
    paragraph, "Both leave the rest to the validator"), GAP-26's **Done** in
    `docs/dev/tui/engine-gaps.md`, the report's "Found in Phase 19" side finding (removed), §7's
    item, and `CHANGELOG.md` under Fixed. F3 needs no change: its controls show busk's one line.
+
+   **Done** (2026-11-11). `docs/console.md`'s note on mode and profile names what counts and
+   gives the line; the parser's and the cascade's module docs; GAP-26's **Done**; the report's
+   "Found in Phase 19" side finding is gone, and its header names Phase 24; §7's item;
+   `CHANGELOG.md` under Fixed. `busk help` says nothing of the refusals, so it is unchanged.
+
+**Phase 24 checks** (2026-11-11), on top of `e1f684a`. The whole suite: 6,430 passed and 1
+skipped, in 7:47 with `uv run pytest -n 6`; the 1,339 tests that read the docs again after the
+docs changed. `ruff check`, `ruff format --check` and `mypy src` clean. No TUI file or test
+changed, so no perf gate or Textual 8.2.0 run.
+
+A real `busk run club.show --threads --state-dir …`, the club script first, then lines piped in:
+`fixture 301 profile "Generic Spot 16ch" mode 16ch` and `fixture 301 profile "RGB Par 3ch" mode
+3ch` each replied `error: fixture 301 cannot run …: groups 3, 4 use elements it would lose`, one
+line each; with group 9 on fixture 101 alone, `fixture 101 profile "RGB Par 3ch" mode 3ch` went
+through (one element, nothing lost) and `undo` took it back; `list groups` showed the groups as
+they were.
 
 ### Phase 25: Loading a cue into the programmer
 
@@ -2044,7 +2106,8 @@ Those marked **Not planned** are extras or matter less, and stay here.
   `error: fixture 301 runs Generic Spot 16ch, 16ch: rejected, the show would not be valid` and 22
   lines of `groups[2].members[1].element: Fixture 'fx-…' has 1 element(s); element 1 does not
   exist`. F3's `[profile…]` would put them in the log. The first line is in words. Found on
-  2026-11-11, in Phase 19. **Phase 24** (the user's word, 2026-11-11).
+  2026-11-11, in Phase 19. **Phase 24** (the user's word, 2026-11-11). Fixed there, for `profile
+  update` too: one line names what uses the elements.
 - F4 shows a cue's entries, but none is edited one by one: a cue's values change only by
   re-recording from the programmer, and no line loads a cue into the programmer to edit it. The
   user's question, 2026-11-11, after Phase 22. **Phase 25** (the user's word, 2026-11-11), Q8.

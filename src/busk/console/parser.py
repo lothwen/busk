@@ -261,9 +261,12 @@ a mode of the fixture's profile, by name or id, in any case, as ``fixture add``
 does. ``fixture N profile "<profile>" mode <mode>`` finds the profile as
 ``fixture add`` does, embedding a library profile first, in one undo step. A
 line that would change nothing, the mode the fixture runs or its profile at
-the same revision and mode, is refused, and spends no undo step. Both
-leave the rest to the validator, which refuses a footprint past channel 512 or
-a target on an element the new mode lacks, and warns of an overlap. What the
+the same revision and mode, is refused, and spends no undo step. So is a mode
+that runs past channel 512, and one that lacks an element something names,
+in one line that names what does, from the walk of a fixture's cascade
+(:func:`~busk.console.cascade.element_users`): the validator would refuse it
+by path, once per element. ``profile update`` refuses a revision that gives a
+fixture's mode fewer elements the same way. An overlap warns. What the
 new profile cannot do is kept and does nothing, as a preset's pan on a par.
 The facades' ``fixture_profiles`` (GAP-27) lists every profile ``fixture add``
 takes, the library's too, found by :func:`find_profile`, ``fixture add``'s rule.
@@ -337,6 +340,7 @@ from busk.commands.types import Command, EditPath
 from busk.console.cascade import (
     Cascade,
     cue_list_cascade,
+    element_users,
     fixture_cascade,
     group_cascade,
     page_cascade,
@@ -1655,6 +1659,7 @@ class _Parser:
         if mode["id"] == fixture["modeId"]:
             raise ParseError(f"fixture {fixture['number']} already runs {mode['name']}")
         _patch_fits(fixture, mode)
+        self._keeps_elements(fixture, mode, mode["name"])
         path = ["fixtures", {"id": fixture["id"]}, "modeId"]
         return Submit(
             _labelled(
@@ -1678,6 +1683,7 @@ class _Parser:
                 f"fixture {fixture['number']} already runs {profile['name']}, {mode['name']}"
             )
         _patch_fits(fixture, mode)
+        self._keeps_elements(fixture, mode, f"{profile['name']}, {mode['name']}")
         path = ["fixtures", {"id": fixture["id"]}]
         commands: list[dict[str, Any]] = []
         if embed:
@@ -1689,6 +1695,17 @@ class _Parser:
         ]
         label = f"fixture {fixture['number']} runs {profile['name']}, {mode['name']}"
         return Submit(_labelled(label, *commands), notes)
+
+    def _keeps_elements(
+        self, fixture: Mapping[str, Any], mode: Mapping[str, Any], what: str
+    ) -> None:
+        """Refuse ``mode`` for ``fixture`` while anything names an element it
+        lacks: the validator would refuse it too, once per element, by path."""
+        users = element_users(self.show, {fixture["id"]: len(mode["elements"])})
+        if users is not None:
+            raise ParseError(
+                f"fixture {fixture['number']} cannot run {what}: {users} elements it would lose"
+            )
 
     def _profile(self, name: str) -> tuple[dict[str, Any], tuple[str, ...], bool]:
         """The profile to use: the show's embedded copy if it has one (with a
@@ -3111,7 +3128,7 @@ class _Parser:
         if new["revision"] == old["revision"]:
             raise ParseError(f"{old['name']!r} is already at the library's revision "
                              f"{new['revision']!r}")  # fmt: skip
-        modes = {mode["id"] for mode in new["modes"]}
+        modes = {mode["id"]: mode for mode in new["modes"]}
         users = [f for f in self.show["fixtures"] if f["profileId"] == old["id"]]
         for fixture in users:
             if fixture["modeId"] not in modes:
@@ -3121,6 +3138,8 @@ class _Parser:
                     f"fixture {fixture['number']} {fixture['name']!r} runs mode {mode!r}, "
                     f"which revision {new['revision']!r} of {old['name']!r} lacks"
                 )
+            revision = f"revision {new['revision']!r} of {old['name']!r}"
+            self._keeps_elements(fixture, modes[fixture["modeId"]], revision)
         path: EditPath = ["profiles", {"id": old["id"]}]
         kept = {"id", "category"} if "category" in old else {"id"}
         commands: list[dict[str, Any]] = [

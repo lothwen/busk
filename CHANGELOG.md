@@ -149,6 +149,11 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Fixed
 
+- `fixture N mode`, `fixture N profile` and `profile update` were refused with one document path
+  per element when something named an element the new mode lacks: 22 lines of
+  `groups[2].members[1].element: …` for the club show's bar. They are refused in one line now,
+  which names what uses them: `fixture 301 cannot run RGB Par 3ch, 3ch: groups 3, 4 use elements
+  it would lose`. F3's mode chips and `[profile…]` show that line.
 - `route add` and `route <id> change` with an Art-Net net past 127, or a sub-net or universe past
   15, named the document (`output.routes[1].portAddress.net`). They now say it in one line:
   `expected an Art-Net net from 0 to 127, got 200`.

@@ -23,7 +23,9 @@ Its Phase 21 added the line that takes a family's own timing away from a cue (GA
 TIME dialog a `[none]` that sends it. Its Phase 22 let a cue move past its neighbours and be
 copied (GAP-43), and gave F4 `[number…]` and `[copy…]` on a cue and `[number…]` on a list.
 Its Phase 23 gave F4's cue table an `also` column, which counts a cue's entries of the families
-the intensity and colour columns leave out.
+the intensity and colour columns leave out. Its Phase 24 made busk refuse a mode or profile that
+lacks an element something names in one line, where F3's mode chips and `[profile…]` put one
+document path per element in the log; that side finding is gone.
 
 ## How to read it
 
@@ -251,8 +253,3 @@ was seen and is in no phase.
   toggle on a list that was never a chase sends `cuelist N chase bpm x 1`, and busk refuses it
   (`several speed masters: name one`). `[chase…]` names the master. (`[chase…]`'s crossfade field,
   found then too, keeps every digit since Phase 18.)
-- **Found in Phase 19** (2026-11-11), and not fixed: F3's mode chips and `[profile…]` meet busk's
-  refusal by document path when a group, a cue or a parked value names an element the new mode
-  lacks (`groups[2].members[1].element: …`, one line per element), as GAP-26 left it to the
-  validator. The refusal's first line is in words. Planned as Phase 24 of
-  `docs/plans/tui-pending-plan.md`.
