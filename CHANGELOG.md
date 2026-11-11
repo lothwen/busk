@@ -124,6 +124,26 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Fixed
 
+- `route add` and `route <id> change` with an Art-Net net past 127, or a sub-net or universe past
+  15, named the document (`output.routes[1].portAddress.net`). They now say it in one line:
+  `expected an Art-Net net from 0 to 127, got 200`.
+- A family's fade and delay (`cue L/C time <family> …`), a trigger's delay (`follow`, `wait`), the
+  programmer's `fade`, `release N` and `release all` times and an effect's `fadein` took `50%` as
+  half a second, and a sign: `fade -1` set a fade of minus a second, and the others were refused
+  by document path. They now read seconds as the cue's own times do, with no sign and no `%`, and
+  say so in one line. A Bézier control value is read the same way, from 0 to 1 (`expected a Bézier
+  control value from 0 to 1, got '2'`). Only the console's reading changed: show files load as
+  before.
+- `fixture N mode <mode>` with the mode the fixture runs, and `fixture N profile` with its profile
+  at the same revision and mode, spent an undo step that changed nothing. They are refused now:
+  `fixture 101 already runs 16ch`.
+- F5's state toggle and `✕` failed on a programmer effect whose id is two words (`id "my fx"`):
+  they sent the id bare. They quote it now.
+- F4's `[chase…]` form started its crossfade field at six digits, so a crossfade of `0.1234567`
+  went back as `0.123457` when the form was taken as it opened. It keeps every digit now.
+- With `--faders` below a page's slot count, F1's edit mode showed every slot, but ← → stopped at
+  the first `--faders` playbacks, and a change of the page's slots moved a selection past them to
+  the first. In edit mode they now use every slot, as the grid does.
 - F4's toggle from a sequence back to a chase rounded the list's rate and multiplier to six digits
   and its crossfade to two, and was refused on a speed master with a quote in its name, so the list
   stayed a sequence. It now sends the chase settings as busk stored them.

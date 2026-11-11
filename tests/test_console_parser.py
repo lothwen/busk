@@ -1083,7 +1083,7 @@ def test_chase_bpm_needs_a_speed_master(line: str, names: tuple[str, ...], error
             "expected a curve (linear, easeIn, easeOut, easeInOut, snapStart, snapEnd"
             " or bezier x1 y1 x2 y2), got 'wobble'",
         ),
-        ("cue 1/1 time 2 bezier 0.1 0.2", "expected a Bézier control value"),
+        ("cue 1/1 time 2 bezier 0.1 0.2", "expected a Bézier control value from 0 to 1"),
         ("cue 1/1 time", "expected a fade time"),
         ("cue 1/1 time 2/x", "expected a fade time, got '2/x'"),
         ("cue 1/1 time color", "expected a fade time"),

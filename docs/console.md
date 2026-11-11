@@ -129,7 +129,9 @@ session, as the web remote's commands do. `help` prints the grammar.
 * **Timing.** `cue L/C time <in>[/<out>]` sets the cue's fade in and out (out defaults to
   in), with an optional `delay` and curve (`linear`, `easeIn`, `easeOut`, `easeInOut`,
   `snapStart`, `snapEnd`, `bezier x1 y1 x2 y2`); with a family name it sets that family's
-  own timing. In a chase, cue timing and triggers are ignored except the curve: the
+  own timing. Times are plain seconds, with no sign and no `%`, here and wherever busk
+  reads seconds (`follow`, `wait`, `fade`, `release`, an effect's `fadein`); each Bézier
+  control value runs from 0 to 1. In a chase, cue timing and triggers are ignored except the curve: the
   crossfade sets the step fade. Speed masters have no numbers, so they are named in quotes;
   `tap` and `bpm` without a name use the show's only speed master.
 * **Effects** (busk effects; a fixture's own programs are the `effect` attribute, see
@@ -189,8 +191,9 @@ session, as the web remote's commands do. `help` prints the grammar.
   <mode>` takes another profile, found as `fixture add` finds it: the show's copy when it
   has one, else the library's, which the line embeds. Each is one undo step, and Tab offers
   the profiles and their modes. A mode that would run past channel 512 is refused, and so
-  is one that lacks an element a group, a cue or a parked value names. An overlap warns, as
-  it does for `fixture add`. busk does not ask first: what the new profile cannot do stays
+  is one that lacks an element a group, a cue or a parked value names, and so is a line that
+  would change nothing: the mode the fixture runs, or its profile at the revision and mode
+  it has. An overlap warns, as it does for `fixture add`. busk does not ask first: what the new profile cannot do stays
   and does nothing, as a preset's pan on a par, and `undo` takes the line back.
 * **Orientation.** `fixture N [thru M] orientation.<key> <value>` sets one key on every
   fixture between the ends and keeps the others, in one undo step. `invertPan`, `invertTilt`
@@ -211,7 +214,9 @@ session, as the web remote's commands do. `help` prints the grammar.
   show and sends nothing. `route <id> off` and `delete route <id>` stop a universe's
   output, so the prompt asks first, as for `output off`. A route that is off is not
   checked against the others, so `route <id> on` is refused when its sACN universe or its
-  port is taken by then. `route <id> change` takes what `route add` takes, in one undo step.
+  port is taken by then. An Art-Net port address takes a net from 0 to 127, and a sub-net
+  and a universe from 0 to 15. `route <id> change` takes what `route add` takes, in one undo
+  step.
   The route keeps its id and whether it is on, and an sACN route that stays sACN keeps its
   priority. It refuses what `route add` refuses, and what would change nothing.
 * **Several fixtures.** `fixture N thru M patch U.A` places every fixture of the span, in

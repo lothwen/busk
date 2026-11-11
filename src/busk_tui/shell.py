@@ -157,6 +157,7 @@ class BuskApp(App[int]):
         self.session: SessionState | None = None
         self._changed: set[Part] = set()  # the parts of the view since the page last drew
         self._slots: Slots = ()  # F1's slots, which the selected playback follows
+        self._f1_editing = False  # F1's edit mode: its slots are all the page's
         self._nudged: tuple[int, float, float] | None = None  # [ ]: playback, level, when
         self._help_index: HelpIndex | None = None
         self._interrupted = False  # a Ctrl+C on an empty prompt: the next one quits
@@ -257,15 +258,24 @@ class BuskApp(App[int]):
         if not changed:
             return
         self._changed = set()
-        if changed & {"show", "live"}:
-            slots = visible_slots(self.view.show, self.view.live, self.view.faders)
-            if slots != self._slots:
-                chosen = follow(self.view.playback, self._slots, slots)
-                self._slots = slots
-                if chosen != self.view.playback:
-                    self.view.playback = chosen
-                    changed.add("playback")
+        if changed & {"show", "live"} and self._follow_slots():
+            changed.add("playback")
         self.current_page.update_view(self.view, frozenset(changed))
+
+    def _follow_slots(self) -> bool:
+        """F1's slots as they are now, which ← → step along: every slot of
+        the page while F1 edits, as its grid shows them, else the first
+        ``faders``. Whether the selection moved, as :func:`follow` moves it."""
+        cap = None if self._f1_editing else self.view.faders
+        slots = visible_slots(self.view.show, self.view.live, cap)
+        if slots == self._slots:
+            return False
+        chosen = follow(self.view.playback, self._slots, slots)
+        self._slots = slots
+        if chosen == self.view.playback:
+            return False
+        self.view.playback = chosen
+        return True
 
     def take(self, event: BridgeEvent) -> None:
         match event:
@@ -556,6 +566,14 @@ class BuskApp(App[int]):
     def on_busk_page_layout_chosen(self, message: BuskPage.LayoutChosen) -> None:
         message.stop()
         self.action_layout(message.layout)
+
+    def on_busk_page_editing_changed(self, message: BuskPage.EditingChanged) -> None:
+        message.stop()
+        self._f1_editing = message.editing
+        if self._follow_slots():
+            self._changed.add("playback")
+            self._redraw()
+            self._show_context()
 
     def on_patch_page_add_here(self, message: PatchPage.AddHere) -> None:
         """F8's ``[add fixture here…]``: F3, with the new fixture form at that place."""

@@ -15,7 +15,9 @@
   each. Every phase here is sized to that or less.
 - **Engine first.** Phases 2 to 5 give every later control its line, so no control is left inert
   or waiting on busk. Phase 14 is the one exception: a question gates it, nothing else needs it,
-  and its engine step comes first inside the phase.
+  and its engine step comes first inside the phase. Phases 20 to 22, added on 2026-11-11, are built
+  the same way: one item each, its engine step first, then the control that uses it. The TUI step
+  keeps the TUI phases' rules below.
 - **Engine phases** change `src/busk/` and its tests. Each gap gets an entry and a Summary row in
   `docs/dev/tui/engine-gaps.md`. A wrong message or a missing range check is a bug, not a gap, and
   gets no number.
@@ -82,7 +84,7 @@ to be at `f851165`.
 | Rig §9 | Importing a profile; `profile update` | open | Phase 5, GAP-39; F3 in Phase 13 | done: `[import…]`, `[update profile]` |
 | Rig §9 | A split patch | open | Phase 14, if Q4 says so | dropped: Q4 (a) |
 | Rig §9 | Editing in the table's cells | open | Phase 15, if Q5 says so | done: a dialog per cell |
-| Last conversation | Refusals with a document path: `group N number M`, `route add 1 sacn 0`, a mode or profile past channel 512 | open | Phase 1 | done; an Art-Net port address still prints a path (§7) |
+| Last conversation | Refusals with a document path: `group N number M`, `route add 1 sacn 0`, a mode or profile past channel 512 | open | Phase 1 | done; an Art-Net port address still printed a path (§7), fixed in Phase 18 |
 | Last conversation | The same for a plain `delete fixture N` | open | Phase 4, GAP-36 | done |
 | Last conversation | The log does not wrap | open: `LogView` is built with `wrap=False` | Phase 1 | done |
 | Last conversation | A step on `Bridge.standalone` takes about 3 s | **closed** by `d628286`: Textual's idle wait counted the engine thread's CPU and ran to its 1 s cap. `test_tui_e2e.py` went from 1,255 s to 107 s | nothing | closed |
@@ -112,6 +114,12 @@ to be at `f851165`.
 | 15 | Cue cell editing | TUI | 6 | Q5 |
 | 16 | Audit, and the user's check on a rig | docs | all | |
 | 17 | The audit's three bugs: F4's chase toggle, F1's `[GT]`, F6's questions | TUI | 16 | |
+| 18 | Small bugs: refusals in words, a mode that changes nothing, effect ids, `[chase…]`, F1's `--faders` | busk, TUI | | |
+| 19 | Replies in words for the lines that work | busk | | |
+| 20 | One undo step for an encoder drag (GAP-06) | busk, TUI | | Q6 |
+| 21 | Removing a family's own timing from a cue (GAP-42), on F4's TIME | busk, TUI | 18 | |
+| 22 | Moving and copying a cue (GAP-43); F4's `[number…]` and `[copy…]` | busk, TUI | 19 | |
+| 23 | F4 shows every family's entries | TUI | | Q7 |
 
 ## 4. What busk does (checked on 2026-11-08)
 
@@ -160,6 +168,22 @@ playback pointed at another list while it runs.
 8. **F6's `[delete]` stops being inert** on a preset in use, and sends the cascade after busk's
    question.
 9. **The generic edit keeps its paths** in a refusal: the path is what the operator typed.
+
+Added on 2026-11-11, for Phases 18 to 23:
+
+10. **`50%` and a sign are refused where busk reads seconds, and in a Bézier point,** as F4's
+    forms (Phase 15) already refuse them. A show file that stores such a value still loads: only
+    the console's reading changes.
+11. **A mode or profile that changes nothing is refused in one line,** and spends no undo step. A
+    profile line that brings a newer revision of the same profile does change something, and goes
+    through.
+12. **A reply in words names the thing as the console does, then the change.** The generic edit
+    (`show <path> …`) and `submit()` keep their paths, as call 9 says for refusals.
+13. **`cue L/C number M` may pass its neighbours:** the cue moves to its place in the order.
+    `cue L/C copy [L2/]M` copies a cue into its own list or another. Moving a cue to another list
+    is not one line: copy it, then delete it, two undo steps.
+14. **`cue L/C time <family> none`** removes a family's own timing whole: its fade, delay and
+    curve. Sending the family again without a curve still removes the curve alone, as now.
 
 ## 6. Phases
 
@@ -1223,44 +1247,342 @@ row under the mouse, and a click sent nothing. F6: on Blue with Red loaded, `[re
 **n** logged `cancelled: record preset color 1 global replace`; `[remove]` asked and **y** sent
 `record preset color 1 remove`. No error in the log.
 
+### Phase 18: Small bugs
+
+The user's word of 2026-11-11: §7's simple bugs, together in one phase, as Phase 1 was. busk and
+TUI: the busk steps come first, with the engine's tests, and the TUI steps keep the TUI's rules
+(§1). Code: `src/busk/console/parser.py`, `src/busk_tui/commands.py`,
+`src/busk_tui/widgets/chase_dialog.py`, `src/busk_tui/shell.py`.
+
+1. **An Art-Net port address out of range is refused in words.** `_route_fields` reads
+   `net.sub.universe` and checks only its shape, so `route add 1 artnet 200.0.0` is refused by
+   path (`output.routes[1].portAddress.net: Input should be less than or equal to 127`). Check the
+   net (0 to 127), the sub-net and the universe (0 to 15) there, as the sACN universe is checked a
+   few lines above. `route <id> change` reads the same fields, so this fixes it too.
+
+   Verify: each of the three parts at its limits and one past, in `route add` and in `route <id>
+   change`; `expected()` unchanged.
+
+   **Done** (2026-11-11). `_route_fields` checks each part after its shape: `expected an Art-Net
+   net from 0 to 127, got 200`, and `sub-net` and `universe` from 0 to 15. `route <id> change`
+   reads the same fields, so it refuses the same. `test_console.py`'s refusal table has each part
+   one past, in both lines (with `expected()`, `confirmation()` and a script), and its edge table
+   `0.0.0` and `127.15.15` in both. F8's route form already checked these ranges, and its
+   agreement test with busk passes as before.
+2. **Seconds and Bézier points are read the way the cue's own times are.** `_cue_verb` reads a
+   family's fade and delay (`cue L/C time <family> …`) and a trigger's delay (`cue L/C follow|wait
+   <d>`) through `number`. So busk takes `50%` as half a second, and refuses `-1` by path
+   (`cueLists[8].cues[1].timing.perFamily.intensity.fade: Input should be greater than or equal to
+   0`). Read them as `pair` reads the cue's own times (`_SECONDS`: no sign, no `%`). `curve` reads
+   a Bézier point through `number` too, and the validator refuses `-0.5` and `2` by path: read it
+   the same way and check it from 0 to 1 in the parser. Grep the parser for its other `number(`
+   reads of seconds (`programmer fade` is one), treat them the same, and name them in the Done
+   note.
+
+   Verify: each field refuses `50%`, `-1` and `-0` in one line that names the field, and takes
+   what `pair` takes; a Bézier point of `-0.5` or `2` refused in one line, `0` and `1` taken;
+   F4's TIME, CURVE, FOLLOW and WAIT forms still send lines busk takes (their tests against
+   busk's checks, Phase 15).
+
+   **Done** (2026-11-11). `_Parser.seconds(what, top=None)` reads one token as `pair` reads each of
+   its own (`_SECONDS`: no sign, no `%`), at most `top` if given, and refuses with `expected
+   <what>, got '<text>'`. The name `unsigned` was taken (`set`'s plus-sign check). The grep found
+   these seconds read through `number`, and all now go through `seconds`: a family's fade and
+   delay; `follow` and `wait`'s delay; `fade` (the programmer's: `fade -1` was **taken**, as
+   `programmer fade -1 s`); `release N <t>` and `release all <t>` (refused in words before, by the
+   command layer); and `effect add … fadein <t>`. `release all` still decides whether a time
+   follows by `_NUMBER`, so `release all -1` is refused, not read as no time. A Bézier point is
+   `seconds("a Bézier control value from 0 to 1", 1)`; the old `what` lacked the range, so
+   `test_console_parser.py`'s row for a short Bézier gained it. The `what`s are unchanged
+   otherwise, so Tab's hints are too. `test_console.py`'s refusal table has `50%`, `-1`, `-0`
+   and `+2` for each of the eight fields and five Bézier rows; its edge table, the values that
+   still run. F4's forms and busk now agree on every field: `test_a_time_form_and_busk_agree_on_seconds`
+   (which said busk takes more for a family and a trigger) and the Bézier agreement test now check
+   every field both ways, `-0`, `+2` and `50%` included.
+3. **A mode or profile that changes nothing is refused.** `fixture 101 mode 16ch`, on a fixture
+   that already runs 16ch, goes through and spends an undo step (`undid: fixture 101 runs 16ch`).
+   `_fixture_mode` refuses it in one line (`fixture 101 already runs 16ch`). `_fixture_profile`
+   refuses the same profile, revision and mode. F3's lit chip already sends nothing, so only the
+   prompt meets this.
+
+   Verify: the same mode refused, with nothing on the timeline; the same profile and mode refused;
+   the same profile at a newer library revision taken (§5, call 11); another mode taken.
+
+   **Done** (2026-11-11). `_fixture_mode` refuses the mode the fixture runs (`fixture 101 already
+   runs 16ch`), by id, so a name in any case and the mode's id are refused alike. `_fixture_profile`
+   refuses when the profile's id and revision and the mode's id are the fixture's (`fixture 101
+   already runs Generic Spot 16ch, 16ch`). **A newer library revision never arrives through this
+   line:** `_profile` takes the show's copy when it has one (with its `warning:` note), so with
+   only the library newer, the line changes nothing and is refused; `profile update` brings the
+   library's. What the line does change is a fixture whose `profileRevision` is behind the show's
+   copy (a show file can hold one, with a warning): that is taken, and sets the revision.
+   `test_fixture_mode.py` has both, the same mode by name, other case and id with `nothing to
+   undo` after, and another mode taken. Three tests sent the mode a fixture runs and now meet the
+   refusal: the mode test of `test_fixture_mode.py` (it now starts fixture 1 elsewhere),
+   `test_console_prompt.py`'s `fixture 101 mode 16ch` row (moved to its error rows), and
+   `test_tui_commands.py`'s contract row `fixture mode`, which keeps its line and expects the
+   refusal (`SAME_MODE`): no shipped profile has two modes, so on the club show no mode line
+   changes anything, and the refusal still shows busk read the quoted mode and found it.
+4. **Effect ids are quoted where they need it.** `commands.effect_stop`, `effect_run` and
+   `effect_remove` write the id bare, so F5's run toggle and `✕` fail on an id of two words, which
+   only `id "my fx"` makes. busk reads a quoted id (`effect stop "my fx"`). Write it through
+   `commands.word`, as `cue_effect`, `cue_effect_remove` and `effect_replace` do.
+
+   Verify: the three lines for `fx1` (bare) and `my fx` (quoted); F5's toggle and `✕` on such an
+   effect on the real engine.
+
+   **Done** (2026-11-11). The three builders write the id through `commands.word`. The contract
+   table has the three lines for `my fx`, and its test adds `effect add "Circle" id "my fx"` so
+   busk takes each. `test_f5_stops_runs_and_removes_an_effect_of_two_words_on_the_real_engine`
+   types the effect, then stops, runs and removes it from F5's table; on the old code it times out
+   at the stop.
+5. **`[chase…]`'s crossfade field starts with every digit.** `ChaseDialog` fills it with `:g`, so a
+   crossfade of `0.1234567` goes back as `0.123457` if the form is taken as it opened. Fill it
+   through `commands.exact`, as the rate and the multiplier already are.
+
+   Verify: crossfades of `0.1234567`, `0.125` and `1` come back unchanged through a form taken as
+   it opened.
+
+   **Done** (2026-11-11). `ChaseDialog` fills the field with `commands.exact`. `test_tui_cues.py`'s
+   `test_the_chase_form_taken_as_it_opened_keeps_what_busk_stored` runs on busk itself: a chase at
+   `hz 1.23456789 bounce` with each of `0.1234567`, `0.125`, `1` and `0.0000001`, F4's form opened
+   on it and taken, and busk's stored `chase` equal after. On the old code `0.1234567` and
+   `0.0000001` fail (the other two survive `:g`).
+6. **F1's selection follows every slot in edit mode.** With `--faders` below a page's slot count,
+   F1's edit grid shows every slot (`BuskPage` passes `None` to `visible_slots`). But the shell's
+   `_redraw` keeps `follow` on `visible_slots(…, view.faders)`, and ← → `step` along those slots
+   too. So with `--faders 8` on a page of 12, ← → never reach slots 9 to 12, and a change of the
+   slots moves a selection there back to the first. Use every slot while F1 edits, as the grid
+   does, and the first `faders` again when it stops.
+
+   Verify: `--faders 8` on a page of 12: in edit mode ← → reach slot 12, and out of it they stop at
+   8; in edit mode a change of slots keeps a selection on slot 10; leaving edit mode on slot 10
+   moves the selection as `follow` does today; the perf gate on F1.
+
+   **Done** (2026-11-11). `BuskPage.set_editing` posts `BuskPage.EditingChanged(on)`. The shell
+   keeps `_f1_editing` from it, and `_follow_slots()` (out of `_redraw`) computes the slots with no
+   cap while F1 edits, else `faders`, and moves the selection by `follow`; the message's handler
+   calls it too, so entering and leaving edit mode refollow at once. Leaving on slot 10 moves the
+   selection to the first playback (slot 10's index is past the eight slots); within them it stays.
+   F1's edit mode stays on when another page shows, and so do the shell's slots: ← → there step
+   along F1's grid, which is F1's selection. Three tests in `test_tui_playback_panel.py` (a page of
+   12, `faders=8`) and one on the real engine (the club's Main, 13 slots, `--faders 8`), each
+   failing on the old code.
+
+Docs: `docs/console.md` where it shows one of these refusals, `docs/tui/guide.md` (F1's ← → in
+edit mode), the report's side findings, §7's items, and `CHANGELOG.md` under Fixed.
+
+Verify, besides each step's: tests on the real engine in `tests/tui/test_tui_e2e.py` for steps 4
+and 6; a real `busk run --state-dir …` with the lines of steps 1 to 3.
+
+**Phase 18 checks** (2026-11-11), on top of `531e452`. The whole suite: 6,290 passed and 1
+skipped, in 7:56 with `uv run pytest -n 6`. `ruff check`, `ruff format --check` and `mypy src`
+clean. The new TUI tests pass on Textual 8.2.0, the two on the real engine too. The perf gate: 7
+passed, F1 B +0.172, A +0.183 and C +0.202 core, no overruns. Each TUI step's tests fail on the
+code before it: step 4's real-engine test (it times out at the stop), step 5's round trip for
+`0.1234567` and `0.0000001`, and step 6's three headless tests and its real-engine one.
+
+A real `busk run club.show --state-dir … --threads` on the club show, the lines piped in: `route
+add 1 artnet 200.0.0`, `0.16.0` and `0.0.16` each refused in one line, `127.15.15 unicast
+127.0.0.1` added; `route <id> change 1 artnet 0.16.0` and `0.0.16` refused, `127.15.15 unicast
+127.0.0.1` changed it; `cue 8/1 time intensity 50%` and `-1`, `… delay -0`, `follow -1`, `wait
+50%`, Bézier points `-0.5` and `2`, `fade -1`, `release 1 -1` and `release all 50%` each refused
+in one line naming the field, while `cue 8/1 time intensity 2 delay 0.5 bezier 0 0 1 1` and `fade
+0.5` went through; `fixture 101 mode 16ch` and `fixture 101 profile "Generic Spot 16ch" mode 16ch`
+refused (`already runs`), and three `undo`s took back the cue's timing and the route, then said
+`nothing to undo`.
+
+### Phase 19: Replies in words
+
+The user's word of 2026-11-11: the lines that work but reply with a document path, which F1's,
+F3's, F4's and F5's controls now put in the log (§7, five items). An engine phase. Code:
+`src/busk/console/parser.py`. Tests: `tests/test_console.py`, `tests/test_session.py`, and the
+goldens `tests/golden/cli/run-processes.txt` and `run-threads.txt`, which hold about 60 replies
+with a path between them.
+
+1. **The list.** A script, like Phase 16's, runs on a fresh copy of the club show each line the
+   report's last side finding names, and each other line of `docs/console.md` that edits the show.
+   It lists every reply that works and holds a document path (`cueLists[8]`, `pages[0].name`).
+   The list goes in the Done note. Today it holds at least: every rename; every `number M`;
+   `fixture N location {…}`; a plain `delete` of something unused; `cue L/C time`, `follow`,
+   `wait`, `go` and `release`; `cue L/C effect <id> <prop> <value>`; `cuelist N sequence`, `chase`
+   and `tracking`; `playback N <prop> <value>`; and `rename page`.
+2. **Each line says what it did,** labelled through `_labelled`, as `cue L/C effect <id> remove`
+   and `<property> none` already are: the thing as the console names it, then the change (§5,
+   call 12). For example: `renamed cue 9/2 "Verse"`, `group 1 is now group 9`, `deleted cue 9/1`,
+   `cue 9/3 follows after 0.5 s`, `cue list 9 is a sequence`. The label is also the undo step's,
+   so `undo` says it too. A value too long for the line is cut, as `_short` cuts it.
+3. **The tests and goldens follow.** Only the replies change; each line's ops stay as they were.
+
+Verify: step 1's script finds no path in a reply that works; the generic edit (`show <path> …`)
+and `submit()` still reply with their paths; `undo` and `redo` repeat the new words; the TUI's tests
+pass, changed only where they hold a reply (the bridge parses none, `bridge.py`'s docstring).
+
+Docs: `docs/console.md`'s replies, the report's last side finding (it goes), §7's items, and
+`CHANGELOG.md` under Changed.
+
+### Phase 20: One undo step for an encoder drag
+
+The user's word of 2026-11-11. GAP-06, which `docs/dev/tui/engine-gaps.md` calls important: an F2
+drag sends about ten `set` lines a second, each an undo step of its own, so undoing a drag takes
+as many `undo`s. Its shape waits on Q6. The engine step comes first. Code:
+`src/busk/session/timeline.py`, `src/busk/session/session.py`, `src/busk/console/parser.py`;
+`src/busk_tui/widgets/encoders.py`, `src/busk_tui/commands.py`.
+
+1. **GAP-06, under Q6's answer.** Under (a), the shape engine-gaps.md gives, kept to what a drag
+   needs:
+   - `undo group "<label>"` opens a group, and the programmer steps after it join it.
+   - `undo group end` closes it. The timeline then has one step labelled `<label>`, holding the
+     programmer as it was before the group's first step and after its last.
+   - A show step, `undo`, `redo` or another `undo group` closes it first. So does a step that comes
+     more than 2 s after the group's last one, which needs no timer.
+   - A group with no step leaves nothing. Performance lines never wait and never join (GAP-12).
+
+   Update engine-gaps.md's entry and Summary row, `docs/console.md`, `busk help` and `expected()`.
+
+   Verify: 30 `set` lines in a group are one `undo` and one `redo`; each way a group closes; an
+   empty group; a group never closed; a line from another thread during the group joins it (the
+   group is the session's, and the guide says so); `LiveShow` and `OfflineShow`; the timeline's
+   limit.
+2. **F2's drag is one group.** It sends `undo group` at its start, its `set` lines as now, and
+   `undo group end` on release, so the light follows the drag and `undo` takes it back whole. A
+   click stays one `set`. Change `encoders.py`'s docstring and the guide's note on drags
+   (`docs/tui/guide.md`, which names GAP-06).
+
+   Verify: a drag on the real engine is one `undo`; a click is one; a drag cut short by a page
+   change still closes, by its end line or by busk's 2 s; the perf gate on F2.
+
+Under (b), step 1 is busk merging a `set` of one attribute on the same selection into the step
+before, within 1 s, and step 2 changes only the docstring and the guide.
+
+### Phase 21: A family's own timing removed
+
+The user's word of 2026-11-11. No line removes a family's own timing from a cue, so once F4's TIME
+dialog (Phase 15) sets one, only `undo` takes it away. Needs Phase 18, whose step 2 changes how
+these fields are read. The engine step comes first. Code: `src/busk/console/parser.py`
+(`_cue_verb`), `src/busk_tui/widgets/cue_dialogs.py`, `src/busk_tui/commands.py`.
+
+1. **GAP-42: `cue L/C time <family> none`** removes the family's own timing, its fade, delay and
+   curve (§5, call 14), so the family fades with the cue again. Removing the last one removes
+   `perFamily`. A family with no timing of its own is refused in one line (`cue 9/2 has no
+   position timing of its own`). One undo step, with a reply in words. `expected()` offers `none`
+   after a family. Add the entry and its Summary row to engine-gaps.md, and update
+   `docs/console.md` and `busk help`.
+
+   Verify: removing one of two families, the last one, and one the cue lacks; `undo`; the
+   compiled cue fades the family with the cue's times afterwards (the compile, not only the JSON);
+   `list cues`.
+2. **F4's TIME dialog removes it.** While a family chip with timing of its own is chosen, a
+   `[none]` button sends the line, and the dialog says what it does (`position fades with the cue
+   again`). No question: `undo` brings it back.
+
+   Verify: the button shows only on a family with timing of its own; Esc sends nothing; the time
+   cell drops the family (`2, position 4` becomes `2`); a test on the real engine.
+
+Docs: the guide's F4, the report's Cues rows, §7's item, and `CHANGELOG.md`.
+
+### Phase 22: Moving and copying a cue
+
+The user's word of 2026-11-11. A cue can be renumbered only between its neighbours, and neither
+copied nor renumbered from F4; nor can a cue list. Needs Phase 19, which words the replies of
+`cue L/C number M`. The engine steps come first. Code: `src/busk/console/parser.py`
+(`_renumber_cue`, `_cue_verb`), `src/busk/commands/edits.py` (`cue_insert_index`),
+`src/busk_tui/pages/cues.py`, `src/busk_tui/commands.py`.
+
+1. **GAP-43: a cue moves past its neighbours.** `cue L/C number M` takes a number on either side
+   of the others, and the cue goes to its place in the list's order (`cue_insert_index`), in one
+   undo step (§5, call 13). A number the list already has stays refused. Check:
+   - a running list whose current cue moves (the playback stays on it);
+   - a `follow` or `wait` chain, which now runs in the new order;
+   - a `gotoCue` or a `GOTO` that names the old number (busk warns, as a renumber does today);
+   - a chase.
+2. **GAP-43: a cue is copied.** `cue L/C copy [L2/]M` adds a copy of the cue at `M`, in its own list
+   or in list `L2`, at its place in the order. The copy gets a new id, and keeps the cue's name,
+   entries, timing, trigger, releases and effects. A number the list already has is refused.
+   Check: the effect ids inside the copy, a copy into a chase, and a copy into an empty list. Add
+   GAP-43's entry and Summary row to engine-gaps.md, and update `docs/console.md`, `busk help`
+   and `expected()`.
+
+   Verify: both lines on `OfflineShow` and on a running `LiveShow`; `undo`; the compiled list after
+   each.
+3. **F4's `[number…]` and `[copy…]` on a cue, and `[number…]` on a list.** Each is a dialog that
+   refuses a number already taken, as F3's `[number…]` does. `[copy…]` takes a list (the chosen
+   one first) and a number. The report's two "renumber: prompt" cells become controls.
+
+   Verify: each control on the real engine; Esc; a taken number; the table's order after a move;
+   `[GT]` greyed (Phase 17) when a renumber takes its goto cue away.
+
+Docs: the guide's F4, the report's Cues and Cue lists rows and its "busk lacks a little", §7's
+items, and `CHANGELOG.md`.
+
+### Phase 23: Every family on F4
+
+The user's word of 2026-11-11. F4's cue table shows only intensity and colour entries, as the spec's
+§8.4 lists them, so a cue that holds only position or beam values looks empty. Its shape waits on
+Q7. A TUI phase. Code: `src/busk_tui/widgets/cuetable.py`; `src/busk_tui/model.py` and
+`src/busk_tui/bridge.py` only if `CueInfo.values` lacks what Q7's answer shows.
+
+1. **Under Q7's answer.** Under (a): one more column after colour, `also`, naming the other
+   families the cue holds values for, and how many of each (`position 2, beam 1`). It is the first
+   column dropped on a narrow screen.
+
+   Verify: a cue with only position values shows them; a cue with every family; the widths at 99
+   and 150 columns; the perf gate on F4.
+2. **The docs:** the guide's F4, the spec's §8.4 cue table line, and the report's Show row for
+   cues.
+
 ## 7. Seen, and not in the sources
 
 Left out because the five places do not name them. Say if any should join a phase.
 
-- GAP-06 (one undo step for a gesture) and GAP-13 (control input monitor) are still open.
-- A cue's move, copy and renumber past its neighbours (the report's Cues table).
-- Renumbering a cue list from F4 (the report's Cue lists table).
-- F4's table shows only intensity and colour entries.
-- Options when adding an effect from a template click.
-- Deleting several presets, cues or lists in one line.
+On 2026-11-11 the user put them into phases: the simple bugs in Phase 18, the replies with a path
+in Phase 19, and the items worth building in Phases 20 to 23. Each item below names its phase.
+Those marked **Not planned** are extras or matter less, and stay here.
+
+- GAP-06 (one undo step for a gesture): **Phase 20**. GAP-13 (control input monitor): **Not
+  planned**. `bind` lines can be typed.
+- A cue's move, copy and renumber past its neighbours (the report's Cues table): **Phase 22**,
+  steps 1 to 3.
+- Renumbering a cue list from F4 (the report's Cue lists table): **Phase 22**, step 3.
+- F4's table shows only intensity and colour entries: **Phase 23**, Q7.
+- Options when adding an effect from a template click: **Not planned**. F5's EFFECT panel changes
+  them afterwards.
+- Deleting several presets, cues or lists in one line: **Not planned**. Fixtures take `thru`.
 - `route add 1 artnet 200.0.0` still prints a path (net above 127, sub-net or universe above 15),
-  like the sACN universe Phase 1 fixed. Phase 1 named only sACN. Found on 2026-11-08.
+  like the sACN universe Phase 1 fixed. Phase 1 named only sACN. Found on 2026-11-08. **Phase
+  18**, step 1. Fixed there.
 - Some replies still print a path, and F4's controls now put them in the log: `delete cue L/C`
   (`deleted cueLists[8].cues[1]`), `cue L/C release`, `cuelist N tracking`, `rename cuelist` and
   `cuelist N chase`. The refusals are in words; these are the answers to lines that worked. Found on
-  2026-11-09.
+  2026-11-09. **Phase 19**.
 - `cue L/C effect <id> <prop> <value>` replies with a path too, and F5's EFFECT panel now puts that
-  in the log. Found on 2026-11-09.
+  in the log. Found on 2026-11-09. **Phase 19**.
 - `playback N <prop> <value>` replies with a path too, and F1's PLAYBACK panel now puts that in the
   log. `go` on a playback whose `gotoCue` its list lacks, after a change of list, was not checked.
   Found on 2026-11-09. Checked in Phase 16, on `LiveShow`: `go` runs the new list, and the `goto`
   button does nothing and says nothing. busk warns once, at the change. F1 greys `[GT]` only when
   there is no `gotoCue`, so it stays live on one the list lacks: **Phase 17**, step 2. Fixed
-  there: `[GT]` is grey, and the hint row says why.
+  there: `[GT]` is grey, and the hint row says why. The reply with a path: **Phase 19**.
 - `rename page N "…"` replies with a path too (`set pages[2].name to "Finale"`), and F1's page
-  `[rename…]` now puts that in the log. Found on 2026-11-10.
+  `[rename…]` now puts that in the log. Found on 2026-11-10. **Phase 19**.
 - With `--faders` below a page's slot count, ← → and the selection that follows a change of slots
   use only the first `faders` slots, in edit mode too, where the grid has them all: a change of those
-  slots moves a selection past them to the first. Found on 2026-11-10.
+  slots moves a selection past them to the first. Found on 2026-11-10. **Phase 18**, step 6.
+  Fixed there.
 - `rename group N "…"` and `group N number M` reply with a path too (`set groups[4].name to "V"`),
   and F3's GROUPS now puts that in the log. So does a plain `delete group N` (`deleted
-  groups[4]`), which F3 does not send. Found on 2026-11-10.
+  groups[4]`), which F3 does not send. Found on 2026-11-10. **Phase 19**.
 - `cue L/C time …`, `cue L/C follow|wait <d>` and `rename cue L/C "…"` reply with a path too (`set
   cueLists[8].cues[2].timing.fadeIn to 2; …`), and F4's dialogs now put that in the log. Found on
-  2026-11-10.
+  2026-11-10. **Phase 19**.
 - No line removes a family's own timing from a cue (`perFamily`), nor a family's own curve but by
   setting the family again without one. busk reads a family's fade, a trigger's delay and a Bézier
   point as any number (`50%`, `-0`), and the cue's own times as plain seconds. Found on 2026-11-10.
+  On 2026-11-11, also: a value busk then rejects is refused by path, not in words (`cue 9/2 time
+  intensity -1`, `cue 9/3 follow -1`, a Bézier point of `-0.5`). The reading: **Phase 18**, step
+  2. Fixed there, with every other seconds read of the parser (`fade -1` was taken). Removing a
+  family's timing: **Phase 21**. Sending the family again without a curve still removes its curve
+  (§5, call 14).
 - `commands.effect_stop`, `effect_run` and `effect_remove` do not quote an id, so those controls
   fail on an effect id of two words, which only `id "my fx"` makes. `_rate_text` in the bridge does
   not escape a quote in a master's name. Found on 2026-11-09. Phase 16 found that a control sends
@@ -1271,27 +1593,31 @@ Left out because the five places do not name them. Say if any should join a phas
   so the fix is to build the toggle's line from `CueListInfo.rate` as the form does: **Phase 17**,
   step 1. Fixed there: `_rate_text`'s and `_chase_text`'s words are now only shown (F4's meta
   line, F1's strips, F5's rate cells), so their quote and `:g` send nothing. The effect ids stay
-  open.
+  open: **Phase 18**, step 4. Fixed there.
 - `commands.flash`, `undo` and `redo` have no caller. `flash` lost its own when Phase 9's strips
   began sending `button N B`; `undo` and `redo` never had one, since `undo` is typed. The contract
-  test still runs all three. Found on 2026-11-11.
+  test still runs all three. Found on 2026-11-11. **Not planned**: dead code, left until the user
+  says to remove it or to give `undo` and `redo` a key.
 - Every rename, every `number M`, `fixture N location {…}`, a plain `delete` of something unused
   and `cuelist N sequence` reply with a path too: the report's side findings list them all. Found
-  on 2026-11-11.
+  on 2026-11-11. **Phase 19**.
 - F6's `[replace]` and `[remove]` send `record preset … replace|remove` and ask nothing, where
   F4's and F3's ask first, as §1's rule says. The presets plan built them before the rule, and
   Phase 6 brought only F6's `[delete]` under it. Found on 2026-11-11. **Phase 17**, step 3. Fixed
   there: both ask first.
 - `fixture N mode <the mode it runs>` goes through and spends an undo step that changes nothing.
-  F3's lit chip sends nothing, so only the prompt meets it. Found on 2026-11-11.
+  F3's lit chip sends nothing, so only the prompt meets it. Found on 2026-11-11. **Phase 18**,
+  step 3. Fixed there, for a profile line that changes nothing too.
 - On a show with several speed masters, F4's toggle on a list that was never a chase sends
   `cuelist N chase bpm x 1`, and busk refuses it (`several speed masters: name one`); the list
   stays a sequence, and `[chase…]` names the master. Phase 17 kept that line, as its step 1 said.
   Naming the show's first speed master would make the toggle work, but it picks one for the
-  operator. Found on 2026-11-11.
+  operator. Found on 2026-11-11. **Not planned**: the refusal is in words, and `[chase…]` works.
+  If it comes back, the toggle could open `[chase…]` there in place of sending.
 - `[chase…]`'s form starts its crossfade field with `:g` (`ChaseDialog`, `f"{crossfade:g}"`), so
   a crossfade of `0.1234567` goes back as `0.123457` if the operator takes the form as it opened.
-  Its rate and multiplier start through `commands.exact`. Found on 2026-11-11.
+  Its rate and multiplier start through `commands.exact`. Found on 2026-11-11. **Phase 18**, step
+  5. Fixed there.
 
 ## 8. Questions
 
@@ -1333,3 +1659,18 @@ Left out because the five places do not name them. Say if any should join a phas
    - (c) Keep the pre-fills, and drop Phase 15.
 
    ANSWER: (a), the recommended one (the user, 2026-11-10). Built in Phase 15.
+6. **How busk groups a drag into one undo step** (Phase 20). An F2 drag sends about ten `set`
+   lines a second, each an undo step.
+   - (a) `undo group "<label>"` and `undo group end`, as engine-gaps.md's GAP-06 has it, kept to
+     programmer steps. A show step, `undo` or 2 s with no step closes it. Other lines sent during
+     the group, from the web remote or a MIDI surface, join it. **Recommended:** it is explicit,
+     the TUI says where a gesture starts and ends, and a typed line never merges by surprise.
+   - (b) busk merges a `set` of one attribute on the same selection into the step before, within
+     1 s. There are no new lines, but two quick lines typed at the prompt merge too.
+7. **What F4 shows of the other families** (Phase 23). The cue table has intensity and colour
+   columns only, as the spec's §8.4 says, and narrow screens already drop columns.
+   - (a) One more column, `also`, naming the other families and how many entries each has
+     (`position 2, beam 1`), dropped first when narrow. **Recommended:** it is small, and shows
+     that a cue is not empty.
+   - (b) A panel under the table listing every entry of the chosen cue, with values.
+   - (c) Leave F4 as the spec says, and drop Phase 23.

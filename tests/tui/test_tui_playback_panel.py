@@ -443,6 +443,86 @@ def test_the_arrows_move_the_panel() -> None:
     drive(app, body, size=SIZE)
 
 
+def twelve(slots: tuple[int | None, ...] = tuple(range(1, 13))) -> ShowModel:
+    """A page of twelve slots, P1 to P12 in order unless ``slots`` says."""
+    return club(
+        pages=(PageInfo(1, "Main", slots),),
+        playbacks=tuple(PlaybackInfo(n, f"P{n}", n, None, ("go",)) for n in range(1, 13)),
+    )
+
+
+def twelve_live() -> Any:
+    return live(playbacks=tuple(playback(n, f"P{n}") for n in range(1, 13)))
+
+
+def test_in_edit_mode_the_arrows_reach_every_slot_and_out_of_it_the_first_faders() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge, faders=8)
+
+    async def arrow(pilot: Pilot[int], key: str) -> int:
+        await pilot.press(key)
+        await settle(pilot, app)
+        return app.view.playback
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events += [ShowChanged(twelve()), LiveChanged(twelve_live())]
+        await settle(pilot, app)
+        assert app.view.playback == 1
+        assert await arrow(pilot, "left") == 8  # wraps to the last of the eight
+        assert await arrow(pilot, "right") == 1
+        panel = await open_editor(pilot, app)
+        assert await arrow(pilot, "left") == 12  # wraps to the page's last
+        assert panel.chosen() == twelve().playback(12)
+        assert tile_of(app, 12).has_class("-chosen")
+        assert await arrow(pilot, "left") == 11
+        assert await arrow(pilot, "right") == 12
+        assert await arrow(pilot, "right") == 1
+        await press(pilot, app, panel.done)
+        assert await arrow(pilot, "left") == 8
+
+    drive(app, body, size=SIZE)
+
+
+def test_in_edit_mode_a_change_of_slots_keeps_a_selection_past_faders() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge, faders=8)
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events += [ShowChanged(twelve()), LiveChanged(twelve_live())]
+        await open_editor(pilot, app, 10)
+        assert app.view.playback == 10
+        emptied = (1, 2, None, *range(4, 13))  # slot 3 cleared
+        bridge.events.append(ShowChanged(twelve(emptied)))
+        await settle(pilot, app)
+        assert app.view.playback == 10
+        assert tile_of(app, 10).has_class("-chosen")
+        moved = (*range(1, 10), None, 10, 11)  # P10 to slot 11, P12 off the page
+        bridge.events.append(ShowChanged(twelve(moved)))
+        await settle(pilot, app)
+        assert app.view.playback == 10
+        bridge.events.append(ShowChanged(twelve((*range(1, 10), None, 11, 12))))
+        await settle(pilot, app)
+        assert app.view.playback == 11  # P10 is gone: the playback in its slot
+
+    drive(app, body, size=SIZE)
+
+
+def test_leaving_edit_mode_past_faders_moves_the_selection_as_a_change_of_slots_does() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge, faders=8)
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events += [ShowChanged(twelve()), LiveChanged(twelve_live())]
+        panel = await open_editor(pilot, app, 10)
+        await press(pilot, app, panel.done)
+        assert app.view.playback == 1  # slot 10 is past the eight: the first
+        await open_editor(pilot, app, 5)
+        await press(pilot, app, panel.done)
+        assert app.view.playback == 5  # within the eight: it stays
+
+    drive(app, body, size=SIZE)
+
+
 def test_the_tiles_stay_for_a_setting_and_go_for_a_name() -> None:
     bridge = FakeBridge()
     app = make_app(bridge)

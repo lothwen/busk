@@ -15,7 +15,8 @@ panel and new fixture form, F8's strips and place) and closed what busk lacked (
 From 2026-11-08, [the pending plan](../../plans/tui-pending-plan.md) tracks what is left, phase by
 phase. Its Phase 16 audited every row on 2026-11-11 at `f851165`: each busk line was run again on
 `OfflineShow` with the club show, and each control was found where its row says. Its Phase 17
-fixed the three TUI bugs the audit found, the same day.
+fixed the three TUI bugs the audit found, the same day, and its Phase 18 the small bugs found
+since (refusals in words, F5's effect ids, `[chase…]`'s crossfade, F1's slots in edit mode).
 
 ## How to read it
 
@@ -239,9 +240,8 @@ was seen and is in no phase.
   F7's `[unpark all]` ask first (`RunLine.ask`).
 - **Found in Phase 17** (2026-11-11), and not fixed: on a show with several speed masters, F4's
   toggle on a list that was never a chase sends `cuelist N chase bpm x 1`, and busk refuses it
-  (`several speed masters: name one`). `[chase…]` names the master. And `[chase…]`'s form starts
-  its crossfade field at six digits (`:g`), so a crossfade of `0.1234567` goes back as `0.123457`
-  if it is left as it is; its rate and multiplier keep every digit.
+  (`several speed masters: name one`). `[chase…]` names the master. (`[chase…]`'s crossfade field,
+  found then too, keeps every digit since Phase 18.)
 - Many lines that work still reply with a document path, and the controls put those replies in the
   log: renaming a fixture, universe, group, preset, cue, cue list, playback or page; every `number
   M`; `fixture N location {…}`; a plain `delete` (`deleted fixtures[7]`, `deleted

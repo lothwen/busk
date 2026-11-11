@@ -10,7 +10,8 @@ The playbacks are the slots of the engine's current page, at most
 ``faders`` of them, or, in a show with no pages, the playbacks by number.
 The selected playback (Space, ``[ ]``, ``P1`` in the prompt) is one of
 them: ← → step through them, and when the page changes, the selection
-moves to the playback in the same slot.
+moves to the playback in the same slot. In edit mode they are every slot of
+the page, as the grid shows them.
 
 ``[edit]`` puts a grid of the page's slots and the PLAYBACK panel in place of
 the layout, whichever it is (:mod:`busk_tui.widgets.playback_panel`); ``[done]``
@@ -180,6 +181,15 @@ class BuskPage(Page):
             super().__init__()
             self.layout: Layout = layout
 
+    class EditingChanged(Message):
+        """Edit mode began or ended. The app's ← → and the selection that
+        follows a change of slots use every slot of the page while it lasts,
+        as the grid shows them, and the first ``faders`` again after."""
+
+        def __init__(self, editing: bool) -> None:
+            super().__init__()
+            self.editing = editing
+
     def __init__(self, number: int, title: str) -> None:
         super().__init__(number, title)
         self.header = BuskHeader()
@@ -256,6 +266,7 @@ class BuskPage(Page):
         else:
             self.edit.change(label="edit", intent="neutral", reverse=False)
         self.post_message(Page.WatchesChanged(self))
+        self.post_message(self.EditingChanged(on))
         if self.view is not None:
             self.update_view(self.view, ALL_PARTS)
 

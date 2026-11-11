@@ -244,15 +244,15 @@ def highlight(on: bool) -> Line:
 
 
 def effect_stop(effect: str) -> Line:
-    return Line(f"effect stop {effect}")
+    return Line(f"effect stop {word(effect)}")
 
 
 def effect_run(effect: str) -> Line:
-    return Line(f"effect run {effect}")
+    return Line(f"effect run {word(effect)}")
 
 
 def effect_remove(effect: str) -> Line:
-    return Line(f"effect remove {effect}")
+    return Line(f"effect remove {word(effect)}")
 
 
 def effect_add(template: str) -> Line:

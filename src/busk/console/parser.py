@@ -256,7 +256,9 @@ cannot read, or one a ``float`` holds only as ``inf``.
 Changing a fixture's mode and profile (GAP-26). ``fixture N mode <mode>`` takes
 a mode of the fixture's profile, by name or id, in any case, as ``fixture add``
 does. ``fixture N profile "<profile>" mode <mode>`` finds the profile as
-``fixture add`` does, embedding a library profile first, in one undo step. Both
+``fixture add`` does, embedding a library profile first, in one undo step. A
+line that would change nothing, the mode the fixture runs or its profile at
+the same revision and mode, is refused, and spends no undo step. Both
 leave the rest to the validator, which refuses a footprint past channel 512 or
 a target on an element the new mode lacks, and warns of an overlap. What the
 new profile cannot do is kept and does nothing, as a preset's pan on a par.
@@ -770,6 +772,18 @@ class _Parser:
             raise ParseError(f"expected {what}, got {token.text!r}")
         return _numeric(parts[0]), _numeric(parts[-1])
 
+    def seconds(self, what: str, top: float | None = None) -> float:
+        """A time in seconds, read as :meth:`pair` reads each of its own: no
+        sign and no ``%``; at most ``top`` if given (a Bézier point, which
+        is read the same way)."""
+        token = self.take(what)
+        if token.quoted or _SECONDS.fullmatch(token.text) is None:
+            raise ParseError(f"expected {what}, got {token.text!r}")
+        value = _numeric(token.text)
+        if top is not None and value > top:
+            raise ParseError(f"expected {what}, got {token.text!r}")
+        return value
+
     def curve(self) -> str | dict[str, Any] | None:
         """An optional fade curve: a name, or ``bezier x1 y1 x2 y2``."""
         token = self.peek()
@@ -778,7 +792,8 @@ class _Parser:
             return None
         if token.lower == "bezier":
             self.k += 1
-            return {"bezier": [self.number("a Bézier control value") for _ in range(4)]}
+            what = "a Bézier control value from 0 to 1"
+            return {"bezier": [self.seconds(what, 1) for _ in range(4)]}
         name = _CURVES.get(token.lower)
         if name is None or token.quoted:
             names = ", ".join(_CURVES.values())
@@ -1134,7 +1149,7 @@ class _Parser:
         return self.submit({"type": "HIGHLIGHT", "on": self.expect("on", "off") == "on"})
 
     def _cmd_fade(self) -> Action:
-        return self.submit({"type": "PROGRAMMER_FADE", "time": self.number("a time in seconds")})
+        return self.submit({"type": "PROGRAMMER_FADE", "time": self.seconds("a time in seconds")})
 
     def _cmd_programmer(self) -> Action:
         self.done()
@@ -1235,7 +1250,7 @@ class _Parser:
         if option in ("groups", "blocks", "wings"):
             return self.integer(f"a number of {option}")
         if option == "fadein":
-            return self.number("a fade-in time in seconds")
+            return self.seconds("a fade-in time in seconds")
         if option in ("sizemaster", "speedmaster"):
             return self.named_master(option.removesuffix("master"))
         return option  # a direction
@@ -1624,6 +1639,8 @@ class _Parser:
         name = self.take("a mode name", *(_word(m["name"]) for m in profile["modes"])).text
         self.done()
         mode = _mode(profile, name)
+        if mode["id"] == fixture["modeId"]:
+            raise ParseError(f"fixture {fixture['number']} already runs {mode['name']}")
         _patch_fits(fixture, mode)
         path = ["fixtures", {"id": fixture["id"]}, "modeId"]
         return Submit(
@@ -1642,6 +1659,11 @@ class _Parser:
         self.done()
         profile, notes, embed = self._profile(profile_name)
         mode = _mode(profile, mode_name)
+        kept = (fixture["profileId"], fixture["profileRevision"], fixture["modeId"])
+        if (profile["id"], profile["revision"], mode["id"]) == kept:
+            raise ParseError(
+                f"fixture {fixture['number']} already runs {profile['name']}, {mode['name']}"
+            )
         _patch_fits(fixture, mode)
         path = ["fixtures", {"id": fixture["id"]}]
         commands: list[dict[str, Any]] = []
@@ -1776,6 +1798,10 @@ class _Parser:
                     f"expected an Art-Net port address as net.sub.universe, got {token.text!r}"
                 )
             net, sub, uni = (int(part) for part in parts)
+            parts_and_tops = (("net", net, 127), ("sub-net", sub, 15), ("universe", uni, 15))
+            for what, value, top in parts_and_tops:
+                if value > top:
+                    raise ParseError(f"expected an Art-Net {what} from 0 to {top}, got {value}")
             route["portAddress"] = {"net": net, "subNet": sub, "universe": uni}
             fallback = {"kind": "broadcast", "iface": self.ctx.iface}
         where = self.keyword("unicast", "multicast", "broadcast")
@@ -2343,8 +2369,8 @@ class _Parser:
         if verb == "time":
             family = self.keyword(*_FAMILIES)
             if family is not None:
-                timing: dict[str, Any] = {"fade": self.number("a fade time")}
-                timing["delay"] = self.number("a delay") if self.keyword("delay") else 0
+                timing: dict[str, Any] = {"fade": self.seconds("a fade time")}
+                timing["delay"] = self.seconds("a delay") if self.keyword("delay") else 0
                 if (curve := self.curve()) is not None:
                     timing["curve"] = curve
                 families = {**cue["timing"].get("perFamily", {}), family: timing}
@@ -2368,7 +2394,7 @@ class _Parser:
             return self.submit({"type": "SET", "path": [*path, "releases"], "value": releases})
         trigger: dict[str, Any] = {"kind": verb}
         if verb != "go":
-            trigger["delay"] = self.number("a delay")
+            trigger["delay"] = self.seconds("a delay")
         return self.submit({"type": "SET", "path": [*path, "trigger"], "value": trigger})
 
     def _attributes(self) -> list[str] | str:
@@ -2593,7 +2619,7 @@ class _Parser:
             return self.submit(self._release_all())
         command: dict[str, Any] = {"type": "RELEASE_PLAYBACK", "playbackId": self.playback_id()}
         if not self.ending(need="a time in seconds"):  # the playback's releaseTime otherwise
-            command["time"] = self.number("a time in seconds")
+            command["time"] = self.seconds("a time in seconds")
         return self.submit(command)
 
     def _cmd_fader(self) -> Action:
@@ -2704,7 +2730,7 @@ class _Parser:
         if token is None:
             self.needs.append("a time in seconds")
         elif not token.quoted and _NUMBER.fullmatch(token.text):
-            command["time"] = self.number("a time in seconds")
+            command["time"] = self.seconds("a time in seconds")
         return command
 
     def _cmd_output(self) -> Action:

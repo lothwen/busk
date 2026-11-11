@@ -782,10 +782,45 @@ def too_long(template: str) -> Any:
     return pytest.param(template.format(n=LONG), error, id=template)
 
 
+SECONDS = (
+    ("cue 1/1 time intensity {t}", "a fade time"),
+    ("cue 1/1 time intensity 1 delay {t}", "a delay"),
+    ("cue 1/1 follow {t}", "a delay"),
+    ("cue 1/1 wait {t}", "a delay"),
+    ("fade {t}", "a time in seconds"),
+    ("release 1 {t}", "a time in seconds"),
+    ("release all {t}", "a time in seconds"),
+    ('effect add "Pulse" fadein {t}', "a fade-in time in seconds"),
+)
+"""Lines that read seconds as the cue's own times are read: no sign, no %."""
+BEZIER = "a Bézier control value from 0 to 1"
+
+
+def not_seconds() -> Any:
+    """Rows of the test below: a %, a sign or a minus zero, for each line."""
+    for template, what in SECONDS:
+        for text in ("50%", "-1", "-0", "+2"):
+            line = template.format(t=text)
+            yield pytest.param(line, f"expected {what}, got {text!r}", id=line)
+
+
 @pytest.mark.parametrize(
     ("line", "error"),
     [
         *(too_long(template) for template in TOO_LONG),
+        *not_seconds(),
+        ("cue 1/1 time 2 bezier -0.5 0 1 1", f"expected {BEZIER}, got '-0.5'"),
+        ("cue 1/1 time 2 bezier 0 0 2 1", f"expected {BEZIER}, got '2'"),
+        ("cue 1/1 time 2 bezier 0 0 1 1.0001", f"expected {BEZIER}, got '1.0001'"),
+        ("cue 1/1 time 2 bezier 0 50% 1 1", f"expected {BEZIER}, got '50%'"),
+        ("cue 1/1 time intensity 2 bezier 0 -0 1 1", f"expected {BEZIER}, got '-0'"),
+        ("route add 1 artnet 128.0.0", "expected an Art-Net net from 0 to 127, got 128"),
+        ("route add 1 artnet 0.16.0", "expected an Art-Net sub-net from 0 to 15, got 16"),
+        ("route add 1 artnet 0.0.16", "expected an Art-Net universe from 0 to 15, got 16"),
+        ("route add 1 artnet 200.99.99", "expected an Art-Net net from 0 to 127, got 200"),
+        ("route r1 change 1 artnet 128.0.0", "expected an Art-Net net from 0 to 127, got 128"),
+        ("route r1 change 1 artnet 0.16.0", "expected an Art-Net sub-net from 0 to 15, got 16"),
+        ("route r1 change 1 artnet 0.0.16", "expected an Art-Net universe from 0 to 15, got 16"),
         ('rename fixture 101 "back\\slash"', "bad escape in a quote at column 25"),
         ('set "\\q"', "bad escape in a quote at column 6"),
         ('rename fixture 101 "tab\there"', "control character in a quote at column 24"),
@@ -914,6 +949,21 @@ def test_a_cue_takes_its_number_as_typed_or_in_quotes() -> None:
         "route add 1 dmxusb enttecPro /dev/ttyUSB0 hz 40",
         "route add 1 sacn 2",
         "route add 1 sacn 63999",
+        "route add 1 artnet 0.0.0",
+        "route add 1 artnet 127.15.15",
+        "route r1 change 1 artnet 0.0.0",
+        "route r1 change 1 artnet 127.15.15",
+        "cue 1/1 time intensity 0 delay 0",
+        "cue 1/1 time intensity 2.5 delay .5",
+        "cue 1/1 follow 0",
+        "cue 1/1 wait 1.",
+        "fade 0",
+        "fade 2.5",
+        "release 1 0",
+        "release all 2",
+        "cue 1/1 time 2 bezier 0 0 1 1",
+        "cue 1/1 time 2 bezier 1 0.5 .25 0",
+        "cue 1/1 time intensity 1 bezier 0 1 1 0",
         "group 1 number 1",  # its own number: nothing to refuse
         "group 1 number 7",
         "group 1 number 0",  # only fixtures and universes start at 1

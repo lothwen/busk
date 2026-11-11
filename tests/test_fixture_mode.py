@@ -90,7 +90,10 @@ def elements(offline: OfflineShow) -> list[tuple[int, int]]:
 )
 def test_a_mode_is_taken_by_name_or_id_in_any_case(word: str, ident: str) -> None:
     offline = OfflineShow(rig())
-    run(offline, "fixture 3 patch 1.100", f"fixture 1 mode {word}")
+    run(offline, "fixture 3 patch 1.100")
+    if ident == "mode-1":  # the mode it runs is refused
+        run(offline, "fixture 1 mode Cells")
+    run(offline, f"fixture 1 mode {word}")
     assert offline.show["fixtures"][0]["modeId"] == ident
 
 
@@ -110,6 +113,13 @@ def test_a_mode_is_one_undo_step_and_the_output_follows() -> None:
     assert run(offline, "undo") == ["undid: fixture 3 runs Cells"]
     assert offline.show == rig()
     assert elements(offline) == [(1, 1), (2, 1), (3, 1)]
+
+
+@pytest.mark.parametrize("word", ['"One Channel"', '"one channel"', "MODE-1"])
+def test_the_mode_a_fixture_runs_is_refused_and_spends_no_undo_step(word: str) -> None:
+    offline = OfflineShow(rig())
+    refused(offline, f"fixture 1 mode {word}", "error: fixture 1 already runs One Channel")
+    assert offline.execute("undo").text == "error: nothing to undo"
 
 
 def test_the_new_modes_channels_reach_the_frame() -> None:
@@ -238,6 +248,39 @@ def test_a_fixture_records_the_revision_of_the_profile_it_takes(tmp_path: Path) 
     assert reply.text == "fixture 201 runs Two Mode Par, 20ch"  # no word of a drift
     par = next(f for f in offline.show["fixtures"] if f["number"] == 201)
     assert par["profileRevision"] == "7"
+
+
+def test_the_profile_and_mode_a_fixture_runs_are_refused() -> None:
+    offline = OfflineShow(rig())
+    line = 'fixture 1 profile "Two Mode Par" mode "One Channel"'
+    refused(offline, line, "error: fixture 1 already runs Two Mode Par, One Channel")
+    assert offline.execute("undo").text == "error: nothing to undo"
+    assert run(offline, 'fixture 1 profile "Two Mode Par" mode Cells') == [
+        "fixture 1 runs Two Mode Par, Cells"
+    ]
+
+
+def test_the_same_profile_is_taken_when_the_fixture_is_behind_its_revision() -> None:
+    """A fixture patched with an older revision than the show embeds (a show
+    file can hold one, with a warning): the line brings it to the show's."""
+    doc = show(
+        [two_modes(revision="2")],
+        [fixture("fx-1", 1, "prof-two", 1, mode_id="mode-1")],  # revision "1"
+    )
+    offline = OfflineShow(show_of(doc))
+    line = 'fixture 1 profile "Two Mode Par" mode "One Channel"'
+    assert run(offline, line) == ["fixture 1 runs Two Mode Par, One Channel"]
+    assert offline.show["fixtures"][0]["profileRevision"] == "2"
+    refused(offline, line, "already runs")
+
+
+def test_the_same_profile_is_refused_when_only_the_library_is_newer(tmp_path: Path) -> None:
+    """The line takes the show's copy (``profile update`` brings the
+    library's), so it would change nothing."""
+    (tmp_path / "two.json").write_text(json.dumps(two_modes(revision="2")))
+    offline = OfflineShow(rig(), library=ProfileLibrary([tmp_path]))
+    line = 'fixture 1 profile "Two Mode Par" mode "One Channel"'
+    refused(offline, line, "error: fixture 1 already runs Two Mode Par, One Channel")
 
 
 def test_a_profile_past_channel_512_is_refused_and_embeds_nothing() -> None:

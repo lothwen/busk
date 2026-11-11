@@ -252,7 +252,9 @@ in hand.
 **The grid** has a tile for every slot of the page F1 is on, past `--faders` too, and one empty tile
 past the last, since a page has only the slots that were ever filled, and a new one has none. A show
 with no pages has its playbacks by number. PgUp and PgDn change the page, as they do outside edit
-mode.
+mode. ← → reach every playback of the grid, and a change of the page's slots keeps a selection past
+`--faders`. `[done]` gives back the first `--faders` slots, so a selection past them moves to the
+first playback, as it does when its slot goes.
 
 **The pages** are the tabs over the grid. A click goes to that page (`page 2`), as PgUp does, for the
 surfaces too. `[+ page…]` adds one (`page add 3 "Encore"`), and F1 stays on the page it was on. The

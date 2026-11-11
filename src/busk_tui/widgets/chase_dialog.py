@@ -171,7 +171,7 @@ class ChaseDialog(RateDialog):
         super().__init__(f"CHASE · cuelist {cue_list.number} {cue_list.name}", rate, masters)
         self.number = cue_list.number
         self.direction = PickRow(DIRECTIONS, None if rate is None else rate.direction)
-        self.crossfade = Input(f"{cue_list.crossfade:g}", compact=True)
+        self.crossfade = Input(commands.exact(cue_list.crossfade), compact=True)
 
     def more(self) -> ComposeResult:
         yield row("direction", self.direction)

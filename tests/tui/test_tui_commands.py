@@ -83,6 +83,17 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
     "effect stop": (commands.effect_stop("fx5"), "effect stop fx5", False),
     "effect run": (commands.effect_run("fx5"), "effect run fx5", False),
     "effect remove": (commands.effect_remove("fx5"), "effect remove fx5", False),
+    "effect stop, an id of two words": (
+        commands.effect_stop("my fx"),
+        'effect stop "my fx"',
+        False,
+    ),
+    "effect run, an id of two words": (commands.effect_run("my fx"), 'effect run "my fx"', False),
+    "effect remove, an id of two words": (
+        commands.effect_remove("my fx"),
+        'effect remove "my fx"',
+        False,
+    ),
     "effect add": (commands.effect_add("Chase"), 'effect add "Chase"', False),
     "effect replace": (
         commands.effect_replace("Circle", "fx5", ["hz 2", "reverse", "size 15"]),
@@ -649,16 +660,27 @@ def test_a_rate_in_words() -> None:
     assert commands.effect_rate(None, "Speed 2", "2") == 'bpm "Speed 2" x 2'
 
 
+SAME_MODE = "error: fixture 101 already runs 16ch"
+"""busk's reply to the table's ``fixture mode``: the club's profiles have a
+mode each, so the line names the one 101 runs. busk reads it and finds the
+mode, then refuses a line that changes nothing."""
+
+
 def test_busk_accepts_every_builders_line(show: busk.OfflineShow) -> None:
     """With the heads selected, holding a colour (for its components and
-    ``by``), and an effect to stop; in the table's order (a preset is
-    recorded, merged into, replaced, removed from, renamed, renumbered and
-    deleted, and a universe and its rig likewise), ``sel none`` last."""
+    ``by``), and two effects to stop, one with an id of two words; in the
+    table's order (a preset is recorded, merged into, replaced, removed from,
+    renamed, renumbered and deleted, and a universe and its rig likewise),
+    ``sel none`` last."""
     assert show.execute("sel group 1").ok  # something to undo and redo, an effect to stop
     assert show.execute('effect add "Circle" id fx5').ok
+    assert show.execute('effect add "Circle" id "my fx"').ok
     assert show.execute("preset color 2").ok
     for name, (line, _, _) in sorted(BUILDERS.items(), key=lambda item: item[0] == "sel none"):
         reply = show.execute(line.text)
+        if name == "fixture mode":
+            assert reply.text == SAME_MODE
+            continue
         assert reply.ok, (name, reply.text)
     assert 7 not in [universe["number"] for universe in show.show["universes"]]
     assert show.show["output"]["routes"] == []  # the club's, and the ones on universe 7
@@ -957,17 +979,18 @@ def order(word: str) -> int:
     return len(CURVES) if word == "delay" else CURVES.index(word)
 
 
-@pytest.mark.parametrize("text", ["0", "2", "0.125", ".5", "2.", "02", "-1", "1e3", "50%", "", "x"])
+@pytest.mark.parametrize(
+    "text", ["0", "2", "0.125", ".5", "2.", "02", "-1", "-0", "+2", "1e3", "50%", "", "x"]
+)
 def test_a_time_form_and_busk_agree_on_seconds(show: busk.OfflineShow, text: str) -> None:
-    """The forms take what ``cue L/C time`` takes for the cue's own times.
-    A family's fade and a trigger's delay take more in busk (``50%``), which
-    the forms refuse: what they pass, busk takes."""
+    """The forms take what busk takes for each time of a cue: its own, a
+    family's fade and delay, and a trigger's delay."""
     ok = check_seconds(text) is None
     assert show.execute(f"cue 9/1 time {text}").ok is ok, text
     assert show.execute(f"cue 9/1 time {text}/{text} delay {text}/{text}").ok is ok, text
-    if ok:
-        assert show.execute(f"cue 9/1 time position {text} delay {text}").ok
-        assert show.execute(f"cue 9/1 follow {text}").ok
+    assert show.execute(f"cue 9/1 time position {text} delay {text}").ok is ok, text
+    assert show.execute(f"cue 9/1 follow {text}").ok is ok, text
+    assert show.execute(f"cue 9/1 wait {text}").ok is ok, text
 
 
 @pytest.mark.parametrize(
@@ -977,6 +1000,10 @@ def test_a_time_form_and_busk_agree_on_seconds(show: busk.OfflineShow, text: str
         ("0 0 1 1", True),
         (".5 0 1. 1", True),
         ("0 0 1 1.5", False),
+        ("-0 0 1 1", False),
+        ("0 -0.5 1 1", False),
+        ("0 0 1 +1", False),
+        ("0 0 1 50%", False),
         ("0 0 1", False),
         ("0 0 1 1 1", False),
         ("a b c d", False),
@@ -985,9 +1012,10 @@ def test_a_time_form_and_busk_agree_on_seconds(show: busk.OfflineShow, text: str
 def test_the_curve_form_and_busk_agree_on_bezier_points(
     show: busk.OfflineShow, text: str, ok: bool
 ) -> None:
-    """busk also takes a sign (``-0``), which the form refuses."""
+    """A sign and a ``%`` too, in a cue's own curve and a family's."""
     assert (bezier_points(text) is not None) is ok
     assert show.execute(f"cue 9/1 time 1 bezier {text}").ok is ok, text
+    assert show.execute(f"cue 9/1 time position 1 bezier {text}").ok is ok, text
 
 
 def test_a_pair_of_times_keeps_every_digit_and_is_one_when_they_are_equal() -> None:

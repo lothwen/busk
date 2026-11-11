@@ -1648,6 +1648,40 @@ def test_the_chase_form_names_a_master_when_the_show_has_several() -> None:
     drive(app, body)
 
 
+@pytest.mark.parametrize("crossfade", ["0.1234567", "0.125", "1", "0.0000001"])
+def test_the_chase_form_taken_as_it_opened_keeps_what_busk_stored(
+    club_path: Path, crossfade: str
+) -> None:
+    """On busk itself: the form, opened on a chase and taken, sends the
+    list's ``chase`` back as it was, every digit of the crossfade kept."""
+    document, _ = busk.load_show(club_path)
+    show = busk.OfflineShow(document)
+    assert show.execute(f"cuelist 10 chase hz 1.23456789 bounce crossfade {crossfade}").ok
+
+    def stored() -> Any:
+        return copy.deepcopy(next(c for c in show.show["cueLists"] if c["number"] == 10))
+
+    before = stored()
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events += [ShowChanged(busk_bridge.show_model(show.show)), LiveChanged(live())]
+        await settle(pilot, app)
+        page(app).choose_list(10)
+        await settle(pilot, app)
+        dialog = await open_chase(pilot, app, bridge)
+        assert dialog.crossfade.value == crossfade
+        await pilot.press("enter")
+        await pilot.pause()
+
+    drive(app, body)
+    (line,) = bridge.lines()
+    assert line.endswith(f" crossfade {crossfade}")
+    assert show.execute(line).ok, line
+    assert stored() == before
+
+
 def test_the_chase_form_offers_hz_alone_without_a_speed_master() -> None:
     bridge = FakeBridge()
     app = on_f4(bridge)

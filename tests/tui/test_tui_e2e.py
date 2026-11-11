@@ -1590,6 +1590,45 @@ def test_f4_and_f5_run_cues_and_effects_on_the_real_engine(club_path: Path, tmp_
         bridge.stop()
 
 
+def test_f5_stops_runs_and_removes_an_effect_of_two_words_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """An id of two words, which only ``id "my fx"`` makes: F5's state and ✕
+    send it in quotes, and busk takes each line."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=5), standalone=True)
+
+    def stopped() -> tuple[str, ...]:
+        return () if app.programmer is None else tuple(app.programmer.stopped)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.live is not None and app.view.show is not None)
+        await pilot.press(*"sel group 1", "enter")
+        await until(pilot, lambda: bool(app.programmer and app.programmer.selection))
+        await pilot.press(*'effect add "Circle" id "my fx"', "enter")
+        table = app.query_one(EffectTable)
+        await until(pilot, lambda: column(table, "owner")[-1:] == ["prog"])
+        row = len(table.rows) - 1
+        await click_cell(pilot, table, row, "state")
+        await until(pilot, lambda: stopped() == ("my fx",), timeout=1.0)
+        await until(pilot, lambda: column(table, "state")[row] == "[off]", timeout=1.0)
+        await click_cell(pilot, table, row, "state")
+        await until(pilot, lambda: stopped() == (), timeout=1.0)
+        await click_cell(pilot, table, row, "remove")
+        await until(pilot, lambda: not app.programmer or not app.programmer.effects, timeout=1.0)
+        log = app.query_one(LogView).entries
+        for line in ('effect stop "my fx"', 'effect run "my fx"', 'effect remove "my fx"'):
+            assert ("ui", line) in log
+        assert not [text for kind, text in log if kind == "error"]
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
 def test_f4_and_f6_build_and_delete_cues_and_lists_from_controls_on_the_real_engine(
     club_path: Path, tmp_path: Path
 ) -> None:
@@ -2380,6 +2419,54 @@ def test_f1_edits_a_playback_from_controls_on_the_real_engine(
 
     try:
         drive(app, body, size=(150, 70))
+    finally:
+        bridge.stop()
+
+
+def test_f1_follows_every_slot_in_edit_mode_past_faders_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """``--faders 8`` on Main, whose 13 slots hold P1 to P13: ← → reach slot 13
+    in edit mode and stop at 8 out of it, a change of slots keeps P10 chosen
+    in edit mode, and leaving edit mode on it moves the selection to P1."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(faders=8), standalone=True)
+
+    async def body(pilot: Pilot[int]) -> None:
+        async def arrow(key: str) -> int:
+            await pilot.press(key)
+            await pilot.pause()
+            return app.view.playback
+
+        await until(pilot, lambda: app.view.live is not None and app.view.show is not None)
+        await pilot.pause(0.1)
+        assert app.view.playback == 1
+        assert await arrow("left") == 8
+        assert await arrow("right") == 1
+        await pilot.click("#busk-edit")
+        await until(pilot, lambda: bool(app.query_one(PlaybackEditor).tiles))
+        assert await arrow("left") == 13
+        assert await arrow("left") == 12
+        assert await arrow("left") == 11
+        assert await arrow("left") == 10
+        await pilot.press(*"page 1 slot 3 clear", "enter")
+        await until(
+            pilot, lambda: app.view.show is not None and app.view.show.pages[0].slots[2] is None
+        )
+        await pilot.pause(0.1)
+        assert app.view.playback == 10
+        assert app.query_one(PlaybackPanel).chosen() == app.view.show.playback(10)
+        await pilot.click("#pp-done")
+        await pilot.pause(0.1)
+        assert app.view.playback == 1
+        assert await arrow("left") == 8
+        log = app.query_one(LogView).entries
+        assert not [text for kind, text in log if kind == "error"]
+
+    try:
+        drive(app, body)
     finally:
         bridge.stop()
 
