@@ -1998,6 +1998,78 @@ shape waits on Q8. The engine step comes first. Code: `src/busk/console/parser.p
    then recorded back with `replace` and nothing changed in between; list in the Done note what
    differs from the cue as it was (a spread per target, a group the cover finds otherwise, an
    entry equal to what a tracking list inherits).
+
+   **Done** (2026-11-11), under Q8 (a). A programmer command, `LOAD_CUE` (`cueListId`,
+   `cueNumber`, and `filter` as `RECORD_CUE` has it), in `commands/types.py` and
+   `commands/classes.py`, handled by `_load_cue` in `session/programmer.py`. Each entry the
+   filter keeps goes through `entry_sources`, which is `record.py`'s `_own_sources` moved there
+   and shared: `record.inherited` uses it as before. The line is `_cmd_load` in
+   `console/parser.py`, after `self.cue()`, with `options("only")`. On the club show: `loaded cue
+   9/1 "Intro": 8 values on 4 fixtures`, `loaded cue 9/4 "Chorus": 24 values on 7 fixtures, 1
+   effect`, `loaded cue 12/1 "Pulse": 1 effect`.
+   - **What comes:** the cue's own entries, a value per target, a later entry winning a slot; a
+     preset stays a reference; a target without the attribute, or without a value in a preset or
+     a per-target map, gets nothing, as the compiler drops it. The effects come as stored, ids,
+     group targets and settings included, and none is stopped, even one whose id the programmer
+     had stopped. A cue of a tracking list brings its own changes only (Q8 (a)).
+   - **The selection** is the values' targets in the programmer's target order, then the targets
+     the effects drive that are not among them.
+   - **It replaces** values, effects and stopped effects, in one step, and `undo` gives back the
+     programmer and the selection. Blind, highlight and the fade time stay. Every loaded slot
+     and effect is touched, as `set` touches it.
+   - **Refused in one line,** spending no step: a cue with nothing to load (`cue 30/1 has no
+     values or effects to load`, `… no position values …` under `only`), and what `self.cue()`
+     refuses (`no cue 1/9`, `expected a cue as L/C, e.g. 10/1`).
+   - **An entry's own timing** (only the generic edit sets one) does not come, and the reply ends
+     `; 1 entry's own timing is not loaded, and replace drops it`, counting the entries of the
+     families loaded.
+   - **A binding may load a cue,** since `LOAD_CUE` is a command: the validator checks its list
+     (an error) and its cue number (a warning, as a `GOTO`'s), and `delete cuelist N cascade`
+     takes such a binding with the list (`cascade._list_command`). The event log keeps the
+     command and replay runs it again: it reads only the show.
+   - Tab offers `cue` after `load`, `only` after the cue and the families after `only`; `busk
+     help` has the grammar line. Documented in `docs/console.md` (the Load row and "Editing a
+     cue's values"), both modules' docs, `docs/dev/internals.md`, the spec's §15.2 table, and
+     GAP-44's entry and Summary row in engine-gaps.md.
+
+   **The round trip.** Every cue of the club show (29) and of the TupperDMX show (8), loaded and
+   recorded back with `replace`, nothing changed in between, is the cue it was, byte for byte:
+   they hold group and target entries of literals and presets, and effects on groups, in the
+   order recording writes them. What differs elsewhere, each in a test:
+   - **a spread comes back as per-target values,** on the group (Appendix A's Verse: `pan` from
+     -20 to 20 becomes `{"fx-mh1:0": -20, "fx-mh2:0": 20}`);
+   - **entries come in recording's order,** attributes in the registry's (Verse's pan moves before
+     its colour);
+   - **a list of targets that is a group's members comes back as the group,** the cover, unless
+     `freeze`;
+   - **an own value equal to what a tracking list inherits goes,** and tracks (`recorded cue 1/2:
+     2 entries; 2 values tracked from cue 1/1`);
+   - **an entry's own timing goes.**
+
+   The compiled cue is the same in each but the last.
+
+   Tests: the new `tests/test_load_cue.py` (25: each kind of entry, a target without the
+   attribute, effects and a stopped id, the selection's order, `only`, a tracking list, the
+   programmer replaced and `undo`, blind, the stage, three refusals, an entry's timing, an edit
+   recorded back, the round trip on both shipped shows and the five differences, bindings and a
+   renumber's warning, a running `LiveShow`); rows in `test_console_parser.py` (three lines, eight
+   refusals) and `test_console_prompt.py` (five completions, the grammar line); a `LOAD_CUE`
+   binding in `test_cascade.py`'s list cascade; a load in `test_eventlog.py`'s replayed run; the
+   command count in `test_schema.py`. Mutations: five of `_load_cue` (no effect targets selected,
+   `only` ignored by values or by effects, no timing note, the selection kept) and the stopped
+   set kept each fail a test.
+
+   Which the user may veto:
+   - **A command, not only a line,** so a binding may load a cue; hence the validator's and the
+     cascade's cases.
+   - **A cue with nothing to load is refused,** where it could have cleared the programmer.
+   - **The selection is what came,** so a target of an entry that got no value (no slot) is not
+     selected, where `sel playback N` would select it.
+   - **The reply counts fixtures,** not elements: Pre's 28 values are `on 5 fixtures`.
+   - **Not in `tests/api_consumer.py`:** a typed consumer cannot write a `LOAD_CUE` literal, since
+     `busk` does not export `CueListId`, as for `RECORD_CUE` today.
+   - **Tab's word after `load cue`** is the shared `a cue list number, as L or L/C`, though only
+     `L/C` is taken, as for `rename cue` and `delete cue`.
 2. **F4's `[load]`** on the chosen cue, before `[merge]`: `load cue 9/3`. It asks the TUI's own
    question first while the programmer holds values or effects, since it replaces them (`Load cue
    9/3 "Pre" into the programmer? It replaces what the programmer holds.`). After it, the cue is
@@ -2007,8 +2079,66 @@ shape waits on Q8. The engine step comes first. Code: `src/busk/console/parser.p
    the programmer and the selection after; load, change one value, `[replace]`: the cue holds the
    change and the rest as before; the perf gate on F4.
 
+   **Done** (2026-11-11). In `pages/cues.py`: `[load]` in the `edit` row after `[record at…]` and
+   before `[merge]`, magenta, the spec's colour for programmer values and record actions;
+   `ask_load` sends `commands.load_cue` (`load cue 9/3`) at once on an empty programmer, and with
+   the TUI's question (`Load cue 9/3 "Pre" into the programmer?` and, on its second line, `It
+   replaces what the programmer holds.`) while it holds a value or an effect, a stopped one too.
+   On a cue that stores no value and no effect it is grey, with no click and no pane cursor. After
+   it the cue is edited as any look, and `[replace]` records it back. The builder is in the
+   contract table and in the test of what the cue lines do.
+
+   Tests: `test_tui_cues.py`: the strip's words and the pane cursor's stops (`[load]` between
+   `[release…]` and `[delete]`, and its `ConfirmDialog`); `[load]` at once on an empty programmer,
+   then asked with values, with an effect and with a stopped one (n sends nothing, y sends);
+   grey on Spare's cues, live on a cue of effects and a per-target value; 99 columns.
+   `test_tui_e2e.py`: on the club show, with 201 at 50 % in the programmer, `[load]` on 9/2 asks,
+   n, then y: the heads selected and 201's value gone; `set intensity 30%` typed and `[replace]`:
+   Verse's entries are as before but the intensity, 0.3; `undo` gives back 0.7. Mutations: the
+   question on values only, always asking, and never grey each fail a test.
+
+   Which the user may veto:
+   - **The question counts a stopped effect,** since busk replaces it too.
+   - **Grey only on a cue that stores nothing;** a cue whose values all reach no slot is live, and
+     busk refuses it in the log.
+   - **F4 stays where it is** after a load: the operator goes to F2, F3 or F6 to change the look.
+
 Docs: the guide's F4 (the steps of an edit: `[load]`, change, `[replace]`), the report's Cues row
 "Change its values", `docs/console.md`, §7's item, and `CHANGELOG.md`.
+
+**Done** (2026-11-11). The guide's F4: its first line, the screen's `edit` row, a `[load]` item and
+"Editing a cue's values". The report: its header, the Cues row "Change its values", "What busk is
+missing" (item 11), "What the TUI is missing", "In short" and the side finding on questions.
+`docs/console.md`, §7's item, §8's Q8, and `CHANGELOG.md` under Added.
+
+**Phase 25 checks** (2026-11-11), on top of `89c6ad2`. The whole suite: 6,475 passed and 1
+skipped, in 8:35 with `uv run pytest -n 6`. The run before failed twice: the public API's golden,
+which then took `LoadCueCmd` in the `Command` union, one line (`BUSK_REGOLDEN=1`), and F6's
+real-engine preset test, whose click on a new position tile did not land under load (Phase 22's
+notes call it flaky under `-n 6`); it then passed three times alone. `ruff check`, `ruff format
+--check`, `mypy src` and `mypy --strict tests/api_consumer.py` clean. The F4 tests, the contract
+table and the new real-engine test pass on Textual 8.2.0.
+
+The perf gate failed twice on F1 B, a page this phase did not touch (+0.262 and +0.252 core,
+against 0.25), with a `busk-tui` on the TupperDMX show running alongside, not started by this
+phase, its engine and console hosts taking about 0.3 core. A copy of the gate that prints every
+page instead of stopping at the first (made and deleted at once) gave each under 0.25: F1 B
++0.232, A +0.232, C +0.245, F2 +0.194 and +0.243, F3 +0.212, F4 +0.204, F5 +0.212, F6 +0.234.
+No overruns in any run. F4's change adds one button to a strip that is built anyway.
+
+A real `busk run club.show --threads --state-dir …`, the club script first, then lines piped in:
+`sel fixture 201`, `set intensity 50%`, `go 9`, `load cue 9/3` replied `loaded cue 9/3 "Pre": 28
+values on 5 fixtures` and `programmer` listed the bar's and the washes' values and none of 201;
+`set intensity by -50%` and `record cue 9/3 replace` (`recorded cue 9/3: 3 entries`); `load cue
+9/4 only color` brought 18 values and the rainbow; `load cue 12/1` the effect alone; `load cue 9/9`
+and `load cue 9/4 only position` were refused in one line each; with `blind on`, `load cue 9/2`;
+four `undo`s gave back 201 at 0.5. A real `busk-tui --state-dir …` (which runs `busk run`) on the
+club show, in a pty at 150 columns (layout B) and 99 (F4 stacked): `sel fixture 201` and `set
+intensity 50%` typed, F4, Song: `[load]` on 9/1 Intro asked (`Load cue 9/1 "Intro" into the
+programmer?` / `It replaces what the programmer holds.`), `n` logged `cancelled: load cue 9/1`,
+then `y` logged `loaded cue 9/1 "Intro": 8 values on 4 fixtures` and PROG showed 4; `set
+intensity 30%` typed and `[replace]` made the Intro's row 30 %; `undo` 60 % again. Every button
+shows at 99 columns, where on the Intro `[delete]` now wraps to a third row. No error in the log.
 
 ## 7. Seen, and not in the sources
 
@@ -2111,6 +2241,7 @@ Those marked **Not planned** are extras or matter less, and stay here.
 - F4 shows a cue's entries, but none is edited one by one: a cue's values change only by
   re-recording from the programmer, and no line loads a cue into the programmer to edit it. The
   user's question, 2026-11-11, after Phase 22. **Phase 25** (the user's word, 2026-11-11), Q8.
+  Done there: `load cue L/C [only <family>…]` (GAP-44) and F4's `[load]`.
 
 ## 8. Questions
 
@@ -2180,3 +2311,5 @@ Those marked **Not planned** are extras or matter less, and stay here.
    - (b) Its tracked state: what it shows on stage, the cues before it included, less its
      releases. `[replace]` on a tracking list still stores only the changes, but the programmer
      holds values the cue does not.
+
+   ANSWER: (a), the recommended one (the user, 2026-11-11). Built in Phase 25.

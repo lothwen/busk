@@ -440,7 +440,7 @@ def test_the_edits_act_on_the_chosen_cue() -> None:
         edits = app.query_one("#cue-edits", ButtonStrip)
         assert words(edits) == (
             "[time…] [delay…] [curve…] [go…] [follow…] [wait…] [rename…] [number…]"
-            " [copy…] [release…] [record at…] [merge] [replace] [remove] [delete]"
+            " [copy…] [release…] [record at…] [load] [merge] [replace] [remove] [delete]"
         )
         await click_label(pilot, edits, "go…")  # a whole line: Enter runs it
         assert app.prompt.value == "cue 9/2 go"
@@ -639,7 +639,7 @@ def test_the_pane_cursor_goes_to_cues_then_buttons_edits_and_lists() -> None:
             "delete cuelist 9 cascade",
             "[time…]", "[delay…]", "[curve…]", "cue 9/2 go",
             "[follow…]", "[wait…]", "[rename…]", "[number…]", "[copy…]", "[release…]",
-            "[delete]",
+            "[load]", "[delete]",
             "cuelist 9 Song", "cuelist 10 Chase", "cuelist 11 Loop", "cuelist 21 Spare",
             "[+ list…]",
         ]  # fmt: skip
@@ -647,7 +647,7 @@ def test_the_pane_cursor_goes_to_cues_then_buttons_edits_and_lists() -> None:
         assert app.cursor.active
         assert [s.line for s in bridge.sent] == ["goto 9 3"]
         assert plain(app.query_one("#cue-edit-label")) == "edit cue 9/3 Pre"
-        await pilot.press(*["down"] * 23, "enter")  # list 10: chosen, the cursor stays
+        await pilot.press(*["down"] * 24, "enter")  # list 10: chosen, the cursor stays
         await settle(pilot, app)
         assert app.cursor.active
         assert app.query_one(CueListTable).chosen == 1
@@ -763,6 +763,76 @@ def test_merge_runs_and_replace_and_remove_ask_first() -> None:
             await pilot.press("y")
             await pilot.pause()
             assert bridge.lines() == [line]
+
+    drive(app, body)
+
+
+def test_load_runs_at_once_and_asks_while_the_programmer_holds_something() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+    question = 'Load cue 9/2 "Verse" into the programmer?\nIt replaces what the programmer holds.'
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        edits = app.query_one("#cue-edits", ButtonStrip)
+        shown = {button.label.plain: button for button in edits.buttons}
+        assert not shown["[load]"].note  # an empty programmer: nothing else is live
+        assert shown["[load]"].label.style == colors.MAGENTA
+        await click_label(pilot, edits, "load")
+        await pilot.pause()
+        assert not isinstance(app.screen, ConfirmDialog)
+        assert [(s.line, s.origin) for s in bridge.sent] == [("load cue 9/2", "ui")]
+        for holding in (
+            held(),
+            held(values=(), effects=(EffectInfo("fx1", "Rainbow", WASHES),)),
+            held(
+                values=(),
+                effects=(EffectInfo("fx1", "Rainbow", WASHES),),
+                stopped=frozenset(("fx1",)),
+            ),  # a stopped effect goes too
+        ):
+            bridge.events.append(holding)
+            await settle(pilot, app)
+            bridge.sent.clear()
+            await click_label(pilot, edits, "load")
+            await pilot.pause()
+            dialog = app.screen
+            assert isinstance(dialog, ConfirmDialog)
+            assert dialog.question == question
+            await pilot.press("n")
+            await pilot.pause()
+            assert bridge.sent == []
+            assert ("info", "cancelled: load cue 9/2") in app.query_one(LogView).entries
+            await click_label(pilot, edits, "load")
+            await pilot.pause()
+            await pilot.press("y")
+            await pilot.pause()
+            assert bridge.lines() == ["load cue 9/2"]
+
+    drive(app, body)
+
+
+def test_load_is_grey_on_a_cue_that_stores_nothing() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        edits = app.query_one("#cue-edits", ButtonStrip)
+        on_cue(app, "4")  # effects and a value per target
+        await settle(pilot, app)
+        assert not {b.label.plain: b for b in edits.buttons}["[load]"].note
+        page(app).choose_list(21)  # Spare: its cues store nothing
+        await settle(pilot, app)
+        assert plain(app.query_one("#cue-edit-label")) == "edit cue 21/1 One"
+        button = {b.label.plain: b for b in edits.buttons}["[load]"]
+        assert button.note
+        assert button.label.style == colors.BORDER
+        assert "[load]" not in [i.line or i.label for i in app.current_page.items()]
+        await click_label(pilot, edits, "load")
+        assert bridge.sent == []
 
     drive(app, body)
 
@@ -2104,8 +2174,8 @@ def test_the_pane_cursor_reaches_each_control_and_takes_it() -> None:
         for label in (
             "cuelist 9 tracking false", "[chase…]", "[rename…]", "delete cuelist 9 cascade",
             "[time…]", "[delay…]", "[curve…]", "[follow…]", "[wait…]",
-            "[release…]", "[record at…]", "record cue 9/2 merge", "[replace]", "[remove]",
-            "[delete]", "[+ list…]",
+            "[release…]", "[record at…]", "[load]", "record cue 9/2 merge", "[replace]",
+            "[remove]", "[delete]", "[+ list…]",
         ):  # fmt: skip
             assert label in labels, label
         for label, which, dialog_type in (
@@ -2120,6 +2190,7 @@ def test_the_pane_cursor_reaches_each_control_and_takes_it() -> None:
             ("[follow…]", 0, TextDialog),
             ("[wait…]", 0, TextDialog),
             ("[chase…]", 0, ChaseDialog),
+            ("[load]", 0, ConfirmDialog),
             ("[replace]", 0, ConfirmDialog),
             ("[remove]", 0, ConfirmDialog),
             ("[delete]", 0, ConfirmDialog),
@@ -2154,7 +2225,9 @@ def test_at_99_columns_the_strips_wrap_and_every_button_shows() -> None:
         assert len(lines) >= 2
         assert all(line.cell_len <= edits.size.width for line in lines)
         shown = " ".join(line.plain for line in lines)
-        for label in ("[time…]", "[release…]", "[record at…]", "[merge]", "[replace]", "[remove]"):
+        for label in (
+            "[time…]", "[release…]", "[record at…]", "[load]", "[merge]", "[replace]", "[remove]",
+        ):  # fmt: skip
             assert label in shown, label
         await click_label(pilot, edits, "delete")  # on the row it wrapped to
         await pilot.pause()

@@ -45,12 +45,15 @@ list…]``, under CUELISTS, adds one and shows it.
 
 **The cue's row**, after those: ``[release…]`` (targets and attributes
 in a form, ``cue 9/3 release group 1 only pan``), ``[record at…]`` (a free
-number and a name; the new cue is chosen), ``[merge]``, ``[replace]`` and
-``[remove]`` (``record cue 9/3 merge``) and ``[delete]`` (``delete cue 9/3``).
-The last three of those ask the TUI's own question, since busk asks none, and
-the delete's says when a playback is on the cue: it leaves it at once. Those
-that record are grey while the programmer has nothing to record. On a list
-with no cues the row is only ``[record at…]``.
+number and a name; the new cue is chosen), ``[load]`` (``load cue 9/3``:
+what the cue stores, in the programmer, to edit it and ``[replace]`` it
+back), ``[merge]``, ``[replace]`` and ``[remove]`` (``record cue 9/3
+merge``) and ``[delete]`` (``delete cue 9/3``). The last three of those ask
+the TUI's own question, since busk asks none, and the delete's says when a
+playback is on the cue: it leaves it at once. ``[load]`` asks it too, while
+the programmer holds values or effects, and is grey on a cue that stores
+none. Those that record are grey while the programmer has nothing to
+record. On a list with no cues the row is only ``[record at…]``.
 
 The pane cursor stops on the cues first (Enter goes to one), then the
 buttons and the two rows, then the lists (Enter chooses one) and ``[+ list…]``.
@@ -398,6 +401,11 @@ class CuesPage(Page):
             label.append(f" {cue.name}", style=colors.FG)
         self._update(self.edit_label, label)
         go = commands.cue_prefill(cue_list, cue.number, "go")
+        load = (
+            ask("load", self.ask_load, colors.MAGENTA)
+            if cue.values or cue.effects
+            else grey("load")
+        )
         merge = commands.record_cue(cue_list, cue.number, "merge")
         writes = (
             [
@@ -421,6 +429,7 @@ class CuesPage(Page):
                 ask("copy…", self.ask_copy),
                 ask("release…", self.ask_release),
                 record_at,
+                load,
                 *writes,
                 ask("delete", self.ask_delete, colors.RED),
             ]
@@ -479,6 +488,23 @@ class CuesPage(Page):
                 f"\n{who} {'is' if len(on) == 1 else 'are'} on it, and will leave it at once."
             )
         self.post_message(RunLine(commands.delete_cue(cue_list, cue.number), ask=question))
+
+    def ask_load(self) -> None:
+        """``[load]``: ``load cue 9/3``, after the TUI's question while the
+        programmer holds values or effects, since busk replaces them."""
+        found, programmer = self.picked(), self._view.programmer
+        if found is None:
+            return
+        cue_list, cue = found
+        line = commands.load_cue(cue_list, cue.number)
+        if programmer is None or not (programmer.values or programmer.effects):
+            self.post_message(RunLine(line))
+            return
+        question = (
+            f"Load {cue_words(cue_list, cue)} into the programmer?\n"
+            "It replaces what the programmer holds."
+        )
+        self.post_message(RunLine(line, ask=question))
 
     def ask_replace(self) -> None:
         """``[replace]``: ``record cue 9/3 replace``, after the TUI's question."""

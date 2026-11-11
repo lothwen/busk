@@ -707,9 +707,9 @@ table and the FIXTURE panel.
 
 ## F4 Cues
 
-Every cue list, and the cues of one: go to a cue, record, re-record and delete cues, make and
-delete lists, set a list's tracking and chase, edit a cue's timing, trigger and name, and move,
-copy and renumber cues and lists.
+Every cue list, and the cues of one: go to a cue, record, re-record and delete cues, load a cue
+to edit its values, make and delete lists, set a list's tracking and chase, edit a cue's timing,
+trigger and name, and move, copy and renumber cues and lists.
 
 ```
  ┌─ CUELISTS ─────────────────────────┐┌─ CUELIST 9 · Song ─────────────────────────────────────────────────────────────────────────────────────────┐
@@ -725,7 +725,7 @@ copy and renumber cues and lists.
  └────────────────────────────────────┘│ [GO] [BACK] [record cue 9] [cuelist 9 chase bpm x 1]                                                       │
                                        │ list 9 Song [tracking off] [chase…] [rename…] [number…] [delete]                                           │
                                        │ edit cue 9/3 Pre [time…] [delay…] [curve…] [go…] [follow…] [wait…] [rename…] [number…] [copy…] [release…]  │
-                                       │                  [record at…] [merge] [replace] [remove] [delete]                                          │
+                                       │                  [record at…] [load] [merge] [replace] [remove] [delete]                                   │
                                        └────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -818,6 +818,12 @@ digit the cue holds, though the table rounds them to two. Then:
 - `[record at…]` asks for a number and a name, and records the programmer as a new cue there:
   `record cue 9/2.5 "Bridge"`. `2.5` goes between 2 and 3. A cue that exists is refused in the
   dialog. The new cue becomes the chosen one.
+- `[load]` puts what the cue stores into the programmer, in place of what it holds, and selects
+  its fixtures: `load cue 9/3`. While the programmer holds values or effects it asks first
+  (`Load cue 9/3 "Pre" into the programmer? It replaces what the programmer holds.`); `undo`
+  gives the programmer back. A preset comes as the preset, a group's value or a spread as each
+  fixture's value, and the cue's effects with their ids. A cue of a tracking list brings what it
+  changes, not what it tracks from the cues before it.
 - `[merge]`, `[replace]` and `[remove]` re-record the cue from the programmer: `record cue 9/3
   merge`. `merge` adds to what the cue holds, `replace` swaps it for the programmer's values, and
   `remove` takes out the attributes the programmer holds. The last two ask first.
@@ -825,7 +831,15 @@ digit the cue holds, though the table rounds them to two. Then:
   says so, since the playback leaves it at once.
 
 `[record at…]`, `[merge]`, `[replace]` and `[remove]` are grey while the programmer has nothing
-to record: no value, and no effect that runs. A list with no cues offers only `[record at…]`.
+to record: no value, and no effect that runs. `[load]` is grey on a cue that stores no value and
+no effect. A list with no cues offers only `[record at…]`.
+
+**Editing a cue's values.** Choose the cue and `[load]` it. Change the look as any other, on F2,
+F3 and F6, or at the prompt: the cue's fixtures are selected. Then `[replace]` records it back
+(`record cue 9/3 replace`). The cue keeps its name, timing, trigger and releases. busk finds the
+groups again as it does for any record, and a spread comes back as a value per fixture, which
+plays the same. busk's reply to `[load]` says when an entry of the cue has a timing of its own,
+which only the generic edit sets: it does not come, and `[replace]` drops it.
 
 With the pane cursor (Tab on an empty prompt) the cues come first: Enter goes to one and
 chooses it. Then the buttons and the two rows, then the lists: Enter on a list shows it, and

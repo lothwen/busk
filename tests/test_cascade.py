@@ -713,8 +713,10 @@ def test_a_cue_list_takes_the_bindings_of_its_playbacks_and_its_own(played: Offl
     bind(played, "record", {"type": "RECORD_CUE", "cueListId": ten})
     bind(played, "go 3", {"type": "GO", "playbackId": three})
     bind(played, "record 11", {"type": "RECORD_CUE", "cueListId": eleven})
+    bind(played, "load", {"type": "LOAD_CUE", "cueListId": ten, "cueNumber": "1"})  # GAP-44
+    bind(played, "load 11", {"type": "LOAD_CUE", "cueListId": eleven, "cueNumber": "1"})
     doc = cascade(played, "delete cuelist 10 cascade")
-    assert [binding["id"] for binding in doc["bindings"]] == ["go 3", "record 11"]
+    assert [binding["id"] for binding in doc["bindings"]] == ["go 3", "record 11", "load 11"]
 
 
 def test_a_cue_list_only_a_binding_names_needs_the_cascade(played: OfflineShow) -> None:

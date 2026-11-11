@@ -128,18 +128,24 @@ from busk.commands.patch import Op
 from busk.commands.types import RecordCueCmd, RecordGroupCmd, RecordPresetCmd
 from busk.compiler.cues import CueCompiler, clamp_lanes, spread_fraction, spread_value
 from busk.compiler.effects import CompiledEffect
-from busk.compiler.lanes import EncodeError
 from busk.compiler.slots import Slot
 from busk.model.attributes import ATTRIBUTES, AttributeValue
 from busk.model.common import AttributeId, TargetKey, TargetRef, target_key
 from busk.model.cue import Cue, CueList, CueRelease
 from busk.model.effect import EffectInstance
-from busk.model.entry import LiteralSource, PresetSource, TargetSpec, ValueEntry, ValueSource
+from busk.model.entry import PresetSource, TargetSpec, ValueEntry, ValueSource
 from busk.model.preset import PresetPool, PresetValue
 from busk.model.show import Show
 from busk.model.validate import Issue, validate_effect
 from busk.session.ids import IdFactory
-from busk.session.programmer import Programmer, ProgSource, SlotKey, slot_key, split_slot_key
+from busk.session.programmer import (
+    Programmer,
+    ProgSource,
+    SlotKey,
+    entry_sources,
+    slot_key,
+    split_slot_key,
+)
 from busk.session.state import ShowState
 
 _BUSKED: Final = frozenset(
@@ -734,44 +740,13 @@ def inherited(
     """
     held: dict[SlotKey, ProgSource] = {}
     for n, cue in enumerate(cue_list["cues"][:position]):
-        own = _own_sources(state, cue)
+        own = entry_sources(state, cue["entries"])
         if n > 0 and not cue.get("block", False):
             gone = _released(state, cue.get("releases", ()))
             own = {key: source for key, source in held.items() if key not in gone} | own
         held = own
     gone = _released(state, releases)
     return {key: source for key, source in held.items() if key not in gone}
-
-
-def _own_sources(state: ShowState, cue: Cue) -> dict[SlotKey, ProgSource]:
-    """A cue's own values as one source per slot; a later entry wins."""
-    values = state.values
-    own: dict[SlotKey, ProgSource] = {}
-    for entry in cue["entries"]:
-        attribute, source = entry["attribute"], entry["value"]
-        members = values.expand(entry["targets"])
-        for k, target in enumerate(members):
-            slot = state.compiled.slots.find(target, attribute)
-            if slot is None:
-                continue
-            try:
-                if values.resolve(source, slot, k, len(members)) is None:
-                    continue  # no value for this target
-            except EncodeError:
-                continue  # the compiler drops it with a warning
-            flat: ProgSource
-            if source["kind"] == "preset":
-                flat = PresetSource(kind="preset", presetId=source["presetId"])
-            elif source["kind"] == "literal":
-                flat = LiteralSource(kind="literal", value=source["value"])
-            elif source["kind"] == "perTarget":
-                flat = LiteralSource(kind="literal", value=source["values"][target_key(target)])
-            else:
-                fraction = spread_fraction(source.get("curve", "linear"), k, len(members))
-                value = spread_value(source["from"], source["to"], fraction)
-                flat = LiteralSource(kind="literal", value=value)
-            own[slot_key(target, attribute)] = flat
-    return own
 
 
 def _released(state: ShowState, releases: Iterable[CueRelease]) -> dict[SlotKey, Slot]:

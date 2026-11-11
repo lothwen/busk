@@ -49,6 +49,9 @@ component, for an encoder's ``−``/``+`` and wheel.
 GAP-14 adds ``RUN_EFFECT`` (programmer): stop a programmer effect and run it
 again, keeping it in the programmer, for a frontend's RUN/off toggle.
 
+GAP-44 adds ``LOAD_CUE`` (programmer): a cue's own values and effects in
+place of what the programmer holds, to edit the cue and record it back.
+
 Generic edits address the show with an :data:`EditPath`: a list whose
 string segments are object keys and whose :class:`IdSegment` segments pick
 the element of an id'd list with that ``id``, e.g.
@@ -389,6 +392,18 @@ class RunEffectCmd(TypedDict):
     on: bool
 
 
+@with_config(STRICT)
+class LoadCueCmd(TypedDict):
+    """Put a cue's own values and effects into the programmer, in place of
+    what it holds, and select their targets (GAP-44). ``filter`` lists the
+    families to load (default: every family), as ``RECORD_CUE``'s does."""
+
+    type: Literal["LOAD_CUE"]
+    cueListId: CueListId
+    cueNumber: str
+    filter: NotRequired[list[AttributeFamily]]
+
+
 # --------------------------------------------------------------- show edit
 
 
@@ -594,7 +609,7 @@ type Command = Annotated[
     | PageCmd | PlaybackButtonCmd | ReleaseAllCmd | OutputCmd
     | SelectCmd | SelectPlaybackCmd | SetAttributeCmd | AdjustAttributeCmd | ApplyPresetCmd
     | ClearProgrammerCmd | BlindCmd | ProgrammerFadeCmd | AddEffectCmd | RemoveEffectCmd
-    | RunEffectCmd | HighlightCmd
+    | RunEffectCmd | HighlightCmd | LoadCueCmd
     | RecordCueCmd | RecordPresetCmd | RecordGroupCmd | PatchFixtureCmd | AssignPlaybackCmd
     | AddCmd | SetCmd | DeleteCmd | BatchCmd
     | UndoCmd | RedoCmd,

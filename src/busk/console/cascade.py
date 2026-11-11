@@ -527,7 +527,7 @@ def _list_command(playbacks: Collection[str]) -> _Change[str]:
     of_playbacks = _playback_command(playbacks)
 
     def change(command: _Doc, ident: str) -> _Doc | None:
-        if command["type"] == "RECORD_CUE" and command["cueListId"] == ident:
+        if command["type"] in ("RECORD_CUE", "LOAD_CUE") and command["cueListId"] == ident:
             return None
         return of_playbacks(command, ident)
 

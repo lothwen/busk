@@ -101,6 +101,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-41](#gap-41-editing-an-effect-in-place) Editing an effect in place | action | nice-to-have | F5 | open |
 | [GAP-42](#gap-42-removing-a-familys-own-timing) Removing a family's own timing | action | nice-to-have | F4 | **done** 2026-11-11 |
 | [GAP-43](#gap-43-moving-and-copying-a-cue) Moving and copying a cue | action | nice-to-have | F4 | **done** 2026-11-11 |
+| [GAP-44](#gap-44-loading-a-cue-into-the-programmer) Loading a cue into the programmer | action | important | F4 | **done** 2026-11-11 |
 
 ---
 
@@ -2693,3 +2694,66 @@ Documented in `docs/console.md`, `busk help` and the parser's module docs. What 
   that stays on its cue, a follow, a running chase, a goto's warning, a copy into another list, a
   chase and an empty list, the refusals, and a running `LiveShow`), and the completion table and
   grammar of `tests/test_console_prompt.py`.
+
+## GAP-44: Loading a cue into the programmer
+
+**Status:** done 2026-11-11 (see **Done** at the end of this section).
+
+The user's question of 2026-11-11, after Phase 22 of `docs/plans/tui-pending-plan.md`; built in
+that plan's Phase 25, under its Q8 (a).
+
+**Needed by:** F4's `[load]`.
+
+**Today:** F4 shows a cue's entries, but none is edited one by one. A cue's values change only by
+recording the programmer into it (`merge`, `replace`, `remove`), and no line puts a cue's values in
+the programmer to start from, so the operator rebuilds the look by hand first.
+
+**Engine should provide:** `load cue L/C [only <family>…]`, which puts the cue's own entries and
+effects into the programmer, in place of what it holds, and selects their targets, as `sel
+playback N` selects a cue's; one programmer step. `record cue L/C replace` then records it back.
+
+**Priority:** important.
+
+**TUI until then:** none: a cue is edited by setting its whole look again.
+
+**TUI since** 2026-11-11: F4's `[load]` (Phase 25 of the pending plan).
+
+**Done** (2026-11-11). A programmer command, `LOAD_CUE` (`cueListId`, `cueNumber`, and `filter` as
+`RECORD_CUE` has it), handled by `_load_cue` in `src/busk/session/programmer.py`; the line is
+`_cmd_load` in `src/busk/console/parser.py`. Documented in `docs/console.md`, `busk help` and both
+modules' docs. What it settles:
+
+- **What the cue stores, not what it shows** (Q8 (a)): a cue of a tracking list brings its own
+  changes only. So `replace` gives back the cue, and the programmer holds nothing of other cues.
+- **A value per target,** as the programmer holds values: each entry goes through `entry_sources`,
+  the flattening `record.inherited` already used (it moved there from `record.py`). A preset stays
+  a reference; a group's entry, a spread and per-target values come as each target's literal. A
+  later entry wins a slot. A target without the attribute, without a value in a preset or a
+  per-target map, or offered no such option, gets nothing, as the compiler drops it.
+- **The effects come as the cue stores them,** ids, targets (a group stays a group) and settings
+  included. None is stopped afterwards, even one whose id the programmer had stopped.
+- **The selection** is the values' targets, in the programmer's target order, then the targets the
+  effects drive that are not among them.
+- **It replaces the programmer's content,** values, effects and stopped effects, in one step that
+  `undo` takes back, selection included. Blind, highlight and the fade time stay; with blind on,
+  the stage does not change. Every loaded slot and effect is touched, as `set` touches it.
+- **`only`** reads families as `record` does; an effect comes when a layer of its template is in
+  them.
+- **The reply counts what came:** `loaded cue 9/3 "Pre": 6 values on 4 fixtures, 1 effect`.
+  An entry's own timing (only the generic edit sets one) does not come, and the reply adds `; 1
+  entry's own timing is not loaded, and replace drops it`. A cue with nothing to load is refused
+  in one line, and spends no step: `cue 30/1 has no position values or effects to load`.
+- **A binding may load a cue.** The validator checks its list (an error) and its cue number (a
+  warning, as a `GOTO`'s); `delete cuelist N cascade` takes such a binding with the list. The event
+  log keeps the command, and replay runs it again: it reads only the show.
+- **Recording back** with nothing changed gives back every cue of the club show and of the
+  TupperDMX show as it was. What differs elsewhere: a spread comes back as per-target values; a
+  list of targets that is a group's members comes back as the group (the cover), unless `freeze`;
+  entries come in recording's order (attributes in the registry's order); an own value equal to
+  what a tracking list inherits goes, and tracks; an entry's own timing goes. The compiled cue is
+  the same in each but the last.
+- Tests: `tests/test_load_cue.py` (each kind of entry, effects, the selection, `only`, a tracking
+  list, undo, blind, refusals, an entry's timing, recording back and the club show's round trip,
+  bindings, a running `LiveShow`), rows in `tests/test_console_parser.py` and
+  `tests/test_console_prompt.py`, the cascade's binding in `tests/test_cascade.py`, and a load in
+  `tests/test_eventlog.py`'s replayed run.

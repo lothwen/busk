@@ -211,6 +211,18 @@ COMMANDS: list[tuple[str, dict[str, Any]]] = [
         },
     ),
     ("record cue 1", {"type": "RECORD_CUE", "cueListId": "cl-song"}),
+    # loading a cue (GAP-44)
+    ("load cue 1/1", {"type": "LOAD_CUE", "cueListId": "cl-song", "cueNumber": "1"}),
+    ("Load Cue 01/01", {"type": "LOAD_CUE", "cueListId": "cl-song", "cueNumber": "1"}),
+    (
+        "load cue 10/1 only color position",
+        {
+            "type": "LOAD_CUE",
+            "cueListId": "cl-blue",
+            "cueNumber": "1",
+            "filter": ["color", "position"],
+        },
+    ),
     (
         "record slot 1 merge",
         {"type": "RECORD_CUE", "cueListId": "cl-song", "cueNumber": "1", "merge": "merge"},
@@ -737,6 +749,22 @@ def test_queries_and_session_actions(line: str, action: object) -> None:
         ("route r1 maybe", "expected on or off or change, got 'maybe'"),
         ("route r1 on now", "unexpected 'now'"),
         ("delete cue 1/1 cascade", "unexpected 'cascade'"),
+        ("load", "expected cue"),  # GAP-44
+        ("load group 1", "expected cue, got 'group'"),
+        ("load cue 1", "expected a cue as L/C, e.g. 10/1"),
+        ("load cue 1/9", "no cue 1/9"),
+        ("load cue 9/1", "no cue list 9"),
+        (
+            "load cue 1/1 only",
+            "expected attribute families after only (intensity, position, "
+            "color, beam, focus, shutter)",
+        ),
+        (
+            "load cue 1/1 only colour",
+            "expected attribute families after only (intensity, "
+            "position, color, beam, focus, shutter)",
+        ),
+        ("load cue 1/1 merge", "unexpected 'merge'"),
         ("delete group 1 cascade now", "unexpected 'now'"),
         ("delete group 9 cascade", "no group 9"),
         ("delete preset color 9 cascade", "no preset color 9"),

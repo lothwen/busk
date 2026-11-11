@@ -49,6 +49,18 @@ fades out as if removed and starts again as if added, and recording leaves
 it out too. Stopping is content: undone and autosaved like the effects.
 Replacing a stopped effect (``ADD_EFFECT`` with its id) keeps it stopped.
 
+``LOAD_CUE`` (GAP-44) puts a cue's own values and effects in place of the
+programmer's, in one step, and selects their targets: those of the values,
+in the programmer's target order, then those of the effects. What the cue
+stores, not what it shows: a cue of a tracking list brings its changes only.
+Each entry is flattened to one source per slot, as the programmer holds
+values (:func:`entry_sources`): a preset stays a reference, and a group's
+entry, a spread and per-target values come as each target's literal. The
+effects come as the cue has them, ids and targets included. ``filter``
+loads only some families, an effect when a layer of its template is in
+them. An entry's own timing does not come, and the reply says so; a cue
+with nothing to load is refused. The modes stay as they are.
+
 Three **modes** sit beside the content: ``blind``, from Phase 4 the
 ``fadeTime`` that live programmer changes fade over (phase-4-plan §5.10),
 and from Phase 7 ``highlight``, which lights the selection full, white and
@@ -68,10 +80,12 @@ from typing import Any, Final, NamedTuple, cast
 
 from pydantic import TypeAdapter, ValidationError
 
+from busk.commands.edits import short
 from busk.commands.errors import CommandError
 from busk.commands.patch import deep_copy
-from busk.commands.types import AdjustAttributeCmd, Command
+from busk.commands.types import AdjustAttributeCmd, Command, LoadCueCmd
 from busk.compiler.cues import spread_fraction, spread_value
+from busk.compiler.lanes import EncodeError
 from busk.compiler.slots import Slot
 from busk.engine.snapshot import EngineSnapshot
 from busk.model.attributes import (
@@ -92,8 +106,9 @@ from busk.model.common import (
     parse_target_key,
     target_key,
 )
+from busk.model.cue import cue_number_key
 from busk.model.effect import EffectInstance
-from busk.model.entry import LiteralSource, PresetSource, TargetSpec, ValueSource
+from busk.model.entry import LiteralSource, PresetSource, TargetSpec, ValueEntry, ValueSource
 from busk.model.validate import adjustment_problem, validate_effect
 from busk.session.state import ShowState
 
@@ -208,6 +223,8 @@ def handle(
         return _remove_effect(programmer, command.get("id"))
     if command["type"] == "RUN_EFFECT":
         return _run_effect(programmer, command["id"], command["on"])
+    if command["type"] == "LOAD_CUE":
+        return _load_cue(state, programmer, command)
     if command["type"] == "BLIND":
         on = command["on"]
         return Change(replace(programmer, blind=on), f"blind {'on' if on else 'off'}")
@@ -497,6 +514,100 @@ def _run_effect(programmer: Programmer, ident: str, on: bool) -> Change:
     return Change(
         replace(programmer, stopped=programmer.stopped | {ident}), f"stopped effect {ident!r}"
     )
+
+
+def _load_cue(state: ShowState, programmer: Programmer, command: LoadCueCmd) -> Change:
+    """``LOAD_CUE`` (GAP-44): the cue's own values and effects in place of
+    the programmer's, their targets selected (see the module docs)."""
+    show = state.show
+    cue_list = next((cl for cl in show["cueLists"] if cl["id"] == command["cueListId"]), None)
+    if cue_list is None:
+        raise CommandError(f"no cue list {command['cueListId']!r}")
+    wanted = cue_number_key(command["cueNumber"])
+    cues = cue_list["cues"] if wanted is not None else []
+    cue = next((c for c in cues if cue_number_key(c["number"]) == wanted), None)
+    if cue is None:
+        raise CommandError(f"no cue {cue_list['number']}/{command['cueNumber']}")
+    label = f"cue {cue_list['number']}/{cue['number']}"
+    families = set(command["filter"]) if "filter" in command else None
+    entries = [
+        entry
+        for entry in cue["entries"]
+        if families is None or ATTRIBUTES[entry["attribute"]].family in families
+    ]
+    templates = {template["id"]: template for template in show["effects"]}
+    effects = tuple(
+        cast(EffectInstance, deep_copy(instance))
+        for instance in cue["effects"]
+        if families is None
+        or any(
+            ATTRIBUTES[layer["attribute"]].family in families
+            for layer in templates[instance["templateId"]]["layers"]
+        )
+    )
+    values = {
+        key: cast(ProgSource, deep_copy(source))
+        for key, source in entry_sources(state, entries).items()
+    }
+    if not values and not effects:
+        only = "" if families is None else " " + "/".join(sorted(families))
+        raise CommandError(f"{label} has no{only} values or effects to load")
+    targets = programmer_targets(values)
+    driven = [target for effect in effects for target in expand(state, effect["targets"])]
+    loaded = replace(
+        programmer,
+        selection=_unique([*targets, *driven]),
+        values=MappingProxyType(values),
+        effects=effects,
+        stopped=frozenset(),
+    )
+    counts = []
+    if values:
+        fixtures = {target["fixtureId"] for target in targets}
+        counts.append(f"{_plural(len(values), 'value')} on {_plural(len(fixtures), 'fixture')}")
+    if effects:
+        counts.append(_plural(len(effects), "effect"))
+    message = f"loaded {label} {short(cue['name'])}: {', '.join(counts)}"
+    timed = sum("timing" in entry for entry in entries)
+    if timed:
+        whose = "1 entry's" if timed == 1 else f"{timed} entries'"
+        message += f"; {whose} own timing is not loaded, and replace drops it"
+    return Change(loaded, message, frozenset(values), frozenset(effect["id"] for effect in effects))
+
+
+def entry_sources(state: ShowState, entries: Iterable[ValueEntry]) -> dict[SlotKey, ProgSource]:
+    """A cue's entries as one source per slot, as the programmer holds them;
+    a later entry wins. Presets stay references; literals, ``perTarget``
+    values and spreads become each target's literal. A value the compiler
+    would drop (no slot, no value for the target, a discrete value the
+    target does not offer) is not held."""
+    values = state.values
+    own: dict[SlotKey, ProgSource] = {}
+    for entry in entries:
+        attribute, source = entry["attribute"], entry["value"]
+        members = values.expand(entry["targets"])
+        for k, target in enumerate(members):
+            slot = state.compiled.slots.find(target, attribute)
+            if slot is None:
+                continue
+            try:
+                if values.resolve(source, slot, k, len(members)) is None:
+                    continue  # no value for this target
+            except EncodeError:
+                continue  # the compiler drops it with a warning
+            flat: ProgSource
+            if source["kind"] == "preset":
+                flat = PresetSource(kind="preset", presetId=source["presetId"])
+            elif source["kind"] == "literal":
+                flat = LiteralSource(kind="literal", value=source["value"])
+            elif source["kind"] == "perTarget":
+                flat = LiteralSource(kind="literal", value=source["values"][target_key(target)])
+            else:
+                fraction = spread_fraction(source.get("curve", "linear"), k, len(members))
+                value = spread_value(source["from"], source["to"], fraction)
+                flat = LiteralSource(kind="literal", value=value)
+            own[slot_key(target, attribute)] = flat
+    return own
 
 
 # ------------------------------------------------------------------ checks

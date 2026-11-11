@@ -553,6 +553,12 @@ engine needs nothing new: the bank sees it leave and enter exactly as for
 clock once it has gone), and a started effect is touched, on top, as an added one. The
 set is content (`same_content`, undo, autosave, the event log's programmer records),
 and removing or clearing an effect drops its id.
+`LOAD_CUE` (GAP-44, `load cue L/C`) builds a whole new programmer from one cue: its
+entries through `entry_sources`, the flattening `record.inherited` also uses (a preset
+stays a reference, the rest is each target's literal), its effects as stored, and a
+selection of their targets. The modes stay; every loaded slot and effect is touched, as a
+`set` would touch it. It reads only the show, so the event log keeps the command as it
+came, and replay runs it again.
 
 **The programmer status** (`busk.session.status`; GAP-02 of
 [`tui/engine-gaps.md`](tui/engine-gaps.md)). `OfflineShow.programmer` and

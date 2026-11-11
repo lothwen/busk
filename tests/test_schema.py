@@ -264,7 +264,8 @@ def test_every_command_type_has_exactly_one_class() -> None:
     from busk.commands.classes import COMMAND_CLASSES
 
     types = _command_types()
-    assert len(types) == len(set(types)) == 39  # GAP-05: ADJUST_ATTRIBUTE, GAP-14: RUN_EFFECT
+    # GAP-05: ADJUST_ATTRIBUTE, GAP-14: RUN_EFFECT, GAP-44: LOAD_CUE
+    assert len(types) == len(set(types)) == 40
     assert sorted(types) == sorted(COMMAND_CLASSES)
     assert {COMMAND_CLASSES[t] for t in types} == {"performance", "programmer", "show", "session"}
 

@@ -54,6 +54,7 @@ session, as the web remote's commands do. `help` prints the grammar.
 | Values | `set intensity 80%`, `set pan -45`, `set color 1 0.5 0 w 0.2`, `set gobo1 breakup`, `set pan spread -30 30 [center\|edges]`, `set color preset color 1`, `preset position 1`, `set intensity by 5%`, `set pan by -15`, `set color.r 50%`, `set color.b by -10%` |
 | Programmer | `clear`, `blind on\|off`, `fade 2` (programmer changes fade over 2 s), `programmer` |
 | Record | `record group N`, `record preset <pool> N [global\|profile\|target]`, `record cue L/C [only <family>…] [freeze]`, `record slot S [only <family>…]`; each takes `merge`, `replace` or `remove` and a `"name"` |
+| Load | `load cue 9/3 [only <family>…]` (the cue into the programmer, to edit it and record it back) |
 | Patch | `universe add 1 "Stage"`, `fixture add 101 thru 104 "Generic Spot 16ch" mode 16ch at 1.1`, `fixture 101 patch 2.1`, `fixture 101 patch none`, `fixture 101 thru 104 patch 2.1\|none`, `fixture 101 mode 16ch`, `fixture 101 profile "RGB Par 3ch" mode 3ch` |
 | Output | `route add 1 sacn 1 [unicast 10.0.0.20 \| multicast IF]`, `route add 1 artnet 0.0.1 [unicast 10.0.0.20 \| broadcast IF]`, `route add 1 dmxusb enttecPro\|dmxking /dev/ttyUSB0 [hz 40]`, `route r-1 on\|off`, `route r-1 change 1 sacn 2 [unicast 10.0.0.20]` (what `route add` takes), `delete route r-1` |
 | Surfaces | `surface add midi "nanoKONTROL2"`, `surface add osc "Touch" [port 8000] [feedback 10.0.0.5:9000]`, `surface add web "Phone" [port 8080] [on 10.0.0.2]`, `surface "nanoKONTROL2" pickup soft\|jump` |
@@ -93,6 +94,17 @@ session, as the web remote's commands do. `help` prints the grammar.
   value if every target agrees, else per profile, else per target, and the reply says so
   (`pan: 4 target values (values differ)`). Without `merge`, `replace` or `remove` a record
   command only creates, so a typo never overwrites anything.
+* **Editing a cue's values.** `load cue 9/3` puts what the cue stores into the programmer,
+  in place of what it holds, and selects their targets, in one undo step (`loaded cue 9/3
+  "Pre": 6 values on 4 fixtures, 1 effect`). A preset stays a reference; a group's entry, a
+  spread and per-target values come as each target's value, and effects with their ids.
+  A cue of a tracking list brings its own changes only, not what it tracks. `only` loads
+  some families, as `record` reads them. Change the look, then `record cue 9/3 replace`
+  records it back: the cue keeps its name, timing, trigger and releases, recording finds
+  the groups again (unless `freeze`), and a spread comes back as per-target values. An
+  entry's own timing (`timing` inside an entry, set only by the generic edit) does not
+  come, so `replace` drops it, and the reply says so. Blind, highlight and the fade time
+  stay as they are.
 * **`record slot S`** on an empty slot of the current page (`record slot 2.1`: slot 1 of
   page 2) creates a cue list, its cue 1, a
   playback (Appendix A's Blue playback without its exclusivity: band 50, `master` fader,

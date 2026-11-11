@@ -633,6 +633,11 @@ def delete_cue(cue_list: int, cue: str) -> Line:
     return Line(f"delete cue {cue_list}/{cue}")
 
 
+def load_cue(cue_list: int, cue: str) -> Line:
+    """``load cue 9/3``: what the cue stores, in place of the programmer's."""
+    return Line(f"load cue {cue_list}/{cue}")
+
+
 def cue_release(cue_list: int, cue: str, targets: str, only: Sequence[str] = ()) -> Line:
     """``cue 9/3 release group 1 only pan tilt``, ``targets`` as busk reads
     them; no ``only``: every attribute."""

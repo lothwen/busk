@@ -1664,6 +1664,9 @@ class _SemanticPass:
             self._ref(command["presetId"], self.presets, f"{path}.presetId", "preset")
         elif command["type"] == "RECORD_CUE":
             self._ref(command["cueListId"], self.cue_lists, f"{path}.cueListId", "cue list")
+        elif command["type"] == "LOAD_CUE":
+            self._ref(command["cueListId"], self.cue_lists, f"{path}.cueListId", "cue list")
+            self._cue_number(command["cueListId"], command["cueNumber"], f"{path}.cueNumber")
         elif command["type"] == "PATCH_FIXTURE":
             self._ref(command["fixtureId"], self.fixtures, f"{path}.fixtureId", "fixture")
             if command["patch"] is not None:
@@ -1691,12 +1694,13 @@ class _SemanticPass:
         self._cue_number(self.playbacks[playback_id]["cueListId"], number, path)
 
     def _cue_number(self, cue_list_id: str, number: str, path: str) -> None:
-        """A warning, not an error, for a cue number (of a ``GOTO`` or a
-        ``gotoCue``) the cue list does not have: cue numbers are user-facing
-        and get renumbered, and an error would block that edit."""
+        """A warning, not an error, for a cue number (of a ``GOTO``, a
+        ``gotoCue`` or a ``LOAD_CUE``) the cue list does not have: cue
+        numbers are user-facing and get renumbered, and an error would block
+        that edit."""
         cue_list = self.cue_lists.get(cue_list_id)
         if cue_list is None:
-            return  # reported with the playback
+            return  # reported with the playback or the command
         wanted = cue_number_key(number)
         if wanted is None or all(cue_number_key(c["number"]) != wanted for c in cue_list["cues"]):
             self._warning(path, f"Cue list {cue_list['name']!r} has no cue {number!r}")

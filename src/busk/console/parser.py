@@ -19,6 +19,7 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
     record preset <pool> N [global|profile|target] [<merge>] ["name"]
     record cue L[/C] [only <family>…] [<merge>] [freeze] ["name"]
     record slot [P.]S [only <family>…] [<merge>] ["name"]
+    load cue L/C [only <family>…]
     universe add N ["name"]
     fixture add N [thru M] "<profile>" mode <mode> [at U.A]
     fixture N [thru M] patch U.A | fixture N [thru M] patch none
@@ -289,6 +290,14 @@ it is taken out and put back with its id, so a playback on it stays on it. A
 ``L2``, at its place there: a new id, and the rest as the cue has it, effect
 ids included. Each is one undo step, and a number the list has is refused.
 Moving a cue to another list is a copy, then a delete.
+
+Loading a cue (GAP-44). ``load cue L/C`` puts what the cue stores into the
+programmer, in place of what it holds, and selects their targets, in one
+programmer step: its own values, a preset kept as a reference and the rest
+as each target's value, and its effects with their ids. A cue of a tracking
+list brings its changes only. ``only`` reads families as ``record`` does.
+``record cue L/C replace`` records it back; an entry's own timing does not
+come, so that drops it, as the reply says.
 
 An empty cue list (GAP-33). ``cuelist add N ["name"]`` makes a list with no
 cues, with the defaults of a list that ``record cue`` makes; ``record cue N``
@@ -1490,6 +1499,21 @@ class _Parser:
                 "label": "",
                 "commands": [{"type": "ADD", "path": ["cueLists"], "value": cue_list}, record],
             }
+        )
+
+    def _cmd_load(self) -> Action:
+        """``load cue L/C [only <family>…]`` (GAP-44): the cue's own values
+        and effects in place of the programmer's."""
+        self.expect("cue")
+        path, cue = self.cue()
+        options = self.options("only")
+        return self.submit(
+            _record(
+                "LOAD_CUE",
+                cueListId=cast(Mapping[str, str], path[1])["id"],
+                cueNumber=cue["number"],
+                filter=options.families or None,
+            )
         )
 
     def _page_slot(self) -> tuple[dict[str, Any], int]:

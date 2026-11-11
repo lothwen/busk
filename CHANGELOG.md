@@ -10,6 +10,12 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- `load cue L/C [only <family>…]` puts what a cue stores into the programmer, in place of what it
+  holds, and selects its fixtures, in one undo step: a preset as the preset, a group's value or a
+  spread as each fixture's value, and the cue's effects with their ids. A cue of a tracking list
+  brings its own changes, not what it tracks. `record cue L/C replace` then records the edit back.
+  An entry's own timing does not come, and the reply says so. F4 has `[load]` for the chosen cue,
+  which asks first while the programmer holds values or effects.
 - F4's cue table has an `also` column: how many entries a cue holds of each family the intensity
   and colour columns leave out (`position 2, beam 1`; a colour wheel or a CTO counts as `color`),
   so a cue that only moves the heads no longer looks empty. From 150 columns it shows where the

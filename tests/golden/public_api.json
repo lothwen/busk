@@ -25,6 +25,7 @@
       "GoCmd",
       "GotoCmd",
       "HighlightCmd",
+      "LoadCueCmd",
       "OutputCmd",
       "PageCmd",
       "PatchFixtureCmd",

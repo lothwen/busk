@@ -112,8 +112,9 @@ def empty_show() -> Show:
 
 def perform(run: LoggedRun) -> None:
     """The scenario: the Phase 3–5 builds (show edits with generated ids),
-    then performance, programmer changes (GAP-05's relative ones and
-    GAP-14's stopped effect too), undo and redo, and a restore."""
+    then performance, programmer changes (GAP-05's relative ones,
+    GAP-14's stopped effect and GAP-44's loaded cue too), undo and redo, and
+    a restore."""
     run.tick()
     for script in SCRIPTS:
         run.script(script)
@@ -129,7 +130,7 @@ def perform(run: LoggedRun) -> None:
     run.tick(2)
     run.run(f"effect stop {pulse}", "sel + group 1", "highlight off", "blind on", "set pan 30",
             "blind off", f"effect run {pulse}")  # fmt: skip
-    run.run("record cue 10/7", "undo", "undo", "redo", "go 10", "fader 10 1")
+    run.run("record cue 10/7", "undo", "undo", "redo", "load cue 9/2", "go 10", "fader 10 1")
     run.tick(3)
     run.run("gm 0.6", "blackout on", "release 1 0.4")
     run.tick(2)
@@ -167,6 +168,7 @@ def test_a_logged_run_replays_byte_identically_at_every_logged_time(
     records = records_of(log_file)
     assert records[0].kind == "start"
     assert {record.kind for record in records} == {"start", "c", "e", "p", "programmer", "r"}
+    assert any(r.kind == "p" and r.body["type"] == "LOAD_CUE" for r in records)  # GAP-44
     ticks = list(Replayer().run(records))
     assert len(ticks) > 50  # ticks with records
     assert [tick.t for tick in ticks] == sorted({record.t for record in records})

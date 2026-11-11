@@ -254,6 +254,7 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
         False,
     ),
     "renumber cue": (commands.renumber_cue(9, "1", "7"), "cue 9/1 number 7", False),
+    "load cue": (commands.load_cue(9, "2"), "load cue 9/2", False),
     "copy cue": (commands.copy_cue(9, "7", 9, "8"), "cue 9/7 copy 8", False),
     "copy cue to another list": (commands.copy_cue(9, "7", 10, "5"), "cue 9/7 copy 10/5", False),
     "cuelist add": (
@@ -1107,6 +1108,10 @@ def test_the_cue_and_list_lines_do_what_they_say(show: busk.OfflineShow) -> None
     run(commands.record_cue(30, "2.5", name="Bridge"))
     cue = cue_list(30)["cues"][0]
     assert (cue["number"], cue["name"], len(cue["entries"])) == ("2.5", "Bridge", 1)
+    assert show.execute("clear").ok
+    run(commands.load_cue(30, "2.5"))
+    assert {value.attribute for value in show.programmer.values} == {"intensity"}
+    assert show.programmer.selection == ((101, 1), (102, 1))
     run(commands.cue_release(30, "2.5", "group 1", ("pan", "tilt")))
     release = cue_list(30)["cues"][0]["releases"][0]
     assert (release["targets"]["kind"], release["attributes"]) == ("group", ["pan", "tilt"])

@@ -34,6 +34,7 @@ import json
 import threading
 import time
 from collections.abc import Callable
+from dataclasses import replace
 from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
@@ -2096,6 +2097,89 @@ def test_f4_moves_copies_and_renumbers_from_controls_on_the_real_engine(
         await until(pilot, lambda: numbers(9) == ["1", "2", "3", "4", "5"])
         await until(pilot, lambda: goto() is not None and not goto().inert)  # type: ignore[union-attr]
         assert numbers(10) == ["1", "2", "3", "4"]
+        assert [text for kind, text in log if kind == "error"] == []
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_f4_loads_a_cue_edits_it_and_records_it_back_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """With a value of 201 in the programmer, ``[load]`` on cue 9/2 asks
+    first: no sends nothing, yes loads the Verse and selects the heads. One
+    value changed at the prompt, ``[replace]`` records it back: the cue holds
+    the change and the rest as it was. ``undo`` takes the record back."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=4), standalone=True)
+
+    def verse() -> CueInfo:
+        song = None if app.view.show is None else app.view.show.cue_list(9)
+        assert song is not None
+        return next(found for found in song.cues if found.number == "2")
+
+    def holds() -> set[tuple[int, str, Any]]:
+        values = () if app.programmer is None else app.programmer.values
+        return {(value.number, value.attribute, value.value) for value in values}
+
+    async def confirm(pilot: Pilot[int], label: str, answer: str) -> None:
+        await tap_button(pilot, app.query_one(CuesPage).edits, label)
+        await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+        await pilot.press(answer)
+        await until(pilot, lambda: not isinstance(app.screen, ConfirmDialog))
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.live is not None and app.view.show is not None)
+        for line in ("sel fixture 201", "set intensity 50%"):
+            await pilot.press(*line, "enter")
+        await until(pilot, lambda: (201, "intensity", 0.5) in holds())
+        app._select_playback(9)
+        page = app.query_one(CuesPage)
+        await until(pilot, lambda: column(app.query_one(CueTable), "cue")[:1] == ["9/1"])
+        page.choose_cue("2", go=False)
+        await until(pilot, lambda: plain_of(page.edit_label) == "edit cue 9/2 Verse")
+        stored = verse().values
+        log = app.query_one(LogView).entries
+
+        await tap_button(pilot, page.edits, "load")
+        await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+        dialog = app.screen
+        assert isinstance(dialog, ConfirmDialog)
+        assert dialog.question == (
+            'Load cue 9/2 "Verse" into the programmer?\nIt replaces what the programmer holds.'
+        )
+        await pilot.press("n")
+        await until(pilot, lambda: ("info", "cancelled: load cue 9/2") in log)
+        await confirm(pilot, "load", "y")
+        await until(pilot, lambda: app.programmer.selection == ((101, 1), (102, 1)))  # type: ignore[union-attr]
+        assert {(n, a) for n, a, _ in holds()} >= {(101, "intensity"), (102, "intensity")}
+        assert {n for n, _, _ in holds()} == {101, 102}  # 201's value is gone
+        assert (101, "intensity", 0.7) in holds()
+
+        await pilot.press(*"set intensity 30%", "enter")
+        await until(pilot, lambda: (102, "intensity", 0.3) in holds())
+        await confirm(pilot, "replace", "y")
+        changed = tuple(
+            replace(value, value=0.3) if value.attribute == "intensity" else value
+            for value in stored
+        )
+        await until(pilot, lambda: verse().values == changed)
+        assert changed != stored
+        assert [line for kind, line in log if kind == "ui"] == [
+            "load cue 9/2",
+            "record cue 9/2 replace",
+        ]
+        loaded = [text for kind, text in log if text.startswith("loaded cue 9/2")]
+        assert len(loaded) == 1
+        assert loaded[0].startswith('loaded cue 9/2 "Verse": ')
+        assert loaded[0].endswith(" on 2 fixtures")
+
+        await pilot.press(*"undo", "enter")
+        await until(pilot, lambda: verse().values == stored)
         assert [text for kind, text in log if kind == "error"] == []
 
     try:

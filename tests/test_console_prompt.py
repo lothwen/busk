@@ -129,6 +129,13 @@ EXPECTED: list[tuple[str, tuple[str, ...], tuple[str, ...], bool]] = [
      ("a name in quotes",), True),
     ("record cue 1/1 only ", ("intensity", "position", "color", "beam", "focus", "shutter"), (),
      False),
+    ("load ", ("cue",), (), False),  # GAP-44
+    ("load cue ", (), ("a cue list number, as L or L/C",), False),
+    ("load cue 1/1 ", ("only",), (), True),
+    ("load cue 1/1 only ", ("intensity", "position", "color", "beam", "focus", "shutter"), (),
+     False),
+    ("load cue 1/1 only color ", ("intensity", "position", "color", "beam", "focus", "shutter"),
+     (), True),
     ("cue 10/1 ", ("effect", "time", "go", "follow", "wait", "release", "number", "copy"),
      ("a property, e.g. name or timing.fadeIn",), False),
     ("cue 10/1 number ", (), ("a cue number",), False),
@@ -398,6 +405,7 @@ def test_grammar_keeps_the_forms_that_fit_with_the_definitions_they_use() -> Non
         '    record cue L[/C] [only <family>…] [<merge>] [freeze] ["name"]'
     ]
     assert grammar("release ") == ["    release N [<seconds>]", "    release all [<seconds>]"]
+    assert grammar("load cue ") == ["    load cue L/C [only <family>…]"]  # GAP-44
     assert grammar("fixture 101 mode ") == ["    fixture N mode <mode>"]
     assert grammar("fixture 101 profile ") == ['    fixture N profile "<profile>" mode <mode>']
     assert grammar("fixture 101 location ") == [

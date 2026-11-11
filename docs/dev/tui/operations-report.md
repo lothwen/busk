@@ -25,7 +25,9 @@ copied (GAP-43), and gave F4 `[number…]` and `[copy…]` on a cue and `[number
 Its Phase 23 gave F4's cue table an `also` column, which counts a cue's entries of the families
 the intensity and colour columns leave out. Its Phase 24 made busk refuse a mode or profile that
 lacks an element something names in one line, where F3's mode chips and `[profile…]` put one
-document path per element in the log; that side finding is gone.
+document path per element in the log; that side finding is gone. Its Phase 25 added the line that
+loads a cue into the programmer (GAP-44), and F4's `[load]`, so a cue's values are edited as any
+look is and recorded back.
 
 ## How to read it
 
@@ -70,7 +72,7 @@ In short:
 - **SHOW is covered** for all of them.
 - **Every ADD, DELETE and UPDATE has a control, but for three things, which are typed:**
   renumbering a page, the options of an effect a template click adds (F5's EFFECT panel changes
-  them after), and `record cue`'s `only` and `freeze`. F4's `[go…]` puts a
+  them after), and `record cue`'s `only` and `freeze` (and `load cue`'s `only`). F4's `[go…]` puts a
   whole line in the prompt. So F1, F3, F4, F5, F6 and F8 build a whole show of these parts from
   controls: the rig, groups and park, presets, cues and cue lists, effects and their templates,
   playbacks and pages.
@@ -133,7 +135,7 @@ In short:
 | Add at the end | `record cue L` | yes | control: F4 `[record cue L]` |
 | Add at a number, insert | `record cue L/C [only …] [freeze] ["name"]` (`9/2.5` goes between 2 and 3) | yes | control: F4 `[record at…]`, a form that refuses a cue that exists; `only` and `freeze`: prompt |
 | Delete | `delete cue L/C` | yes | control: F4 `[delete]`, after the TUI's question, which says when a playback is on the cue |
-| Change its values | `record cue L/C merge\|replace\|remove [only …]` | yes | control: F4 `[merge]`, `[replace]`, `[remove]`, the last two after the TUI's question; `only`: prompt |
+| Change its values | `load cue L/C [only …]` (GAP-44), then `record cue L/C merge\|replace\|remove [only …]` | yes: `load cue` puts what the cue stores into the programmer, a value per fixture and its effects, and selects them | control: F4 `[load]` (after the TUI's question while the programmer holds something), then the look edited on F2, F3, F6 or at the prompt, then `[merge]`, `[replace]`, `[remove]`, the last two after the TUI's question; `only`: prompt |
 | Timing | `cue L/C time …`, `cue L/C time <family> …`, `cue L/C time <family> none` | yes | control: F4 `[time…]` (the fade times, or a family's own, and `[none]` on a family with its own), `[delay…]`, `[curve…]`, and a click on those cells: dialogs filled in with the cue |
 | Trigger | `cue L/C go`, `… follow <d>`, `… wait <d>` | yes | control: F4 `[follow…]`, `[wait…]` and a click on those cells, dialogs; `go`: pre-fill, a whole line |
 | Rename | `rename cue L/C "…"` | yes | control: F4 `[rename…]`, a name dialog |
@@ -226,6 +228,8 @@ Candidates for [engine-gaps.md](engine-gaps.md), if the TUI is to cover these:
    one undo step, and keeps the id and whether it is on.
 10. **Closed: moving and copying a cue** (GAP-43). `cue L/C number M` takes a number past the
     cue's neighbours, and `cue L/C copy [L2/]M` copies a cue, each in one undo step.
+11. **Closed: loading a cue** (GAP-44). `load cue L/C [only …]` puts the cue's own values and
+    effects into the programmer, so `record cue L/C replace` records an edit back.
 
 **Still open,** and in no plan yet ([the pending plan](../../plans/tui-pending-plan.md)'s §7):
 deleting several presets, cues or cue lists in one line (item 6); and GAP-41, where `effect add …
@@ -236,9 +240,9 @@ effect.
 
 Nothing the pending plan set out to build: its last item, playbacks, closed with F1's edit mode.
 The rows above that still say **prompt** are renumbering a page, the options of an effect a
-template click adds, and `record cue`'s `only` and `freeze`. F4's `[go…]` is the one
-**pre-fill** left, since `cue 9/3 go` is a whole line. The plan's §7 lists them with the rest that
-was seen and is in no phase.
+template click adds, and `record cue`'s and `load cue`'s `only`, and `freeze`. F4's `[go…]` is
+the one **pre-fill** left, since `cue 9/3 go` is a whole line. The plan's §7 lists them with the
+rest that was seen and is in no phase.
 
 ## Side findings
 
@@ -246,9 +250,10 @@ was seen and is in no phase.
   `route <id> off`, so F3's and F8's controls show busk's question. It asks nothing before
   any other `delete`, a `record … replace` or `effect clear`. They are undo steps. A TUI control
   there would rely on `undo`, unless the TUI asks first itself. F6's `[delete]`, F4's cue
-  `[delete]`, `[replace]` and `[remove]`, F5's `✕` on a cue's effect, `[clear]` and a template's
-  `[delete]`, F3's group `[replace]` and `[remove]`, F6's preset `[replace]` and `[remove]`, and
-  F7's `[unpark all]` ask first (`RunLine.ask`).
+  `[delete]`, `[replace]` and `[remove]` (and `[load]`, while the programmer holds something),
+  F5's `✕` on a cue's effect, `[clear]` and a template's `[delete]`, F3's group `[replace]` and
+  `[remove]`, F6's preset `[replace]` and `[remove]`, and F7's `[unpark all]` ask first
+  (`RunLine.ask`).
 - **Found in Phase 17** (2026-11-11), and not fixed: on a show with several speed masters, F4's
   toggle on a list that was never a chase sends `cuelist N chase bpm x 1`, and busk refuses it
   (`several speed masters: name one`). `[chase…]` names the master. (`[chase…]`'s crossfade field,
