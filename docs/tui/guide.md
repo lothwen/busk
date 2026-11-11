@@ -5,13 +5,16 @@ watchdog, autosave, crash recovery and the event log, and puts a status bar, pag
 the console prompt on one screen. Every click and key in it is a console line, echoed in the
 log, so what the UI does is what you could type.
 
-> **Work in progress.** This version has the frame (the status bar, the log, the prompt with
-> hints and completion, the help overlay and the dialogs) and every page: [F1 Busk](#f1-busk),
-> to play the show, [F2 Program](#f2-program) and [F6 Presets](#f6-presets), to build a look,
-> [F4 Cues](#f4-cues) and [F5 Effects](#f5-effects), to run and edit cue lists and effects,
+> **What it covers.** The frame (the status bar, the log, the prompt with hints and completion,
+> the help overlay and the dialogs) and every page: [F1 Busk](#f1-busk), to play the show, in
+> three layouts, A (console), B (stack) and C (stage), [F2 Program](#f2-program) and
+> [F6 Presets](#f6-presets), to build a look, [F4 Cues](#f4-cues) and [F5 Effects](#f5-effects),
 > [F7 Masters](#f7-masters), and the rig: [F3 Fixtures](#f3-fixtures), [F8 Patch](#f8-patch)
-> and [F9 Surfaces](#f9-surfaces). F1 has three layouts: A (console), B (stack) and C
-> (stage).
+> and [F9 Surfaces](#f9-surfaces). Their edit modes and panels build a show from controls: the
+> rig, groups and park, presets, cues and cue lists, effects and their templates, playbacks and
+> pages. A few things are still typed at the prompt: renumbering a cue, a cue list or a page,
+> the options of an effect as it is added, and setting up masters, safety and the show's details.
+> F9 puts the start of a binding's line in the prompt.
 
 ## Install
 

@@ -48,45 +48,48 @@ Baseline at `d628286` (2026-11-08): the whole suite, 5,113 passed and 1 skipped,
 
 ## 2. Everything gathered
 
-Each pending item, what it is at `d628286`, and where it goes.
+Each pending item, what it is at `d628286`, where it goes, and what Phase 16's audit found it
+to be at `f851165`.
 
-| From | Item | At `d628286` | Goes to |
-|---|---|---|---|
-| busk missing 1 | Delete, change or rename an effect template | open | Phase 2, GAP-31 |
-| busk missing 2 | A playback for an existing list; another list by number | open | Phase 3, GAP-34 |
-| busk missing 3 | Remove one effect from a cue by its id | open | Phase 2, GAP-32 |
-| busk missing 4 | A fixture's mode and profile | closed (GAP-26) | nothing |
-| busk missing 5 | An empty cue list | open | Phase 2, GAP-33 |
-| busk missing 6 | Deletes that cascade for presets, cue lists, playbacks | open | Phase 4, GAP-36 |
-| busk missing 6 | One entity per line | open for fixtures (rig §9 below); the rest stays (§7) | Phase 5, GAP-38 |
-| busk missing 7 | Playback and cue list settings named by `help` and `expected()` | open | Phase 3, GAP-35 |
-| busk missing 8 | Removing and switching a route | closed (GAP-23) | nothing |
-| busk missing 9 | Editing a route | open | Phase 5, GAP-37; F8 in Phase 13 |
-| TUI missing, F1 | The playback's own buttons | open | Phase 9 |
-| TUI missing, F1 | `record slot` on an empty slot | open | Phase 9 |
-| TUI missing, F4 | Delete a cue, re-record it, record at a number, release targets | open | Phase 6 |
-| TUI missing, F4 | New list; delete, rename, tracking and chase settings of a list | open | Phase 6 |
-| TUI missing, F5 | Edit an effect's settings; `effect clear` | open | Phase 7 |
-| TUI missing, F5 | Add a template | open | Phase 8 |
-| TUI missing, Playbacks | View and edit their configuration | open | Phase 10 |
-| TUI missing, Playbacks | Add and delete one; page slots | open | Phase 11 |
-| Side finding 1 | `record cue L/C remove` replies `0 effects` | **fixed** in `4abcf1f`, checked: `removed 0 values, 1 effect from cue 90/1` | Phase 1 takes it out of the report |
-| Side finding 2 | `confirmation()` asks nothing before most deletes | open | rule in §1, applied by Phases 6, 7, 12 |
-| Rig §9 | Groups | open | Phase 12 |
-| Rig §9 | `park` and `unpark` | open | Phase 12; GAP-22 in Phase 5 |
-| Rig §9 | Cascades for presets, cue lists, playbacks, pages | open, as above | Phase 4, GAP-36 |
-| Rig §9 | Editing a route in place | open, as above | Phase 5, GAP-37; F8 in Phase 13 |
-| Rig §9 | Deleting or patching several fixtures at once | open | Phase 5, GAP-38; F3 in Phase 13 |
-| Rig §9 | F1 C's `[location…]` | open | Phase 1 |
-| Rig §9 | Importing a profile; `profile update` | open | Phase 5, GAP-39; F3 in Phase 13 |
-| Rig §9 | A split patch | open | Phase 14, if Q4 says so |
-| Rig §9 | Editing in the table's cells | open | Phase 15, if Q5 says so |
-| Last conversation | Refusals with a document path: `group N number M`, `route add 1 sacn 0`, a mode or profile past channel 512 | open | Phase 1 |
-| Last conversation | The same for a plain `delete fixture N` | open | Phase 4, GAP-36 |
-| Last conversation | The log does not wrap | open: `LogView` is built with `wrap=False` | Phase 1 |
-| Last conversation | A step on `Bridge.standalone` takes about 3 s | **closed** by `d628286`: Textual's idle wait counted the engine thread's CPU and ran to its 1 s cap. `test_tui_e2e.py` went from 1,255 s to 107 s | nothing |
-| Last conversation | A show with `refreshHz` 41 to 44, or a fixture below 1, no longer loads | open: the user's call | Q1, Phase 1 |
-| Last conversation | The other decisions in the Done notes | stay as built unless vetoed: rig plan §4, its Done notes, and the Fixed notes of §8 and §11 | the user |
+| From | Item | At `d628286` | Goes to | At `f851165` (Phase 16) |
+|---|---|---|---|---|
+| busk missing 1 | Delete, change or rename an effect template | open | Phase 2, GAP-31 | done: three lines |
+| busk missing 2 | A playback for an existing list; another list by number | open | Phase 3, GAP-34 | done: `playback add`, `playback N cuelist L` |
+| busk missing 3 | Remove one effect from a cue by its id | open | Phase 2, GAP-32 | done: `cue L/C effect <id> remove` |
+| busk missing 4 | A fixture's mode and profile | closed (GAP-26) | nothing | closed |
+| busk missing 5 | An empty cue list | open | Phase 2, GAP-33 | done: `cuelist add` |
+| busk missing 6 | Deletes that cascade for presets, cue lists, playbacks | open | Phase 4, GAP-36 | done: all five kinds |
+| busk missing 6 | One entity per line | open for fixtures (rig §9 below); the rest stays (§7) | Phase 5, GAP-38 | done for fixtures (`thru`); presets, cues and lists one per line (§7) |
+| busk missing 7 | Playback and cue list settings named by `help` and `expected()` | open | Phase 3, GAP-35 | done: named, offered, `none` |
+| busk missing 8 | Removing and switching a route | closed (GAP-23) | nothing | closed |
+| busk missing 9 | Editing a route | open | Phase 5, GAP-37; F8 in Phase 13 | done: `route <id> change`; F8's `[edit…]` |
+| TUI missing, F1 | The playback's own buttons | open | Phase 9 | done: in layouts A, B and C |
+| TUI missing, F1 | `record slot` on an empty slot | open | Phase 9 | done: `[record]` |
+| TUI missing, F4 | Delete a cue, re-record it, record at a number, release targets | open | Phase 6 | done |
+| TUI missing, F4 | New list; delete, rename, tracking and chase settings of a list | open | Phase 6 | done |
+| TUI missing, F5 | Edit an effect's settings; `effect clear` | open | Phase 7 | done, within GAP-41's limits |
+| TUI missing, F5 | Add a template | open | Phase 8 | done: `[+ template…]` |
+| TUI missing, Playbacks | View and edit their configuration | open | Phase 10 | done: F1's PLAYBACK panel |
+| TUI missing, Playbacks | Add and delete one; page slots | open | Phase 11 | done: F1's edit mode |
+| Side finding 1 | `record cue L/C remove` replies `0 effects` | **fixed** in `4abcf1f`, checked: `removed 0 values, 1 effect from cue 90/1` | Phase 1 takes it out of the report | out of the report |
+| Side finding 2 | `confirmation()` asks nothing before most deletes | open | rule in §1, applied by Phases 6, 7, 12 | applied, but not to F6's `[replace]` and `[remove]`: Phase 17 |
+| Rig §9 | Groups | open | Phase 12 | done: F3's GROUPS |
+| Rig §9 | `park` and `unpark` | open | Phase 12; GAP-22 in Phase 5 | done: F3's PARK, F7's PARKED, `src` reads `park` |
+| Rig §9 | Cascades for presets, cue lists, playbacks, pages | open, as above | Phase 4, GAP-36 | done, as above |
+| Rig §9 | Editing a route in place | open, as above | Phase 5, GAP-37; F8 in Phase 13 | done, as above |
+| Rig §9 | Deleting or patching several fixtures at once | open | Phase 5, GAP-38; F3 in Phase 13 | done: a selection that is one run |
+| Rig §9 | F1 C's `[location…]` | open | Phase 1 | done |
+| Rig §9 | Importing a profile; `profile update` | open | Phase 5, GAP-39; F3 in Phase 13 | done: `[import…]`, `[update profile]` |
+| Rig §9 | A split patch | open | Phase 14, if Q4 says so | dropped: Q4 (a) |
+| Rig §9 | Editing in the table's cells | open | Phase 15, if Q5 says so | done: a dialog per cell |
+| Last conversation | Refusals with a document path: `group N number M`, `route add 1 sacn 0`, a mode or profile past channel 512 | open | Phase 1 | done; an Art-Net port address still prints a path (§7) |
+| Last conversation | The same for a plain `delete fixture N` | open | Phase 4, GAP-36 | done |
+| Last conversation | The log does not wrap | open: `LogView` is built with `wrap=False` | Phase 1 | done |
+| Last conversation | A step on `Bridge.standalone` takes about 3 s | **closed** by `d628286`: Textual's idle wait counted the engine thread's CPU and ran to its 1 s cap. `test_tui_e2e.py` went from 1,255 s to 107 s | nothing | closed |
+| Last conversation | A show with `refreshHz` 41 to 44, or a fixture below 1, no longer loads | open: the user's call | Q1, Phase 1 | done: Q1 (b) |
+| Last conversation | The other decisions in the Done notes | stay as built unless vetoed: rig plan §4, its Done notes, and the Fixed notes of §8 and §11 | the user | none vetoed so far |
+| Phase 16's audit | F4's toggle back to a chase rounds the list's rate and crossfade, and fails on a speed master with a quote in its name | not yet found | Phase 17 | open |
+| Phase 16's audit | F1's `[GT]` stays live on a goto cue its list lacks, and does nothing | not yet found | Phase 17 | open |
 
 ## 3. The phases at a glance
 
@@ -108,6 +111,7 @@ Each pending item, what it is at `d628286`, and where it goes.
 | 14 | Split patch | busk, TUI | | Q4 |
 | 15 | Cue cell editing | TUI | 6 | Q5 |
 | 16 | Audit, and the user's check on a rig | docs | all | |
+| 17 | The audit's three bugs: F4's chase toggle, F1's `[GT]`, F6's questions | TUI | 16 | |
 
 ## 4. What busk does (checked on 2026-11-08)
 
@@ -1082,7 +1086,93 @@ after Esc. No error in the log.
 
 1. **Audit.** Every row of §2 against the code, and every row of the report. Rewrite the report's
    Summary and "In short". Check the guide's "Work in progress" note.
+
+   **Done** (2026-11-11), at `f851165`, changing docs only:
+   - **The engine side.** A script ran the busk line of each of the report's rows, 127 lines, each
+     on a fresh copy of the club show, with `confirmation()` where a row says busk asks. Every line
+     did what its row says. The scripts are in this conversation's scratchpad, not in the repo.
+   - **The TUI side.** Each builder of `commands.py` has a caller in the page or widget its row
+     names, but `flash`, `undo` and `redo` (§7). Of the controls that send a line §1 names (a plain
+     `delete`, `record … replace` or `remove`, `effect clear`), all ask first but F6's `[replace]`
+     and `[remove]`, which the presets plan built before §1's rule. F7's `[unpark all]` asks too.
+   - **§2** has a column for what each row is at `f851165`. Every row is done, closed or dropped as
+     its "Goes to" said. Two leave something in §7: presets, cues and lists still take one per
+     line, and an Art-Net port address out of range is still refused by path.
+   - **The report:** its header names the audit; the Summary marks what is typed; "In short", "What
+     the TUI is missing" and the end of "What busk is missing" are rewritten. Five rows called a
+     `number M` a generic property: each has been a line of its own since Phase 1 (`_renumber`,
+     `_renumber_cue`), and a cue's takes the number bare. The side findings list every control
+     that asks, the audit's findings and every reply with a path.
+   - **Three findings, written down and not fixed**, since this phase changes docs only (§3): F4's
+     toggle back to a chase rounds the list's rate and crossfade and fails on a speed master with a
+     quote in its name; F1's `[GT]` stays live on a goto cue the list lacks, and does nothing; F6's
+     `[replace]` and `[remove]` ask nothing. All three are in §7 and the report's side findings,
+     and at the user's word they are Phase 17.
+
+   Which the user may veto:
+   - **The guide's note no longer says "Work in progress".** It is "What it covers": every page,
+     what the edit modes build from controls, and what is still typed. The TUI plan's phases and
+     this plan's are built, and the user's check (step 2) tests them, not new work.
+   - No `CHANGELOG.md` entry: nothing an operator meets has changed.
 2. **The user's check** on a rig, with the shipped shows: their step, as in the rig plan's step 15.
+
+**Phase 16 checks** (2026-11-11). The whole suite: 6,183 passed and 1 skipped, in 8:12 with `uv run
+pytest -n 6`, as at Phase 15. A first run had two failures, both timed under the suite's load, and
+both passed alone and in the second run: `test_engine_host.py`'s tick count over 2 s, and
+`test_tui_e2e.py`'s busy timer reading `save 1.1s` where it expects under a second. `ruff check`,
+`ruff format --check` and `mypy src` clean. No code changed, so no perf gate, Textual 8.2.0 run or
+real `busk run`.
+
+### Phase 17: The audit's three bugs
+
+The user's word of 2026-11-11: the three bugs Phase 16's audit found, as a small phase after the
+user's check (Phase 16, step 2). A TUI phase: no change to `src/busk/` (§1). Code:
+`src/busk_tui/pages/cues.py`, `src/busk_tui/commands.py`, `src/busk_tui/widgets/playbacks.py`,
+`src/busk_tui/widgets/preset_panel.py`. Tests: `tests/tui/test_tui_cues.py`,
+`test_tui_commands.py`, `test_tui_busk.py`, `test_tui_presets.py`.
+
+1. **F4's toggle back to a chase sends the list's settings as they are.** `mode_line` builds its
+   line from `CueListInfo.chase`, `bridge._chase_text`'s words, through `commands.cuelist_chase`.
+   So it writes the rate with `:g` (`hz 1.23456789` as `hz 1.23457`), the multiplier too, and the
+   crossfade with `commands.number` (`0.125` as `0.12`), and leaves a quote in a speed master's
+   name unescaped, so busk refuses the line (`no speed master 'Say '`) and the list stays a
+   sequence. Build it from `CueListInfo.rate` and `crossfade` with `commands.chase_settings`, as
+   `[chase…]`'s form does, each number through `commands.exact`, the master quoted. A list with no
+   chase settings (`rate` is `None`) still sends `cuelist N chase bpm x 1`. Take out of
+   `commands.cuelist_chase` what is then unused. `CueListInfo.chase` stays for F4's meta line and
+   F1's strips, which only show it.
+
+   Verify: a sequence, then a chase and back, keeps the list's `chase` exactly as busk stored it,
+   for a rate of many digits, a multiplier of many digits, a crossfade of `0.125`, every direction,
+   a beat rate with one speed master (no name in the line) and with several, and a master named
+   `Say "hi"`; a list never chased gets `bpm x 1`. Nothing else sends `_rate_text`'s or
+   `_chase_text`'s words (grep), so their quote and `:g` are only shown; §7's item says so.
+2. **F1's `[GT]` is grey on a goto cue its list lacks.** `_idle_reason` greys a `goto` only when
+   there is no `gotoCue`. After `playback N cuelist L` the number can name no cue of the new list:
+   busk warns once, at the change, and a press then does nothing and says nothing. Grey it then
+   too, with the reason in the hint row (`goto: cue list 11 has no cue 4`), comparing numbers as
+   busk does (`cue_number_key`, the TUI's `cue_key`), so `04` is cue `4`. The PLAYBACK panel's
+   `[goto…]` row is unchanged.
+
+   Verify: a goto cue the list has, one it lacks, one it gets back by `record cue`, and `04`
+   against cue `4`; the strip redrawn when the list or its cues change, in layouts A, B and C; the
+   perf gate on F1, since the strips' update path reads it.
+3. **F6's `[replace]` and `[remove]` ask first**, as §1's rule says and as F4's and F3's do. The
+   questions follow F4's: `Replace what preset color 1 "Blue" holds with the programmer?` and
+   `Remove the programmer's attributes from preset color 1 "Blue"?` `[merge]` and `[record]`
+   ask nothing, as before.
+
+   Verify: each question, its yes sending the line and its no sending nothing; the pane cursor's
+   Enter on each; the grey state with nothing to record unchanged.
+
+Docs: `docs/tui/guide.md` (F4's toggle, F1's grey buttons, F6's `[replace]` and `[remove]`), the
+report's side findings (the three go), §2's two rows and side finding 2, §7's items, and
+`CHANGELOG.md` under Fixed.
+
+Verify, besides each step's: a test on the real engine in `tests/tui/test_tui_e2e.py` for each
+step; a real `busk-tui --state-dir …` under `busk run` on the club show, at 150 and 99 columns,
+with the toggle on a list given a speed master named with a quote, `[GT]` grey after `[list…]`,
+and F6's two questions.
 
 ## 7. Seen, and not in the sources
 
@@ -1104,7 +1194,9 @@ Left out because the five places do not name them. Say if any should join a phas
   in the log. Found on 2026-11-09.
 - `playback N <prop> <value>` replies with a path too, and F1's PLAYBACK panel now puts that in the
   log. `go` on a playback whose `gotoCue` its list lacks, after a change of list, was not checked.
-  Found on 2026-11-09.
+  Found on 2026-11-09. Checked in Phase 16, on `LiveShow`: `go` runs the new list, and the `goto`
+  button does nothing and says nothing. busk warns once, at the change. F1 greys `[GT]` only when
+  there is no `gotoCue`, so it stays live on one the list lacks: **Phase 17**, step 2.
 - `rename page N "…"` replies with a path too (`set pages[2].name to "Finale"`), and F1's page
   `[rename…]` now puts that in the log. Found on 2026-11-10.
 - With `--faders` below a page's slot count, ← → and the selection that follows a change of slots
@@ -1121,7 +1213,24 @@ Left out because the five places do not name them. Say if any should join a phas
   point as any number (`50%`, `-0`), and the cue's own times as plain seconds. Found on 2026-11-10.
 - `commands.effect_stop`, `effect_run` and `effect_remove` do not quote an id, so those controls
   fail on an effect id of two words, which only `id "my fx"` makes. `_rate_text` in the bridge does
-  not escape a quote in a master's name. Found on 2026-11-09.
+  not escape a quote in a master's name. Found on 2026-11-09. Phase 16 found that a control sends
+  it: F4's toggle back to a chase restates `CueListInfo.chase`, `_chase_text`'s words, through
+  `commands.cuelist_chase`. So the toggle fails on such a master (`no speed master 'Say '`), and
+  writes the rate with `:g` (`hz 1.23456789` as `hz 1.23457`) and the crossfade with
+  `commands.number` (`0.125` as `0.12`). `[chase…]`'s form keeps every digit and quotes the name,
+  so the fix is to build the toggle's line from `CueListInfo.rate` as the form does: **Phase 17**,
+  step 1. After it, `_rate_text`'s words are only shown. The effect ids stay open.
+- `commands.flash`, `undo` and `redo` have no caller. `flash` lost its own when Phase 9's strips
+  began sending `button N B`; `undo` and `redo` never had one, since `undo` is typed. The contract
+  test still runs all three. Found on 2026-11-11.
+- Every rename, every `number M`, `fixture N location {…}`, a plain `delete` of something unused
+  and `cuelist N sequence` reply with a path too: the report's side findings list them all. Found
+  on 2026-11-11.
+- F6's `[replace]` and `[remove]` send `record preset … replace|remove` and ask nothing, where
+  F4's and F3's ask first, as §1's rule says. The presets plan built them before the rule, and
+  Phase 6 brought only F6's `[delete]` under it. Found on 2026-11-11. **Phase 17**, step 3.
+- `fixture N mode <the mode it runs>` goes through and spends an undo step that changes nothing.
+  F3's lit chip sends nothing, so only the prompt meets it. Found on 2026-11-11.
 
 ## 8. Questions
 
