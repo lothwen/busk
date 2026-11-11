@@ -899,10 +899,21 @@ def not_seconds() -> Any:
         ("page 1 number x", "expected a page number, got 'x'"),
         ("preset color 1 number x", "expected a preset number, got 'x'"),
         ("cue 1/1 number 2", "cue 1/2 exists"),
-        ("cue 1/1 number 2.0", "cue 1/1 cannot pass cue 1/2"),
-        ("cue 1/1 number 7", "cue 1/1 cannot pass cue 1/2"),
-        ("cue 1/2 number 0.5", "cue 1/2 cannot pass cue 1/1"),
+        ("cue 1/1 number 02", "cue 1/2 exists"),
         ("cue 1/1 number x", "expected a cue number, got 'x'"),
+        ("cue 1/1 number 1/3", "expected a cue number, got '1/3'"),
+        ("cue 1/1 number 3 now", "unexpected 'now'"),
+        ("cue 1/1 copy 2", "cue 1/2 exists"),
+        ("cue 1/1 copy 1", "cue 1/1 exists"),
+        ("cue 1/1 copy 10/1", "cue 10/1 exists"),
+        ("cue 1/1 copy 10/01", "cue 10/1 exists"),
+        ("cue 1/1 copy 99/1", "no cue list 99"),
+        ("cue 1/1 copy x", "expected a cue number, or L/C for another list, got 'x'"),
+        ("cue 1/1 copy 10/", "expected a cue number, or L/C for another list, got '10/'"),
+        ("cue 1/1 copy 10/x", "expected a cue number, or L/C for another list, got '10/x'"),
+        ("cue 1/1 copy 1/2/3", "expected a cue number, or L/C for another list, got '1/2/3'"),
+        ("cue 1/1 copy 1.2.3", "expected a cue number, or L/C for another list, got '1.2.3'"),
+        ("cue 1/1 copy 3 now", "unexpected 'now'"),
         ("cue 1/1 time position none", "cue 1/1 has no position timing of its own"),
     ],
 )
@@ -981,6 +992,13 @@ def test_a_cue_takes_its_number_as_typed_or_in_quotes() -> None:
         "cue 1/1 number 1.5",  # between its neighbours
         "cue 1/2 number 7",  # the last: nothing to pass
         "cue 1/1 number 0.5",
+        "cue 1/1 number 2.0",  # past cue 2 (GAP-43)
+        "cue 1/1 number 7",
+        "cue 1/2 number 0.5",
+        "cue 1/1 copy 1.5",
+        "cue 1/1 copy 1/3",
+        "cue 1/1 copy 10/0.5",
+        "cue 1/1 copy 10/2",
     ],
 )
 def test_the_edge_of_each_refusal_still_runs(line: str) -> None:
@@ -1542,6 +1560,173 @@ def test_a_familys_own_timing_goes_on_a_running_show() -> None:
         assert status_of(live, 1).state == "active"
 
 
+# ----------------------------------------------- moving and copying a cue (GAP-43)
+
+
+def song_order(show: Show, number: int = 1) -> list[tuple[str, str, str]]:
+    """List ``number``'s cues as the document holds them: number, name, id."""
+    cue_list = next(c for c in show["cueLists"] if c["number"] == number)
+    return [(cue["number"], cue["name"], cue["id"]) for cue in cue_list["cues"]]
+
+
+def compiled_order(show: Show, ident: str = "cl-song") -> list[tuple[str, str]]:
+    """The compiled list's cues, in the order the engine plays them."""
+    return [(cue.number, cue.id) for cue in compile_show(show).cueLists[ident].cues]
+
+
+def song_runtime(live: Live) -> Any:
+    return live.engine.runtime.playbacks.runtimes["pb-song"]
+
+
+def test_a_cue_moves_past_its_neighbours_in_one_undo_step(console: Console, live: Live) -> None:
+    before = copy.deepcopy(live.session.show)
+    assert run(console, "cue 1/1 number 3") == ["cue 1/1 is now cue 1/3"]
+    moved = [("2", "Chorus", "c-chorus"), ("3", "Verse", "c-verse")]
+    assert song_order(live.session.show) == moved
+    assert compiled_order(live.session.show) == [("2", "c-chorus"), ("3", "c-verse")]
+    verse = live.session.show["cueLists"][0]["cues"][1]
+    assert {**verse, "number": "1"} == before["cueLists"][0]["cues"][0]  # nothing else changed
+    assert run(console, "list cues 1")[0].split("\n")[0].split()[:2] == ["2", "Chorus"]
+    assert run(console, "undo") == ["undid: cue 1/1 is now cue 1/3"]
+    assert live.session.show == before
+    assert run(console, "redo") == ["redid: cue 1/1 is now cue 1/3"]
+    assert song_order(live.session.show) == moved
+
+
+def test_a_cue_moves_back_before_its_neighbours() -> None:
+    offline = OfflineShow(show_of(load_doc(APPENDIX_A)))
+    assert offline.execute("cue 1/2 copy 3").ok
+    assert offline.execute("cue 1/3 number 0.5").ok
+    numbers = [number for number, _, _ in song_order(offline.show)]
+    assert numbers == ["0.5", "1", "2"]
+    assert [number for number, _ in compiled_order(offline.show)] == numbers
+
+
+def test_a_running_playback_stays_on_the_cue_that_moves(console: Console, live: Live) -> None:
+    run(console, "go 1")
+    live.tick()
+    pb = song_runtime(live)
+    assert (pb.state, pb.current.id) == ("active", "c-verse")
+    run(console, "cue 1/1 number 3")
+    live.tick()
+    assert (pb.state, pb.current.id, pb.current.number) == ("active", "c-verse", "3")
+    run(console, "back 1")  # the cue before it now
+    live.tick()
+    assert pb.current.number == "2"
+    assert live.engine.stats.installErrors == 0
+
+
+def test_a_follow_runs_after_the_cue_that_is_now_before_it(console: Console, live: Live) -> None:
+    run(console, "cue 1/1 follow 0", "cue 1/1 number 3", "go 1")
+    live.tick()
+    pb = song_runtime(live)
+    assert pb.current.number == "2"
+    live.tick(1.0)  # Chorus fades in over 0.5 s, and Verse follows it at once
+    assert pb.current.number == "3"
+
+
+def test_a_running_chase_steps_in_the_new_order(console: Console, live: Live) -> None:
+    run(console, "cue 1/1 copy 3", "cue 1/2 copy 4", "cuelist 1 chase hz 1", "go 1")
+    pb = song_runtime(live)
+    steps = []
+    for _ in range(4):
+        live.tick(1.0)
+        steps.append(pb.current.number)
+    assert steps == ["1", "2", "3", "4"]
+    run(console, "cue 1/4 number 0.5")  # the step it is on
+    live.tick()
+    assert pb.current.number == "0.5"
+    for _ in range(4):
+        live.tick(1.0)
+        steps.append(pb.current.number)
+    assert steps[4:] == ["1", "2", "3", "0.5"]
+    assert live.engine.stats.installErrors == 0
+
+
+def test_a_goto_that_names_the_old_number_is_warned_of(console: Console) -> None:
+    run(console, "playback 1 goto 2")
+    reply = console.execute("cue 1/2 number 0.5")
+    assert reply.ok
+    assert reply.text.splitlines()[0] == "cue 1/2 is now cue 1/0.5"
+    assert "Cue list 'Song' has no cue '2'" in reply.text
+
+
+def test_a_copy_keeps_everything_but_its_id(console: Console, live: Live) -> None:
+    before = copy.deepcopy(live.session.show)
+    assert run(console, "cue 20/1 copy 2") == ['copied cue 20/1 "Pulse" to cue 20/2']
+    pulse, copied = live.session.show["cueLists"][2]["cues"]
+    assert pulse == before["cueLists"][2]["cues"][0]
+    assert copied["id"] not in {c["id"] for cl in before["cueLists"] for c in cl["cues"]}
+    assert {**copied, "id": pulse["id"], "number": "1"} == pulse
+    effects = [
+        [effect.key for effect in cue.effects]
+        for cue in compile_show(live.session.show).cueLists["cl-pulse"].cues
+    ]
+    assert effects == [["ei-1"], ["ei-1"]]  # an effect id is the cue's own
+    assert run(console, "undo") == ['undid: copied cue 20/1 "Pulse" to cue 20/2']
+    assert live.session.show == before
+
+
+def test_a_copy_goes_to_its_place_in_another_list(console: Console, live: Live) -> None:
+    run(console, "cue 1/2 copy 10/0.5", "cue 1/1 copy 10/7")
+    assert [number for number, _, _ in song_order(live.session.show, 10)] == ["0.5", "1", "7"]
+    assert [n for n, _ in compiled_order(live.session.show, "cl-blue")] == ["0.5", "1", "7"]
+    listed = run(console, "list cues 10")[0].splitlines()
+    assert [line.split()[:2] for line in listed] == [
+        ["0.5", "Chorus"],
+        ["1", "Blue"],
+        ["7", "Verse"],
+    ]
+
+
+def test_a_copy_into_a_chase_is_one_more_step(console: Console, live: Live) -> None:
+    run(console, "cuelist 1 chase hz 1", "go 1")
+    live.tick()
+    run(console, "cue 10/1 copy 1/1.5")
+    live.tick()  # the copy reaches the engine
+    pb = song_runtime(live)
+    steps = []
+    for _ in range(3):
+        live.tick(1.0)
+        steps.append(pb.current.number)
+    assert steps == ["1.5", "2", "1"]
+
+
+def test_a_copy_into_an_empty_list_is_its_first_cue(console: Console, live: Live) -> None:
+    run(console, "cuelist add 30", "cue 1/1 copy 30/1", "playback add 30 cuelist 30", "go 30")
+    live.tick()
+    assert song_order(live.session.show, 30)[0][:2] == ("1", "Verse")
+    added = live.session.show["playbacks"][-1]["id"]
+    assert live.engine.runtime.playbacks.runtimes[added].current.number == "1"
+
+
+def test_a_refused_move_or_copy_spends_no_undo_step(console: Console, live: Live) -> None:
+    before = copy.deepcopy(live.session.show)
+    for line in ("cue 1/1 number 2", "cue 1/1 copy 10/1", "cue 1/1 copy 99/1"):
+        assert not console.execute(line).ok
+    assert live.session.show == before
+    assert console.execute("undo").text == "error: nothing to undo"
+
+
+def test_a_move_and_a_copy_on_a_running_show() -> None:
+    running = show_of(load_doc(APPENDIX_A))
+    with LiveShow(running, output=False) as live:
+        eventually(lambda: status_of(live, 1) is not None)
+        assert live.execute("go 1").ok
+        eventually(lambda: status_of(live, 1).state == "active")
+        reply = live.execute("cue 1/1 number 3")
+        assert (reply.ok, reply.text) == (True, "cue 1/1 is now cue 1/3")
+        eventually(lambda: status_of(live, 1).cue == "3")
+        assert status_of(live, 1).state == "active"
+        reply = live.execute("cue 1/3 copy 10/2")
+        assert (reply.ok, reply.text) == (True, 'copied cue 1/3 "Verse" to cue 10/2')
+        assert live.execute("undo").ok
+        assert live.execute("undo").ok
+        assert live.show == running
+        eventually(lambda: status_of(live, 1).cue == "1")
+        assert status_of(live, 1).state == "active"
+
+
 # ------------------------------------------- several fixtures patched (GAP-38)
 
 
@@ -1683,6 +1868,9 @@ REPLIES = [
     ([], "group 1 number 9", "group 1 is now group 9"),
     ([], "preset color 1 number 9", "preset color 1 is now preset color 9"),
     ([], "cue 1/2 number 2.5", "cue 1/2 is now cue 1/2.5"),
+    ([], "cue 1/1 number 3", "cue 1/1 is now cue 1/3"),
+    ([], "cue 1/2 copy 3", 'copied cue 1/2 "Chorus" to cue 1/3'),
+    ([], "cue 1/2 copy 10/0.5", 'copied cue 1/2 "Chorus" to cue 10/0.5'),
     ([], "cuelist 1 number 30", "cue list 1 is now cue list 30"),
     ([], "playback 1 number 30", "playback 1 is now playback 30"),
     ([], "page 1 number 5", "page 1 is now page 5"),

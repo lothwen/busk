@@ -55,6 +55,7 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
                 | bezier x1 y1 x2 y2
     cue L/C go | cue L/C follow <d> | cue L/C wait <d>
     cue L/C release <targets> [only <attribute>…]
+    cue L/C number M | cue L/C copy [L2/]M
     cuelist N chase hz <rate> [<direction>] [crossfade <f>]
     cuelist N chase bpm ["<master>"] [x <multiplier>] [<direction>] [crossfade <f>]
         <direction> = forward | reverse | bounce | random
@@ -277,6 +278,15 @@ replaces the layers, read as ``add`` reads them.
 A cue's effect (GAP-32). ``cue L/C effect <id> remove`` removes one effect by
 its id, in one undo step; a cue left with nothing stays.
 
+Moving and copying a cue (GAP-43). ``cue L/C number M`` renumbers a cue, and
+the cue goes to its place in the list's order, past its neighbours if it must:
+it is taken out and put back with its id, so a playback on it stays on it. A
+``goto`` that names the old number names no cue, which the validator warns of.
+``cue L/C copy [L2/]M`` adds a copy at ``M``, in the cue's own list or in list
+``L2``, at its place there: a new id, and the rest as the cue has it, effect
+ids included. Each is one undo step, and a number the list has is refused.
+Moving a cue to another list is a copy, then a delete.
+
 An empty cue list (GAP-33). ``cuelist add N ["name"]`` makes a list with no
 cues, with the defaults of a list that ``record cue`` makes; ``record cue N``
 appends to it. ``go`` is refused on a playback whose list has no cues, since
@@ -321,7 +331,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Final, cast
 
-from busk.commands.edits import short
+from busk.commands.edits import cue_insert_index, short
 from busk.commands.patch import deep_copy
 from busk.commands.types import Command, EditPath
 from busk.console.cascade import (
@@ -2145,8 +2155,11 @@ class _Parser:
             verb = self.keyword(*_CUE_VERBS)
             if verb is not None:
                 return self._cue_verb(path, cue, verb)
-            if (token := self.peek()) and token.lower == "number":
+            moves = self.keyword("number", "copy")
+            if moves == "number":
                 return self._renumber_cue(path, cue)
+            if moves == "copy":
+                return self._copy_cue(path, cue)
         else:
             path = self.entity_path(head)
         if head != "show" and (token := self.peek()) and token.lower == "number":
@@ -2207,12 +2220,11 @@ class _Parser:
         )
 
     def _renumber_cue(self, path: EditPath, cue: Mapping[str, Any]) -> Action:
-        """``cue L/C number M``, between the cue's neighbours: a list keeps its
-        cues in order, and the validator would say so by document path."""
-        self.k += 1
+        """``cue L/C number M`` (GAP-43): the cue goes to its place in the
+        list's order, past its neighbours if it must. A cue that moves is
+        taken out and put back, with its id, so a playback on it stays."""
         token = self.take("a cue number")
-        key = cue_number_key(token.text)
-        if key is None:
+        if cue_number_key(token.text) is None:
             raise ParseError(f"expected a cue number, got {token.text!r}")
         cue_list = _element(self.show["cueLists"], path[:2])
         cues = cast(list[Mapping[str, Any]], cue_list["cues"])
@@ -2220,15 +2232,49 @@ class _Parser:
         for other in cues:
             if other is not cue and _same_cue(other["number"], token.text):
                 raise ParseError(f"{here}{other['number']} exists")
-        at = cues.index(cue)
-        for index, other in enumerate(cues):
-            theirs = tuple(int(part) for part in other["number"].split("."))
-            if other is not cue and (index < at) != (theirs < key):
-                raise ParseError(f"{here}{cue['number']} cannot pass {here}{other['number']}")
+        label = f"{here}{cue['number']} is now {here}{token.text}"
+        others = [other for other in cues if other is not cue]
+        if cue_insert_index(others, token.text) == cues.index(cue):  # it keeps its place
+            return self.submit(
+                _labelled(label, {"type": "SET", "path": [*path, "number"], "value": token.text})
+            )
+        moved = {**deep_copy(cue), "number": token.text}
         return self.submit(
             _labelled(
-                f"{here}{cue['number']} is now {here}{token.text}",
-                {"type": "SET", "path": [*path, "number"], "value": token.text},
+                label,
+                {"type": "DELETE", "path": path},
+                {"type": "ADD", "path": [*path[:2], "cues"], "value": moved},
+            )
+        )
+
+    def _copy_cue(self, path: EditPath, cue: Mapping[str, Any]) -> Action:
+        """``cue L/C copy [L2/]M`` (GAP-43): a copy of the cue, with a new id,
+        numbered ``M`` in its own list or in list ``L2``, at its place in
+        that list's order."""
+        what = "a cue number, or L/C for another list"
+        token = self.take(what)
+        cue_list = _element(self.show["cueLists"], path[:2])
+        number = token.text
+        if "/" in number:
+            match = _CUE.fullmatch(number)
+            if match is None or match[2] is None:
+                raise ParseError(f"expected {what}, got {number!r}")
+            cue_list = self.by_number("cueLists", int(match[1]), "cue list")
+            number = match[2]
+        elif cue_number_key(number) is None:
+            raise ParseError(f"expected {what}, got {number!r}")
+        self.done()
+        here = f"cue {cue_list['number']}/"
+        for other in cue_list["cues"]:
+            if _same_cue(other["number"], number):
+                raise ParseError(f"{here}{other['number']} exists")
+        every = {other["id"] for each in self.show["cueLists"] for other in each["cues"]}
+        copy = {**deep_copy(cue), "id": self.ctx.ids.new("c", every), "number": number}
+        into: EditPath = ["cueLists", {"id": cue_list["id"]}, "cues"]
+        return Submit(
+            _labelled(
+                f"copied {self._who('cue', path)} {short(cue['name'])} to {here}{number}",
+                {"type": "ADD", "path": into, "value": copy},
             )
         )
 

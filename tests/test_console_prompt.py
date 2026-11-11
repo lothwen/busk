@@ -129,8 +129,12 @@ EXPECTED: list[tuple[str, tuple[str, ...], tuple[str, ...], bool]] = [
      ("a name in quotes",), True),
     ("record cue 1/1 only ", ("intensity", "position", "color", "beam", "focus", "shutter"), (),
      False),
-    ("cue 10/1 ", ("effect", "time", "go", "follow", "wait", "release"),
+    ("cue 10/1 ", ("effect", "time", "go", "follow", "wait", "release", "number", "copy"),
      ("a property, e.g. name or timing.fadeIn",), False),
+    ("cue 10/1 number ", (), ("a cue number",), False),
+    ("cue 10/1 number 7 ", (), (), True),
+    ("cue 10/1 copy ", (), ("a cue number, or L/C for another list",), False),
+    ("cue 10/1 copy 1/7 ", (), (), True),
     ("cue 10/1 time 3 ", ("delay", *CURVES), (), True),
     ("cue 10/1 time ", ("intensity", "position", "color", "beam", "focus", "shutter"),
      ("a fade time",), False),
@@ -413,6 +417,8 @@ def test_grammar_shows_an_entitys_generic_edit_until_a_sub_command_fits() -> Non
         "        <curve> = linear | easeIn | easeOut | easeInOut | snapStart | snapEnd",
         "                | bezier x1 y1 x2 y2",
     ]
+    assert grammar("cue 10/1 number ") == ["    cue L/C number M"]
+    assert grammar("cue 10/1 copy ") == ["    cue L/C copy [L2/]M"]
 
 
 def test_no_grammar_before_the_first_word_is_whole() -> None:

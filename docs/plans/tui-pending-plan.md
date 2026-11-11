@@ -1661,6 +1661,16 @@ copied nor renumbered from F4; nor can a cue list. Needs Phase 19, which words t
    - a `follow` or `wait` chain, which now runs in the new order;
    - a `gotoCue` or a `GOTO` that names the old number (busk warns, as a renumber does today);
    - a chase.
+
+   **Done** (2026-11-11). `_renumber_cue` in `console/parser.py`. A cue that keeps its place
+   among the others (`cue_insert_index` of the list without it is where it is) takes the number in
+   one `SET`, as before. One that passes them is a `DELETE` and an `ADD` of the same cue, its id
+   kept and its number changed, in one labelled step: the `ADD` places it as `record cue` does.
+   The reply is the one Phase 19 gave a renumber, `cue 9/2 is now cue 9/7`. Checked on the Live
+   harness: a playback on the cue stays on it (the engine finds a running cue by id), and `back`
+   then goes to the cue now before it; a `follow` runs after the cue now before it; a running
+   chase on the moved step goes on in the new order. A `gotoCue` that names the old number gets
+   the validator's warning, as before. `cannot pass` is gone.
 2. **GAP-43: a cue is copied.** `cue L/C copy [L2/]M` adds a copy of the cue at `M`, in its own list
    or in list `L2`, at its place in the order. The copy gets a new id, and keeps the cue's name,
    entries, timing, trigger, releases and effects. A number the list already has is refused.
@@ -1670,6 +1680,38 @@ copied nor renumbered from F4; nor can a cue list. Needs Phase 19, which words t
 
    Verify: both lines on `OfflineShow` and on a running `LiveShow`; `undo`; the compiled list after
    each.
+
+   **Done** (2026-11-11). `_copy_cue`, reached from `_entity` by `copy` after a cue. `M` names a
+   cue of the same list, `L2/M` one of list `L2`. The copy is the cue deep-copied, with a new id
+   (`ids.new("c", …)` over every list's cues, as `record cue` makes one) and the number, in one
+   labelled `ADD`: `copied cue 9/4 "Chorus" to cue 10/5`. Its effects keep their ids: they are
+   unique within a cue only, and the compiled copy runs `ei-1` as the cue does. A copy into a
+   running chase is one more step, in its place; one into an empty list is its first cue, and
+   `go` runs it. Refused in one line: a number the list has (`cue 10/1 exists`), a list it lacks
+   (`no cue list 99`), and anything that is not `M` or `L/M` (`expected a cue number, or L/C for
+   another list, got '10/'`). `busk help` and the grammar have `cue L/C number M | cue L/C copy
+   [L2/]M`; the module docs and `docs/console.md` say what each does, and GAP-43's entry and
+   Summary row are in engine-gaps.md. Tab offers `number` and `copy` after a cue.
+
+   Tests: `test_console_parser.py` (a renumber that stays a `SET`, three that move, a copy in its
+   own list and in another); `test_console.py` (the refusal table, with `cannot pass` gone and
+   ten new rows; the edge table, with the three old `cannot pass` lines and four copies; the
+   replies table, with a move and two copies; and ten tests of GAP-43: the document and the
+   compiled list after a move, `list cues`, `undo` and `redo`; a move back before the others; a
+   running playback that stays on its cue; a follow; a running chase; a goto's warning; a copy
+   that keeps all but its id, effects included; a copy into another list, a chase and an empty
+   list; refusals that spend no undo step; and a move and a copy on a running `LiveShow`); and
+   `test_console_prompt.py` (four completion rows and two grammar lines).
+
+   Which the user may veto:
+   - **A move is two edits in one step,** a `DELETE` and an `ADD` of the same cue, where a cue
+     that stays between its neighbours is one `SET`. `SET` cannot move an element of a list.
+   - **`2.0` is a number of its own,** after `2`, as the validator compares them. So `cue 1/1
+     number 2.0` now moves cue 1 past cue 2, where it was refused (`cannot pass`).
+   - **Nothing follows the cue to its new number:** a `gotoCue` or a `GOTO` that named it names no
+     cue afterwards, and busk warns, as a renumber between neighbours did.
+   - **A copy keeps its effects' ids,** as `record cue` keeps the programmer's.
+   - **Tab offers `number` after a cue too,** which it did not, beside the new `copy`.
 3. **F4's `[number…]` and `[copy…]` on a cue, and `[number…]` on a list.** Each is a dialog that
    refuses a number already taken, as F3's `[number…]` does. `[copy…]` takes a list (the chosen
    one first) and a number. The report's two "renumber: prompt" cells become controls.
@@ -1677,8 +1719,73 @@ copied nor renumbered from F4; nor can a cue list. Needs Phase 19, which words t
    Verify: each control on the real engine; Esc; a taken number; the table's order after a move;
    `[GT]` greyed (Phase 17) when a renumber takes its goto cue away.
 
+   **Done** (2026-11-11). In `pages/cues.py`: the `edit` row has `[number…]` and `[copy…]` after
+   `[rename…]`, and the `list` row `[number…]` after its `[rename…]`. Builders
+   `commands.renumber_cue`, `copy_cue` and `renumber_cuelist`, in the contract table and its
+   test of what the lines do.
+   - The cue's `[number…]` is a `TextDialog` filled with the cue's number, under `the cue goes to
+     its place in the list`; it refuses another cue's number (`check_cue`, so `03` is 3) and sends
+     nothing for its own, in any form (`02`). It sends `cue 9/4 number 7`, and the cue stays
+     chosen at its new number (`_cue_after`, which `[record at…]`'s `_recorded` became).
+   - `[copy…]` is a `FormDialog` of a list and a number, starting at the chosen list and the next
+     whole number after its last cue, under `lists: 1–20`. It refuses a list the show lacks (`no
+     cue list 99`) and a number that list has, and sends `cue 9/4 copy 8` or `cue 9/4 copy
+     10/2.5`. A copy into the list shown becomes the chosen cue; one into another list leaves F4
+     as it is.
+   - The list's `[number…]` is a `TextDialog` as F3's are (`check_number`, `taken: 10–11, 21`),
+     and sends `cuelist 9 number 30`. The list stays shown, on the cue it was on, whichever of
+     busk's reply and the new show comes first (`_list_after`).
+   - **F4's fallback for a list it can no longer find** now takes the selected playback's list
+     before the first. F4 keeps its list by number, so a renumber typed at the prompt, or an
+     `undo` of one, sent it to list 1 (found in the pty walk).
+
+   Tests: `test_tui_cues.py`: the three strips' words and the pane cursor's stops; `[number…]`
+   (refusals, its own number in two forms, Esc, the line, the cue chosen at its new place);
+   `[copy…]` (six refusals, a copy into another list leaving the chosen cue, one into its own list
+   chosen, Esc); the list's `[number…]` in both orders of reply and show (the `show_first` case
+   fails when `_list_after` does not restore the cue); and a list renumbered at the prompt and
+   back by `undo` staying shown (fails on the old fallback). `test_tui_e2e.py`: on the club show,
+   cue 9/4, P9's goto cue, moved to 7 (after Esc and a refused 3), copied to 10/2.5 and to 9/8,
+   list 9 made 30; the log's lines and busk's replies; P9's `[GT]` grey with `goto: cue list 30
+   has no cue 4`; four typed `undo`s bring it all back and `[GT]` live again.
+
+   Which the user may veto:
+   - **`[copy…]`'s list is a field,** the chosen list's number to start, not chips: the club show
+     has 20 lists. Its number starts after the chosen list's last cue even when another list is
+     typed; a number that list has is refused as `cue 3 exists`, as `[record at…]` says it.
+   - **A copy into another list leaves F4 on the list shown,** so several cues can be copied in a
+     row; the log says where each went.
+   - **No question** before any of the three: each is one undo step and changes no value.
+   - **F4's fallback change** above, which the plan did not name.
+
 Docs: the guide's F4, the report's Cues and Cue lists rows and its "busk lacks a little", §7's
 items, and `CHANGELOG.md`.
+
+**Done** (2026-11-11). As listed, and also the report's header, Summary rows, "In short", "What
+busk is missing" (item 10) and "What the TUI is missing"; the guide's forms paragraph; and the
+changelog's older Fixed entry, whose `cue 1/1 cannot pass cue 1/2` became `cue 1/2 exists`.
+
+**Phase 22 checks** (2026-11-11), on top of `a1e6f79`. The whole suite: 6,411 passed and 1
+skipped, in 7:45 with `uv run pytest -n 6`. An earlier run, under load from the pty walks, failed
+only F6's real-engine preset test (Phase 15's notes call it flaky under `-n 6`), which then passed
+three times alone. `ruff check`, `ruff format --check` and `mypy src` clean. The new TUI tests pass
+on Textual 8.2.0, the real-engine ones too. The perf gate: 7 passed, F4 +0.159 core, no overruns.
+Two mutations of step 3 (the list's cue not restored, a copy elsewhere choosing a cue) and the old
+fallback each fail a new test.
+
+A real `busk run club.show --threads --state-dir …`, the lines piped in: `go 9`, then `cue 9/1
+number 6` replied `cue 9/1 is now cue 9/6`, and the status line said `9 Song on 6 Intro`; `cue
+9/2 number 7` and `list cues 9` showed 1, 3, 4, 5, 7; `cue 9/4 number 3` replied with busk's
+warning that P9's `gotoCue` names no cue; `cue 9/7 copy 10/2.5`, `cue 9/1 copy 1.5`, and a copy
+into a new empty list 30 went through; `cue 9/3 copy 4`, `copy 99/1` and `copy 10/` were refused
+in one line each; `cue 10/1 number 5` on the running chase P10 put it last; the `undo`s said each
+step's words, and P9 was back `on 1 Intro`. A real `busk-tui --state-dir …` under `busk run` on the
+club show, in a pty at 150 columns (layout B) and 99 (layout A, F4 stacked): F4, Song, a click on
+cue 9/4; `[number…]` refused 3 in red, then 7 moved Chorus last, still chosen, with ▶ on it;
+`[copy…]` opened on list 9 and number 8, took 10 and 2.5, then 9/8 as it opened; the list's
+`[number…]` 30 showed CUELIST 30 with the copy 30/8 chosen; busk's words in the log; four typed
+`undo`s brought list 9 back, with F4 still on it (the walk that found the fallback). Every button
+shows at 99 columns. No error in the log.
 
 ### Phase 23: Every family on F4
 
@@ -1741,8 +1848,9 @@ Those marked **Not planned** are extras or matter less, and stay here.
 - GAP-06 (one undo step for a gesture): **Phase 20**. GAP-13 (control input monitor): **Not
   planned**. `bind` lines can be typed.
 - A cue's move, copy and renumber past its neighbours (the report's Cues table): **Phase 22**,
-  steps 1 to 3.
-- Renumbering a cue list from F4 (the report's Cue lists table): **Phase 22**, step 3.
+  steps 1 to 3. Done there: GAP-43, F4's `[number…]` and `[copy…]`.
+- Renumbering a cue list from F4 (the report's Cue lists table): **Phase 22**, step 3. Done
+  there: the list's `[number…]`.
 - F4's table shows only intensity and colour entries: **Phase 23**, Q7.
 - Options when adding an effect from a template click: **Not planned**. F5's EFFECT panel changes
   them afterwards.

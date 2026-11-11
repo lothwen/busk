@@ -26,7 +26,11 @@ the first.
 ``[wait…]`` the seconds of an automatic GO (``cue 9/3 follow 4``), and
 ``[rename…]`` the name. Each is filled in with what the cue holds and sends
 one line, nothing when it is left as it was. ``[go…]`` puts ``cue 9/3 go``,
-a whole line, in the prompt: back to a manual GO.
+a whole line, in the prompt: back to a manual GO. ``[number…]`` renumbers
+the cue (``cue 9/3 number 7``), and busk puts it at its place in the list,
+past the others if it must; ``[copy…]`` copies it, to a list (the chosen one
+first) and a number (``cue 9/3 copy 10/7``). Each refuses a number the list
+has, and the cue it makes or moves in the chosen list is then the one chosen.
 
 **Buttons.** ``[GO]`` and ``[BACK]`` (``go N``, ``back N``), ``[record cue
 9]`` (the programmer as a new cue at the end), and the mode toggle:
@@ -34,9 +38,10 @@ a whole line, in the prompt: back to a manual GO.
 list keeps, else ``bpm x 1`` (busk refuses the spec's ``x1``).
 
 **The list's row.** ``[tracking on|off]``, ``[chase…]`` (the form of
-:mod:`busk_tui.widgets.chase_dialog`), ``[rename…]`` and ``[delete]``
-(``delete cuelist 9 cascade``, after busk's question). ``[+ list…]``, under
-CUELISTS, adds one and shows it.
+:mod:`busk_tui.widgets.chase_dialog`), ``[rename…]``, ``[number…]`` (``cuelist
+9 number 30``, a number no other list has; the list stays shown) and
+``[delete]`` (``delete cuelist 9 cascade``, after busk's question). ``[+
+list…]``, under CUELISTS, adds one and shows it.
 
 **The cue's row**, after those: ``[release…]`` (targets and attributes
 in a form, ``cue 9/3 release group 1 only pan``), ``[record at…]`` (a free
@@ -85,8 +90,10 @@ from busk_tui.widgets.dialogs import (
     check_cue,
     check_name,
     check_number,
+    cue_key,
     next_cue,
     next_number,
+    read_whole,
 )
 from busk_tui.widgets.panel import Panel
 from busk_tui.widgets.playbacks import LEVEL_COLORS, PlaybackRow
@@ -250,17 +257,20 @@ class CuesPage(Page):
 
     def _follow(self) -> None:
         """Choose the selected playback's list when the selection changes;
-        a list the show no longer has gives way to the first."""
+        a list the show no longer has (by its number: a renumber too) gives
+        way to the selected playback's, else to the first."""
         view, show = self._view, self._view.show
         if show is None:
             return
+        info = show.playback(view.playback)
+        runs = None if info is None else show.cue_list(info.cueList)
         if view.playback != self._followed:
             self._followed = view.playback
-            info = show.playback(view.playback)
-            if info is not None and show.cue_list(info.cueList) is not None:
-                self._choose(info.cueList)
+            if runs is not None:
+                self._choose(runs.number)
         if self.list is None or show.cue_list(self.list) is None:
-            self._choose(show.cueLists[0].number if show.cueLists else None)
+            first = show.cueLists[0].number if show.cueLists else None
+            self._choose(first if runs is None else runs.number)
 
     def _choose(self, number: int | None) -> None:
         if number != self.list:
@@ -364,6 +374,7 @@ class CuesPage(Page):
                 StripButton(button_label(words, colors.AMBER), tracking),
                 ask("chase…", self.ask_chase, colors.AMBER),
                 ask("rename…", self.ask_rename_list),
+                ask("number…", self.ask_number_list),
                 StripButton(
                     button_label("delete", colors.RED), commands.delete_cuelist(cue_list.number)
                 ),
@@ -406,6 +417,8 @@ class CuesPage(Page):
                 ask("follow…", self.ask_follow),
                 ask("wait…", self.ask_wait),
                 ask("rename…", self.ask_rename),
+                ask("number…", self.ask_number),
+                ask("copy…", self.ask_copy),
                 ask("release…", self.ask_release),
                 record_at,
                 *writes,
@@ -498,7 +511,7 @@ class CuesPage(Page):
             if values is not None:
                 number, name = (value.strip() for value in values)
                 line = commands.record_cue(cue_list, number, name=name or None)
-                self.post_message(RunLine(line, done=partial(self._recorded, cue_list, number)))
+                self.post_message(RunLine(line, done=partial(self._cue_after, cue_list, number)))
 
         note = "2.5 goes between 2 and 3\nno name: busk names it Cue <number>"
         fields = (("number", next_cue(taken)), ("name", ""))
@@ -507,7 +520,9 @@ class CuesPage(Page):
         )
         self.app.push_screen(dialog, given)
 
-    def _recorded(self, cue_list: int, number: str, ok: bool) -> None:
+    def _cue_after(self, cue_list: int, number: str, ok: bool) -> None:
+        """Once a line has made or moved cue ``number`` of ``cue_list``, it
+        is the one chosen, while that list still shows."""
         if ok and self.list == cue_list:
             self.choose_cue(number, go=False)
 
@@ -628,6 +643,55 @@ class CuesPage(Page):
         title = f"RENAME · cue {cue_list}/{cue.number}"
         self.app.push_screen(TextDialog(title, cue.name, check_name(True)), given)
 
+    def ask_number(self) -> None:
+        """``[number…]``: ``cue 9/3 number 7``, a number no other cue of the
+        list has; its own sends nothing."""
+        found = self.picked()
+        if found is None:
+            return
+        cue_list, cue = found
+        check = check_cue([o.number for o in self._shown_cues if o.number != cue.number])
+
+        def given(text: str | None) -> None:
+            if text is None or cue_key(text.strip()) == cue_key(cue.number):
+                return
+            number = text.strip()
+            line = commands.renumber_cue(cue_list, cue.number, number)
+            self.post_message(RunLine(line, done=partial(self._cue_after, cue_list, number)))
+
+        note = "the cue goes to its place in the list\n2.5 goes between 2 and 3"
+        title = f"NUMBER · cue {cue_list}/{cue.number}"
+        self.app.push_screen(TextDialog(title, cue.number, check, note), given)
+
+    def ask_copy(self) -> None:
+        """``[copy…]``: ``cue 9/3 copy 7``, or ``cue 9/3 copy 10/7`` into
+        another list: a list, the chosen one first, and a number it lacks."""
+        found, show = self.picked(), self._view.show
+        if found is None or show is None:
+            return
+        cue_list, cue = found
+        lists = {info.number: info for info in show.cueLists}
+
+        def check(values: tuple[str, ...]) -> str | None:
+            number = read_whole(values[0].strip())
+            into = None if number is None else lists.get(number)
+            if into is None:
+                return "a cue list number" if number is None else f"no cue list {number}"
+            return check_cue([other.number for other in into.cues])(values[1])
+
+        def given(values: tuple[str, ...] | None) -> None:
+            if values is not None:
+                into, number = int(values[0].strip()), values[1].strip()
+                line = commands.copy_cue(cue_list, cue.number, into, number)
+                done = partial(self._cue_after, cue_list, number) if into == cue_list else None
+                self.post_message(RunLine(line, done=done))
+
+        note = f"lists: {numbers_text(sorted(lists))}\n2.5 goes between 2 and 3"
+        first = next_cue([other.number for other in self._shown_cues])
+        fields = (("list", str(cue_list)), ("number", first))
+        dialog = FormDialog(f"COPY · cue {cue_list}/{cue.number}", fields, check, note)
+        self.app.push_screen(dialog, given)
+
     # -------------------------------------------------- a list's controls
 
     def ask_add_list(self) -> None:
@@ -669,6 +733,35 @@ class CuesPage(Page):
 
         title = f"RENAME · cuelist {cue_list.number}"
         self.app.push_screen(TextDialog(title, cue_list.name, check_name(True)), given)
+
+    def ask_number_list(self) -> None:
+        """``[number…]``: ``cuelist 9 number 30``. The list stays shown, on
+        the cue it was on."""
+        cue_list = self._chosen_list()
+        if cue_list is None:
+            return
+        taken = frozenset(other.number for other in self._shown_lists)
+        others = sorted(taken - {cue_list.number})
+        cue = self.cue
+
+        def given(text: str | None) -> None:
+            if text is None or int(text.strip()) == cue_list.number:
+                return
+            number = int(text.strip())
+            line = commands.renumber_cuelist(cue_list.number, number)
+            self.post_message(RunLine(line, done=partial(self._list_after, number, cue)))
+
+        title = f"NUMBER · cuelist {cue_list.number}"
+        note = f"taken: {numbers_text(others)}" if others else ""
+        check = check_number(taken, cue_list.number)
+        self.app.push_screen(TextDialog(title, str(cue_list.number), check, note), given)
+
+    def _list_after(self, number: int, cue: str | None, ok: bool) -> None:
+        """Once the list is renumbered it is still the one shown, whichever
+        of busk's line and the new show came first."""
+        if ok:
+            self.list, self.cue = number, cue
+            self._draw()
 
     def ask_chase(self) -> None:
         """``[chase…]``: the form, whose line also makes the list a chase."""

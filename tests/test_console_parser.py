@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import re
 from dataclasses import replace
@@ -1097,6 +1098,53 @@ def test_a_family_with_no_timing_of_its_own_is_refused_in_one_line(line: str, er
     with pytest.raises(ParseError) as raised:
         parse(line, Context(show_of(doc), LIBRARY, CounterIds()))
     assert raised.value.message == error
+
+
+SONG_CUES = ["cueLists", {"id": "cl-song"}, "cues"]
+
+
+def test_a_cue_renumbered_between_its_neighbours_keeps_its_place() -> None:
+    """GAP-43: a cue that stays where it is only takes the number."""
+    assert command("cue 1/1 number 1.5") == labelled(
+        "cue 1/1 is now cue 1/1.5", {"type": "SET", "path": [*VERSE, "number"], "value": "1.5"}
+    )
+
+
+@pytest.mark.parametrize(
+    ("line", "label", "number"),
+    [
+        ("cue 1/1 number 3", "cue 1/1 is now cue 1/3", "3"),
+        ("cue 1/1 number 2.0", "cue 1/1 is now cue 1/2.0", "2.0"),  # 2.0 comes after 2
+        ('cue 1/1 NUMBER "7"', "cue 1/1 is now cue 1/7", "7"),
+    ],
+)
+def test_a_cue_renumbered_past_its_neighbours_moves_with_its_id(
+    line: str, label: str, number: str
+) -> None:
+    """GAP-43: taken out and put back, its id kept, for the add to place."""
+    verse = copy.deepcopy(load_doc(APPENDIX_A)["cueLists"][0]["cues"][0])
+    assert command(line) == labelled(
+        label,
+        {"type": "DELETE", "path": VERSE},
+        {"type": "ADD", "path": SONG_CUES, "value": {**verse, "number": number}},
+    )
+
+
+def test_a_copy_is_the_cue_with_a_new_id_in_its_own_list_or_another() -> None:
+    """GAP-43: everything the cue has, effects with their ids too."""
+    doc = load_doc(APPENDIX_A)
+    pulse = copy.deepcopy(doc["cueLists"][2]["cues"][0])
+    new = {**pulse, "id": "c-000000000001"}
+    pulse_cues = ["cueLists", {"id": "cl-pulse"}, "cues"]
+    assert command("cue 20/1 copy 2") == labelled(
+        'copied cue 20/1 "Pulse" to cue 20/2',
+        {"type": "ADD", "path": pulse_cues, "value": {**new, "number": "2"}},
+    )
+    assert command("cue 20/1 COPY 1/1.5") == labelled(
+        'copied cue 20/1 "Pulse" to cue 1/1.5',
+        {"type": "ADD", "path": SONG_CUES, "value": {**new, "number": "1.5"}},
+    )
+    assert new["effects"] == doc["cueLists"][2]["cues"][0]["effects"] != []
 
 
 def test_a_release_is_appended_to_the_cues_releases() -> None:

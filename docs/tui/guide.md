@@ -708,7 +708,8 @@ table and the FIXTURE panel.
 ## F4 Cues
 
 Every cue list, and the cues of one: go to a cue, record, re-record and delete cues, make and
-delete lists, set a list's tracking and chase, and edit a cue's timing, trigger and name.
+delete lists, set a list's tracking and chase, edit a cue's timing, trigger and name, and move,
+copy and renumber cues and lists.
 
 ```
  ┌─ CUELISTS ─────────────────────────┐┌─ CUELIST 9 · Song ────────────────────────────────────────────────────────────────────┐
@@ -722,9 +723,10 @@ delete lists, set a list's tracking and chase, and edit a cue's timing, trigger 
  │                                    ││   9/5    Outro          6             —      linear    4      —      20%        …     │
  │ [+ list…]                          ││                                                                                       │
  └────────────────────────────────────┘│ [GO] [BACK] [record cue 9] [cuelist 9 chase bpm x 1]                                  │
-                                       │ list 9 Song [tracking off] [chase…] [rename…] [delete]                                │
+                                       │ list 9 Song [tracking off] [chase…] [rename…] [number…] [delete]                      │
                                        │ edit cue 9/3 Pre [time…] [delay…] [curve…] [go…] [follow…] [wait…] [rename…]          │
-                                       │                  [release…] [record at…] [merge] [replace] [remove] [delete]          │
+                                       │                  [number…] [copy…] [release…] [record at…] [merge] [replace]          │
+                                       │                  [remove] [delete]                                                    │
                                        └───────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -762,6 +764,8 @@ cue` stores a spread), with the colour's swatch; then the ids of its effects.
   settings the list keeps. Sending it makes the list a chase: `cuelist 9 chase hz 2 bounce
   crossfade 0.5`, one undo step.
 - `[rename…]` is a name dialog.
+- `[number…]` asks for a number no other list has: `cuelist 9 number 30`. The list stays shown,
+  on the cue it was on.
 - `[delete]` sends `delete cuelist 9 cascade`, after busk's question, which names the playbacks
   that go with the list and the pages they leave, and says when one is running: `Delete cue list
   9 "Song" and playback 9? It leaves pages 1, 2.` One `undo` brings it all back.
@@ -790,12 +794,21 @@ left as it was:
   which (`now: wait 8`), and starts at 0.
 - `[go…]` puts `cue 9/3 go` in the prompt, a whole line: Enter makes the cue a manual GO again.
 - `[rename…]` is a name dialog: `rename cue 9/3 "Pre"`.
+- `[number…]` renumbers the cue: `cue 9/3 number 7`. busk puts it at its place in the list, past
+  the other cues if it must, and a playback on it stays on it. A number another cue of the list
+  has is refused in the dialog. The cue stays the chosen one. A `goto` that named its old number
+  names no cue then: busk warns in the log, and F1's `[GT]` goes grey.
 
 The times are seconds from 0 (`2`, `0.5`), and the fade times a line keeps are written with every
 digit the cue holds, though the table rounds them to two. Then:
 
 - `[release…]` asks for targets, as busk reads them (`group 1`, `101 thru 104`), starting at the
   selection, and attributes, none for all of them: `cue 9/3 release group 1 only pan tilt`.
+- `[copy…]` asks for a list, the one shown to start with, and a number, and copies the cue there:
+  `cue 9/3 copy 7` in its own list, `cue 9/3 copy 10/7` in another. The copy holds what the cue
+  holds, its effects too. A list the show lacks, or a number the list has, is refused in the
+  dialog. A copy in the list shown becomes the chosen cue. To move a cue to another list, copy it,
+  then `[delete]` it.
 - `[record at…]` asks for a number and a name, and records the programmer as a new cue there:
   `record cue 9/2.5 "Bridge"`. `2.5` goes between 2 and 3. A cue that exists is refused in the
   dialog. The new cue becomes the chosen one.
@@ -1223,9 +1236,10 @@ A name, a number or a path (`[rename…]`, `[number…]`, `[address…]`, `[offs
 `[follow…]` and `[wait…]`, the picker's `[import…]`) is typed in a small dialog: Enter takes it,
 Esc cancels. What it refuses shows in red, and the dialog stays open. A form of several fields
 (`[limit…]`, `[location…]`, `[+ universe…]`, `[+ route…]` and a route's `[edit…]`, `[+ list…]`,
-`[record at…]`, `[release…]`, `[chase…]`, a cue's `[time…]`, `[delay…]` and `[curve…]`) works the
-same way: Tab moves between the fields, and Enter, in any of them, takes the form. In the route
-form, `[chase…]`, `[time…]` and `[curve…]`, Tab also reaches the chips, and ← → move them.
+`[record at…]`, `[copy…]`, `[release…]`, `[chase…]`, a cue's `[time…]`, `[delay…]` and
+`[curve…]`) works the same way: Tab moves between the fields, and Enter, in any of them, takes the
+form. In the route form, `[chase…]`, `[time…]` and `[curve…]`, Tab also reaches the chips, and ← →
+move them.
 
 **The profile picker** (F3's `[profile…]` and `[choose…]`) lists what `fixture add` takes: the
 show's own profiles first, marked `●`, then the library's, with the maker, the name, and the modes

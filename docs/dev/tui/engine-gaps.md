@@ -100,6 +100,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-39](#gap-39-importing-a-profile-and-its-revisions) Importing a profile, and its revisions | action, read | nice-to-have | F3 | **done** 2026-11-08 |
 | [GAP-41](#gap-41-editing-an-effect-in-place) Editing an effect in place | action | nice-to-have | F5 | open |
 | [GAP-42](#gap-42-removing-a-familys-own-timing) Removing a family's own timing | action | nice-to-have | F4 | **done** 2026-11-11 |
+| [GAP-43](#gap-43-moving-and-copying-a-cue) Moving and copying a cue | action | nice-to-have | F4 | **done** 2026-11-11 |
 
 ---
 
@@ -2636,3 +2637,53 @@ fades position with the cue again`, and `undo` and `redo` say it too. Documented
   cue's in timing again. On a running show the line reaches the active cue, which stays active.
 - Tests: `tests/test_console_parser.py`, `tests/test_console.py` (the compiled cue, `list cues`,
   `undo`, a running `LiveShow`) and the completion table of `tests/test_console_prompt.py`.
+
+## GAP-43: Moving and copying a cue
+
+**Status:** done 2026-11-11 (see **Done** at the end of this section).
+
+Found while writing the TUI's operations report (`docs/dev/tui/operations-report.md`, 2026-11-01),
+where the Cues table said "partial: only between its neighbours"; built in Phase 22 of
+`docs/plans/tui-pending-plan.md`.
+
+**Needed by:** F4's `[number…]` and `[copy…]` on a cue.
+
+**Today:** `cue L/C number M` takes a number between the cue's neighbours only, and refuses one
+past them (`cue 1/1 cannot pass cue 1/2`): a list keeps its cues in order, and a `SET` of the
+number would leave them out of it. No line copies a cue.
+
+**Engine should provide:** `cue L/C number M` on either side of the other cues, the cue going to its
+place in the order, and `cue L/C copy [L2/]M`, a copy with a new id in its own list or another.
+Each one undo step; a number the list has is refused.
+
+**Priority:** nice-to-have.
+
+**TUI until then:** a cue is renumbered and copied only at the prompt.
+
+**TUI since** 2026-11-11: F4's `[number…]` and `[copy…]` on a cue, and `[number…]` on a list
+(Phase 22 of the pending plan).
+
+**Done** (2026-11-11). In `_renumber_cue` and `_copy_cue` of `src/busk/console/parser.py`.
+Documented in `docs/console.md`, `busk help` and the parser's module docs. What it settles:
+
+- **A cue that stays between its neighbours only takes the number,** one `SET`, as before. One that
+  passes them is taken out and put back: a `DELETE` and an `ADD` of the same cue, its id kept, in
+  one labelled step. The `ADD` places it by number (`cue_insert_index`), as `record cue` does.
+- **A playback on the cue stays on it,** since the engine finds a running cue by its id. `back`
+  then goes to the cue now before it, a `follow` or `wait` runs after the cue now before it, and a
+  running chase steps in the new order from the step it is on.
+- **A `gotoCue` or a `GOTO` that names the old number** names no cue afterwards, and the validator
+  warns of it, as for a renumber between neighbours. Nothing follows the cue to its new number.
+- **A copy has a new id,** from the ids of every list's cues, as `record cue` makes one, and keeps
+  the rest: name, entries, timing, trigger, releases, effects and anything else the cue holds. Its
+  effects keep their ids, which are unique within a cue only, as `record cue` keeps the
+  programmer's: the compiled copy runs `ei-1` as the cue does.
+- **Moving a cue to another list is not one line:** copy it, then delete it, two undo steps (§5,
+  call 13 of the plan).
+- **The replies:** `cue 9/2 is now cue 9/7`, as before, and `copied cue 9/4 "Chorus" to cue 10/5`.
+  `undo` and `redo` say them again. Tab offers `number` and `copy` after a cue.
+- Tests: `tests/test_console_parser.py` (each line's edits), `tests/test_console.py` (the
+  document and the compiled list after each, `list cues`, `undo` and `redo`, a running playback
+  that stays on its cue, a follow, a running chase, a goto's warning, a copy into another list, a
+  chase and an empty list, the refusals, and a running `LiveShow`), and the completion table and
+  grammar of `tests/test_console_prompt.py`.

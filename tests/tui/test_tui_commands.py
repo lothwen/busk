@@ -253,6 +253,9 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
         r'''rename cue 9/1 "The \"Intro\""''',
         False,
     ),
+    "renumber cue": (commands.renumber_cue(9, "1", "7"), "cue 9/1 number 7", False),
+    "copy cue": (commands.copy_cue(9, "7", 9, "8"), "cue 9/7 copy 8", False),
+    "copy cue to another list": (commands.copy_cue(9, "7", 10, "5"), "cue 9/7 copy 10/5", False),
     "cuelist add": (
         commands.cuelist_add(30, 'The "Encore"'),
         r'''cuelist add 30 "The \"Encore\""''',
@@ -281,6 +284,7 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
         'cuelist 30 chase bpm "Speed 1" x 2 forward',
         False,
     ),
+    "renumber cuelist": (commands.renumber_cuelist(31, 32), "cuelist 31 number 32", False),
     "delete cuelist": (commands.delete_cuelist(30), "delete cuelist 30 cascade", False),
     "delete preset cascade": (
         commands.delete_preset("color", 4, cascade=True),
@@ -1119,6 +1123,17 @@ def test_the_cue_and_list_lines_do_what_they_say(show: busk.OfflineShow) -> None
     )
     run(commands.rename_cuelist(30, "Last"))
     assert cue_list(30)["name"] == "Last"
+    run(commands.copy_cue(30, "2.5", 30, "1"), commands.copy_cue(30, "2.5", 9, "0.5"))
+    assert [(c["number"], c["name"]) for c in cue_list(30)["cues"]] == [
+        ("1", "Bridge"),
+        ("2.5", "Bridge"),
+    ]
+    assert (cue_list(9)["cues"][0]["number"], cue_list(9)["cues"][0]["name"]) == ("0.5", "Bridge")
+    run(commands.renumber_cue(30, "1", "3"))  # past 2.5
+    assert [c["number"] for c in cue_list(30)["cues"]] == ["2.5", "3"]
+    run(commands.delete_cue(30, "3"))
+    run(commands.renumber_cuelist(30, 33))
+    run(commands.renumber_cuelist(33, 30))
     run(commands.delete_cue(30, "2.5"))
     assert cue_list(30)["cues"] == []
     assert show.confirmation(commands.delete_cuelist(30).text) == 'Delete cue list 30 "Last"?'

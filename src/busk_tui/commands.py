@@ -673,6 +673,17 @@ def rename_cue(cue_list: int, cue: str, name: str) -> Line:
     return Line(f"rename cue {cue_list}/{cue} {quoted(name)}")
 
 
+def renumber_cue(cue_list: int, cue: str, new_number: str) -> Line:
+    """``cue 9/3 number 7``: busk puts the cue at its place in the list."""
+    return Line(f"cue {cue_list}/{cue} number {new_number}")
+
+
+def copy_cue(cue_list: int, cue: str, into: int, new_number: str) -> Line:
+    """``cue 9/3 copy 7`` in its own list, ``cue 9/3 copy 10/7`` in another."""
+    where = new_number if into == cue_list else f"{into}/{new_number}"
+    return Line(f"cue {cue_list}/{cue} copy {where}")
+
+
 def cuelist_add(cue_list: int, name: str | None = None) -> Line:
     """``cuelist add 30 "Encore"``; without a name, busk names it (``Cue list 30``)."""
     return Line(f"cuelist add {cue_list}" + ("" if name is None else f" {quoted(name)}"))
@@ -680,6 +691,11 @@ def cuelist_add(cue_list: int, name: str | None = None) -> Line:
 
 def rename_cuelist(cue_list: int, name: str) -> Line:
     return Line(f"rename cuelist {cue_list} {quoted(name)}")
+
+
+def renumber_cuelist(cue_list: int, new_number: int) -> Line:
+    """``cuelist 9 number 30``."""
+    return Line(f"cuelist {cue_list} number {new_number}")
 
 
 def delete_cuelist(cue_list: int) -> Line:

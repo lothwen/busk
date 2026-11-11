@@ -20,7 +20,8 @@ since (refusals in words, F5's effect ids, `[chase…]`'s crossfade, F1's slots 
 Its Phase 19 worded the replies of the lines that worked but named the show document's
 paths, which the controls put in the log; the side finding that listed them is gone.
 Its Phase 21 added the line that takes a family's own timing away from a cue (GAP-42), and F4's
-TIME dialog a `[none]` that sends it.
+TIME dialog a `[none]` that sends it. Its Phase 22 let a cue move past its neighbours and be
+copied (GAP-43), and gave F4 `[number…]` and `[copy…]` on a cue and `[number…]` on a list.
 
 ## How to read it
 
@@ -51,8 +52,8 @@ do can already be typed in the TUI. The tables below show how much the screens h
 |---|---|---|---|---|
 | Fixtures, patch | control (F3, F8, F1 A/C) | control (F3's form, F8's place) | control (cascades; a run in one line) | control (F3's FIXTURE panel, F8's place) |
 | Universes, routes | control (F8) | control (F8) | control (a universe cascades) | control (F8) |
-| Cues | control (F4) | control; `only`, `freeze`: prompt | control | control (values, releases, timing, trigger, name); renumber: prompt |
-| Cue lists | control (F4) | control | control (cascades) | control; renumber: prompt |
+| Cues | control (F4) | control (and a copy); `only`, `freeze`: prompt | control | control (values, releases, timing, trigger, name, number) |
+| Cue lists | control (F4) | control | control (cascades) | control |
 | Presets | control (F6, colour chips) | control (F6's PRESET panel) | control | control (values, name, number) |
 | Effects in the programmer | control (F5, F1 B) | control; options: prompt | control | control (F5's EFFECT panel, stop, run) |
 | Effects in cues | control (F5) | control (via `record cue`) | control | control (F5's EFFECT panel) |
@@ -63,14 +64,14 @@ do can already be typed in the TUI. The tables below show how much the screens h
 In short:
 
 - **SHOW is covered** for all of them.
-- **Every ADD, DELETE and UPDATE has a control, but for five things, which are typed:**
-  renumbering a cue, a cue list or a page, the options of an effect a template click adds (F5's
-  EFFECT panel changes them after), and `record cue`'s `only` and `freeze`. F4's `[go…]` puts a
+- **Every ADD, DELETE and UPDATE has a control, but for three things, which are typed:**
+  renumbering a page, the options of an effect a template click adds (F5's EFFECT panel changes
+  them after), and `record cue`'s `only` and `freeze`. F4's `[go…]` puts a
   whole line in the prompt. So F1, F3, F4, F5, F6 and F8 build a whole show of these parts from
   controls: the rig, groups and park, presets, cues and cue lists, effects and their templates,
   playbacks and pages.
-- **busk lacks a little:** moving or copying a cue, deleting several presets, cues or cue lists in
-  one line, and the two limits of GAP-41 on an effect's settings (see
+- **busk lacks a little:** deleting several presets, cues or cue lists in one line, and the two
+  limits of GAP-41 on an effect's settings (see
   [What busk is missing](#what-busk-is-missing)).
 - **Beyond this report,** the TUI sets up no master, surface, binding or safety setting, and no
   show metadata. F7 and F9 operate and show them, F9 puts `bind`, `unbind`, `feedback` and `pickup`
@@ -133,7 +134,7 @@ In short:
 | Trigger | `cue L/C go`, `… follow <d>`, `… wait <d>` | yes | control: F4 `[follow…]`, `[wait…]` and a click on those cells, dialogs; `go`: pre-fill, a whole line |
 | Rename | `rename cue L/C "…"` | yes | control: F4 `[rename…]`, a name dialog |
 | Release targets | `cue L/C release <targets> [only …]` | yes | control: F4 `[release…]`, a form that starts at the selection |
-| Renumber, move, copy | `cue L/C number M` | partial: only between its neighbours, as the list keeps its order; no move or copy | prompt |
+| Renumber, move, copy | `cue L/C number M`, `cue L/C copy [L2/]M` (GAP-43) | yes: a renumbered cue goes to its place in the list, past its neighbours if it must; a copy has a new id, in its own list or another. A move to another list is a copy, then a delete | control: F4 `[number…]` and `[copy…]` (a list, the one shown first, and a number), dialogs that refuse a number the list has |
 
 ## Cue lists
 
@@ -145,7 +146,7 @@ In short:
 | Sequence or chase | `cuelist N sequence`, `cuelist N chase hz\|bpm …` | yes | control: F4 toggle (sends the list's chase settings as busk stored them, else `bpm x 1`), and `[chase…]`, a form for the rate, master, multiplier, direction and crossfade |
 | Tracking | `cuelist N tracking true\|false` (a setting named by GAP-35) | yes | control: F4 `[tracking on]`, `[tracking off]` |
 | Rename | `rename cuelist N "…"` | yes | control: F4 `[rename…]`, a name dialog |
-| Renumber | `cuelist N number M` | yes | prompt |
+| Renumber | `cuelist N number M` | yes | control: F4 `[number…]`, a dialog that refuses a number that is taken |
 
 ## Presets
 
@@ -219,17 +220,19 @@ Candidates for [engine-gaps.md](engine-gaps.md), if the TUI is to cover these:
    was the only route line, so none removed a route or switched one off.
 9. **Closed: editing a route** (GAP-37). `route <id> change <what route add takes>` does it in
    one undo step, and keeps the id and whether it is on.
+10. **Closed: moving and copying a cue** (GAP-43). `cue L/C number M` takes a number past the
+    cue's neighbours, and `cue L/C copy [L2/]M` copies a cue, each in one undo step.
 
 **Still open,** and in no plan yet ([the pending plan](../../plans/tui-pending-plan.md)'s §7):
-moving or copying a cue, or renumbering it past its neighbours; deleting several presets, cues or
-cue lists in one line (item 6); and GAP-41, where `effect add … id` takes its targets from the
-selection and no line takes an optional setting away from a cue's effect.
+deleting several presets, cues or cue lists in one line (item 6); and GAP-41, where `effect add …
+id` takes its targets from the selection and no line takes an optional setting away from a cue's
+effect.
 
 ## What the TUI is missing
 
 Nothing the pending plan set out to build: its last item, playbacks, closed with F1's edit mode.
-The rows above that still say **prompt** are renumbering a cue, a cue list or a page, the options
-of an effect a template click adds, and `record cue`'s `only` and `freeze`. F4's `[go…]` is the one
+The rows above that still say **prompt** are renumbering a page, the options of an effect a
+template click adds, and `record cue`'s `only` and `freeze`. F4's `[go…]` is the one
 **pre-fill** left, since `cue 9/3 go` is a whole line. The plan's §7 lists them with the rest that
 was seen and is in no phase.
 

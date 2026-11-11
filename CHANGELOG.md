@@ -10,6 +10,11 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- `cue L/C number M` moves a cue past its neighbours: the cue goes to its place in the list's
+  order, in one undo step, and a playback on it stays on it. `cue L/C copy M` copies a cue in its
+  own list and `cue L/C copy L2/M` into another, at its place there, with a new id and the rest as
+  the cue has it. A number the list has is refused. F4 has `[number…]` and `[copy…]` for the
+  chosen cue, and `[number…]` for the list shown, each a dialog that refuses a number taken.
 - `cue L/C time <family> none` takes a family's own timing away from a cue, its fade, delay and
   curve, so the family fades with the cue again. One undo step; a family with no timing of its own
   is refused in one line. F4's TIME dialog has a `[none]` (or Ctrl+N) that sends it, while a family
@@ -188,7 +193,7 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 - More refusals named the document: `N number M` on a group, cue list, playback, page or preset,
   `cue L/C number M`, `route add` with an sACN universe outside 1 to 63999, and a mode or profile
   that takes a patched fixture past channel 512. Each now says it in one line: `group 2 exists`,
-  `cue 1/1 cannot pass cue 1/2`, `expected an sACN universe from 1 to 63999, got 0`, `fixture 3
+  `cue 1/2 exists`, `expected an sACN universe from 1 to 63999, got 0`, `fixture 3
   would end at channel 524, past channel 512`. A cue's number no longer needs quotes:
   `cue 1/1 number 1.5`.
 - The TUI's log cut a line at the pane's edge. A long line now wraps at its words, the later rows

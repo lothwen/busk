@@ -1964,6 +1964,108 @@ def test_f4_takes_a_familys_own_timing_away_in_the_time_dialog_on_the_real_engin
         bridge.stop()
 
 
+def test_f4_moves_copies_and_renumbers_from_controls_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """Cue 9/4, the goto cue of P9: ``[number…]`` refuses 3 and moves it to 7,
+    past cue 5, and it stays chosen; ``[copy…]`` copies it to list 10 and
+    into its own list; the list's ``[number…]`` makes list 9 list 30, still
+    shown. P9's ``[GT]`` is grey then, since no cue 4 is left. Esc sends
+    nothing, and ``undo`` takes each step back."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=4), standalone=True)
+
+    def numbers(cue_list: int) -> list[str] | None:
+        found = None if app.view.show is None else app.view.show.cue_list(cue_list)
+        return None if found is None else [cue.number for cue in found.cues]
+
+    def goto() -> CommandButton | None:
+        rows = app.query_one(StackLayout).rows
+        row = next((row for row in rows if row.number == 9), None)
+        button = None if row is None else row.buttons[3]
+        return button if isinstance(button, CommandButton) else None
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.live is not None and app.view.show is not None)
+        app._select_playback(9)
+        page = app.query_one(CuesPage)
+        cues = app.query_one(CueTable)
+        await until(pilot, lambda: column(cues, "cue")[:1] == ["9/1"])
+        page.choose_cue("4", go=False)
+        log = app.query_one(LogView).entries
+
+        await tap_button(pilot, page.edits, "number…")
+        await until(pilot, lambda: isinstance(app.screen, TextDialog))
+        await pilot.press("escape")
+        await until(pilot, lambda: not isinstance(app.screen, TextDialog))
+        await tap_button(pilot, page.edits, "number…")
+        await answer_field(pilot, app, "3")
+        await pilot.pause()
+        assert isinstance(app.screen, TextDialog)  # cue 3 exists: the dialog stays
+        await answer_field(pilot, app, "7")
+        await until(pilot, lambda: column(cues, "cue") == ["9/1", "9/2", "9/3", "9/5", "9/7"])
+        await until(pilot, lambda: plain_of(page.edit_label) == "edit cue 9/7 Chorus")
+        assert cues.chosen == 4
+
+        await tap_button(pilot, page.edits, "copy…")
+        await until(pilot, lambda: isinstance(app.screen, FormDialog))
+        await pilot.press("escape")
+        await until(pilot, lambda: not isinstance(app.screen, FormDialog))
+        await tap_button(pilot, page.edits, "copy…")
+        await until(pilot, lambda: isinstance(app.screen, FormDialog))
+        dialog = app.screen
+        assert isinstance(dialog, FormDialog)
+        assert [field.value for field in dialog.inputs] == ["9", "8"]
+        dialog.inputs[0].value, dialog.inputs[1].value = "10", "2.5"
+        await pilot.press("enter")
+        await until(pilot, lambda: numbers(10) == ["1", "2", "2.5", "3", "4"])
+        assert page.cue == "7"
+        await tap_button(pilot, page.edits, "copy…")
+        await until(pilot, lambda: isinstance(app.screen, FormDialog))
+        await pilot.press("enter")  # as it opens: list 9, cue 8
+        await until(pilot, lambda: column(cues, "cue")[-1] == "9/8")
+        await until(pilot, lambda: page.cue == "8")
+
+        await tap_button(pilot, page.list_edits, "number…")
+        await answer_field(pilot, app, "10")
+        await pilot.pause()
+        assert isinstance(app.screen, TextDialog)  # list 10 exists
+        await answer_field(pilot, app, "30")
+        await until(pilot, lambda: numbers(30) is not None and page.list == 30)
+        await until(pilot, lambda: column(cues, "cue")[:1] == ["30/1"])
+        assert (page.cue, plain_of(page.edit_label)) == ("8", "edit cue 30/8 Chorus")
+        assert [line for kind, line in log if kind == "ui"] == [
+            "cue 9/4 number 7",
+            "cue 9/7 copy 10/2.5",
+            "cue 9/7 copy 8",
+            "cuelist 9 number 30",
+        ]
+        assert [text for kind, text in log if kind == "result"] == [
+            "cue 9/4 is now cue 9/7",
+            "warning playbacks[8].gotoCue: Cue list 'Song' has no cue '4'",  # busk's check
+            'copied cue 9/7 "Chorus" to cue 10/2.5',
+            'copied cue 9/7 "Chorus" to cue 9/8',
+            "cue list 9 is now cue list 30",
+        ]
+
+        await pilot.press("f1")
+        await until(pilot, lambda: goto() is not None and goto().inert)  # type: ignore[union-attr]
+        assert goto().hint == "goto: cue list 30 has no cue 4"  # type: ignore[union-attr]
+        for _ in range(4):
+            await pilot.press(*"undo", "enter")
+        await until(pilot, lambda: numbers(9) == ["1", "2", "3", "4", "5"])
+        await until(pilot, lambda: goto() is not None and not goto().inert)  # type: ignore[union-attr]
+        assert numbers(10) == ["1", "2", "3", "4"]
+        assert [text for kind, text in log if kind == "error"] == []
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
 def test_f5_builds_a_template_from_controls(club_path: Path, tmp_path: Path) -> None:
     """F5 makes a template, changes its layers, shows a refusal in the panel
     and the log, renames and deletes it; and F5 names what uses Circle."""
