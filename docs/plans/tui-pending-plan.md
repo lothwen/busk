@@ -120,6 +120,7 @@ to be at `f851165`.
 | 21 | Removing a family's own timing from a cue (GAP-42), on F4's TIME | busk, TUI | 18 | |
 | 22 | Moving and copying a cue (GAP-43); F4's `[number…]` and `[copy…]` | busk, TUI | 19 | |
 | 23 | F4 shows every family's entries | TUI | | Q7 |
+| 24 | A mode or profile change that loses elements in use, refused in words | busk | | |
 
 ## 4. What busk does (checked on 2026-11-08)
 
@@ -184,6 +185,13 @@ Added on 2026-11-11, for Phases 18 to 23:
     is not one line: copy it, then delete it, two undo steps.
 14. **`cue L/C time <family> none`** removes a family's own timing whole: its fade, delay and
     curve. Sending the family again without a curve still removes the curve alone, as now.
+
+Added on 2026-11-11, for Phase 24:
+
+15. **A mode or profile change that loses elements in use is refused, with no cascade.** The line
+    names what uses them, as a cascade's question does; the operator edits those first, or deletes
+    the fixture with `cascade`. A `cascade` on `fixture N mode` would be a gap of its own, not
+    planned.
 
 ## 6. Phases
 
@@ -1407,12 +1415,94 @@ with a path between them.
    `fixture N location {…}`; a plain `delete` of something unused; `cue L/C time`, `follow`,
    `wait`, `go` and `release`; `cue L/C effect <id> <prop> <value>`; `cuelist N sequence`, `chase`
    and `tracking`; `playback N <prop> <value>`; and `rename page`.
+
+   **Done** (2026-11-11). The script ran 136 lines, each on a fresh copy of the club show, with
+   `undo` and `redo` after each that worked, and listed 74 whose reply named a path:
+   - every rename: a fixture, universe, group, preset, cue, cue list, playback, page and the show
+     (`set meta.title to "Club"`);
+   - every `number M`, of the same eight kinds;
+   - `fixture N location {…}`;
+   - a plain `delete` of something unused, of all eight kinds (`deleted cueLists[8].cues[1]`);
+   - `cue L/C time`, both forms, `follow`, `wait`, `go` and `release`;
+   - `cue L/C effect <id> <prop> <value>`;
+   - `cuelist N sequence`, `chase hz|bpm …`, and each cue list property but `number` and the `none`
+     lines (`tracking`, `wrap`, `name`, `chase.crossfade`, …);
+   - each playback property but `number`, `cuelist` and the `none` lines, and `playback N goto`;
+   - one the plan did not name: `surface "<name>" pickup soft|jump` (`set
+     surfaces[0].faderPickup to "jump"`).
+
+   Every other line already replied in words: `record`, every `add`, `patch`, `mode` and
+   `profile`, the route, surface, binding and master lines, `park`, `limits`, `orientation`,
+   `safety`, `profile … category`, the `none` lines and the cascades. Four replies held a path
+   only in a warning, which the validator writes after the reply: `fixture 101 patch none`,
+   `fixture 101 thru 102 patch none` and `delete universe 1 cascade` (`warning fixtures[0]: 'Spot
+   101' is not patched; …`), and `playback 9 gotoCue none` (`warning playbacks[8].buttons[3]: A
+   goto button needs …`). The script is `replies.py` in this conversation's scratchpad, not in the
+   repo; after step 2 it lists none.
 2. **Each line says what it did,** labelled through `_labelled`, as `cue L/C effect <id> remove`
    and `<property> none` already are: the thing as the console names it, then the change (§5,
    call 12). For example: `renamed cue 9/2 "Verse"`, `group 1 is now group 9`, `deleted cue 9/1`,
    `cue 9/3 follows after 0.5 s`, `cue list 9 is a sequence`. The label is also the undo step's,
    so `undo` says it too. A value too long for the line is cut, as `_short` cuts it.
+
+   **Done** (2026-11-11). Each line's command is now a `BATCH` labelled with its words, holding the
+   same edits, so the label is the reply and the undo step's. What they say, on the club show:
+
+   | Line | Reply |
+   |---|---|
+   | `rename group 1 "Movers"`, `playback 3 name "…"`, `cuelist 9 name "…"` | `renamed group 1 "Heads" to "Movers"`; the show: `renamed the show "Club Night" to "Club"` |
+   | `group 1 number 9`, `cue 9/2 number 2.5` | `group 1 is now group 9`, `cue 9/2 is now cue 9/2.5` |
+   | `fixture 101 location {…}` | `set the location of fixture 101 to {"x": 1, …}` |
+   | `delete cue 9/2`, `delete group 9` | `deleted cue 9/2 "Verse"`, `deleted group 9 "One"` |
+   | `cue 9/3 time 1/3 delay 0/1 easeOut` | `cue 9/3 fades in 1 s, out 3 s, delay in 0 s, out 1 s, easeOut` |
+   | `cue 9/2 time position 4 delay 1` | `cue 9/2 fades position over 4 s, delay 1 s` |
+   | `cue 9/5 follow 4`, `cue 9/3 wait 8`, `cue 9/2 go` | `cue 9/5 goes 4 s after the cue before ends`, `… starts`, `cue 9/2 waits for GO` |
+   | `cue 9/5 release group 1 only pan tilt` | `cue 9/5 releases pan, tilt of group 1` |
+   | `cue 9/4 effect rainbow size 0.5` | `set the size of effect rainbow in cue 9/4 to 0.5` |
+   | `cuelist 10 sequence`, `cuelist 9 chase bpm "Speed 1" x 2 bounce crossfade 0.25` | `cue list 10 is a sequence`, `cue list 9 is a chase: bpm "Speed 1" ×2, bounce, crossfade 0.25` |
+   | `playback 3 priority 60`, `cuelist 9 tracking true` | `set the priority of playback 3 to 60`, `set the tracking of cue list 9 to true` |
+   | `playback 9 goto 4` | `set the gotoCue of playback 9 to cue 9/4` |
+   | `surface "nanoKONTROL2" pickup jump` | `set the pickup of surface "nanoKONTROL2" to jump` |
+
+   In the code: `_Parser._who(head, path)` names an entity as the console does (`cue 9/2`,
+   `preset color 1`, `cue list 9`, `the show`), and `_entity_at` finds it. `_set` takes `of`, and
+   `_value` a `said`, to word a property line; without them the generic edit keeps its path. A
+   plain `delete` of something unused replies its cascade's label, the words `delete … cascade`
+   says when it leaves nothing. `_short` is now `busk.commands.edits.short`, so a name and a value
+   are cut alike, at 60 characters. `_batch`, the unlabelled step, went with its two callers. A
+   named setting busk's validator refuses now starts its error in words too (`error: set the
+   ltpFaderMode of playback 3 to "sideways": rejected, …`); the issue lines under it are the
+   validator's, with their paths.
+
+   Which the user may veto:
+   - **A rename names the old name and the new one,** where the plan's example had the new one
+     alone, so `undid: renamed group 1 "Heads" to "Movers"` says what comes back.
+   - **A delete names what went, with its name,** as a cascade's reply does (`deleted cue 9/2
+     "Verse"`), where the plan's example had the number alone. A fixture has no name there, as in
+     its cascade (`deleted fixture 401`).
+   - **Names are in double quotes,** as the console reads them and the cascades write them. Older
+     replies use single quotes (`added page 'Page 3'`, `recorded group 9 'One'`) and are left.
+   - **A property is named as the model has it** (`flash.level`, `ltpFaderMode`), and its value
+     as JSON (`"size"` in quotes), as `<property> none` already said `removed the exclusivity of
+     playback 3`.
+   - **A release names its targets as typed:** `cue 1/2 release 201` replies `cue 1/2 releases
+     201`.
+   - **Seconds and rates show with `:g`,** as `list cues` shows them, so a time of `0.1234567`
+     reads `0.123457 s`. busk keeps every digit.
+   - **Warnings keep their paths.** They come from the validator, after the reply, and `busk
+     validate` prints the same.
+   - **`surface "<name>" pickup`** is worded too, though the plan did not name it.
 3. **The tests and goldens follow.** Only the replies change; each line's ops stay as they were.
+
+   **Done** (2026-11-11). The 47 rows and tests of `test_console_parser.py` that failed now
+   expect the same edits, in `labelled(<words>, …)`, a helper that replaced `batch`. The goldens
+   changed by the 24 lines of the playback settings their script sends; their five `cue L/C
+   timing.fadeIn` lines are the generic edit and keep their paths. New:
+   `test_console.py`'s table of 46 lines on Appendix A, each with its reply, then `undo` and
+   `redo` saying it again, and no path in it; a long name cut; the generic edit keeping its path
+   (`show meta.title`, `cue 1/1 timing.fadeIn`, `fixture 101 name`); and a named setting refused
+   with its words first. `test_session.py`: a command `submit()`ted to the session, labelled or
+   not, names its path, and `undo` and `redo` repeat it. No TUI test held one of these replies.
 
 Verify: step 1's script finds no path in a reply that works; the generic edit (`show <path> …`)
 and `submit()` still reply with their paths; `undo` and `redo` repeat the new words; the TUI's tests
@@ -1420,6 +1510,21 @@ pass, changed only where they hold a reply (the bridge parses none, `bridge.py`'
 
 Docs: `docs/console.md`'s replies, the report's last side finding (it goes), §7's items, and
 `CHANGELOG.md` under Changed.
+
+**Phase 19 checks** (2026-11-11), on top of `bdafc9a`. The whole suite: 6,342 passed and 1
+skipped, in 7:41 with `uv run pytest -n 6`. `ruff check`, `ruff format --check` and `mypy src`
+clean. Step 1's script lists no reply with a path, and the generic edit's lines still name theirs.
+No TUI file or test changed, so no perf gate or Textual 8.2.0 run. Docs: `docs/console.md` has a
+note on replies; the report's last side finding is gone, and it gains the finding below; §7's
+seven items say "Fixed there", and a new one is at its end; `CHANGELOG.md` has a Changed entry.
+
+A real `busk run club.show --threads --state-dir …` on the club show, 23 lines piped in: each
+rename, number, delete, `cue … time`, `follow`, `wait`, `go`, `release`, cue effect, `cuelist …
+sequence`, `chase`, `tracking`, `playback … priority`, `goto`, `fixture … location`, `surface …
+pickup` and `rename page` replied in words, as in step 2's table; `show meta.title "Club"`
+replied `set meta.title to "Club"`; three `undo`s and a `redo` said `undid: set meta.title to
+"Club"`, `undid: deleted page 3 "Page 3"`, `undid: added page 'Page 3'` and `redid: added page
+'Page 3'`.
 
 ### Phase 20: One undo step for an encoder drag
 
@@ -1531,6 +1636,40 @@ Q7. A TUI phase. Code: `src/busk_tui/widgets/cuetable.py`; `src/busk_tui/model.p
 2. **The docs:** the guide's F4, the spec's §8.4 cue table line, and the report's Show row for
    cues.
 
+### Phase 24: A mode change refused in words
+
+The user's word of 2026-11-11, on the finding Phase 19 left in §7. `fixture N mode` and `fixture N
+profile` leave a target on an element the new mode lacks to the validator, which refuses the line
+with one document path per element: on the club show, `fixture 301 profile "Generic Spot 16ch"
+mode 16ch` takes the 12-pixel bar to one element, and gets 22 lines of `groups[2].members[1].element:
+…`, from groups 3 and 4. F3's mode chips and `[profile…]` show them all in the log. An engine
+phase, and a bug, so no gap number (§1). It needs nothing, and no question, so it may run before
+Phase 20 while Q6 waits. Code: `src/busk/console/parser.py` (`_fixture_mode`, `_fixture_profile`,
+`_patch_fits`, and `profile "<name>" update`'s check), `src/busk/console/cascade.py`
+(`fixture_cascade`'s walk).
+
+1. **The parser refuses it first, in one line,** as Phase 1 did for a footprint past channel 512
+   (`_patch_fits`), so the validator's paths never show. The line names what uses the elements the
+   new mode lacks, as the fixture cascade's question names what uses a fixture (§5, call 15):
+
+   `fixture 301 cannot run Generic Spot 16ch, 16ch: groups 3, 4 use elements it would lose`
+
+   The check refuses what the validator refuses, and no more: group members, a preset's values on
+   a target, a cue's entries, effects and releases, a parked value, and a binding's command
+   (`validate.py`'s `_target` and `_target_spec` callers). `fixture_cascade` already walks all
+   of them for a whole fixture; here only the elements past the new mode's count. What the
+   programmer holds on a lost element still goes dormant, as GAP-26 settled. A new revision from
+   `profile "<name>" update` (GAP-39) that gives a mode fewer elements likely meets the same
+   paths: check it, and refuse it the same way if so.
+
+   Verify: one test per kind of user, and a mix; the club show's line in one line; a mode that
+   loses only unused elements still goes through; both lines on `OfflineShow` and on a running
+   `LiveShow`; nothing changes and no undo step is spent; `profile … update`; a real `busk run`.
+2. **The docs:** `docs/console.md`'s note on mode and profile, the parser's module docs (GAP-26's
+   paragraph, "Both leave the rest to the validator"), GAP-26's **Done** in
+   `docs/dev/tui/engine-gaps.md`, the report's "Found in Phase 19" side finding (removed), §7's
+   item, and `CHANGELOG.md` under Fixed. F3 needs no change: its controls show busk's one line.
+
 ## 7. Seen, and not in the sources
 
 Left out because the five places do not name them. Say if any should join a phase.
@@ -1554,27 +1693,28 @@ Those marked **Not planned** are extras or matter less, and stay here.
 - Some replies still print a path, and F4's controls now put them in the log: `delete cue L/C`
   (`deleted cueLists[8].cues[1]`), `cue L/C release`, `cuelist N tracking`, `rename cuelist` and
   `cuelist N chase`. The refusals are in words; these are the answers to lines that worked. Found on
-  2026-11-09. **Phase 19**.
+  2026-11-09. **Phase 19**. Fixed there.
 - `cue L/C effect <id> <prop> <value>` replies with a path too, and F5's EFFECT panel now puts that
-  in the log. Found on 2026-11-09. **Phase 19**.
+  in the log. Found on 2026-11-09. **Phase 19**. Fixed there.
 - `playback N <prop> <value>` replies with a path too, and F1's PLAYBACK panel now puts that in the
   log. `go` on a playback whose `gotoCue` its list lacks, after a change of list, was not checked.
   Found on 2026-11-09. Checked in Phase 16, on `LiveShow`: `go` runs the new list, and the `goto`
   button does nothing and says nothing. busk warns once, at the change. F1 greys `[GT]` only when
   there is no `gotoCue`, so it stays live on one the list lacks: **Phase 17**, step 2. Fixed
-  there: `[GT]` is grey, and the hint row says why. The reply with a path: **Phase 19**.
+  there: `[GT]` is grey, and the hint row says why. The reply with a path: **Phase 19**. Fixed
+  there.
 - `rename page N "…"` replies with a path too (`set pages[2].name to "Finale"`), and F1's page
-  `[rename…]` now puts that in the log. Found on 2026-11-10. **Phase 19**.
+  `[rename…]` now puts that in the log. Found on 2026-11-10. **Phase 19**. Fixed there.
 - With `--faders` below a page's slot count, ← → and the selection that follows a change of slots
   use only the first `faders` slots, in edit mode too, where the grid has them all: a change of those
   slots moves a selection past them to the first. Found on 2026-11-10. **Phase 18**, step 6.
   Fixed there.
 - `rename group N "…"` and `group N number M` reply with a path too (`set groups[4].name to "V"`),
   and F3's GROUPS now puts that in the log. So does a plain `delete group N` (`deleted
-  groups[4]`), which F3 does not send. Found on 2026-11-10. **Phase 19**.
+  groups[4]`), which F3 does not send. Found on 2026-11-10. **Phase 19**. Fixed there.
 - `cue L/C time …`, `cue L/C follow|wait <d>` and `rename cue L/C "…"` reply with a path too (`set
   cueLists[8].cues[2].timing.fadeIn to 2; …`), and F4's dialogs now put that in the log. Found on
-  2026-11-10. **Phase 19**.
+  2026-11-10. **Phase 19**. Fixed there.
 - No line removes a family's own timing from a cue (`perFamily`), nor a family's own curve but by
   setting the family again without one. busk reads a family's fade, a trigger's delay and a Bézier
   point as any number (`50%`, `-0`), and the cue's own times as plain seconds. Found on 2026-11-10.
@@ -1600,7 +1740,7 @@ Those marked **Not planned** are extras or matter less, and stay here.
   says to remove it or to give `undo` and `redo` a key.
 - Every rename, every `number M`, `fixture N location {…}`, a plain `delete` of something unused
   and `cuelist N sequence` reply with a path too: the report's side findings list them all. Found
-  on 2026-11-11. **Phase 19**.
+  on 2026-11-11. **Phase 19**. Fixed there.
 - F6's `[replace]` and `[remove]` send `record preset … replace|remove` and ask nothing, where
   F4's and F3's ask first, as §1's rule says. The presets plan built them before the rule, and
   Phase 6 brought only F6's `[delete]` under it. Found on 2026-11-11. **Phase 17**, step 3. Fixed
@@ -1618,6 +1758,13 @@ Those marked **Not planned** are extras or matter less, and stay here.
   a crossfade of `0.1234567` goes back as `0.123457` if the operator takes the form as it opened.
   Its rate and multiplier start through `commands.exact`. Found on 2026-11-11. **Phase 18**, step
   5. Fixed there.
+- `fixture N mode <mode>` and `fixture N profile "<profile>" mode <mode>` are refused by document
+  path when a group, a cue or a parked value names an element the new mode lacks, as GAP-26 left it
+  to the validator: on the club show, `fixture 301 profile "Generic Spot 16ch" mode 16ch` replies
+  `error: fixture 301 runs Generic Spot 16ch, 16ch: rejected, the show would not be valid` and 22
+  lines of `groups[2].members[1].element: Fixture 'fx-…' has 1 element(s); element 1 does not
+  exist`. F3's `[profile…]` would put them in the log. The first line is in words. Found on
+  2026-11-11, in Phase 19. **Phase 24** (the user's word, 2026-11-11).
 
 ## 8. Questions
 

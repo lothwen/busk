@@ -58,6 +58,11 @@ def command(line: str, path: Path = APPENDIX_A) -> dict[str, Any]:
     return dict(action.command)
 
 
+def labelled(label: str, *commands: dict[str, Any]) -> dict[str, Any]:
+    """One undo step for ``commands``, whose reply (and undo label) is ``label``."""
+    return {"type": "BATCH", "label": label, "commands": list(commands)}
+
+
 MH1, MH2, PAR = (
     {"fixtureId": "fx-mh1", "element": 0},
     {"fixtureId": "fx-mh2", "element": 0},
@@ -428,7 +433,14 @@ COMMANDS: list[tuple[str, dict[str, Any]]] = [
     # edits
     (
         "playback 3 exclusivity color",
-        {"type": "SET", "path": ["playbacks", {"id": "pb-blue"}, "exclusivity"], "value": "color"},
+        labelled(
+            'set the exclusivity of playback 3 to "color"',
+            {
+                "type": "SET",
+                "path": ["playbacks", {"id": "pb-blue"}, "exclusivity"],
+                "value": "color",
+            },
+        ),
     ),
     (
         "cue 1/1 timing.fadeIn 2.5",
@@ -440,15 +452,21 @@ COMMANDS: list[tuple[str, dict[str, Any]]] = [
     ),
     (
         'playback 1 buttons ["go", "back"]  # a JSON list',
-        {
-            "type": "SET",
-            "path": ["playbacks", {"id": "pb-song"}, "buttons"],
-            "value": ["go", "back"],
-        },
+        labelled(
+            'set the buttons of playback 1 to ["go", "back"]',
+            {
+                "type": "SET",
+                "path": ["playbacks", {"id": "pb-song"}, "buttons"],
+                "value": ["go", "back"],
+            },
+        ),
     ),
     (
         "playback 6 autoStart true",
-        {"type": "SET", "path": ["playbacks", {"id": "pb-pulse"}, "autoStart"], "value": True},
+        labelled(
+            "set the autoStart of playback 6 to true",
+            {"type": "SET", "path": ["playbacks", {"id": "pb-pulse"}, "autoStart"], "value": True},
+        ),
     ),
     (
         'preset color 1 name "Navy"',
@@ -456,7 +474,10 @@ COMMANDS: list[tuple[str, dict[str, Any]]] = [
     ),
     (
         "cuelist 20 wrap true",
-        {"type": "SET", "path": ["cueLists", {"id": "cl-pulse"}, "wrap"], "value": True},
+        labelled(
+            "set the wrap of cue list 20 to true",
+            {"type": "SET", "path": ["cueLists", {"id": "cl-pulse"}, "wrap"], "value": True},
+        ),
     ),
     (
         "universe 1 name Front",
@@ -464,14 +485,29 @@ COMMANDS: list[tuple[str, dict[str, Any]]] = [
     ),
     (
         'rename group 1 "Heads"',
-        {"type": "SET", "path": ["groups", {"id": "g-mh"}, "name"], "value": "Heads"},
+        labelled(
+            'renamed group 1 "Moving Heads" to "Heads"',
+            {"type": "SET", "path": ["groups", {"id": "g-mh"}, "name"], "value": "Heads"},
+        ),
     ),
-    ('rename show "Late Show"', {"type": "SET", "path": ["meta", "title"], "value": "Late Show"}),
+    (
+        'rename show "Late Show"',
+        labelled(
+            'renamed the show "Club Night" to "Late Show"',
+            {"type": "SET", "path": ["meta", "title"], "value": "Late Show"},
+        ),
+    ),
     (
         "delete cue 1/2",
-        {"type": "DELETE", "path": ["cueLists", {"id": "cl-song"}, "cues", {"id": "c-chorus"}]},
+        labelled(
+            'deleted cue 1/2 "Chorus"',
+            {"type": "DELETE", "path": ["cueLists", {"id": "cl-song"}, "cues", {"id": "c-chorus"}]},
+        ),
     ),
-    ("delete page 1", {"type": "DELETE", "path": ["pages", {"id": "page-1"}]}),
+    (
+        "delete page 1",
+        labelled('deleted page 1 "Main"', {"type": "DELETE", "path": ["pages", {"id": "page-1"}]}),
+    ),
     # performance and session
     ("go 1", {"type": "GO", "playbackId": "pb-song"}),
     ("release 3", {"type": "RELEASE_PLAYBACK", "playbackId": "pb-blue"}),
@@ -880,10 +916,6 @@ def timing_sets(path: list[Any], **fields: Any) -> list[dict[str, Any]]:
     ]
 
 
-def batch(*commands: dict[str, Any]) -> dict[str, Any]:
-    return {"type": "BATCH", "label": "", "commands": list(commands)}
-
-
 PHASE4_COMMANDS: list[tuple[str, dict[str, Any]]] = [
     # perform
     ("back 1", {"type": "BACK", "playbackId": "pb-song"}),
@@ -895,79 +927,108 @@ PHASE4_COMMANDS: list[tuple[str, dict[str, Any]]] = [
     ('master "Speed 1" 75%', {"type": "SET_MASTER", "masterId": "m-speed", "level": 0.75}),
     ('master "grand master" 0.5', {"type": "SET_MASTER", "masterId": "m-gm", "level": 0.5}),
     # cue timing
-    ("cue 1/1 time 3", batch(*timing_sets(VERSE, fadeIn=3, fadeOut=3))),
+    (
+        "cue 1/1 time 3",
+        labelled("cue 1/1 fades in 3 s, out 3 s", *timing_sets(VERSE, fadeIn=3, fadeOut=3)),
+    ),
     (
         "cue 1/2 time 3/1 delay 0/2 easein",
-        batch(
-            *timing_sets(CHORUS, fadeIn=3, fadeOut=1, delayIn=0, delayOut=2, curve="easeIn")
+        labelled(
+            "cue 1/2 fades in 3 s, out 1 s, delay in 0 s, out 2 s, easeIn",
+            *timing_sets(CHORUS, fadeIn=3, fadeOut=1, delayIn=0, delayOut=2, curve="easeIn"),
         ),
     ),
     (
         "cue 1/2 time 0 delay 1",
-        batch(*timing_sets(CHORUS, fadeIn=0, fadeOut=0, delayIn=1, delayOut=1)),
+        labelled(
+            "cue 1/2 fades in 0 s, out 0 s, delay in 1 s, out 1 s",
+            *timing_sets(CHORUS, fadeIn=0, fadeOut=0, delayIn=1, delayOut=1),
+        ),
     ),
     (
         "cue 1/1 time 2 bezier 0.25 0.1 0.25 1",
-        batch(*timing_sets(VERSE, fadeIn=2, fadeOut=2, curve={"bezier": [0.25, 0.1, 0.25, 1]})),
+        labelled(
+            "cue 1/1 fades in 2 s, out 2 s, bezier 0.25 0.1 0.25 1",
+            *timing_sets(VERSE, fadeIn=2, fadeOut=2, curve={"bezier": [0.25, 0.1, 0.25, 1]}),
+        ),
     ),
     (
         "cue 1/1 time color 3 delay 1 easeOut",
-        {"type": "SET", "path": [*VERSE, "timing", "perFamily"],
-         "value": {"color": {"fade": 3, "delay": 1, "curve": "easeOut"}}},
+        labelled("cue 1/1 fades color over 3 s, delay 1 s, easeOut",
+                 {"type": "SET", "path": [*VERSE, "timing", "perFamily"],
+                  "value": {"color": {"fade": 3, "delay": 1, "curve": "easeOut"}}}),
     ),
     (
         "cue 1/1 time position 4",
-        {"type": "SET", "path": [*VERSE, "timing", "perFamily"],
-         "value": {"position": {"fade": 4, "delay": 0}}},
+        labelled("cue 1/1 fades position over 4 s",
+                 {"type": "SET", "path": [*VERSE, "timing", "perFamily"],
+                  "value": {"position": {"fade": 4, "delay": 0}}}),
     ),
     ("cue 1/2 follow 0",
-     {"type": "SET", "path": [*CHORUS, "trigger"], "value": {"kind": "follow", "delay": 0}}),
+     labelled("cue 1/2 goes 0 s after the cue before ends",
+              {"type": "SET", "path": [*CHORUS, "trigger"],
+               "value": {"kind": "follow", "delay": 0}})),
     ("cue 1/2 wait 8",
-     {"type": "SET", "path": [*CHORUS, "trigger"], "value": {"kind": "wait", "delay": 8}}),
-    ("cue 1/2 go", {"type": "SET", "path": [*CHORUS, "trigger"], "value": {"kind": "go"}}),
+     labelled("cue 1/2 goes 8 s after the cue before starts",
+              {"type": "SET", "path": [*CHORUS, "trigger"],
+               "value": {"kind": "wait", "delay": 8}})),
+    ("cue 1/2 go",
+     labelled("cue 1/2 waits for GO",
+              {"type": "SET", "path": [*CHORUS, "trigger"], "value": {"kind": "go"}})),
     (
         "cue 1/2 release group 1 only pan tilt",
-        {"type": "SET", "path": [*CHORUS, "releases"],
-         "value": [{"targets": {"kind": "group", "groupId": "g-mh"},
-                    "attributes": ["pan", "tilt"]}]},
+        labelled("cue 1/2 releases pan, tilt of group 1",
+                 {"type": "SET", "path": [*CHORUS, "releases"],
+                  "value": [{"targets": {"kind": "group", "groupId": "g-mh"},
+                             "attributes": ["pan", "tilt"]}]}),
     ),
     (
         "cue 1/2 release 201",
-        {"type": "SET", "path": [*CHORUS, "releases"],
-         "value": [{"targets": {"kind": "targets", "refs": [PAR]}, "attributes": "all"}]},
+        labelled("cue 1/2 releases 201",
+                 {"type": "SET", "path": [*CHORUS, "releases"],
+                  "value": [{"targets": {"kind": "targets", "refs": [PAR]},
+                             "attributes": "all"}]}),
     ),
     # chases
     (
         "cuelist 1 chase hz 2",
-        batch({"type": "SET", "path": [*SONG, "chase"], "value": HZ_2},
-              {"type": "SET", "path": [*SONG, "mode"], "value": "chase"}),
+        labelled("cue list 1 is a chase: 2 Hz, forward",
+                 {"type": "SET", "path": [*SONG, "chase"], "value": HZ_2},
+                 {"type": "SET", "path": [*SONG, "mode"], "value": "chase"}),
     ),
     (
         "cuelist 1 chase hz 0.5 bounce crossfade 50%",
-        batch({"type": "SET", "path": [*SONG, "chase"],
-               "value": {"rate": {"kind": "hz", "value": 0.5}, "direction": "bounce",
-                         "crossfade": 0.5}},
-              {"type": "SET", "path": [*SONG, "mode"], "value": "chase"}),
+        labelled("cue list 1 is a chase: 0.5 Hz, bounce, crossfade 0.5",
+                 {"type": "SET", "path": [*SONG, "chase"],
+                  "value": {"rate": {"kind": "hz", "value": 0.5}, "direction": "bounce",
+                            "crossfade": 0.5}},
+                 {"type": "SET", "path": [*SONG, "mode"], "value": "chase"}),
     ),
     (
         "cuelist 1 chase bpm",
-        batch({"type": "SET", "path": [*SONG, "chase"],
-               "value": {"rate": {"kind": "bpm", "masterId": "m-speed", "multiplier": 1},
-                         "direction": "forward", "crossfade": 0}},
-              {"type": "SET", "path": [*SONG, "mode"], "value": "chase"}),
+        labelled('cue list 1 is a chase: bpm "Speed 1" ×1, forward',
+                 {"type": "SET", "path": [*SONG, "chase"],
+                  "value": {"rate": {"kind": "bpm", "masterId": "m-speed", "multiplier": 1},
+                            "direction": "forward", "crossfade": 0}},
+                 {"type": "SET", "path": [*SONG, "mode"], "value": "chase"}),
     ),
     (
         'cuelist 1 chase bpm "Speed 1" x 0.5 random crossfade 0.25',
-        batch({"type": "SET", "path": [*SONG, "chase"],
-               "value": {"rate": {"kind": "bpm", "masterId": "m-speed", "multiplier": 0.5},
-                         "direction": "random", "crossfade": 0.25}},
-              {"type": "SET", "path": [*SONG, "mode"], "value": "chase"}),
+        labelled('cue list 1 is a chase: bpm "Speed 1" ×0.5, random, crossfade 0.25',
+                 {"type": "SET", "path": [*SONG, "chase"],
+                  "value": {"rate": {"kind": "bpm", "masterId": "m-speed", "multiplier": 0.5},
+                            "direction": "random", "crossfade": 0.25}},
+                 {"type": "SET", "path": [*SONG, "mode"], "value": "chase"}),
     ),
-    ("cuelist 1 sequence", {"type": "SET", "path": [*SONG, "mode"], "value": "sequence"}),
-    (  # the generic SET still takes JSON
+    ("cuelist 1 sequence",
+     labelled("cue list 1 is a sequence",
+              {"type": "SET", "path": [*SONG, "mode"], "value": "sequence"})),
+    (  # the chase setting still takes JSON
         'cuelist 1 chase {"rate": {"kind": "hz", "value": 2}, "direction": "forward",'
         ' "crossfade": 0}',
-        {"type": "SET", "path": [*SONG, "chase"], "value": HZ_2},
+        labelled('set the chase of cue list 1 to {"rate": {"kind": "hz", "value": 2},'
+                 ' "direction": "forward"…',
+                 {"type": "SET", "path": [*SONG, "chase"], "value": HZ_2}),
     ),
     ("cue 1/2 block true", {"type": "SET", "path": [*CHORUS, "block"], "value": True}),
 ]  # fmt: skip
@@ -983,11 +1044,14 @@ def test_per_family_timing_merges_with_the_families_there() -> None:
     doc["cueLists"][0]["cues"][0]["timing"]["perFamily"] = {"position": {"fade": 4, "delay": 0}}
     action = parse("cue 1/1 time color 3", Context(show_of(doc), LIBRARY, CounterIds()))
     assert isinstance(action, Submit)
-    assert action.command == {
-        "type": "SET",
-        "path": [*VERSE, "timing", "perFamily"],
-        "value": {"position": {"fade": 4, "delay": 0}, "color": {"fade": 3, "delay": 0}},
-    }
+    assert action.command == labelled(
+        "cue 1/1 fades color over 3 s",
+        {
+            "type": "SET",
+            "path": [*VERSE, "timing", "perFamily"],
+            "value": {"position": {"fade": 4, "delay": 0}, "color": {"fade": 3, "delay": 0}},
+        },
+    )
 
 
 def test_a_release_is_appended_to_the_cues_releases() -> None:
@@ -998,14 +1062,17 @@ def test_a_release_is_appended_to_the_cues_releases() -> None:
         "cue 1/2 release 101 only intensity", Context(show_of(doc), LIBRARY, CounterIds())
     )
     assert isinstance(action, Submit)
-    assert action.command == {
-        "type": "SET",
-        "path": [*CHORUS, "releases"],
-        "value": [
-            first,
-            {"targets": {"kind": "targets", "refs": [MH1]}, "attributes": ["intensity"]},
-        ],
-    }
+    assert action.command == labelled(
+        "cue 1/2 releases intensity of 101",
+        {
+            "type": "SET",
+            "path": [*CHORUS, "releases"],
+            "value": [
+                first,
+                {"targets": {"kind": "targets", "refs": [MH1]}, "attributes": ["intensity"]},
+            ],
+        },
+    )
 
 
 def test_master_add_speed() -> None:
@@ -1293,15 +1360,25 @@ def test_the_default_id_is_unused_by_the_programmer_and_every_cue() -> None:
         ),
         (
             "cue 20/1 effect ei-1 size 0.5",
-            {"type": "SET", "path": [*PULSE_CUE, "effects", {"id": "ei-1"}, "size"], "value": 0.5},
+            labelled(
+                "set the size of effect ei-1 in cue 20/1 to 0.5",
+                {
+                    "type": "SET",
+                    "path": [*PULSE_CUE, "effects", {"id": "ei-1"}, "size"],
+                    "value": 0.5,
+                },
+            ),
         ),
         (
             "cue 20/1 effect ei-1 rate.multiplier 2  # twice as fast",
-            {
-                "type": "SET",
-                "path": [*PULSE_CUE, "effects", {"id": "ei-1"}, "rate", "multiplier"],
-                "value": 2,
-            },
+            labelled(
+                "set the rate.multiplier of effect ei-1 in cue 20/1 to 2",
+                {
+                    "type": "SET",
+                    "path": [*PULSE_CUE, "effects", {"id": "ei-1"}, "rate", "multiplier"],
+                    "value": 2,
+                },
+            ),
         ),
         (
             'master add size "Wobble"',
@@ -1511,7 +1588,9 @@ PHASE6_COMMANDS: list[tuple[str, dict[str, Any]]] = [
     ),
     (
         'surface "touchosc" pickup soft',
-        {"type": "SET", "path": ["surfaces", {"id": "s-osc"}, "faderPickup"], "value": "soft"},
+        labelled('set the pickup of surface "TouchOSC" to soft',
+                 {"type": "SET", "path": ["surfaces", {"id": "s-osc"}, "faderPickup"],
+                  "value": "soft"}),
     ),
     # bindings
     (
@@ -1593,7 +1672,9 @@ PHASE6_COMMANDS: list[tuple[str, dict[str, Any]]] = [
     # playbacks and masters
     (
         "playback 1 goto 2",
-        {"type": "SET", "path": ["playbacks", {"id": "pb-song"}, "gotoCue"], "value": "2"},
+        labelled("set the gotoCue of playback 1 to cue 1/2",
+                 {"type": "SET", "path": ["playbacks", {"id": "pb-song"}, "gotoCue"],
+                  "value": "2"}),
     ),
     (
         'master add fadetime "Fade"',
@@ -1933,13 +2014,12 @@ def test_a_location_goes_with_its_line() -> None:
     )
 
 
-def test_a_location_is_still_set_as_a_generic_edit() -> None:
+def test_a_location_is_set_as_any_value_and_said_in_words() -> None:
     keys = {"x": 1, "y": 2, "z": 3, "rx": 0, "ry": 0, "rz": 0}
-    assert p7_command(f"fixture 101 location {json.dumps(keys)}") == {
-        "type": "SET",
-        "path": ["fixtures", {"id": "fx-mh1"}, "location"],
-        "value": keys,
-    }
+    assert p7_command(f"fixture 101 location {json.dumps(keys)}") == labelled(
+        f"set the location of fixture 101 to {json.dumps(keys)}",
+        {"type": "SET", "path": ["fixtures", {"id": "fx-mh1"}, "location"], "value": keys},
+    )
 
 
 def test_park_gives_every_element_of_a_fixture_an_entry() -> None:
@@ -2480,11 +2560,10 @@ def test_removing_a_cues_effect_refuses_an_unknown_id_and_more_words() -> None:
 
 
 def test_a_property_is_still_set_after_an_effects_id() -> None:
-    assert template_action("cue 20/1 effect ei-1 size 0.5").command == {
-        "type": "SET",
-        "path": [*PULSE_CUE, "effects", {"id": "ei-1"}, "size"],
-        "value": 0.5,
-    }
+    assert template_action("cue 20/1 effect ei-1 size 0.5").command == labelled(
+        "set the size of effect ei-1 in cue 20/1 to 0.5",
+        {"type": "SET", "path": [*PULSE_CUE, "effects", {"id": "ei-1"}, "size"], "value": 0.5},
+    )
 
 
 # ----------------------------------- an empty cue list (GAP-33, engine-gaps.md)
@@ -2756,12 +2835,17 @@ def test_every_property_of_the_model_is_taken(
     collection = {"playback": "playbacks", "cuelist": "cueLists"}[head]
     ident = {"playback": "pb-song", "cuelist": "cl-song"}[head]
     for name in properties_of(model):
-        assert command(f"{entity} {name} 1") == {
-            "type": "SET",
-            "path": [collection, {"id": ident}, *name.split(".")],
-            "value": "1" if name == "gotoCue" else 1,
-        }, name
-        assert command(f"{entity} {name.upper()} 1")["path"][2:] == name.split("."), name
+        action = command(f"{entity} {name} 1")
+        assert action["type"] == "BATCH", name  # one labelled step, with a reply in words
+        assert action["commands"] == [
+            {
+                "type": "SET",
+                "path": [collection, {"id": ident}, *name.split(".")],
+                "value": "1" if name == "gotoCue" else 1,
+            }
+        ], name
+        upper = command(f"{entity} {name.upper()} 1")["commands"]
+        assert upper[0]["path"][2:] == name.split("."), name
 
 
 @pytest.mark.parametrize(("entity", "model", "lines", "unoffered"), WALKS)
@@ -2906,9 +2990,9 @@ def test_each_optional_property_is_removed(
     ],
 )
 def test_a_value_is_still_the_generic_edits(line: str, value: Any) -> None:
-    action = command(line)
-    assert action["type"] == "SET"
-    assert action["value"] == value
+    [edit] = command(line)["commands"]
+    assert edit["type"] == "SET"
+    assert edit["value"] == value
 
 
 @pytest.mark.parametrize(

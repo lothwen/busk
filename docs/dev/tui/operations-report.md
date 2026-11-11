@@ -17,6 +17,8 @@ phase. Its Phase 16 audited every row on 2026-11-11 at `f851165`: each busk line
 `OfflineShow` with the club show, and each control was found where its row says. Its Phase 17
 fixed the three TUI bugs the audit found, the same day, and its Phase 18 the small bugs found
 since (refusals in words, F5's effect ids, `[chase…]`'s crossfade, F1's slots in edit mode).
+Its Phase 19 worded the replies of the lines that worked but named the show document's
+paths, which the controls put in the log; the side finding that listed them is gone.
 
 ## How to read it
 
@@ -242,9 +244,8 @@ was seen and is in no phase.
   toggle on a list that was never a chase sends `cuelist N chase bpm x 1`, and busk refuses it
   (`several speed masters: name one`). `[chase…]` names the master. (`[chase…]`'s crossfade field,
   found then too, keeps every digit since Phase 18.)
-- Many lines that work still reply with a document path, and the controls put those replies in the
-  log: renaming a fixture, universe, group, preset, cue, cue list, playback or page; every `number
-  M`; `fixture N location {…}`; a plain `delete` (`deleted fixtures[7]`, `deleted
-  cueLists[8].cues[1]`); `cue L/C time`, `follow`, `wait`, `go` and `release`; `cue L/C effect <id>
-  <prop>`; `cuelist N sequence`, `chase` and `tracking`; and `playback N <prop>`. The refusals are
-  in words.
+- **Found in Phase 19** (2026-11-11), and not fixed: F3's mode chips and `[profile…]` meet busk's
+  refusal by document path when a group, a cue or a parked value names an element the new mode
+  lacks (`groups[2].members[1].element: …`, one line per element), as GAP-26 left it to the
+  validator. The refusal's first line is in words. Planned as Phase 24 of
+  `docs/plans/tui-pending-plan.md`.

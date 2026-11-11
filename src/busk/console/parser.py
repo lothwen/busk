@@ -314,11 +314,12 @@ from __future__ import annotations
 import contextlib
 import json
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Final, cast
 
+from busk.commands.edits import short
 from busk.commands.patch import deep_copy
 from busk.commands.types import Command, EditPath
 from busk.console.cascade import (
@@ -1846,7 +1847,12 @@ class _Parser:
             self.expect("pickup")
             pickup = self.expect("soft", "jump")
             path = ["surfaces", {"id": surface["id"]}, "faderPickup"]
-            return self.submit({"type": "SET", "path": path, "value": pickup})
+            return self.submit(
+                _labelled(
+                    f"set the pickup of surface {short(surface['name'])} to {pickup}",
+                    {"type": "SET", "path": path, "value": pickup},
+                )
+            )
         kind = self.expect("midi", "osc", "web")
         if kind == "midi":
             name = self.take('a device name in quotes, e.g. "nanoKONTROL2"').text
@@ -2156,7 +2162,12 @@ class _Parser:
                 return self._run_list(path)
         if head == "cuelist":
             if self.keyword("sequence"):
-                return self.submit({"type": "SET", "path": [*path, "mode"], "value": "sequence"})
+                return self.submit(
+                    _labelled(
+                        f"{self._who(head, path)} is a sequence",
+                        {"type": "SET", "path": [*path, "mode"], "value": "sequence"},
+                    )
+                )
             words = [token.lower for token in self.tokens[self.k : self.k + 2]]
             if words in (["chase", "hz"], ["chase", "bpm"]):  # else chase {json}: a plain SET
                 self.k += 1
@@ -2165,6 +2176,8 @@ class _Parser:
                 self.offers += ("hz", "bpm")
         if head in _SETTINGS:
             return self._setting(head, path)
+        if head == "fixture" and (token := self.peek()) and token.lower == "location":
+            return self._set(path, "location", self._who(head, path))
         return self._set(path, "name or timing.fadeIn")
 
     def _renumber(self, head: str, path: EditPath) -> Action:
@@ -2179,11 +2192,17 @@ class _Parser:
         items = self.show[collection]  # type: ignore[literal-required]
         item = _element(items, path)
         pool = item.get("pool")
+        now = f"{what}{'' if pool is None else f' {pool}'} {number}"
         if number != item["number"] and any(
             other["number"] == number and other.get("pool") == pool for other in items
         ):
-            raise ParseError(f"{what}{'' if pool is None else f' {pool}'} {number} exists")
-        return self.submit({"type": "SET", "path": [*path, "number"], "value": number})
+            raise ParseError(f"{now} exists")
+        return self.submit(
+            _labelled(
+                f"{self._who(head, path)} is now {now}",
+                {"type": "SET", "path": [*path, "number"], "value": number},
+            )
+        )
 
     def _renumber_cue(self, path: EditPath, cue: Mapping[str, Any]) -> Action:
         """``cue L/C number M``, between the cue's neighbours: a list keeps its
@@ -2204,7 +2223,12 @@ class _Parser:
             theirs = tuple(int(part) for part in other["number"].split("."))
             if other is not cue and (index < at) != (theirs < key):
                 raise ParseError(f"{here}{cue['number']} cannot pass {here}{other['number']}")
-        return self.submit({"type": "SET", "path": [*path, "number"], "value": token.text})
+        return self.submit(
+            _labelled(
+                f"{here}{cue['number']} is now {here}{token.text}",
+                {"type": "SET", "path": [*path, "number"], "value": token.text},
+            )
+        )
 
     def _page_add(self) -> Action:
         """``page add N ["name"]``: a page with no slots (``ASSIGN_PLAYBACK``
@@ -2293,26 +2317,40 @@ class _Parser:
         cue = next((c for c in runs["cues"] if _same_cue(c["number"], token.text)), None)
         if cue is None:
             raise ParseError(f"no cue {runs['number']}/{token.text}")
-        return self.submit({"type": "SET", "path": [*path, "gotoCue"], "value": cue["number"]})
+        return self.submit(
+            _labelled(
+                f"set the gotoCue of playback {playback['number']} to cue "
+                f"{runs['number']}/{cue['number']}",
+                {"type": "SET", "path": [*path, "gotoCue"], "value": cue["number"]},
+            )
+        )
 
-    def _set(self, path: EditPath, example: str) -> Action:
+    def _set(self, path: EditPath, example: str, of: str | None = None) -> Action:
         """``<prop[.sub…]> <value>`` under ``path``: the value as JSON, else
-        the raw text as a string."""
+        the raw text as a string. The reply names the property ``of`` what
+        (``the size of effect fx1 in cue 9/4``); without it, the path, as the
+        generic edit's reply does, since the operator typed one."""
         prop = self.take(f"a property, e.g. {example}")
         keys = prop.text.split(".")
         if not all(keys):
             raise ParseError(f"expected a property, got {prop.text!r}")
-        return self._value([*path, *keys])
+        if of is None:
+            return self._value([*path, *keys])
+        return self._value(
+            [*path, *keys], lambda value: f"set the {prop.text} of {of} to {short(value)}"
+        )
 
-    def _value(self, path: EditPath) -> Action:
+    def _value(self, path: EditPath, said: Callable[[Any], str] | None = None) -> Action:
         """The rest of the line as the value at ``path``: JSON, else the raw
-        text as a string."""
+        text as a string. ``said`` words the reply from the value; without
+        it, the reply names the path."""
         raw = self.rest()
         try:
             value = json.loads(raw)
         except ValueError:
             value = raw
-        return Submit(cast(Command, {"type": "SET", "path": path, "value": value}))
+        command = {"type": "SET", "path": path, "value": value}
+        return Submit(cast(Command, command) if said is None else _labelled(said(value), command))
 
     def _setting(self, head: str, path: EditPath) -> Action:
         """``<property> <value>`` of a playback or a cue list, or ``<property>
@@ -2345,7 +2383,11 @@ class _Parser:
             self._not_running(item)
         if name == "gotoCue" and not cast(Token, self.peek()).quoted:
             return self._goto_cue(path)  # a cue number is not a JSON number
-        return self._value([*path, *keys])
+        if name == "name":
+            return self._value([*path, *keys], lambda value: _renamed(who, item["name"], value))
+        return self._value(
+            [*path, *keys], lambda value: f"set the {name} of {who} to {short(value)}"
+        )
 
     def _cue_effect(self, path: EditPath, cue: Mapping[str, Any], ref: str) -> Action:
         """``cue L/C effect <id> <prop[.sub…]> <value>``, a property of one of
@@ -2361,11 +2403,12 @@ class _Parser:
                     f"removed effect {ident} from cue {ref}", {"type": "DELETE", "path": effect}
                 )
             )
-        return self._set(effect, "size or rate.multiplier")
+        return self._set(effect, "size or rate.multiplier", f"effect {ident} in cue {ref}")
 
     def _cue_verb(self, path: EditPath, cue: Mapping[str, Any], verb: str) -> Action:
         """``cue L/C time|go|follow|wait|release …``: edits of the cue's timing,
         trigger or releases."""
+        who = self._who("cue", path)
         if verb == "time":
             family = self.keyword(*_FAMILIES)
             if family is not None:
@@ -2374,28 +2417,54 @@ class _Parser:
                 if (curve := self.curve()) is not None:
                     timing["curve"] = curve
                 families = {**cue["timing"].get("perFamily", {}), family: timing}
+                words = [f"{who} fades {family} over {_s(timing['fade'])}"]
+                if timing["delay"]:
+                    words.append(f"delay {_s(timing['delay'])}")
+                if curve is not None:
+                    words.append(_curve_text(curve))
                 return self.submit(
-                    {"type": "SET", "path": [*path, "timing", "perFamily"], "value": families}
+                    _labelled(
+                        ", ".join(words),
+                        {"type": "SET", "path": [*path, "timing", "perFamily"], "value": families},
+                    )
                 )
             fade_in, fade_out = self.pair("a fade time")
             fields: dict[str, Any] = {"fadeIn": fade_in, "fadeOut": fade_out}
+            words = [f"{who} fades in {_s(fade_in)}", f"out {_s(fade_out)}"]
             if self.keyword("delay"):
                 fields["delayIn"], fields["delayOut"] = self.pair("a delay")
+                words += [f"delay in {_s(fields['delayIn'])}", f"out {_s(fields['delayOut'])}"]
             if (curve := self.curve()) is not None:
                 fields["curve"] = curve
+                words.append(_curve_text(curve))
             sets = [
                 {"type": "SET", "path": [*path, "timing", key], "value": value}
                 for key, value in fields.items()
             ]
-            return self.submit(_batch(*sets))
+            return self.submit(_labelled(", ".join(words), *sets))
         if verb == "release":
-            release = {"targets": self.targets(), "attributes": self._attributes()}
+            start = self.k
+            targets = self.targets()
+            typed = self.typed(start)
+            attributes = self._attributes()
+            release = {"targets": targets, "attributes": attributes}
             releases = [*cue.get("releases", []), release]
-            return self.submit({"type": "SET", "path": [*path, "releases"], "value": releases})
+            some = "" if attributes == "all" else f"{', '.join(attributes)} of "
+            return self.submit(
+                _labelled(
+                    f"{who} releases {some}{typed}",
+                    {"type": "SET", "path": [*path, "releases"], "value": releases},
+                )
+            )
         trigger: dict[str, Any] = {"kind": verb}
+        said = f"{who} waits for GO"
         if verb != "go":
             trigger["delay"] = self.seconds("a delay")
-        return self.submit({"type": "SET", "path": [*path, "trigger"], "value": trigger})
+            then = "ends" if verb == "follow" else "starts"
+            said = f"{who} goes {_s(trigger['delay'])} after the cue before {then}"
+        return self.submit(
+            _labelled(said, {"type": "SET", "path": [*path, "trigger"], "value": trigger})
+        )
 
     def _attributes(self) -> list[str] | str:
         """``[only <attribute>…]``: the attributes a release names, else ``"all"``."""
@@ -2416,15 +2485,22 @@ class _Parser:
         rate: dict[str, Any]
         if self.expect("hz", "bpm") == "hz":
             rate = {"kind": "hz", "value": self.number("a rate in Hz")}
+            words = [f"{rate['value']:g} Hz"]
         else:
             master = self.speed_master()
             multiplier = self.number("a multiplier") if self.keyword("x") else 1
             rate = {"kind": "bpm", "masterId": master, "multiplier": multiplier}
+            name = _by_id(self.show["masters"], master)["name"]
+            words = [f"bpm {short(name)} ×{multiplier:g}"]
         direction = self.keyword(*_DIRECTIONS) or "forward"
         crossfade = self.number("a crossfade fraction") if self.keyword("crossfade") else 0
         chase = {"rate": rate, "direction": direction, "crossfade": crossfade}
+        words.append(direction)
+        if crossfade:
+            words.append(f"crossfade {crossfade:g}")
         return self.submit(
-            _batch(
+            _labelled(
+                f"{self._who('cuelist', path)} is a chase: {', '.join(words)}",
                 {"type": "SET", "path": [*path, "chase"], "value": chase},
                 {"type": "SET", "path": [*path, "mode"], "value": "chase"},
             )
@@ -2477,6 +2553,25 @@ class _Parser:
         item = self.by_number(collection, self.integer(f"a {what} number"), what)
         return [collection, {"id": item["id"]}]
 
+    def _entity_at(self, head: str, path: EditPath) -> Mapping[str, Any]:
+        """The entity at ``path``, of the kind ``head`` names (not ``show``)."""
+        if head == "cue":
+            return _element(_element(self.show["cueLists"], path[:2])["cues"], path[2:])
+        collection = "presets" if head == "preset" else _COLLECTIONS[head][0]
+        return _element(self.show[collection], path)  # type: ignore[literal-required]
+
+    def _who(self, head: str, path: EditPath) -> str:
+        """The entity at ``path`` as the console names it, for a reply:
+        ``cue 9/2``, ``preset color 1``, ``cue list 9``, ``the show``."""
+        if head == "show":
+            return "the show"
+        item = self._entity_at(head, path)
+        if head == "cue":
+            return f"cue {_element(self.show['cueLists'], path[:2])['number']}/{item['number']}"
+        if head == "preset":
+            return f"preset {item['pool']} {item['number']}"
+        return f"{_COLLECTIONS[head][1]} {item['number']}"
+
     def _cmd_rename(self) -> Action:
         head = self.word("an entity", *sorted(_ENTITIES))
         if head not in _ENTITIES:
@@ -2485,8 +2580,18 @@ class _Parser:
         name = self._name()
         if name is None:
             raise self.fail("expected a name in quotes")
-        keys: EditPath = ["meta", "title"] if head == "show" else [*path, "name"]
-        return self.submit({"type": "SET", "path": keys, "value": name})
+        if head == "show":
+            keys: EditPath = ["meta", "title"]
+            old = self.show["meta"]["title"]
+        else:
+            keys = [*path, "name"]
+            old = self._entity_at(head, path)["name"]
+        return self.submit(
+            _labelled(
+                _renamed(self._who(head, path), old, name),
+                {"type": "SET", "path": keys, "value": name},
+            )
+        )
 
     def _cmd_delete(self) -> Action:
         head = self.word("an entity", *sorted(_ENTITIES - {"show"} | {"route"}))
@@ -2497,8 +2602,12 @@ class _Parser:
         if head == "fixture" and (token := self.peek(1)) is not None and token.lower == "thru":
             return self._delete_fixtures()
         path = self.entity_path(head)
+        delete = {"type": "DELETE", "path": path}
         if head == "cue":
-            return self.submit({"type": "DELETE", "path": path})
+            cue = self._entity_at(head, path)
+            return self.submit(
+                _labelled(f"deleted {self._who(head, path)} {short(cue['name'])}", delete)
+            )
         if head == "fixture":
             self.ending("thru")
         cascade = self._cascade(head, path)
@@ -2510,7 +2619,7 @@ class _Parser:
         self.done()
         if cascade.refusal is not None:
             raise self.fail(cascade.refusal)
-        return self.submit({"type": "DELETE", "path": path})
+        return self.submit(_labelled(cascade.label, delete))  # nothing uses it: "deleted …"
 
     def _cascade(self, head: str, path: EditPath) -> Cascade:
         """What ``delete <head> … cascade`` would do: always asks first at a
@@ -3162,14 +3271,26 @@ def _adds_template(action: Mapping[str, Any], ident: str) -> bool:
     )
 
 
-def _batch(*commands: Mapping[str, Any]) -> dict[str, Any]:
-    """One undo step for several edits."""
-    return {"type": "BATCH", "label": "", "commands": list(commands)}
-
-
 def _labelled(label: str, *commands: Mapping[str, Any]) -> Command:
     """One undo step for ``commands``, reported as ``label``."""
     return cast(Command, {"type": "BATCH", "label": label, "commands": list(commands)})
+
+
+def _renamed(who: str, old: Any, new: Any) -> str:
+    """``renamed group 1 "Heads" to "Movers"``, each name cut as a reply cuts a value."""
+    return f"renamed {who} {short(old)} to {short(new)}"
+
+
+def _s(seconds: float) -> str:
+    """``0.5 s``."""
+    return f"{seconds:g} s"
+
+
+def _curve_text(curve: str | Mapping[str, Any]) -> str:
+    """A curve as the line takes it: ``easeOut``, ``bezier 0.4 0 0.2 1``."""
+    if isinstance(curve, str):
+        return curve
+    return "bezier " + " ".join(f"{value:g}" for value in curve["bezier"])
 
 
 def _set_park(park: list[dict[str, Any]], label: str) -> Command:

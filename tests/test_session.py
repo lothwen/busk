@@ -66,6 +66,17 @@ def test_a_rejected_edit_changes_nothing(live: Live) -> None:
     assert not session.dirty
 
 
+def test_a_submitted_edit_names_its_path_and_undo_and_redo_repeat_it(live: Live) -> None:
+    """The console words its replies (Phase 19 of the pending plan); a
+    command sent to the session, as ``submit()`` sends it, names its path."""
+    said = 'set fixtures[0].name to "Left"'
+    assert submit(live, RENAME).message == said
+    assert live.do(UNDO).message == f"undid: {said}"
+    assert live.do(REDO).message == f"redid: {said}"
+    unlabelled = {"type": "BATCH", "label": "", "commands": [{**RENAME, "value": "Far left"}]}
+    assert submit(live, unlabelled).message == 'set fixtures[0].name to "Far left"'
+
+
 def test_a_batch_whose_last_command_fails_changes_nothing(live: Live) -> None:
     show = live.session.show
     result = submit(

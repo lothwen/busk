@@ -257,6 +257,13 @@ session, as the web remote's commands do. `help` prints the grammar.
 * **Undo** walks one timeline of show edits and programmer changes (1000 steps): the last
   action, whatever it was. Blind and the programmer's fade time are modes and are never
   undone. Saving is not a step.
+* **Replies** say what a line did, naming what it changed as the console does:
+  `renamed group 1 "Heads" to "Movers"`, `group 1 is now group 9`, `deleted cue 9/2 "Verse"`,
+  `cue 9/3 goes 8 s after the cue before starts`, `set the priority of playback 3 to 60`. A
+  value too long for the line is cut with `…`. `undo` and `redo` say it again (`undid: cue
+  list 10 is a sequence`). The generic edit of any other property names the path it set
+  (`cue 3/1 timing.fadeIn 1`; `show meta.title "Club Night"` replies `set meta.title to "Club
+  Night"`), and so does a warning, which comes from checking the whole show.
 * **Errors** name what you typed (`no group 7`, `preset color 1 exists: add merge or
   replace`), and an edit that would make the show invalid lists every place it breaks:
 

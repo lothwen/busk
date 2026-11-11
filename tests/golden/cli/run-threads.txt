@@ -56,35 +56,35 @@ stdout:
   color: 18 targets
   recorded slot 8: playback 8 'Panic'
   programmer cleared
-  set playbacks[0].exclusivity to "base"
-  set playbacks[1].exclusivity to "base"
-  set playbacks[2].exclusivity to "color"
-  set playbacks[3].exclusivity to "color"
-  set playbacks[4].exclusivity to "color"
-  set playbacks[5].exclusivity to "position"
-  set playbacks[6].exclusivity to "position"
+  set the exclusivity of playback 1 to "base"
+  set the exclusivity of playback 2 to "base"
+  set the exclusivity of playback 3 to "color"
+  set the exclusivity of playback 4 to "color"
+  set the exclusivity of playback 5 to "color"
+  set the exclusivity of playback 6 to "position"
+  set the exclusivity of playback 7 to "position"
   set cueLists[2].cues[0].timing.fadeIn to 1
   set cueLists[3].cues[0].timing.fadeIn to 1
   set cueLists[4].cues[0].timing.fadeIn to 1
   set cueLists[5].cues[0].timing.fadeIn to 2
   set cueLists[6].cues[0].timing.fadeIn to 2
-  set playbacks[5].ltpFaderMode to "followFader"
-  set playbacks[6].ltpFaderMode to "followFader"
-  set playbacks[5].releaseTime to 2
-  set playbacks[6].releaseTime to 2
-  set playbacks[7].priority to 200
-  set playbacks[7].fader to "none"
-  set playbacks[7].autoStart to false
-  set playbacks[7].autoRelease to false
-  set playbacks[7].releaseTime to 0
-  set playbacks[0].buttons to ["toggle", "flash", "release"]
-  set playbacks[1].buttons to ["toggle", "flash", "release"]
-  set playbacks[2].buttons to ["toggle", "flash", "release"]
-  set playbacks[3].buttons to ["toggle", "flash", "release"]
-  set playbacks[4].buttons to ["toggle", "flash", "release"]
-  set playbacks[5].buttons to ["toggle", "flash", "release"]
-  set playbacks[6].buttons to ["toggle", "flash", "release"]
-  set playbacks[7].buttons to ["toggle", "flash", "release"]
+  set the ltpFaderMode of playback 6 to "followFader"
+  set the ltpFaderMode of playback 7 to "followFader"
+  set the releaseTime of playback 6 to 2
+  set the releaseTime of playback 7 to 2
+  set the priority of playback 8 to 200
+  set the fader of playback 8 to "none"
+  set the autoStart of playback 8 to false
+  set the autoRelease of playback 8 to false
+  set the releaseTime of playback 8 to 0
+  set the buttons of playback 1 to ["toggle", "flash", "release"]
+  set the buttons of playback 2 to ["toggle", "flash", "release"]
+  set the buttons of playback 3 to ["toggle", "flash", "release"]
+  set the buttons of playback 4 to ["toggle", "flash", "release"]
+  set the buttons of playback 5 to ["toggle", "flash", "release"]
+  set the buttons of playback 6 to ["toggle", "flash", "release"]
+  set the buttons of playback 7 to ["toggle", "flash", "release"]
+  set the buttons of playback 8 to ["toggle", "flash", "release"]
   added route r-<id>
   added surface 'nanoKONTROL2'
   added binding b-<id>

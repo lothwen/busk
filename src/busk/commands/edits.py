@@ -103,7 +103,7 @@ def set_(show: Show, command: SetCmd) -> Edit:
         op = Op("replace", pointer, command["value"])
     else:
         op = Op("add", pointer, command["value"])  # resolve() checked the parent is an object
-    return Edit(ops=(op,), message=f"set {pointer_text(pointer)} to {_short(command['value'])}")
+    return Edit(ops=(op,), message=f"set {pointer_text(pointer)} to {short(command['value'])}")
 
 
 def delete(show: Show, command: DeleteCmd) -> Edit:
@@ -210,7 +210,7 @@ def _check_key_path(path: Sequence[str | IdSegment], verb: str) -> None:
         raise CommandError(f"the {path[0]} list cannot be replaced; ADD or DELETE its elements")
 
 
-def _short(value: Any, limit: int = 60) -> str:
+def short(value: Any, limit: int = 60) -> str:
     """A JSON value for a message, cut to ``limit`` characters."""
     text = json.dumps(value, ensure_ascii=False)
     return text if len(text) <= limit else text[: limit - 1] + "…"

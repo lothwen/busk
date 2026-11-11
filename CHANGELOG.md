@@ -122,6 +122,18 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   takes, the library's too, with each mode's footprint and elements: two new public types,
   `FixtureProfileInfo` and `FixtureModeInfo`.
 
+### Changed
+
+- Lines that work reply in words, where they named the show document's paths: every rename
+  (`renamed group 1 "Heads" to "Movers"`), every `number M` (`group 1 is now group 9`), a plain
+  `delete` (`deleted cue 9/2 "Verse"`), `cue L/C time`, `follow`, `wait`, `go` and `release`
+  (`cue 9/3 goes 8 s after the cue before starts`), `cue L/C effect <id> <prop> <value>`,
+  `cuelist N sequence` and `chase`, the properties of a playback or a cue list (`set the priority
+  of playback 3 to 60`), `playback N goto`, `fixture N location {…}` and `surface "<name>"
+  pickup`. `undo` and `redo` repeat the words, and the TUI's log shows them. The generic edit
+  (`show meta.title "…"`, `cue 3/1 timing.fadeIn 1`) and a command submitted to the session still
+  name the path they set.
+
 ### Fixed
 
 - `route add` and `route <id> change` with an Art-Net net past 127, or a sub-net or universe past

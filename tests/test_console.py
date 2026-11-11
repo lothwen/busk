@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import signal
 import time
 from collections.abc import Callable
@@ -1574,3 +1575,131 @@ def test_tab_offers_patch_after_a_span_and_what_a_patch_takes(patched_rig: Offli
     after = patched_rig.expected("fixture 1 thru 3 patch ")
     assert (after.words, after.values) == (("none",), ("an address as U.A, e.g. 1.101",))
     assert patched_rig.expected("fixture 1 thru 3 patch none ").runnable
+
+
+# --------------------------------- replies in words (Phase 19 of the pending plan)
+
+A_PATH = re.compile(r"[A-Za-z]+\[\d+\]|\bmeta\.\w")
+"""A document path in a reply: ``cueLists[0].cues[1]``, ``meta.title``."""
+
+REPLIES = [
+    ([], 'rename fixture 101 "Left"', 'renamed fixture 101 "MH 1" to "Left"'),
+    ([], 'rename universe 1 "Front"', 'renamed universe 1 "Stage" to "Front"'),
+    ([], 'rename group 1 "Movers"', 'renamed group 1 "Moving Heads" to "Movers"'),
+    ([], 'rename preset color 1 "Navy"', 'renamed preset color 1 "Blue" to "Navy"'),
+    ([], 'rename cue 1/2 "Hook"', 'renamed cue 1/2 "Chorus" to "Hook"'),
+    ([], 'rename cuelist 1 "Set"', 'renamed cue list 1 "Song" to "Set"'),
+    ([], 'cuelist 1 name "Set"', 'renamed cue list 1 "Song" to "Set"'),
+    ([], 'rename playback 3 "Deep blue"', 'renamed playback 3 "Blue" to "Deep blue"'),
+    ([], 'playback 3 name "Deep blue"', 'renamed playback 3 "Blue" to "Deep blue"'),
+    ([], 'rename page 1 "First"', 'renamed page 1 "Main" to "First"'),
+    ([], 'rename show "Late Show"', 'renamed the show "Club Night" to "Late Show"'),
+    ([], "fixture 101 number 110", "fixture 101 is now fixture 110"),
+    ([], "universe 1 number 2", "universe 1 is now universe 2"),
+    ([], "group 1 number 9", "group 1 is now group 9"),
+    ([], "preset color 1 number 9", "preset color 1 is now preset color 9"),
+    ([], "cue 1/2 number 2.5", "cue 1/2 is now cue 1/2.5"),
+    ([], "cuelist 1 number 30", "cue list 1 is now cue list 30"),
+    ([], "playback 1 number 30", "playback 1 is now playback 30"),
+    ([], "page 1 number 5", "page 1 is now page 5"),
+    (
+        [],
+        'fixture 101 location {"x": 1, "y": 2, "z": 3, "rx": 0, "ry": 0, "rz": 0}',
+        'set the location of fixture 101 to {"x": 1, "y": 2, "z": 3, "rx": 0, "ry": 0, "rz": 0}',
+    ),
+    ([], "delete cue 1/2", 'deleted cue 1/2 "Chorus"'),
+    (['fixture add 301 "RGB Par 3ch" mode 3ch'], "delete fixture 301", "deleted fixture 301"),
+    (['universe add 2 "Spare"'], "delete universe 2", 'deleted universe 2 "Spare"'),
+    (["sel fixture 101", 'record group 9 "One"'], "delete group 9", 'deleted group 9 "One"'),
+    (
+        ["sel fixture 101", "set intensity 50%", 'record preset intensity 1 "Half"'],
+        "delete preset intensity 1",
+        'deleted preset intensity 1 "Half"',
+    ),
+    (["cuelist add 30"], "delete cuelist 30", 'deleted cue list 30 "Cue list 30"'),
+    (
+        ["playback add 30 cuelist 10"],
+        "delete playback 30",
+        'deleted playback 30 "Playback 30"',
+    ),
+    (["page add 3"], "delete page 3", 'deleted page 3 "Page 3"'),
+    ([], "cue 1/1 time 3 easeInOut", "cue 1/1 fades in 3 s, out 3 s, easeInOut"),
+    (
+        [],
+        "cue 1/2 time 1/3 delay 0/1",
+        "cue 1/2 fades in 1 s, out 3 s, delay in 0 s, out 1 s",
+    ),
+    (
+        [],
+        "cue 1/1 time position 4 delay 1 easeOut",
+        "cue 1/1 fades position over 4 s, delay 1 s, easeOut",
+    ),
+    (
+        [],
+        "cue 1/1 time intensity 2 bezier 0.4 0 0.2 1",
+        "cue 1/1 fades intensity over 2 s, bezier 0.4 0 0.2 1",
+    ),
+    ([], "cue 1/2 wait 8", "cue 1/2 goes 8 s after the cue before starts"),
+    ([], "cue 1/2 follow 0.5", "cue 1/2 goes 0.5 s after the cue before ends"),
+    (["cue 1/2 wait 8"], "cue 1/2 go", "cue 1/2 waits for GO"),
+    ([], "cue 1/2 release group 1 only pan tilt", "cue 1/2 releases pan, tilt of group 1"),
+    ([], "cue 1/2 release fixture 101 thru 102", "cue 1/2 releases fixture 101 thru 102"),
+    ([], "cue 20/1 effect ei-1 size 0.5", "set the size of effect ei-1 in cue 20/1 to 0.5"),
+    ([], "cuelist 1 tracking true", "set the tracking of cue list 1 to true"),
+    ([], "cuelist 1 chase hz 4", "cue list 1 is a chase: 4 Hz, forward"),
+    (
+        [],
+        'cuelist 1 chase bpm "Speed 1" x 2 bounce crossfade 0.25',
+        'cue list 1 is a chase: bpm "Speed 1" ×2, bounce, crossfade 0.25',
+    ),
+    (["cuelist 1 chase hz 4"], "cuelist 1 sequence", "cue list 1 is a sequence"),
+    ([], "playback 3 priority 60", "set the priority of playback 3 to 60"),
+    ([], "playback 3 fader size", 'set the fader of playback 3 to "size"'),
+    ([], "playback 1 goto 2", "set the gotoCue of playback 1 to cue 1/2"),
+    (
+        [],
+        'surface "midi controller" pickup jump',
+        'set the pickup of surface "MIDI Controller" to jump',
+    ),
+]
+
+
+@pytest.mark.parametrize(("setup", "line", "said"), REPLIES, ids=[row[1] for row in REPLIES])
+def test_a_line_that_works_says_what_it_did_and_undo_and_redo_say_it_too(
+    console: Console, setup: list[str], line: str, said: str
+) -> None:
+    run(console, *setup)
+    assert run(console, line, "undo", "redo") == [said, f"undid: {said}", f"redid: {said}"]
+    assert A_PATH.search(said) is None
+
+
+def test_a_long_name_is_cut_in_the_reply_as_a_value_is(console: Console) -> None:
+    name = "A" * 80
+    [said] = run(console, f'rename group 1 "{name}"')
+    assert said == f'renamed group 1 "Moving Heads" to "{"A" * 58}…'
+
+
+@pytest.mark.parametrize(
+    ("line", "said"),
+    [
+        ('show meta.title "Late Show"', 'set meta.title to "Late Show"'),
+        ("cue 1/1 timing.fadeIn 1", "set cueLists[0].cues[0].timing.fadeIn to 1"),
+        ('fixture 101 name "Left"', 'set fixtures[0].name to "Left"'),
+    ],
+)
+def test_the_generic_edit_keeps_its_path(console: Console, line: str, said: str) -> None:
+    assert run(console, line, "undo") == [said, f"undid: {said}"]
+
+
+def test_a_named_setting_busk_rejects_is_refused_in_its_words_with_the_validators_paths(
+    console: Console,
+) -> None:
+    reply = console.execute("playback 3 ltpFaderMode sideways")
+    assert not reply.ok
+    first, *issues = reply.text.splitlines()
+    assert first == (
+        'error: set the ltpFaderMode of playback 3 to "sideways": '
+        "rejected, the show would not be valid"
+    )
+    assert issues
+    assert all(issue.startswith("  playbacks[1].ltpFaderMode") for issue in issues)
