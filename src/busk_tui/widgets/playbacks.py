@@ -44,6 +44,7 @@ from busk_tui.model import (
 from busk_tui.nav import Item, Stop
 from busk_tui.widgets.bars import HBar
 from busk_tui.widgets.controls import CommandButton, Intent, RunLine, ShowHint
+from busk_tui.widgets.dialogs import cue_key
 from busk_tui.widgets.vfader import ROWS, VFader
 
 FADER_TAGS: Final = {
@@ -186,19 +187,25 @@ def own_buttons(show: ShowModel | None, number: int | None) -> tuple[OwnButton, 
     if show is None or info is None:
         return ()
     cue_list = show.cue_list(info.cueList)
-    has_cues = cue_list is not None and bool(cue_list.cues)
-    return tuple((name, _idle_reason(name, info, has_cues)) for name in info.buttons)
+    return tuple((name, _idle_reason(name, info, cue_list)) for name in info.buttons)
 
 
-def _idle_reason(function: str, info: PlaybackInfo, has_cues: bool) -> str | None:
+def _idle_reason(function: str, info: PlaybackInfo, cue_list: CueListInfo | None) -> str | None:
     """Why a press of ``function`` would do nothing: ``none``; a ``goto`` with
-    no ``gotoCue``; what starts a list with no cues, which ``button`` would
-    mark active on no cue, where ``go`` is refused."""
+    no ``gotoCue``, or one its list lacks (after ``playback N cuelist L``),
+    numbers compared as busk does, so ``04`` is cue ``4``; what starts a list
+    with no cues, which ``button`` would mark active on no cue, where ``go``
+    is refused."""
     if function == "none":
         return "no function"
-    if function == "goto" and info.gotoCue is None:
-        return "goto: this playback has no goto cue"
-    if function in STARTS and not has_cues:
+    cues = () if cue_list is None else cue_list.cues
+    if function == "goto":
+        if info.gotoCue is None:
+            return "goto: this playback has no goto cue"
+        wanted = cue_key(info.gotoCue)
+        if wanted is None or all(cue_key(cue.number) != wanted for cue in cues):
+            return f"goto: cue list {info.cueList} has no cue {info.gotoCue}"
+    if function in STARTS and not cues:
         return f"{function}: its cue list has no cues"
     return None
 

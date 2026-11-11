@@ -159,10 +159,22 @@ def cue_words(cue_list: int, cue: CueInfo) -> str:
 
 
 def mode_line(cue_list: CueListInfo) -> Line:
-    """The toggle: back to a sequence, or a chase with the settings it keeps."""
+    """The toggle: back to a sequence, or a chase with the settings it keeps,
+    built as the chase form builds them, so that every digit and a master's
+    name go back as busk stored them."""
     if cue_list.mode == "chase":
         return commands.cuelist_sequence(cue_list.number)
-    return commands.cuelist_chase(cue_list.number, cue_list.chase, cue_list.crossfade)
+    rate = cue_list.rate
+    if rate is None:
+        return commands.cuelist_chase(cue_list.number)
+    return commands.chase_settings(
+        cue_list.number,
+        hz=None if rate.hz is None else commands.exact(rate.hz),
+        master=rate.master,
+        multiplier=commands.exact(rate.multiplier),
+        direction=rate.direction,
+        crossfade=commands.exact(cue_list.crossfade),
+    )
 
 
 class CuesPage(Page):

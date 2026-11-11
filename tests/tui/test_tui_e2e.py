@@ -3,11 +3,13 @@
 * On a real show (``--standalone``, no output, no surfaces): a typed ``gm
   50%`` shows in the status bar; Space on F1 makes P1 active, and its row
   shows it; F2's group button, intensity bar and ``[+]``, and an F6 tile,
-  program it; F6's PRESET panel records presets and changes them, and
+  program it; F6's PRESET panel records presets and changes them, asking
+  before a replace or a remove, and
   on the TupperDMX show records a colour from its picker and a beam preset
-  from its option chips and bars; F4
-  goes to a cue, builds and deletes cues and lists from its controls, and
-  edits a cue's timing, trigger and name in its dialogs, and
+  from its option chips and bars; F1 greys a goto its new list lacks; F4
+  goes to a cue, builds and deletes cues and lists from its controls,
+  edits a cue's timing, trigger and name in its dialogs, and toggles a
+  list back to the chase busk stored, and
   F5 adds, stops and removes an effect and builds a template; F3 and F1's
   layouts A and C show the output, and select from it; F3's FIXTURE panel
   renames, renumbers and deletes a fixture, sets a profile's category, a
@@ -52,6 +54,7 @@ from busk_tui import attributes, colors, commands, config
 from busk_tui.bridge import Bridge
 from busk_tui.commands import Line, percent
 from busk_tui.model import (
+    ChaseRate,
     CueInfo,
     CueListInfo,
     EffectInfo,
@@ -73,7 +76,7 @@ from busk_tui.shell import BuskApp
 from busk_tui.widgets.bars import HBar
 from busk_tui.widgets.chase_dialog import ChaseDialog
 from busk_tui.widgets.colorpicker import cell_color, rgb_of
-from busk_tui.widgets.controls import ActionButton, ButtonStrip
+from busk_tui.widgets.controls import ActionButton, ButtonStrip, CommandButton
 from busk_tui.widgets.cue_dialogs import CurveDialog, TimeDialog
 from busk_tui.widgets.cuetable import CueTable
 from busk_tui.widgets.dialogs import ConfirmDialog, FormDialog, TextDialog
@@ -96,6 +99,7 @@ from busk_tui.widgets.playbacks import PlaybackRow
 from busk_tui.widgets.preset_panel import Chosen
 from busk_tui.widgets.profile_picker import ProfileDialog
 from busk_tui.widgets.programmer import ProgrammerTable
+from busk_tui.widgets.prompt import HintRow
 from busk_tui.widgets.route_dialog import RouteDialog
 from busk_tui.widgets.template_panel import NewTemplateDialog, TemplatePanel
 from busk_tui.widgets.tiles import PresetTile
@@ -1266,9 +1270,30 @@ def test_f6_records_and_changes_presets_from_controls_on_the_real_engine(
         bar = row("tilt").bar
         await tap(pilot, bar, bar.size.width - 1)
         await until(pilot, lambda: len(held("tilt")) == 2 and not held("pan"))
+        show = app.view.show
+        assert show is not None
+        name = next(p.name for p in show.presets if (p.pool, p.number) == ("position", 3))
+        words = f'preset position 3 "{name}"'
+
+        async def answer(key: str, question: str) -> None:
+            await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+            assert isinstance(app.screen, ConfirmDialog)
+            assert app.screen.question == question
+            await pilot.press(key)
+            await until(pilot, lambda: not isinstance(app.screen, ConfirmDialog))
+
+        removes = f"Remove the programmer's attributes from {words}?"
         await tap(pilot, panel.writes["remove"])
+        await answer("n", removes)
+        assert ("info", "cancelled: record preset position 3 remove") in (
+            app.query_one(LogView).entries
+        )
+        assert [e[2] for e in stored("position", 3)] == ["pan", "pan", "tilt", "tilt"]
+        await tap(pilot, panel.writes["remove"])
+        await answer("y", removes)
         await until(pilot, lambda: [e[2] for e in stored("position", 3)] == ["pan", "pan"])
         await tap(pilot, panel.writes["replace"])
+        await answer("y", f"Replace what {words} holds with the programmer?")
         top = held("tilt")[0]
         await until(pilot, lambda: [e[2] for e in stored("position", 3)] == ["tilt", "tilt"])
         assert stored("position", 3)[0] == ("target", heads[0], "tilt", top)
@@ -1684,6 +1709,58 @@ def test_f4_and_f6_build_and_delete_cues_and_lists_from_controls_on_the_real_eng
         await until(pilot, lambda: not blue_gone())
         errors = [text for kind, text in app.query_one(LogView).entries if kind == "error"]
         assert errors == []
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_f4_toggles_a_list_back_to_the_chase_busk_stored_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """Song, never chased, goes on the beat. A list chased on a master named
+    with a quote, at a multiplier of many digits and a crossfade of 0.125,
+    then made a sequence: the toggle makes it that chase again."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=4), standalone=True)
+    say = 'Say "hi"'
+    chased = ChaseRate(None, say, 1.23456789, "random")
+
+    def chase_of(number: int) -> tuple[str, ChaseRate | None, float] | None:
+        found = None if app.view.show is None else app.view.show.cue_list(number)
+        return None if found is None else (found.mode, found.rate, found.crossfade)
+
+    def toggle(page: CuesPage) -> str:
+        return page.buttons.buttons[-1].line.text
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.live is not None and app.view.show is not None)
+        page = app.query_one(CuesPage)
+        page.choose_list(9)
+        await until(pilot, lambda: toggle(page) == "cuelist 9 chase bpm x 1")
+        await tap_button(pilot, page.buttons, "cuelist 9 chase bpm x 1")
+        await until(
+            pilot, lambda: chase_of(9) == ("chase", ChaseRate(None, None, 1.0, "forward"), 0)
+        )
+
+        for line in (
+            'master add speed "Say \\"hi\\"" bpm 90',
+            'cuelist 10 chase bpm "Say \\"hi\\"" x 1.23456789 random crossfade 0.125',
+            "cuelist 10 sequence",
+        ):
+            await pilot.press(*line, "enter")
+        await until(pilot, lambda: chase_of(10) == ("sequence", chased, 0.125), timeout=1.0)
+        page.choose_list(10)
+        line = 'cuelist 10 chase bpm "Say \\"hi\\"" x 1.23456789 random crossfade 0.125'
+        await until(pilot, lambda: toggle(page) == line)
+        await tap_button(pilot, page.buttons, line)
+        await until(pilot, lambda: chase_of(10) == ("chase", chased, 0.125), timeout=1.0)
+        log = app.query_one(LogView).entries
+        assert [text for kind, text in log if kind == "error"] == []
+        await until(pilot, lambda: toggle(page) == "cuelist 10 sequence")
 
     try:
         drive(app, body)
@@ -2132,6 +2209,65 @@ def test_f1_presses_a_playbacks_own_buttons_on_the_real_engine(
         assert number is not None
         await until(pilot, lambda: row_of(number) is not None, timeout=1.0)
         assert labels(number) == ["[TG]", "[FL]"]
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_f1_greys_a_goto_its_new_list_lacks_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """P9's goto cue 4, after ``playback 9 cuelist 11`` (Circle: cue 1 only):
+    ``[GT]`` grey, with the reason in the hint row, and a click sends
+    nothing; ``record cue 11/4`` gives it back, and a click goes there."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(), standalone=True)
+    reason = "goto: cue list 11 has no cue 4"
+
+    def goto() -> CommandButton | None:
+        rows = app.query_one(StackLayout).rows
+        row = next((row for row in rows if row.number == 9), None)
+        button = None if row is None else row.buttons[3]
+        return button if isinstance(button, CommandButton) else None
+
+    def inert() -> bool | None:
+        button = goto()
+        return None if button is None else button.inert
+
+    def cue() -> str | None:
+        found = None if app.view.live is None else app.view.live.playback(9)
+        return None if found is None else found.cue
+
+    def uis() -> list[str]:
+        return [text for kind, text in app.query_one(LogView).entries if kind == "ui"]
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.view.live is not None and inert() is False)
+        await pilot.press(*"playback 9 cuelist 11", "enter")
+        await until(pilot, lambda: inert() is True, timeout=1.0)
+        grey = goto()
+        assert grey is not None
+        assert grey.hint == reason
+        await pilot.hover(grey)
+        await pilot.pause()
+        assert plain_of(app.query_one(HintRow)) == reason
+        before = uis()
+        await pilot.click(grey)
+        await pilot.pause(0.2)
+        assert uis() == before
+        assert cue() is None
+
+        await pilot.press(*"sel group 2", "enter", *"set intensity 40%", "enter")
+        await pilot.press(*"record cue 11/4", "enter")
+        await until(pilot, lambda: inert() is False, timeout=1.0)
+        live_goto = goto()
+        assert live_goto is not None
+        await pilot.click(live_goto)
+        await until(pilot, lambda: cue() == "4", timeout=1.0)
 
     try:
         drive(app, body)

@@ -13,8 +13,9 @@ and its PRESET panel). The fixture, universe and route rows were updated on 2026
 [the rig plan](../../plans/tui-rig-plan.md) gave every one a control (F3's edit mode, FIXTURE
 panel and new fixture form, F8's strips and place) and closed what busk lacked (GAP-23 to GAP-27).
 From 2026-11-08, [the pending plan](../../plans/tui-pending-plan.md) tracks what is left, phase by
-phase. Its last phase audited every row on 2026-11-11 at `f851165`: each busk line was run again on
-`OfflineShow` with the club show, and each control was found where its row says.
+phase. Its Phase 16 audited every row on 2026-11-11 at `f851165`: each busk line was run again on
+`OfflineShow` with the club show, and each control was found where its row says. Its Phase 17
+fixed the three TUI bugs the audit found, the same day.
 
 ## How to read it
 
@@ -136,7 +137,7 @@ In short:
 | Show | typed `LiveShow.show`; `list cuelists` | yes | control: F4 CUELISTS (number, name, kind, cue count, playback) and the meta line (mode, tracking, chase settings, playbacks and level, groups) |
 | Add | `cuelist add N ["name"]` (GAP-33), a list with no cues. `record cue N/1` creates list N with its first cue; `record slot` creates a list with a playback | yes | control: F4 `[+ list…]`, a form that refuses a number that is taken |
 | Delete | `delete cuelist N cascade` (GAP-36), with the playbacks that run it; `delete cuelist N` | yes. A plain `delete` is refused in one line while a playback runs it | control: F4 `[delete]`, after busk's question |
-| Sequence or chase | `cuelist N sequence`, `cuelist N chase hz\|bpm …` | yes | control: F4 toggle (keeps the list's chase settings, else `bpm x 1`), and `[chase…]`, a form for the rate, master, multiplier, direction and crossfade |
+| Sequence or chase | `cuelist N sequence`, `cuelist N chase hz\|bpm …` | yes | control: F4 toggle (sends the list's chase settings as busk stored them, else `bpm x 1`), and `[chase…]`, a form for the rate, master, multiplier, direction and crossfade |
 | Tracking | `cuelist N tracking true\|false` (a setting named by GAP-35) | yes | control: F4 `[tracking on]`, `[tracking off]` |
 | Rename | `rename cuelist N "…"` | yes | control: F4 `[rename…]`, a name dialog |
 | Renumber | `cuelist N number M` | yes | prompt |
@@ -148,7 +149,7 @@ In short:
 | Show | typed `LiveShow.show`; `list presets` | yes | control: F6 tiles per pool with a preview; colour chips on F1 and F2. In edit mode, the PRESET panel shows what a preset holds (each stored value, its scope and where) and the cues and effect palettes that use it |
 | Add | `record preset <pool> N [global\|profile\|target] ["name"]` | yes | control: F6's `+ record` tile opens the PRESET panel, with the next free number. Every pool the rig can record into shows. The panel sets the number, name and scope, the selection, and every value the pool records: encoder rows, a colour picker, option chips for the discrete attributes, and spreads (fans). It shows what a record takes, then `[record]` |
 | Delete | `delete preset <pool> N cascade` (GAP-36), `delete preset <pool> N` | yes. A plain `delete` is refused in one line while a cue or a palette uses it. The cascade is refused only for a palette's last colour | control: `[delete]`, and the panel names what uses the preset. In use by a cue or a palette: the cascade, after busk's question. Else the plain line, after the TUI's own question (busk asks none). A preset only a binding names is refused in one line: the TUI does not know that use, so the cascade is typed at the prompt |
-| Change its values | `record preset <pool> N merge\|replace\|remove` | yes | control: `[its fixtures]`, `[load]`, the panel's editors, then `[merge]`, `[replace]` or `[remove]` |
+| Change its values | `record preset <pool> N merge\|replace\|remove` | yes | control: `[its fixtures]`, `[load]`, the panel's editors, then `[merge]`, `[replace]` or `[remove]`, the last two after the TUI's question |
 | Rename | `rename preset <pool> N "…"` | yes | control: `[rename…]`, a name dialog |
 | Renumber | `preset <pool> N number M` | yes | control: `[number…]`, a dialog that refuses a taken number |
 
@@ -181,7 +182,7 @@ recorded into cues, and the templates both are made from.
 | GO, BACK, go to a cue | `go N`, `back N`, `goto N <cue>` | yes | control: F1's own buttons and Space; F4 buttons and cue rows |
 | Flash | `flash N on\|off` | yes | control: F1's `flash` and `swop` buttons, held, which send `button N B on\|off` |
 | Release | `release N [<s>]`, `release all` | yes | control: F1's `release` button; F5 state click (cue effects); F7 `release all` |
-| The playback's own buttons | `button N B on\|off`, `toggle N` (GAP-04) | yes | control: F1, in all three layouts: one per entry of `buttons`, labelled by function. Layout C has room for the first. A button that would do nothing is grey |
+| The playback's own buttons | `button N B on\|off`, `toggle N` (GAP-04) | yes | control: F1, in all three layouts: one per entry of `buttons`, labelled by function. Layout C has room for the first. A button that would do nothing is grey: a goto with no goto cue, or one its list lacks, says which in the hint row |
 | Add | `playback add N cuelist L [at [P.]S] ["name"]` (GAP-34); `record slot [P.]S` makes one with a new cue list and its cue 1 | yes | control: F1's edit mode, `[new playback…]` on an empty slot, a list picker and a form; F1's `[record]` on an empty slot, `record slot P.S` |
 | Delete | `delete playback N cascade` (GAP-36), `delete playback N` | yes: its cue list stays. A plain `delete` is refused in one line while a page slot holds it | control: F1's PLAYBACK panel, `[delete]`, after busk's question |
 | Place on a page | `page P slot S playback N`, `page P slot S clear` | yes | control: F1's edit mode, `[place…]` (a picker) and `[clear]` on the slot in hand |
@@ -234,19 +235,13 @@ was seen and is in no phase.
   any other `delete`, a `record … replace` or `effect clear`. They are undo steps. A TUI control
   there would rely on `undo`, unless the TUI asks first itself. F6's `[delete]`, F4's cue
   `[delete]`, `[replace]` and `[remove]`, F5's `✕` on a cue's effect, `[clear]` and a template's
-  `[delete]`, F3's group `[replace]` and `[remove]`, and F7's `[unpark all]` ask first
-  (`RunLine.ask`). **Found in the audit** (2026-11-11), and not changed yet: F6's `[replace]` and
-  `[remove]` of a preset ask nothing. The presets plan built them before this rule. The pending
-  plan's Phase 17 makes them ask.
-- **Found in the audit** (2026-11-11), and not fixed yet (the pending plan's Phase 17): F4's
-  toggle from a sequence back to a chase does not send the list's chase settings as they are. It
-  writes the rate to six digits (`hz 1.23456789` comes back as `hz 1.23457`) and the crossfade to
-  two (`0.125` as `0.12`), and does not escape a quote in a speed master's name, so busk refuses
-  the line (`no speed master 'Say '`) and the list stays a sequence. `[chase…]`'s form sends what
-  is typed, and is not affected.
-- **Found in the audit**, and not fixed yet (Phase 17): F1's `[GT]` stays live when the
-  playback's goto cue is not in the list it now runs (after `playback N cuelist L`). A press does
-  nothing, and the log says nothing; busk warned once, when the list changed.
+  `[delete]`, F3's group `[replace]` and `[remove]`, F6's preset `[replace]` and `[remove]`, and
+  F7's `[unpark all]` ask first (`RunLine.ask`).
+- **Found in Phase 17** (2026-11-11), and not fixed: on a show with several speed masters, F4's
+  toggle on a list that was never a chase sends `cuelist N chase bpm x 1`, and busk refuses it
+  (`several speed masters: name one`). `[chase…]` names the master. And `[chase…]`'s form starts
+  its crossfade field at six digits (`:g`), so a crossfade of `0.1234567` goes back as `0.123457`
+  if it is left as it is; its rate and multiplier keep every digit.
 - Many lines that work still reply with a document path, and the controls put those replies in the
   log: renaming a fixture, universe, group, preset, cue, cue list, playback or page; every `number
   M`; `fixture N location {…}`; a plain `delete` (`deleted fixtures[7]`, `deleted

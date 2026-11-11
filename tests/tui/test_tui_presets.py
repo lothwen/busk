@@ -1003,6 +1003,11 @@ def test_its_fixtures_load_and_the_writes(club: busk.OfflineShow) -> None:
         await settle(pilot, app)
         for how in ("merge", "replace", "remove"):
             await tap(pilot, panel(app).writes[how])
+            if how != "merge":  # they ask first
+                await pilot.pause()
+                assert isinstance(app.screen, ConfirmDialog)
+                await pilot.press("y")
+                await pilot.pause()
         assert bridge.lines()[1:] == [
             "record preset position 1 target merge",
             "record preset position 1 target replace",
@@ -1209,6 +1214,96 @@ def test_the_editors_follow_the_programmer(club: busk.OfflineShow) -> None:
         await tap(pilot, row.plus)
         await tap(pilot, panel(app).clear)
         assert bridge.lines() == ["blind off", "set intensity by 5%", "clear"]
+
+    drive(app, body)
+
+
+WRITES = {
+    "replace": (
+        'Replace what preset color 1 "Blue" holds with the programmer?',
+        "record preset color 1 global replace",
+    ),
+    "remove": (
+        'Remove the programmer\'s attributes from preset color 1 "Blue"?',
+        "record preset color 1 remove",
+    ),
+}
+"""What F6's ``[replace]`` and ``[remove]`` ask on Blue, and the line a yes runs."""
+
+
+@pytest.mark.parametrize("how", ["replace", "remove"])
+def test_replace_and_remove_ask_first_and_merge_does_not(club: busk.OfflineShow, how: str) -> None:
+    question, line = WRITES[how]
+    bridge, app = club_app(club, values=holding(101, 102))
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        page(app).choose(tile(app, "color", 1))
+        await tap(pilot, panel(app).writes[how])
+        await pilot.pause()
+        dialog = app.screen
+        assert isinstance(dialog, ConfirmDialog)
+        assert dialog.question == question
+        await pilot.press("n")
+        await pilot.pause()
+        assert bridge.lines() == []
+        assert ("info", f"cancelled: {line}") in app.query_one(LogView).entries
+        await tap(pilot, panel(app).writes[how])
+        await pilot.pause()
+        await pilot.press("y")
+        await pilot.pause()
+        assert bridge.lines() == [line]
+        await tap(pilot, panel(app).writes["merge"])  # asks nothing, as before
+        await pilot.pause()
+        assert not isinstance(app.screen, ConfirmDialog)
+        assert bridge.lines() == [line, "record preset color 1 global merge"]
+
+    drive(app, body)
+
+
+@pytest.mark.parametrize("how", ["replace", "remove"])
+def test_the_pane_cursors_enter_on_replace_and_remove_asks_too(
+    club: busk.OfflineShow, how: str
+) -> None:
+    question, line = WRITES[how]
+    bridge, app = club_app(club, values=holding(101, 102))
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        page(app).choose(tile(app, "color", 1))
+        await pilot.pause()
+        for answer, lines in (("n", []), ("y", [line])):
+            labels = [item.label for item in page(app).items()]
+            await pilot.press("tab", *["down"] * labels.index(line), "enter")
+            await pilot.pause()
+            dialog = app.screen
+            assert isinstance(dialog, ConfirmDialog)
+            assert dialog.question == question
+            await pilot.press(answer)
+            await pilot.pause()
+            assert bridge.lines() == lines
+            await pilot.press("escape")  # the prompt has the keyboard again
+            await pilot.pause()
+
+    drive(app, body)
+
+
+def test_the_writes_stay_grey_with_nothing_to_record(club: busk.OfflineShow) -> None:
+    bridge, app = club_app(club)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        page(app).choose(tile(app, "color", 1))
+        await pilot.pause()
+        writes = panel(app).writes
+        assert all(button.inert for button in writes.values())
+        labels = [item.label for item in page(app).items()]
+        assert not any(label.startswith("record preset") for label in labels)
+        for button in writes.values():
+            await tap(pilot, button)
+        await pilot.pause()
+        assert not isinstance(app.screen, ConfirmDialog)
+        assert bridge.lines() == []
 
     drive(app, body)
 

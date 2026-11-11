@@ -124,6 +124,13 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Fixed
 
+- F4's toggle from a sequence back to a chase rounded the list's rate and multiplier to six digits
+  and its crossfade to two, and was refused on a speed master with a quote in its name, so the list
+  stayed a sequence. It now sends the chase settings as busk stored them.
+- F1's `[GT]` stayed live when the playback's goto cue was not in the list it now runs, and a press
+  did nothing. It is grey then, and the hint row says why: `goto: cue list 11 has no cue 4`.
+- F6's `[replace]` and `[remove]` changed a preset without a question. They ask first now, as F4's
+  and F3's do.
 - `go` on a playback whose cue list has no cues replied nothing and marked it active on no cue.
   It is now a refused line that says so.
 - A name in quotes with a bad escape (`"back\slash"`) or a control character raised

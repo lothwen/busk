@@ -184,8 +184,9 @@ chase. A name in white is a playback that runs; the level turns amber while it r
   in order: `[GO]` go, `[◂]` back, `[GT]` goto, `[TG]` toggle, `[RL]` release, `[SL]` select,
   `[FL]` flash, `[SW]` swop and `[—]` none. The hint row names the one under the mouse. A click
   runs `button N B on`, counting from 1, so a `none` keeps its place. GO leaves the fader where it
-  is. A button that would do nothing is grey: `[—]`, a `[GT]` with no goto cue, and `[GO]` or
-  `[TG]` on a list with no cues.
+  is. A button that would do nothing is grey, and the hint row says why: `[—]`, a `[GT]` with
+  no goto cue or with one its list lacks (`goto: cue list 11 has no cue 4`, after the playback
+  moved to another list), and `[GO]` or `[TG]` on a list with no cues.
 - `[FL]` and `[SW]` are held while the mouse button is down on them: `button N B on`, then `button
   N B off`. They are lit while a flash is held on the playback, from here or from a surface. A
   strip that goes while one is held (another page, say) lets go of it.
@@ -293,7 +294,8 @@ setting is one control and one line, so one undo step. A value left as it was se
 | colour | `[colour…]`, as `#rrggbb`, `[none]` | `playback 9 uiColor "#ff8000"` |
 
 `[none]` shows on what has a value to take away. Changing the cue list leaves a goto cue the new
-list lacks: busk warns in the log, and `[goto…]` sets another.
+list lacks: busk warns in the log, `[GT]` is grey until the list has that cue, and `[goto…]`
+sets another.
 
 The F-keys, the prompt and `undo` work as anywhere, and so do Space, `[ ]` and the other keys of an
 empty prompt: they act on the selected playback as they do on every page. The pane cursor stops on
@@ -745,8 +747,10 @@ cue` stores a spread), with the colour's swatch; then the ids of its effects.
   it, and opens that edit's dialog (see the `edit` row below).
 - `[GO]` and `[BACK]` run `go 9` and `back 9`. `[record cue 9]` records the programmer as a
   new cue at the end of the list. The last button switches the list to a chase (`cuelist 9
-  chase bpm x 1`, or the chase settings the list had before) or back to a sequence
-  (`cuelist 10 sequence`).
+  chase bpm x 1`, or the chase settings the list had before, every digit and the master's
+  name as busk stored them) or back to a sequence (`cuelist 10 sequence`). On a show with
+  several speed masters, busk refuses `bpm x 1` for a list that was never a chase: `[chase…]`
+  names the master.
 
 **The `list` row** acts on the list shown:
 
@@ -1026,6 +1030,9 @@ in place of `[record]`:
 - `[remove]` removes what the programmer's fixtures see, for the attributes the programmer
   holds.
 
+`[replace]` and `[remove]` ask first (`Replace what preset color 1 "Blue" holds with the
+programmer?`); `[merge]` does not.
+
 The usual way to change a preset: `[its fixtures]`, `[load]`, change the values, `[merge]`.
 With the mouse on `[load]`, the three above, `[centre]` or `[edges]`, the hint row says what
 it does.
@@ -1205,7 +1212,7 @@ A line busk asks about first, such as `output off`, opens a dialog with busk's q
 The line runs only on **y**; **n**, Enter or Esc cancel it (`cancelled` in the log). F3's and
 F8's `[delete]`, F8's `[off]`, F4's `[delete]` of a list and F6's `[delete]` of a preset in use are
 such lines. F4's `[delete]` of a cue, `[replace]` and `[remove]`, and F6's `[delete]` of a preset
-nothing uses, ask the TUI's own question the same way.
+nothing uses, `[replace]` and `[remove]`, ask the TUI's own question the same way.
 
 A name, a number or a path (`[rename…]`, `[number…]`, `[address…]`, `[offset…]`, F4's
 `[follow…]` and `[wait…]`, the picker's `[import…]`) is typed in a small dialog: Enter takes it,

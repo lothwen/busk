@@ -57,6 +57,7 @@ from busk_tui.widgets.masters import BlackoutButton, MasterBar
 from busk_tui.widgets.playbacks import (
     HINTS,
     LABELS,
+    PlaybackColumn,
     PlaybackHeader,
     PlaybackRow,
     cue_text,
@@ -611,6 +612,73 @@ def test_a_goto_is_grey_without_a_goto_cue() -> None:
         await pilot.click(idle)
         await pilot.click(live_goto)
         assert [line for line, *_ in sent(bridge)] == ["button 1 1 on"]
+
+    drive(app, body)
+
+
+@pytest.mark.parametrize(
+    ("goto", "cues", "reason"),
+    [
+        ("4", SONG.cues, None),
+        ("04", SONG.cues, None),  # busk compares numbers: cue 4
+        ("2", SONG.cues, None),
+        ("3", SONG.cues, "goto: cue list 2 has no cue 3"),
+        ("4.0", SONG.cues, "goto: cue list 2 has no cue 4.0"),  # another cue, as in busk
+        ("1", (), "goto: cue list 2 has no cue 1"),
+    ],
+)
+def test_a_goto_is_grey_on_a_cue_its_list_lacks(
+    goto: str, cues: tuple[CueInfo, ...], reason: str | None
+) -> None:
+    show = with_buttons(
+        own(2, "goto", "back", goto=goto),
+        cueLists=(*club().cueLists[:1], replace(SONG, cues=cues), *club().cueLists[2:]),
+    )
+    assert own_buttons(show, 2) == (("goto", reason), ("back", None))
+
+
+@pytest.mark.parametrize("layout", ["A", "B", "C"])
+def test_a_goto_greys_when_its_list_changes_and_comes_back_with_the_cue(layout: str) -> None:
+    """``playback 2 cuelist 1`` to a list without cue 4, then ``record cue
+    1/4``: the strip is drawn again each time, in every layout."""
+    bridge = FakeBridge()
+    app = make_app(bridge, layout=layout)
+    song = own(2, "goto", "go", goto="4")
+    warm = club().cueLists[0]
+
+    def goto_button() -> CommandButton:
+        if layout == "A":
+            holder: Any = next(c for c in app.query(PlaybackColumn) if c.number == 2)
+        else:
+            holder = rows(app)[2]
+        button = holder.buttons[0]
+        assert isinstance(button, CommandButton)
+        assert plain(button) == "[GT]"
+        return button
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge, show=with_buttons(song))
+        await settle(pilot, app)
+        assert not goto_button().inert
+        bridge.events.append(ShowChanged(with_buttons(replace(song, cueList=1))))
+        await settle(pilot, app)
+        grey = goto_button()
+        assert grey.inert
+        assert grey.hint == "goto: cue list 1 has no cue 4"
+        await pilot.click(grey)
+        assert sent(bridge) == []
+        if layout == "B":
+            await pilot.hover(grey)
+            await pilot.pause()
+            assert plain(app.query_one(HintRow)) == "goto: cue list 1 has no cue 4"
+        recorded = replace(warm, cues=(*warm.cues, CueInfo("4", "", ())))
+        lists = (recorded, *club().cueLists[1:])
+        bridge.events.append(ShowChanged(with_buttons(replace(song, cueList=1), cueLists=lists)))
+        await settle(pilot, app)
+        live_goto = goto_button()
+        assert not live_goto.inert
+        await pilot.click(live_goto)
+        assert [line for line, *_ in sent(bridge)] == ["button 2 1 on"]
 
     drive(app, body)
 

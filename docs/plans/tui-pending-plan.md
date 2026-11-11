@@ -72,7 +72,7 @@ to be at `f851165`.
 | TUI missing, Playbacks | View and edit their configuration | open | Phase 10 | done: F1's PLAYBACK panel |
 | TUI missing, Playbacks | Add and delete one; page slots | open | Phase 11 | done: F1's edit mode |
 | Side finding 1 | `record cue L/C remove` replies `0 effects` | **fixed** in `4abcf1f`, checked: `removed 0 values, 1 effect from cue 90/1` | Phase 1 takes it out of the report | out of the report |
-| Side finding 2 | `confirmation()` asks nothing before most deletes | open | rule in §1, applied by Phases 6, 7, 12 | applied, but not to F6's `[replace]` and `[remove]`: Phase 17 |
+| Side finding 2 | `confirmation()` asks nothing before most deletes | open | rule in §1, applied by Phases 6, 7, 12 | applied, but not to F6's `[replace]` and `[remove]`: Phase 17, which made them ask |
 | Rig §9 | Groups | open | Phase 12 | done: F3's GROUPS |
 | Rig §9 | `park` and `unpark` | open | Phase 12; GAP-22 in Phase 5 | done: F3's PARK, F7's PARKED, `src` reads `park` |
 | Rig §9 | Cascades for presets, cue lists, playbacks, pages | open, as above | Phase 4, GAP-36 | done, as above |
@@ -88,8 +88,8 @@ to be at `f851165`.
 | Last conversation | A step on `Bridge.standalone` takes about 3 s | **closed** by `d628286`: Textual's idle wait counted the engine thread's CPU and ran to its 1 s cap. `test_tui_e2e.py` went from 1,255 s to 107 s | nothing | closed |
 | Last conversation | A show with `refreshHz` 41 to 44, or a fixture below 1, no longer loads | open: the user's call | Q1, Phase 1 | done: Q1 (b) |
 | Last conversation | The other decisions in the Done notes | stay as built unless vetoed: rig plan §4, its Done notes, and the Fixed notes of §8 and §11 | the user | none vetoed so far |
-| Phase 16's audit | F4's toggle back to a chase rounds the list's rate and crossfade, and fails on a speed master with a quote in its name | not yet found | Phase 17 | open |
-| Phase 16's audit | F1's `[GT]` stays live on a goto cue its list lacks, and does nothing | not yet found | Phase 17 | open |
+| Phase 16's audit | F4's toggle back to a chase rounds the list's rate and crossfade, and fails on a speed master with a quote in its name | not yet found | Phase 17 | open; fixed in Phase 17 |
+| Phase 16's audit | F1's `[GT]` stays live on a goto cue its list lacks, and does nothing | not yet found | Phase 17 | open; fixed in Phase 17 |
 
 ## 3. The phases at a glance
 
@@ -1147,6 +1147,20 @@ user's check (Phase 16, step 2). A TUI phase: no change to `src/busk/` (§1). Co
    a beat rate with one speed master (no name in the line) and with several, and a master named
    `Say "hi"`; a list never chased gets `bpm x 1`. Nothing else sends `_rate_text`'s or
    `_chase_text`'s words (grep), so their quote and `:g` are only shown; §7's item says so.
+
+   **Done** (2026-11-11). `mode_line` (`pages/cues.py`) builds the chase from `CueListInfo.rate`
+   and `crossfade` with `commands.chase_settings`, each number through `commands.exact`;
+   `commands.cuelist_chase(N)` keeps only `bpm x 1`, for a list with no settings, and the contract
+   test lost its `cuelist chase kept` row. `test_tui_cues.py` runs the round trip on busk itself:
+   seven chases (Hz and beat, many digits, `0.0000001`, every direction, crossfades `0.125`, `1`
+   and `0.333`, one master, the first and the second of two, `Say "hi"`), each made a sequence and
+   toggled back, keep the stored `chase` equal; on the old code four of the seven failed. Song, never
+   chased, gets `bpm x 1`. The grep found only drawing code (F4's meta line, F1's strips, F5's rate
+   cells). `bridge._chase_text` stays, for those.
+
+   Found, and left as the step says (§7): on a show with several speed masters, busk refuses `bpm
+   x 1` for a list never chased, so the toggle there is refused in one line; and `[chase…]`'s form
+   starts its crossfade field with `:g`, so `0.1234567` goes back as `0.123457` if left as it is.
 2. **F1's `[GT]` is grey on a goto cue its list lacks.** `_idle_reason` greys a `goto` only when
    there is no `gotoCue`. After `playback N cuelist L` the number can name no cue of the new list:
    busk warns once, at the change, and a press then does nothing and says nothing. Grey it then
@@ -1157,6 +1171,14 @@ user's check (Phase 16, step 2). A TUI phase: no change to `src/busk/` (§1). Co
    Verify: a goto cue the list has, one it lacks, one it gets back by `record cue`, and `04`
    against cue `4`; the strip redrawn when the list or its cues change, in layouts A, B and C; the
    perf gate on F1, since the strips' update path reads it.
+
+   **Done** (2026-11-11). `_idle_reason` (`widgets/playbacks.py`) takes the playback's cue list in
+   place of `has_cues`, and greys a `goto` whose `gotoCue` no cue of it has, by `cue_key` (busk's
+   `cue_number_key`, the same pattern): `goto: cue list 11 has no cue 4`. The reason is in
+   `own_buttons`, so each layout's `Built` changes with it and the strip is drawn again; nothing
+   else changed on the update path. busk writes a typed `playback 9 goto 04` back as `"4"`, so `04`
+   reaches the TUI only from a show file; the unit test covers it, and `4.0` against `4` (another
+   cue, as in busk).
 3. **F6's `[replace]` and `[remove]` ask first**, as §1's rule says and as F4's and F3's do. The
    questions follow F4's: `Replace what preset color 1 "Blue" holds with the programmer?` and
    `Remove the programmer's attributes from preset color 1 "Blue"?` `[merge]` and `[record]`
@@ -1164,6 +1186,11 @@ user's check (Phase 16, step 2). A TUI phase: no change to `src/busk/` (§1). Co
 
    Verify: each question, its yes sending the line and its no sending nothing; the pane cursor's
    Enter on each; the grey state with nothing to record unchanged.
+
+   **Done** (2026-11-11). `PresetPanel.write` passes `RunLine.ask` for `replace` and `remove`. The
+   pane cursor's stops for the three writes now call `write` (an `Item` with an `action`, labelled
+   with the line as before) where they ran the line, so Enter asks too; without that, the
+   question would have been the mouse's only. A test that sets the stops back to the line fails.
 
 Docs: `docs/tui/guide.md` (F4's toggle, F1's grey buttons, F6's `[replace]` and `[remove]`), the
 report's side findings (the three go), §2's two rows and side finding 2, §7's items, and
@@ -1173,6 +1200,28 @@ Verify, besides each step's: a test on the real engine in `tests/tui/test_tui_e2
 step; a real `busk-tui --state-dir …` under `busk run` on the club show, at 150 and 99 columns,
 with the toggle on a list given a speed master named with a quote, `[GT]` grey after `[list…]`,
 and F6's two questions.
+
+**Phase 17 checks** (2026-11-11), on top of `1d68f2c`. The whole suite: 6,207 passed and 1
+skipped, in 7:39 with `uv run pytest -n 6`. A first run, with other tests running beside it, had
+two failures, both timed, which passed alone three times and in the second run:
+`test_engine_host.py`'s `test_a_root_that_stops_reading_skips_frames_and_never_the_tick`, and
+F6's real-engine preset test, whose click on a `+ record` tile did not take (Phase 15 saw that once
+too). `ruff check`, `ruff format --check` and `mypy src` clean. The new tests pass on Textual
+8.2.0, the three on the real engine too. The perf gate: 7 passed, F1 B +0.200, A +0.206 and C
++0.216 core, no overruns. Each step's tests fail on the code before it: step 1, five (four
+round trips and the numbers test); step 2, six (three numbers and the three layouts); step 3, five,
+and the cursor test alone when the stops run the line again. The three real-engine tests fail on
+it too.
+
+A real `busk-tui --state-dir …` on the club show, in a pty at 150 columns (layout B) and 99
+(layout A). F4: after `master add speed "Say \"hi\""`, a chase on it at `x 1.23456789` with a
+crossfade of `0.125`, and `cuelist 10 sequence`, the toggle read and sent `cuelist 10 chase bpm
+"Say \"hi\"" x 1.23456789 random crossfade 0.125`, busk took it, and the button became `[cuelist
+10 sequence]`; the meta line still draws `x 1.23457` and the quotes bare, which only show (§7).
+F1: `[edit]`, P9, `[list…]`, Circle: `[GT]` grey, `goto: cue list 11 has no cue 4` in the hint
+row under the mouse, and a click sent nothing. F6: on Blue with Red loaded, `[replace]` asked and
+**n** logged `cancelled: record preset color 1 global replace`; `[remove]` asked and **y** sent
+`record preset color 1 remove`. No error in the log.
 
 ## 7. Seen, and not in the sources
 
@@ -1196,7 +1245,8 @@ Left out because the five places do not name them. Say if any should join a phas
   log. `go` on a playback whose `gotoCue` its list lacks, after a change of list, was not checked.
   Found on 2026-11-09. Checked in Phase 16, on `LiveShow`: `go` runs the new list, and the `goto`
   button does nothing and says nothing. busk warns once, at the change. F1 greys `[GT]` only when
-  there is no `gotoCue`, so it stays live on one the list lacks: **Phase 17**, step 2.
+  there is no `gotoCue`, so it stays live on one the list lacks: **Phase 17**, step 2. Fixed
+  there: `[GT]` is grey, and the hint row says why.
 - `rename page N "…"` replies with a path too (`set pages[2].name to "Finale"`), and F1's page
   `[rename…]` now puts that in the log. Found on 2026-11-10.
 - With `--faders` below a page's slot count, ← → and the selection that follows a change of slots
@@ -1219,7 +1269,9 @@ Left out because the five places do not name them. Say if any should join a phas
   writes the rate with `:g` (`hz 1.23456789` as `hz 1.23457`) and the crossfade with
   `commands.number` (`0.125` as `0.12`). `[chase…]`'s form keeps every digit and quotes the name,
   so the fix is to build the toggle's line from `CueListInfo.rate` as the form does: **Phase 17**,
-  step 1. After it, `_rate_text`'s words are only shown. The effect ids stay open.
+  step 1. Fixed there: `_rate_text`'s and `_chase_text`'s words are now only shown (F4's meta
+  line, F1's strips, F5's rate cells), so their quote and `:g` send nothing. The effect ids stay
+  open.
 - `commands.flash`, `undo` and `redo` have no caller. `flash` lost its own when Phase 9's strips
   began sending `button N B`; `undo` and `redo` never had one, since `undo` is typed. The contract
   test still runs all three. Found on 2026-11-11.
@@ -1228,9 +1280,18 @@ Left out because the five places do not name them. Say if any should join a phas
   on 2026-11-11.
 - F6's `[replace]` and `[remove]` send `record preset … replace|remove` and ask nothing, where
   F4's and F3's ask first, as §1's rule says. The presets plan built them before the rule, and
-  Phase 6 brought only F6's `[delete]` under it. Found on 2026-11-11. **Phase 17**, step 3.
+  Phase 6 brought only F6's `[delete]` under it. Found on 2026-11-11. **Phase 17**, step 3. Fixed
+  there: both ask first.
 - `fixture N mode <the mode it runs>` goes through and spends an undo step that changes nothing.
   F3's lit chip sends nothing, so only the prompt meets it. Found on 2026-11-11.
+- On a show with several speed masters, F4's toggle on a list that was never a chase sends
+  `cuelist N chase bpm x 1`, and busk refuses it (`several speed masters: name one`); the list
+  stays a sequence, and `[chase…]` names the master. Phase 17 kept that line, as its step 1 said.
+  Naming the show's first speed master would make the toggle work, but it picks one for the
+  operator. Found on 2026-11-11.
+- `[chase…]`'s form starts its crossfade field with `:g` (`ChaseDialog`, `f"{crossfade:g}"`), so
+  a crossfade of `0.1234567` goes back as `0.123457` if the operator takes the form as it opened.
+  Its rate and multiplier start through `commands.exact`. Found on 2026-11-11.
 
 ## 8. Questions
 

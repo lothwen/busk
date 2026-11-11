@@ -272,11 +272,6 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
         False,
     ),
     "cuelist chase": (commands.cuelist_chase(9), "cuelist 9 chase bpm x 1", False),
-    "cuelist chase kept": (
-        commands.cuelist_chase(10, "bpm x 1 bounce", 0.25),
-        "cuelist 10 chase bpm x 1 bounce crossfade 0.25",
-        False,
-    ),
     "cuelist sequence": (commands.cuelist_sequence(10), "cuelist 10 sequence", False),
     "sel none": (commands.sel_none(), "sel none", False),
     "set level": (commands.set_level("intensity", 0.72), "set intensity 72%", False),

@@ -43,9 +43,9 @@ does:
   (the name only when one was given); once the show has it, the panel
   shows it. A preset of the show: ``[load]`` (``preset color 2``),
   ``[merge]``, ``[replace]`` and ``[remove]`` (``record preset color 2
-  global merge``; ``remove`` takes every scope, so it names none). Each
-  is inert while there is nothing to record (``[load]``: nothing
-  selected).
+  global merge``; ``remove`` takes every scope, so it names none), the
+  last two after the TUI's question. Each is inert while there is nothing
+  to record (``[load]``: nothing selected).
 * ``[clear]``, ``[blind on|off]`` (a toggle that follows the programmer),
   and ``[done]``, which leaves edit mode.
 
@@ -742,9 +742,17 @@ class PresetPanel(VerticalScroll):
         return commands.record_preset(preset.pool, preset.number, scope, how)
 
     def write(self, how: Write) -> None:
-        line = self.write_line(how)
-        if line is not None:
-            self.post_message(RunLine(line))
+        """``[merge]`` runs; ``[replace]`` and ``[remove]`` ask first, as F4's do."""
+        preset, line = self.preset(), self.write_line(how)
+        if preset is None or line is None:
+            return
+        words = f'preset {preset.pool} {preset.number} "{preset.name}"'
+        question = {
+            "merge": None,
+            "replace": f"Replace what {words} holds with the programmer?",
+            "remove": f"Remove the programmer's attributes from {words}?",
+        }[how]
+        self.post_message(RunLine(line, ask=question))
 
     # -------------------------------------------------------- pane cursor
 
@@ -773,15 +781,19 @@ class PresetPanel(VerticalScroll):
             for part in self.parts:
                 if part.display:
                     stops += part.stops()
-            lines: list[tuple[Line | None, CommandButton]] = [
-                (self.record_line(), self.record),
-                (self.load_line(), self.load),
-                *((self.write_line(how), button) for how, button in self.writes.items()),
-                (self.clear.line, self.clear),
-                (self.blind.line, self.blind),
+            lines: list[tuple[Line | None, CommandButton, Callable[[], None] | None]] = [
+                (self.record_line(), self.record, None),
+                (self.load_line(), self.load, None),
+                *(
+                    (self.write_line(how), button, partial(self.write, how))
+                    for how, button in self.writes.items()
+                ),
+                (self.clear.line, self.clear, None),
+                (self.blind.line, self.blind, None),
             ]
-            for line, button in lines:
+            for line, button, action in lines:  # a write goes through its button's path, which asks
                 if line is not None:
-                    stops.append(Stop(Item(line.text, line=line.text), button))
+                    item = Item(line.text, line=None if action else line.text, action=action)
+                    stops.append(Stop(item, button))
         stops.append(Stop(Item("done", action=self.done.action), self.done))
         return stops

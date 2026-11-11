@@ -5,8 +5,12 @@ Headless, with a fake bridge."""
 
 from __future__ import annotations
 
+import copy
+from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
+import pytest
 from rich.text import Text
 from textual.pilot import Pilot
 from textual.screen import Screen
@@ -25,6 +29,8 @@ from tui_fakes import (
     show_model,
 )
 
+import busk
+from busk_tui import bridge as busk_bridge
 from busk_tui import colors
 from busk_tui.formats import delay_text, stored_text, time_text
 from busk_tui.model import (
@@ -47,7 +53,7 @@ from busk_tui.model import (
     StoredValue,
     Targets,
 )
-from busk_tui.pages.cues import CuesPage, meta_text
+from busk_tui.pages.cues import CuesPage, meta_text, mode_line
 from busk_tui.shell import BuskApp
 from busk_tui.widgets.chase_dialog import ChaseDialog
 from busk_tui.widgets.controls import ButtonStrip
@@ -430,6 +436,96 @@ def test_the_buttons() -> None:
         assert "[cuelist 11 chase hz 2 forward crossfade 0.5]" in buttons.render().plain
 
     drive(app, body)
+
+
+SAY_HI = 'master add speed "Say \\"hi\\"" bpm 90'
+
+
+@pytest.mark.parametrize(
+    ("masters", "chase", "toggle"),
+    [
+        (
+            (),
+            "cuelist 10 chase hz 1.23456789 forward crossfade 0.125",
+            "cuelist 10 chase hz 1.23456789 forward crossfade 0.125",
+        ),
+        (
+            (),
+            "cuelist 10 chase bpm x 0.123456789 reverse",
+            "cuelist 10 chase bpm x 0.123456789 reverse",
+        ),
+        ((), "cuelist 10 chase hz 0.0000001 bounce", "cuelist 10 chase hz 0.0000001 bounce"),
+        (
+            (),
+            "cuelist 10 chase bpm x 3 random crossfade 1",
+            "cuelist 10 chase bpm x 3 random crossfade 1",
+        ),
+        (
+            ('master add speed "Speed 2" bpm 90',),
+            'cuelist 10 chase bpm "Speed 2" x 0.5 bounce',
+            'cuelist 10 chase bpm "Speed 2" x 0.5 bounce',
+        ),
+        (
+            ('master add speed "Speed 2" bpm 90',),
+            'cuelist 10 chase bpm "Speed 1" x 2 forward',  # the first of two: named too
+            'cuelist 10 chase bpm "Speed 1" x 2 forward',
+        ),
+        (
+            (SAY_HI,),
+            'cuelist 10 chase bpm "Say \\"hi\\"" x 1.5 random crossfade 0.333',
+            'cuelist 10 chase bpm "Say \\"hi\\"" x 1.5 random crossfade 0.333',
+        ),
+    ],
+)
+def test_the_toggle_back_to_a_chase_keeps_what_busk_stored(
+    club_path: Path, masters: tuple[str, ...], chase: str, toggle: str
+) -> None:
+    """A chase, then a sequence, then the toggle: the list's ``chase`` as it was."""
+    document, _ = busk.load_show(club_path)
+    show = busk.OfflineShow(document)
+    for line in (*masters, chase, "cuelist 10 sequence"):
+        assert show.execute(line).ok, line
+
+    def stored() -> Any:
+        return copy.deepcopy(next(c for c in show.show["cueLists"] if c["number"] == 10))
+
+    before = stored()
+    assert before["mode"] == "sequence"
+    cue_list = busk_bridge.show_model(show.show).cue_list(10)
+    assert cue_list is not None
+    line = mode_line(cue_list)
+    assert line.text == toggle
+    assert show.execute(line.text).ok, line.text
+    after = stored()
+    assert after["mode"] == "chase"
+    assert after["chase"] == before["chase"]
+
+
+def test_the_toggle_on_a_list_never_chased_is_on_the_beat(club_path: Path) -> None:
+    document, _ = busk.load_show(club_path)
+    show = busk.OfflineShow(document)
+    cue_list = busk_bridge.show_model(show.show).cue_list(9)  # Song: no chase settings
+    assert cue_list is not None
+    assert cue_list.rate is None
+    line = mode_line(cue_list)
+    assert line.text == "cuelist 9 chase bpm x 1"
+    assert show.execute(line.text).ok
+    song = next(c for c in show.show["cueLists"] if c["number"] == 9)
+    assert (song["mode"], song["chase"]["rate"]["multiplier"]) == ("chase", 1)
+
+
+def test_the_toggle_writes_numbers_as_they_are() -> None:
+    """No rounding and no exponent, for a list the model gives."""
+    rate = ChaseRate(1.23456789, None, 1.0, "bounce")
+    many = CueListInfo(10, "Chase", "sequence", "hz 1.23457 bounce", (), 0.125, rate=rate)
+    assert mode_line(many).text == "cuelist 10 chase hz 1.23456789 bounce crossfade 0.125"
+    beat = ChaseRate(None, None, 1e-7, "reverse")
+    tiny = CueListInfo(10, "Chase", "sequence", "bpm x 1e-07 reverse", (), 0.0, rate=beat)
+    assert mode_line(tiny).text == "cuelist 10 chase bpm x 0.0000001 reverse"
+    named = ChaseRate(None, 'Say "hi"', 2.0, "forward")
+    quoted = CueListInfo(10, "Chase", "sequence", 'bpm "Say "hi"" x 2 forward', (), rate=named)
+    assert mode_line(quoted).text == 'cuelist 10 chase bpm "Say \\"hi\\"" x 2 forward'
+    assert mode_line(replace(quoted, mode="chase")).text == "cuelist 10 sequence"
 
 
 def test_a_list_click_selects_its_playback_and_a_list_without_one_only_shows() -> None:

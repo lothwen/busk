@@ -689,13 +689,10 @@ def cuelist_sequence(cue_list: int) -> Line:
     return Line(f"cuelist {cue_list} sequence")
 
 
-def cuelist_chase(cue_list: int, settings: str | None = None, crossfade: float = 0.0) -> Line:
-    """``cuelist 9 chase`` with ``settings`` (a rate and direction, ``bpm x 1
-    bounce``) and a crossfade, as the list had them, else ``bpm x 1``."""
-    if settings is None:
-        return Line(f"cuelist {cue_list} chase bpm x 1")
-    fade = f" crossfade {number(crossfade)}" if crossfade else ""
-    return Line(f"cuelist {cue_list} chase {settings}{fade}")
+def cuelist_chase(cue_list: int) -> Line:
+    """``cuelist 9 chase bpm x 1``: a chase on the speed master's beat, for a
+    list with no chase settings (one that has them: :func:`chase_settings`)."""
+    return Line(f"cuelist {cue_list} chase bpm x 1")
 
 
 def chase_settings(
@@ -707,10 +704,10 @@ def chase_settings(
     direction: str = "forward",
     crossfade: str = "0",
 ) -> Line:
-    """What the chase form holds, each number as typed so that none is
-    rounded: ``hz``: ``cuelist 9 chase hz 2 bounce crossfade 0.5``; else on a
-    speed master's beat: ``cuelist 9 chase bpm "Speed 2" x 0.5 forward`` (no
-    ``master``: the show's only one, which busk finds)."""
+    """What the chase form holds, or F4's toggle restates, each number as text
+    so that none is rounded: ``hz``: ``cuelist 9 chase hz 2 bounce crossfade
+    0.5``; else on a speed master's beat: ``cuelist 9 chase bpm "Speed 2" x
+    0.5 forward`` (no ``master``: the show's only one, which busk finds)."""
     fade = f" crossfade {crossfade}" if float(crossfade) else ""
     rate = effect_rate(hz, master, multiplier)
     return Line(f"cuelist {cue_list} chase {rate} {direction}{fade}")
