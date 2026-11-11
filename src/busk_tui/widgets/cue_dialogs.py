@@ -5,7 +5,10 @@ pre-fills used to start: ``cue 9/3 time 1/3``, ``cue 9/3 time position 4
 delay 1``, ``cue 9/3 time 1/3 easeIn``. The cue's fade times stay as they are
 in a curve's line, and busk keeps the delay and the curve a line leaves out.
 A family's line sets its timing whole, so it carries the family's own curve.
-A form that changes nothing closes with ``None``.
+On a family with timing of its own, TIME's ``[none]`` (Ctrl+N) closes with
+``cue 9/3 time position none``, which takes that timing away whole, so the
+family fades with the cue again. A form that changes nothing closes with
+``None``.
 
 The delays, a follow or a wait, and the name are a field or two, so F4 opens
 :class:`~busk_tui.widgets.dialogs.FormDialog` and
@@ -21,7 +24,7 @@ from typing import ClassVar, Final
 
 from textual.app import ComposeResult
 from textual.binding import Binding, BindingType
-from textual.containers import Vertical
+from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Input, Static
 
@@ -30,6 +33,7 @@ from busk_tui.attributes import TIMING_FAMILIES
 from busk_tui.commands import Line, exact, exact_pair
 from busk_tui.model import CueInfo
 from busk_tui.widgets.chase_dialog import plain_number
+from busk_tui.widgets.controls import ActionButton
 from busk_tui.widgets.dialogs import dialog_css
 from busk_tui.widgets.route_dialog import PickRow, row
 
@@ -88,6 +92,7 @@ class CueDialog(ModalScreen[Line | None]):
     CueDialog PickRow {{ width: 1fr; }}
     CueDialog PickRow:focus {{ background: {colors.SEL}; }}
     CueDialog .error {{ color: {colors.RED}; width: 100%; height: auto; }}
+    CueDialog .none > .note {{ margin-left: 1; }}
     """
     )
     BINDINGS: ClassVar[list[BindingType]] = [
@@ -148,7 +153,12 @@ class CueDialog(ModalScreen[Line | None]):
 class TimeDialog(CueDialog):
     """``[time…]``: for ``cue``, its fade in and out; for a family, that
     family's own fade and delay, which start at what it takes now (its own,
-    else the cue's in)."""
+    else the cue's in). ``[none]``, or Ctrl+N, on a family with timing of
+    its own closes with the line that takes it away."""
+
+    BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("ctrl+n", "none", "None", show=False),
+    ]
 
     def __init__(self, cue_list: int, cue: CueInfo) -> None:
         super().__init__("TIME", cue_list, cue)
@@ -161,12 +171,16 @@ class TimeDialog(CueDialog):
         self.note = Static("", classes="note")
         self.cue_rows = (row("in", self.fade_in), row("out", self.fade_out))
         self.family_rows = (row("fade", self.fade), row("delay", self.delay))
+        self.none = ActionButton("none", self.action_none)
+        self.none_note = Static("", classes="note")
+        self.none_row = Horizontal(self.none, self.none_note, classes="none")
 
     def rows(self) -> ComposeResult:
         yield row("for", self.target)
         yield from self.cue_rows
         yield from self.family_rows
         yield self.note
+        yield self.none_row
 
     def on_mount(self) -> None:
         super().on_mount()
@@ -178,12 +192,14 @@ class TimeDialog(CueDialog):
             found.display = family == CUE
         for found in self.family_rows:
             found.display = family != CUE
+        own = self.own.get(family)  # never the cue's: it is no family
+        self.none_row.display = own is not None
         if family == CUE:
             self.note.update(
                 "in: intensity rising, and families without their own\nout: intensity falling"
             )
             return
-        own = self.own.get(family)
+        self.none_note.update(f"Ctrl+N · {family} fades with the cue again")
         self.fade.value = exact(self.cue.fadeIn if own is None else own.fade)
         self.delay.value = exact(self.cue.delayIn if own is None else own.delay)
         if own is None:
@@ -191,6 +207,14 @@ class TimeDialog(CueDialog):
         else:
             curve = "" if own.curve is None else f"\nits curve, {own.curve}, stays"
             self.note.update(f"{family}'s own, in place of the cue's{curve}")
+
+    def action_none(self) -> None:
+        """``[none]``: the chosen family's own timing goes; not while the
+        button is hidden (the cue, or a family with none of its own)."""
+        if self.none_row.display:
+            self.dismiss(
+                commands.no_family_time(self.cue_list, self.cue.number, self.target.chosen)
+            )
 
     def fields(self) -> tuple[Input, Input]:
         """The two fields shown: in and out, or a family's fade and delay."""

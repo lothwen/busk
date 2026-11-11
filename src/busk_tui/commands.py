@@ -657,6 +657,12 @@ def cue_time(
     return Line(" ".join(word for word in words if word))
 
 
+def no_family_time(cue_list: int, cue: str, family: str) -> Line:
+    """``cue 9/3 time position none``: the family's own fade, delay and curve
+    go, and it fades with the cue again."""
+    return Line(f"cue {cue_list}/{cue} time {family} none")
+
+
 def cue_trigger(cue_list: int, cue: str, kind: str, delay: str) -> Line:
     """``cue 9/3 follow 4`` (a GO 4 s after the cue before has finished) or
     ``cue 9/3 wait 8`` (8 s after it has started)."""

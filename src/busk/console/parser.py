@@ -50,7 +50,7 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
     delete <entity> cascade            (every entity above but cue and show)
     delete fixture N thru M cascade
     cue L/C time <in>[/<out>] [delay <in>[/<out>]] [<curve>]
-    cue L/C time <family> <fade> [delay <d>] [<curve>]
+    cue L/C time <family> <fade> [delay <d>] [<curve>] | cue L/C time <family> none
         <curve> = linear | easeIn | easeOut | easeInOut | snapStart | snapEnd
                 | bezier x1 y1 x2 y2
     cue L/C go | cue L/C follow <d> | cue L/C wait <d>
@@ -115,7 +115,9 @@ orientation and is named after its profile's model and its number.
 Phase 4 sugar (phase-4-plan §5.13). Masters have no numbers, so they are
 named in quotes (any case). ``cue L/C time`` sets the given timing fields in
 one batch, ``<out>`` defaulting to ``<in>``; with a family it sets that
-family's timing (delay 0 unless given), keeping the other families.
+family's timing (delay 0 unless given), keeping the other families, and
+``<family> none`` removes it whole, fade, delay and curve, so the family
+fades with the cue again (GAP-42).
 ``release`` appends to the cue's releases (every attribute unless ``only``).
 ``chase hz|bpm`` sets the list's chase settings (defaults: ×1, ``forward``,
 crossfade 0) and chase mode in one batch; ``cuelist N chase {json}`` is the
@@ -2412,6 +2414,8 @@ class _Parser:
         if verb == "time":
             family = self.keyword(*_FAMILIES)
             if family is not None:
+                if self.keyword("none"):
+                    return self._family_none(path, cue, family)
                 timing: dict[str, Any] = {"fade": self.seconds("a fade time")}
                 timing["delay"] = self.seconds("a delay") if self.keyword("delay") else 0
                 if (curve := self.curve()) is not None:
@@ -2465,6 +2469,23 @@ class _Parser:
         return self.submit(
             _labelled(said, {"type": "SET", "path": [*path, "trigger"], "value": trigger})
         )
+
+    def _family_none(self, path: EditPath, cue: Mapping[str, Any], family: str) -> Action:
+        """``cue L/C time <family> none`` (GAP-42): the family's own fade,
+        delay and curve go, so it fades with the cue again; ``perFamily``
+        goes with the last of them."""
+        self.done()
+        who = self._who("cue", path)
+        families = dict(cue["timing"].get("perFamily", {}))
+        if families.pop(family, None) is None:
+            raise ParseError(f"{who} has no {family} timing of its own")
+        where = [*path, "timing", "perFamily"]
+        edit = (
+            {"type": "SET", "path": where, "value": families}
+            if families
+            else {"type": "DELETE", "path": where}
+        )
+        return Submit(_labelled(f"{who} fades {family} with the cue again", edit))
 
     def _attributes(self) -> list[str] | str:
         """``[only <attribute>…]``: the attributes a release names, else ``"all"``."""

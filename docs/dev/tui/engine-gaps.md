@@ -99,6 +99,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-38](#gap-38-several-fixtures-in-one-line) Several fixtures in one line | action | nice-to-have | F3 | **done** 2026-11-08 |
 | [GAP-39](#gap-39-importing-a-profile-and-its-revisions) Importing a profile, and its revisions | action, read | nice-to-have | F3 | **done** 2026-11-08 |
 | [GAP-41](#gap-41-editing-an-effect-in-place) Editing an effect in place | action | nice-to-have | F5 | open |
+| [GAP-42](#gap-42-removing-a-familys-own-timing) Removing a family's own timing | action | nice-to-have | F4 | **done** 2026-11-11 |
 
 ---
 
@@ -2599,3 +2600,39 @@ GAP-35 did for a fixture's limits and for a playback's and a cue list's properti
 panel's controls are grey and `[its fixtures]` selects them. A programmer effect no `effect add`
 line can say stays grey. On a cue's effect, `[none]` is grey while it has a master or a fade-in,
 and the levels only change.
+
+## GAP-42: Removing a family's own timing
+
+**Status:** done 2026-11-11 (see **Done** at the end of this section).
+
+Found while building F4's TIME dialog (`docs/plans/tui-pending-plan.md`, Phase 15, 2026-11-10),
+and built in that plan's Phase 21.
+
+**Needed by:** F4's TIME dialog.
+
+**Today:** `cue L/C time <family> <fade> [delay <d>] [<curve>]` sets a family's own timing, whole,
+and keeps the other families'. No line takes one away, so once F4's TIME dialog sets one, only
+`undo` removes it. Sending the family again without a curve removes its curve alone.
+
+**Engine should provide:** `cue L/C time <family> none`, which removes the family's fade, delay and
+curve, so it fades with the cue again; one undo step.
+
+**Priority:** nice-to-have.
+
+**TUI until then:** TIME sets a family's own timing, and only `undo` takes it away.
+
+**Done** (2026-11-11). The line, in `_family_none` of `console/parser.py`. It replies `cue 9/2
+fades position with the cue again`, and `undo` and `redo` say it too. Documented in
+`docs/console.md`, `busk help` and the parser's module docs. What it settles:
+
+- **The family's timing goes whole:** fade, delay and curve. The other families keep theirs.
+- **The last one takes `perFamily` with it,** so a cue that had none before its first family line
+  is as it was.
+- **A family with no timing of its own is refused in one line,** and spends no undo step: `cue 9/2
+  has no position timing of its own`.
+- **Tab offers `none` after a family,** beside the fade time, for any family: whether the cue has
+  one of its own is said when the line runs, as `playback N <optional> none` does.
+- **The compiled cue follows,** not only the document: the family fades in, and leaves, with the
+  cue's in timing again. On a running show the line reaches the active cue, which stays active.
+- Tests: `tests/test_console_parser.py`, `tests/test_console.py` (the compiled cue, `list cues`,
+  `undo`, a running `LiveShow`) and the completion table of `tests/test_console_prompt.py`.

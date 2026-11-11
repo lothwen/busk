@@ -241,6 +241,11 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
         "cue 9/1 time position 4 delay 1 easeIn",
         False,
     ),
+    "cue time, a family none": (
+        commands.no_family_time(9, "1", "position"),
+        "cue 9/1 time position none",
+        False,
+    ),
     "cue follow": (commands.cue_trigger(9, "2", "follow", "4"), "cue 9/2 follow 4", False),
     "cue wait": (commands.cue_trigger(9, "2", "wait", "0.5"), "cue 9/2 wait 0.5", False),
     "rename cue": (

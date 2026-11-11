@@ -19,6 +19,8 @@ fixed the three TUI bugs the audit found, the same day, and its Phase 18 the sma
 since (refusals in words, F5's effect ids, `[chase…]`'s crossfade, F1's slots in edit mode).
 Its Phase 19 worded the replies of the lines that worked but named the show document's
 paths, which the controls put in the log; the side finding that listed them is gone.
+Its Phase 21 added the line that takes a family's own timing away from a cue (GAP-42), and F4's
+TIME dialog a `[none]` that sends it.
 
 ## How to read it
 
@@ -127,7 +129,7 @@ In short:
 | Add at a number, insert | `record cue L/C [only …] [freeze] ["name"]` (`9/2.5` goes between 2 and 3) | yes | control: F4 `[record at…]`, a form that refuses a cue that exists; `only` and `freeze`: prompt |
 | Delete | `delete cue L/C` | yes | control: F4 `[delete]`, after the TUI's question, which says when a playback is on the cue |
 | Change its values | `record cue L/C merge\|replace\|remove [only …]` | yes | control: F4 `[merge]`, `[replace]`, `[remove]`, the last two after the TUI's question; `only`: prompt |
-| Timing | `cue L/C time …`, `cue L/C time <family> …` | yes | control: F4 `[time…]` (the fade times, or a family's own), `[delay…]`, `[curve…]`, and a click on those cells: dialogs filled in with the cue |
+| Timing | `cue L/C time …`, `cue L/C time <family> …`, `cue L/C time <family> none` | yes | control: F4 `[time…]` (the fade times, or a family's own, and `[none]` on a family with its own), `[delay…]`, `[curve…]`, and a click on those cells: dialogs filled in with the cue |
 | Trigger | `cue L/C go`, `… follow <d>`, `… wait <d>` | yes | control: F4 `[follow…]`, `[wait…]` and a click on those cells, dialogs; `go`: pre-fill, a whole line |
 | Rename | `rename cue L/C "…"` | yes | control: F4 `[rename…]`, a name dialog |
 | Release targets | `cue L/C release <targets> [only …]` | yes | control: F4 `[release…]`, a form that starts at the selection |

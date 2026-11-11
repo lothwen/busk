@@ -132,6 +132,10 @@ EXPECTED: list[tuple[str, tuple[str, ...], tuple[str, ...], bool]] = [
     ("cue 10/1 ", ("effect", "time", "go", "follow", "wait", "release"),
      ("a property, e.g. name or timing.fadeIn",), False),
     ("cue 10/1 time 3 ", ("delay", *CURVES), (), True),
+    ("cue 10/1 time ", ("intensity", "position", "color", "beam", "focus", "shutter"),
+     ("a fade time",), False),
+    ("cue 10/1 time position ", ("none",), ("a fade time",), False),
+    ("cue 10/1 time position 4 ", ("delay", *CURVES), (), True),
     ("cuelist 10 ", ("sequence", *CUELIST_PROPERTIES), (), False),
     ("cuelist 10 chase ", ("hz", "bpm", "none"), ("a value",), False),
     ("cuelist 10 tracking ", ("true", "false"), (), False),
@@ -405,7 +409,7 @@ def test_grammar_shows_an_entitys_generic_edit_until_a_sub_command_fits() -> Non
     assert generic not in grammar("route ")
     assert grammar("cue 10/1 time ") == [
         "    cue L/C time <in>[/<out>] [delay <in>[/<out>]] [<curve>]",
-        "    cue L/C time <family> <fade> [delay <d>] [<curve>]",
+        "    cue L/C time <family> <fade> [delay <d>] [<curve>] | cue L/C time <family> none",
         "        <curve> = linear | easeIn | easeOut | easeInOut | snapStart | snapEnd",
         "                | bezier x1 y1 x2 y2",
     ]

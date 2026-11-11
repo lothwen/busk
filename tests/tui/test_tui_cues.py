@@ -1107,6 +1107,95 @@ def test_the_time_forms_chips_by_keys() -> None:
     drive(app, body)
 
 
+def test_the_time_forms_none_shows_only_on_a_family_with_its_own() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+    intro = CueInfo(
+        "1",
+        "Intro",
+        (),
+        fadeIn=3.0,
+        families=(FamilyTiming("position", 4.0), FamilyTiming("beam", 2.0, 0.5, "snapEnd")),
+    )
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events += [one_cue(intro), LiveChanged(live())]
+        await settle(pilot, app)
+        dialog = await open_edit(pilot, app, "time…")
+        assert isinstance(dialog, TimeDialog)
+        assert not dialog.none_row.display  # the cue's own times
+        await pilot.press("ctrl+n")  # hidden: nothing
+        await pilot.pause()
+        assert app.screen is dialog
+        for family, shown in (
+            ("intensity", False),
+            ("position", True),
+            ("color", False),
+            ("beam", True),
+            ("focus", False),
+            ("shutter", False),
+        ):
+            dialog.target.pick(family)
+            await pilot.pause()
+            assert dialog.none_row.display is shown, family
+            if not shown:
+                await pilot.press("ctrl+n")
+                await pilot.pause()
+                assert app.screen is dialog, family
+        dialog.target.pick("beam")
+        await pilot.pause()
+        assert plain(dialog.none_note) == "Ctrl+N · beam fades with the cue again"
+        assert note_of(dialog) == "beam's own, in place of the cue's\nits curve, snapEnd, stays"
+        dialog.target.pick("cue")
+        await pilot.pause()
+        assert not dialog.none_row.display
+        await pilot.press("escape")
+        await pilot.pause()
+        assert app.screen is not dialog
+        assert bridge.sent == []
+
+    drive(app, body)
+
+
+def test_the_time_forms_none_takes_a_familys_own_away_by_click_or_key() -> None:
+    """No question first: ``undo`` brings it back."""
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+    intro = CueInfo(
+        "1",
+        "Intro",
+        (),
+        fadeIn=3.0,
+        families=(FamilyTiming("position", 4.0), FamilyTiming("beam", 2.0, 0.5, "snapEnd")),
+    )
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events += [one_cue(intro), LiveChanged(live())]
+        await settle(pilot, app)
+        dialog = await open_edit(pilot, app, "time…")
+        assert isinstance(dialog, TimeDialog)
+        dialog.target.pick("position")
+        await pilot.pause()
+        dialog.fade.value = "9"  # [none] does not send the fields
+        await pilot.click(dialog.none)
+        await pilot.pause()
+        assert app.screen is not dialog
+        assert bridge.lines() == ["cue 9/1 time position none"]
+        dialog = await open_edit(pilot, app, "time…")
+        assert isinstance(dialog, TimeDialog)
+        await pilot.press("shift+tab")
+        assert dialog.focused is dialog.target
+        await pilot.press(*["right"] * 4)  # beam
+        await pilot.press("tab")
+        assert dialog.focused is dialog.fade  # Ctrl+N works from a field too
+        await pilot.press("ctrl+n")
+        await pilot.pause()
+        assert app.screen is not dialog
+        assert bridge.lines() == ["cue 9/1 time position none", "cue 9/1 time beam none"]
+
+    drive(app, body)
+
+
 def test_the_curve_form_names_a_curve_or_a_beziers_points() -> None:
     bridge = FakeBridge()
     app = on_f4(bridge)

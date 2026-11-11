@@ -10,6 +10,10 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- `cue L/C time <family> none` takes a family's own timing away from a cue, its fade, delay and
+  curve, so the family fades with the cue again. One undo step; a family with no timing of its own
+  is refused in one line. F4's TIME dialog has a `[none]` (or Ctrl+N) that sends it, while a family
+  with timing of its own is chosen.
 - F4 edits a cue's timing, trigger and name in dialogs, where a click put the start of a line in
   the prompt. A click on a cue's time, delay, curve, follow or wait cell, or `[time…]`,
   `[delay…]`, `[curve…]`, `[follow…]`, `[wait…]` and `[rename…]` under the table, opens a dialog

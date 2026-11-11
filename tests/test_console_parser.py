@@ -1054,6 +1054,51 @@ def test_per_family_timing_merges_with_the_families_there() -> None:
     )
 
 
+def test_a_familys_own_timing_is_removed_whole_and_per_family_with_the_last() -> None:
+    """GAP-42: ``<family> none`` takes the family's fade, delay and curve;
+    the other families stay, and ``perFamily`` goes with the last one."""
+    doc = load_doc(APPENDIX_A)
+    doc["cueLists"][0]["cues"][0]["timing"]["perFamily"] = {
+        "position": {"fade": 4, "delay": 1, "curve": "easeOut"},
+        "color": {"fade": 3, "delay": 0},
+    }
+    context = Context(show_of(doc), LIBRARY, CounterIds())
+    action = parse("cue 1/1 time position none", context)
+    assert isinstance(action, Submit)
+    assert action.command == labelled(
+        "cue 1/1 fades position with the cue again",
+        {
+            "type": "SET",
+            "path": [*VERSE, "timing", "perFamily"],
+            "value": {"color": {"fade": 3, "delay": 0}},
+        },
+    )
+    del doc["cueLists"][0]["cues"][0]["timing"]["perFamily"]["position"]
+    action = parse("cue 1/1 TIME Color NONE", Context(show_of(doc), LIBRARY, CounterIds()))
+    assert isinstance(action, Submit)
+    assert action.command == labelled(
+        "cue 1/1 fades color with the cue again",
+        {"type": "DELETE", "path": [*VERSE, "timing", "perFamily"]},
+    )
+
+
+@pytest.mark.parametrize(
+    ("line", "error"),
+    [
+        ("cue 1/1 time position none", "cue 1/1 has no position timing of its own"),
+        ("cue 1/2 time intensity none", "cue 1/2 has no intensity timing of its own"),
+        ("cue 1/1 time position none 4", "unexpected '4'"),
+        ("cue 1/1 time position none delay 1", "unexpected 'delay'"),
+    ],
+)
+def test_a_family_with_no_timing_of_its_own_is_refused_in_one_line(line: str, error: str) -> None:
+    doc = load_doc(APPENDIX_A)
+    doc["cueLists"][0]["cues"][1]["timing"]["perFamily"] = {"position": {"fade": 4, "delay": 0}}
+    with pytest.raises(ParseError) as raised:
+        parse(line, Context(show_of(doc), LIBRARY, CounterIds()))
+    assert raised.value.message == error
+
+
 def test_a_release_is_appended_to_the_cues_releases() -> None:
     doc = load_doc(APPENDIX_A)
     first = {"targets": {"kind": "group", "groupId": "g-par"}, "attributes": "all"}

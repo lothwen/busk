@@ -15,6 +15,9 @@ import pytest
 
 from builders import APPENDIX_A, load_doc, show_of
 from busk import LiveShow, OfflineShow, ScriptError, load_show, new_show
+from busk.compiler.compile import compile_show
+from busk.compiler.cues import SlotTiming
+from busk.compiler.slots import FAMILY_CODES
 from busk.console.console import Console, interact
 from busk.console.parser import SubmitAll
 from busk.console.prompt import Editing
@@ -900,6 +903,7 @@ def not_seconds() -> Any:
         ("cue 1/1 number 7", "cue 1/1 cannot pass cue 1/2"),
         ("cue 1/2 number 0.5", "cue 1/2 cannot pass cue 1/1"),
         ("cue 1/1 number x", "expected a cue number, got 'x'"),
+        ("cue 1/1 time position none", "cue 1/1 has no position timing of its own"),
     ],
 )
 def test_a_line_busk_cannot_read_is_refused_wherever_it_goes(
@@ -1458,6 +1462,86 @@ def test_removing_a_property_reaches_a_running_show() -> None:
         assert status_of(live, 3).state == "active"
 
 
+# ------------------------------------------- a family's own timing removed (GAP-42)
+
+
+def verse_timings(offline: OfflineShow) -> tuple[dict[str, SlotTiming], set[SlotTiming]]:
+    """Cue 1/1 as compiled: the timing each family leaves it with, and the
+    timings its colour and pan lanes fade in with."""
+    verse = compile_show(offline.show).cueLists["cl-song"].cues[0]
+    leave = {family: verse.timings[verse.leave[code]] for family, code in FAMILY_CODES.items()}
+    return leave, {verse.timings[k] for k in verse.ltpTiming}
+
+
+def test_a_family_without_its_own_timing_fades_with_the_cue_again() -> None:
+    """The compiled cue, not only the document: the family takes the cue's
+    in timing once its own goes, and the show is as it was once the last
+    family goes. Each removal is one undo step."""
+    offline = OfflineShow(show_of(load_doc(APPENDIX_A)))
+    before = offline.show
+    cue_in = SlotTiming(fade=2, delay=0, curve="easeInOut")  # Verse's
+    position = SlotTiming(fade=4, delay=1, curve="easeOut")
+    color = SlotTiming(fade=3, delay=0, curve="easeInOut")  # no curve of its own: the cue's
+    assert offline.execute("cue 1/1 time position 4 delay 1 easeOut").ok
+    assert offline.execute("cue 1/1 time color 3").ok
+    leave, lanes = verse_timings(offline)
+    assert (leave["position"], leave["color"], lanes) == (position, color, {position, color})
+
+    reply = offline.execute("cue 1/1 time position none")
+    assert (reply.ok, reply.text) == (True, "cue 1/1 fades position with the cue again")
+    assert offline.show["cueLists"][0]["cues"][0]["timing"]["perFamily"] == {
+        "color": {"fade": 3, "delay": 0}
+    }
+    leave, lanes = verse_timings(offline)
+    assert (leave["position"], leave["color"], lanes) == (cue_in, color, {cue_in, color})
+    assert offline.execute("list cues 1").text.splitlines()[0] == (
+        "    1  Verse                time 2 easeInOut, color 3  go"
+    )
+
+    assert offline.execute("cue 1/1 time color none").ok
+    assert "perFamily" not in offline.show["cueLists"][0]["cues"][0]["timing"]
+    assert offline.show == before
+    leave, lanes = verse_timings(offline)
+    assert {leave[family] for family in FAMILY_CODES if family != "intensity"} == {cue_in}
+    assert lanes == {cue_in}
+    assert offline.execute("list cues 1").text.splitlines()[0] == (
+        "    1  Verse                time 2 easeInOut  go"
+    )
+
+    assert offline.execute("undo").text == "undid: cue 1/1 fades color with the cue again"
+    assert offline.execute("undo").text == "undid: cue 1/1 fades position with the cue again"
+    leave, lanes = verse_timings(offline)
+    assert (leave["position"], leave["color"], lanes) == (position, color, {position, color})
+
+
+def test_a_family_with_no_timing_of_its_own_spends_no_undo_step() -> None:
+    offline = OfflineShow(show_of(load_doc(APPENDIX_A)))
+    assert offline.execute("cue 1/1 time position 4").ok
+    reply = offline.execute("cue 1/1 time color none")
+    assert (reply.ok, reply.text) == (False, "error: cue 1/1 has no color timing of its own")
+    assert offline.execute("undo").text == "undid: cue 1/1 fades position over 4 s"
+    assert offline.execute("undo").text == "error: nothing to undo"
+
+
+def test_a_familys_own_timing_goes_on_a_running_show() -> None:
+    running = show_of(load_doc(APPENDIX_A))
+    with LiveShow(running, output=False) as live:
+        eventually(lambda: status_of(live, 1) is not None)
+        assert live.execute("cue 1/1 time position 4").ok
+        assert live.execute("go 1").ok
+        eventually(lambda: status_of(live, 1).state == "active")
+        reply = live.execute("cue 1/1 time position none")
+        assert (reply.ok, reply.text) == (True, "cue 1/1 fades position with the cue again")
+        assert live.show == running
+        assert live.execute("undo").ok
+        assert live.show["cueLists"][0]["cues"][0]["timing"]["perFamily"] == {
+            "position": {"fade": 4, "delay": 0}
+        }
+        assert live.execute("undo").ok
+        assert live.show == running
+        assert status_of(live, 1).state == "active"
+
+
 # ------------------------------------------- several fixtures patched (GAP-38)
 
 
@@ -1638,6 +1722,11 @@ REPLIES = [
         [],
         "cue 1/1 time intensity 2 bezier 0.4 0 0.2 1",
         "cue 1/1 fades intensity over 2 s, bezier 0.4 0 0.2 1",
+    ),
+    (
+        ["cue 1/1 time position 4"],
+        "cue 1/1 time position none",
+        "cue 1/1 fades position with the cue again",
     ),
     ([], "cue 1/2 wait 8", "cue 1/2 goes 8 s after the cue before starts"),
     ([], "cue 1/2 follow 0.5", "cue 1/2 goes 0.5 s after the cue before ends"),

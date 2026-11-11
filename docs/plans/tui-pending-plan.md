@@ -1577,6 +1577,28 @@ these fields are read. The engine step comes first. Code: `src/busk/console/pars
    Verify: removing one of two families, the last one, and one the cue lacks; `undo`; the
    compiled cue fades the family with the cue's times afterwards (the compile, not only the JSON);
    `list cues`.
+
+   **Done** (2026-11-11). `_family_none` in `console/parser.py`, reached from `_cue_verb` when
+   `none` follows a family. With other families left it sets `perFamily` without this one; with
+   none left it deletes `perFamily`, so a cue is as it was before its first family line. One
+   labelled step: `cue 9/2 fades position with the cue again`, which `undo` and `redo` repeat.
+   `cue 9/2 has no position timing of its own` refuses the rest, with nothing on the timeline.
+   `busk help` and the grammar have `| cue L/C time <family> none` on the family's line, and the
+   module docs and `docs/console.md` say what it removes. GAP-42's entry and Summary row are in
+   engine-gaps.md. Tests: `test_console_parser.py` (one of two families, the last, the words in any
+   case, and four refusals), `test_console.py` (the compiled Verse of Appendix A: its leave table
+   and its colour and pan lanes take the cue's in timing once each family goes, `list cues`, two
+   `undo`s; no undo step spent on a refusal; the refusal table, wherever a line goes; the replies
+   table; and a running `LiveShow`, whose active cue stays active), and three rows of
+   `test_console_prompt.py`'s completion table, with its grammar test.
+
+   Which the user may veto:
+   - **The reply says what the family does now,** `cue 9/2 fades position with the cue again`,
+     the words step 2 gives the dialog, after the family line's `cue 9/2 fades position over 4 s`.
+   - **Tab offers `none` after every family,** whether or not the cue has timing of its own for
+     it; the line says so when it runs, as `playback N <optional> none` does.
+   - **Words after `none` are refused first** (`unexpected '4'`), before whether the family has its
+     own, as `cue L/C effect <id> remove` does.
 2. **F4's TIME dialog removes it.** While a family chip with timing of its own is chosen, a
    `[none]` button sends the line, and the dialog says what it does (`position fades with the cue
    again`). No question: `undo` brings it back.
@@ -1584,7 +1606,45 @@ these fields are read. The engine step comes first. Code: `src/busk/console/pars
    Verify: the button shows only on a family with timing of its own; Esc sends nothing; the time
    cell drops the family (`2, position 4` becomes `2`); a test on the real engine.
 
+   **Done** (2026-11-11). `TimeDialog` (`widgets/cue_dialogs.py`) has a row under its note:
+   `[none] Ctrl+N · position fades with the cue again`, shown only while the chosen chip is a
+   family the cue has timing of its own for. A click, or Ctrl+N, closes the dialog with
+   `commands.no_family_time` (`cue 9/2 time position none`), which F4 runs with no question. The
+   contract test runs it on the club show after the family line. `test_tui_cues.py`: the row on
+   each chip (only `position` and `beam` of the fake cue), Ctrl+N doing nothing while it is
+   hidden, its words, Esc sending nothing, and the line by a click and by the keyboard alone
+   (Shift+Tab, →, Tab, Ctrl+N from the fade field). `test_tui_e2e.py`: on the club show, cue 9/2's
+   time cell goes from `2, position 4` to `2` after `[none]`, busk's words are in the log, and
+   `undo` brings it back.
+
+   Which the user may veto:
+   - **Ctrl+N** reaches `[none]` from the keyboard, as Ctrl+O reaches the profile picker's
+     `[import…]`: the dialog's keys are Tab, ← →, Enter and Esc, and a button has no focus.
+   - **`[none]` sends the line whatever the fields hold:** a fade typed and not sent is dropped.
+   - **The row sits under the note, at the dialog's left edge,** not under the fields: indented
+     like them, `… with the cue again` was cut at 60 columns for most families.
+
 Docs: the guide's F4, the report's Cues rows, §7's item, and `CHANGELOG.md`.
+
+**Done** (2026-11-11). As listed, and also the report's header, which names Phase 21.
+
+**Phase 21 checks** (2026-11-11), on top of `5a47856`, built before Phase 20 at the user's word.
+The whole suite: 6,359 passed and 1 skipped, in 8:31 with `uv run pytest -n 6`. `ruff check`,
+`ruff format --check` and `mypy src` clean. Two later edits to the dialog (the row's indent, and a
+simpler lookup) were checked on the files they touch: `test_tui_cues.py`, `test_tui_commands.py`
+and the two F4 dialog tests on the real engine, on Textual 8.2.8 and 8.2.0. Two mutations of the
+dialog (the row on every family chip, Ctrl+N while it is hidden) each fail a new test. F4's
+update path is unchanged (only the modal changed), so no perf gate.
+
+A real `busk run club.show --threads --state-dir …`, the lines piped in: `go 9`, then `cue 9/2
+time position none` replied `cue 9/2 fades position with the cue again`, and `list cues 9` showed
+Verse as `time 2`; the same line again was refused (`cue 9/2 has no position timing of its own`);
+colour and beam timing set, colour's removed, `list cues 9` showed `time 2, beam 2`; four `undo`s
+said each step's words, and Verse was back to `time 2, position 4`. A real `busk-tui --state-dir …`
+under `busk run` on the club show, in a pty at 150 columns (layout B) and 99 (layout A): F4, Song,
+a click on 9/2's time cell, the `position` chip, the `[none]` row in full, a click on it, the time
+cell at `2` and busk's words in the log; `undo` typed at the prompt; then Shift+Tab, → →, Tab and
+Ctrl+N sent it again. No error in the log.
 
 ### Phase 22: Moving and copying a cue
 
@@ -1721,8 +1781,8 @@ Those marked **Not planned** are extras or matter less, and stay here.
   On 2026-11-11, also: a value busk then rejects is refused by path, not in words (`cue 9/2 time
   intensity -1`, `cue 9/3 follow -1`, a Bézier point of `-0.5`). The reading: **Phase 18**, step
   2. Fixed there, with every other seconds read of the parser (`fade -1` was taken). Removing a
-  family's timing: **Phase 21**. Sending the family again without a curve still removes its curve
-  (§5, call 14).
+  family's timing: **Phase 21**. Done there: `cue L/C time <family> none` (GAP-42) and TIME's
+  `[none]`. Sending the family again without a curve still removes its curve (§5, call 14).
 - `commands.effect_stop`, `effect_run` and `effect_remove` do not quote an id, so those controls
   fail on an effect id of two words, which only `id "my fx"` makes. `_rate_text` in the bridge does
   not escape a quote in a master's name. Found on 2026-11-09. Phase 16 found that a control sends

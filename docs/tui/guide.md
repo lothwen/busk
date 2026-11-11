@@ -777,7 +777,10 @@ left as it was:
   same). `in` times intensity rising and every family without its own, `out` intensity falling.
   The `for` chips choose a family instead, for its own fade and delay, which start at what the
   family takes now: `cue 9/3 time position 4 delay 1`, which F4 then shows after a comma. busk
-  sets a family's timing whole, so the line carries the family's own curve, if it has one.
+  sets a family's timing whole, so the line carries the family's own curve, if it has one. On a
+  family with timing of its own, `[none]` (or Ctrl+N) takes it away whole, fade, delay and curve,
+  so the family fades with the cue again: `cue 9/3 time position none`. It asks nothing: `undo`
+  brings the timing back.
 - `[delay…]` has the delays in and out: `cue 9/3 time 1/3 delay 0/1`, the fade times kept.
 - `[curve…]` has the curve as chips (`linear`, `easeIn`, `easeOut`, `easeInOut`, `snapStart`,
   `snapEnd`, `bezier`), and with `bezier` its four points, each from 0 to 1: `cue 9/3 time 1/3

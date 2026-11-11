@@ -61,7 +61,7 @@ session, as the web remote's commands do. `help` prints the grammar.
 | Pages | `page 2`, `page next\|prev`, `page add 2 ["Washes"]`, `page 2 slot 1 playback 14`, `page 2 slot 5 clear`, `record slot 2.1`, `playback 9 goto 4` |
 | Edit | `playback 3 exclusivity color`, `cue 3/1 timing.fadeIn 1`, `playback 1 buttons ["toggle", "flash", "release"]`, `show meta.title "Club Night"`, `rename group 1 "Heads"`, `delete cue 10/2`, `delete fixture 101 cascade`, `delete fixture 101 thru 104 cascade`, `delete universe 2 cascade`, `delete preset color 3 cascade`, `delete group 2 cascade`, `delete cuelist 9 cascade`, `delete playback 3 cascade`, `delete page 2 cascade`, `fixture 101 location {"x": 1, "y": 2, "z": 3, "rx": 0, "ry": 0, "rz": 0}`, `fixture 101 location none`, `fixture 101 thru 104 orientation.invertPan true`, `fixture 101 orientation.panOffset 30` |
 | Playbacks | `playback add 5 cuelist 10 [at [P.]S] ["name"]`, `playback 3 cuelist 10`, `playback 3 fader size`, `playback 3 flash.level 0.5`, `playback 3 exclusivity none` |
-| Timing, triggers | `cue 9/1 time 3 easeInOut`, `cue 9/3 time 1/3 delay 0/1`, `cue 9/2 time position 4 [delay 1] [easeOut]`, `… bezier 0.4 0 0.2 1`, `cue 9/3 wait 8`, `cue 9/5 follow 4`, `cue 9/2 go`, `cue 9/5 release group 1 [only pan tilt]` |
+| Timing, triggers | `cue 9/1 time 3 easeInOut`, `cue 9/3 time 1/3 delay 0/1`, `cue 9/2 time position 4 [delay 1] [easeOut]`, `cue 9/2 time position none`, `… bezier 0.4 0 0.2 1`, `cue 9/3 wait 8`, `cue 9/5 follow 4`, `cue 9/2 go`, `cue 9/5 release group 1 [only pan tilt]` |
 | Cue lists, tempo | `cuelist add 5 ["name"]`, `cuelist 9 tracking true`, `cuelist 10 chase bpm ["Speed 1"] [x 2] [forward\|reverse\|bounce\|random] [crossfade 0.25]`, `cuelist 10 chase hz 4`, `cuelist 10 sequence`, `master add speed "Speed 1" [bpm 120] [steps 0.5, 1, 2]` |
 | Effects, masters | `effect add "Circle" [id fx1] [hz 0.5 \| bpm ["Speed 1"] [x 0.5]] [size 15] [low 0 high 1] [phase 0 180] [groups N] [blocks N] [wings 2] [forward\|reverse\|bounce] [fadein 1] [sizemaster "FX"] [speedmaster "Speed 1"]`, `effect remove fx1`, `effect clear`, `effect stop fx1`, `effect run fx1`, `effect template add "Name" [{…layers…}]`, `effect template update "Name" [{…layers…}]`, `effect template rename "Name" "New"`, `effect template delete "Name"`, `cue 9/4 effect rainbow size 0.5`, `cue 9/4 effect rainbow remove`, `master add size "FX"`, `master add group "Wash level" group 2`, `master add fadetime "Fade"` |
 | Perform | `go 9`, `back 9`, `goto 9 4`, `release 3 [2]`, `fader 3 75%`, `flash 3 on\|off`, `toggle 3`, `button 3 2 on\|off`, `gm 0.5`, `master "Speed 1" 0.75`, `tap ["Speed 1"]`, `bpm ["Speed 1"] 128`, `blackout on\|off` |
@@ -129,7 +129,9 @@ session, as the web remote's commands do. `help` prints the grammar.
 * **Timing.** `cue L/C time <in>[/<out>]` sets the cue's fade in and out (out defaults to
   in), with an optional `delay` and curve (`linear`, `easeIn`, `easeOut`, `easeInOut`,
   `snapStart`, `snapEnd`, `bezier x1 y1 x2 y2`); with a family name it sets that family's
-  own timing. Times are plain seconds, with no sign and no `%`, here and wherever busk
+  own timing, whole, and `cue L/C time <family> none` removes it, fade, delay and curve, so
+  the family fades with the cue again (`cue 9/2 fades position with the cue again`); a family
+  with no timing of its own is refused. Times are plain seconds, with no sign and no `%`, here and wherever busk
   reads seconds (`follow`, `wait`, `fade`, `release`, an effect's `fadein`); each Bézier
   control value runs from 0 to 1. In a chase, cue timing and triggers are ignored except the curve: the
   crossfade sets the step fade. Speed masters have no numbers, so they are named in quotes;

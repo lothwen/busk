@@ -1909,6 +1909,61 @@ def test_f4_edits_a_cues_timing_trigger_and_name_in_dialogs_on_the_real_engine(
         bridge.stop()
 
 
+def test_f4_takes_a_familys_own_timing_away_in_the_time_dialog_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """Cue 9/2 fades position over 4 s of its own: TIME's ``[none]`` on
+    ``position`` takes it away, the time cell drops it (``2, position 4``
+    becomes ``2``), and ``undo`` brings it back. Esc sends nothing."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=4), standalone=True)
+
+    def verse() -> CueInfo:
+        song = None if app.view.show is None else app.view.show.cue_list(9)
+        assert song is not None
+        return next(found for found in song.cues if found.number == "2")
+
+    async def time_dialog(pilot: Pilot[int], cues: CueTable) -> TimeDialog:
+        await click_cell(pilot, cues, 1, "time")
+        await until(pilot, lambda: isinstance(app.screen, TimeDialog))
+        dialog = app.screen
+        assert isinstance(dialog, TimeDialog)
+        dialog.target.pick("position")
+        await pilot.pause()
+        assert dialog.none_row.display
+        return dialog
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.live is not None and app.view.show is not None)
+        app._select_playback(9)
+        cues = app.query_one(CueTable)
+        await until(pilot, lambda: column(cues, "time")[:2] == ["3", "2, position 4"])
+        log = app.query_one(LogView).entries
+        assert verse().families == (FamilyTiming("position", 4.0, 0.0, None),)
+
+        await time_dialog(pilot, cues)
+        await pilot.press("escape")
+        await until(pilot, lambda: not isinstance(app.screen, TimeDialog))
+        dialog = await time_dialog(pilot, cues)
+        await pilot.click(dialog.none)
+        await until(pilot, lambda: column(cues, "time")[1] == "2")
+        assert verse().families == ()
+        assert [line for kind, line in log if kind == "ui"] == ["cue 9/2 time position none"]
+        assert "cue 9/2 fades position with the cue again" in [text for _, text in log]
+
+        await pilot.press(*"undo", "enter")
+        await until(pilot, lambda: column(cues, "time")[1] == "2, position 4")
+        errors = [text for kind, text in log if kind == "error"]
+        assert errors == []
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
 def test_f5_builds_a_template_from_controls(club_path: Path, tmp_path: Path) -> None:
     """F5 makes a template, changes its layers, shows a refusal in the panel
     and the log, renames and deletes it; and F5 names what uses Circle."""
