@@ -10,6 +10,10 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- F4's cue table has an `also` column: how many entries a cue holds of each family the intensity
+  and colour columns leave out (`position 2, beam 1`; a colour wheel or a CTO counts as `color`),
+  so a cue that only moves the heads no longer looks empty. From 150 columns it shows where the
+  curve was, which `[curve…]` still shows; from 160 both show.
 - `cue L/C number M` moves a cue past its neighbours: the cue goes to its place in the list's
   order, in one undo step, and a playback on it stays on it. `cue L/C copy M` copies a cue in its
   own list and `cue L/C copy L2/M` into another, at its place there, with a new id and the rest as

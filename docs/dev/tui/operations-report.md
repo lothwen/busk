@@ -22,6 +22,8 @@ paths, which the controls put in the log; the side finding that listed them is g
 Its Phase 21 added the line that takes a family's own timing away from a cue (GAP-42), and F4's
 TIME dialog a `[none]` that sends it. Its Phase 22 let a cue move past its neighbours and be
 copied (GAP-43), and gave F4 `[number…]` and `[copy…]` on a cue and `[number…]` on a list.
+Its Phase 23 gave F4's cue table an `also` column, which counts a cue's entries of the families
+the intensity and colour columns leave out.
 
 ## How to read it
 
@@ -125,7 +127,7 @@ In short:
 
 | Operation | busk line | Engine | TUI |
 |---|---|---|---|
-| Show | typed `LiveShow.show`; `list cues L` | yes | control: F4 cue table (current cue, number, name, fades with family timings, delays, curve, trigger, intensity and colour entries, effect ids). Values of the other families (position, beam…) are not shown |
+| Show | typed `LiveShow.show`; `list cues L` | yes | control: F4 cue table (current cue, number, name, fades with family timings, delays, curve, trigger, intensity and colour entries, effect ids). The other families' entries are counted under `also` (`position 2, beam 1`), not shown one by one |
 | Add at the end | `record cue L` | yes | control: F4 `[record cue L]` |
 | Add at a number, insert | `record cue L/C [only …] [freeze] ["name"]` (`9/2.5` goes between 2 and 3) | yes | control: F4 `[record at…]`, a form that refuses a cue that exists; `only` and `freeze`: prompt |
 | Delete | `delete cue L/C` | yes | control: F4 `[delete]`, after the TUI's question, which says when a playback is on the cue |

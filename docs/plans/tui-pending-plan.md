@@ -15,9 +15,9 @@
   each. Every phase here is sized to that or less.
 - **Engine first.** Phases 2 to 5 give every later control its line, so no control is left inert
   or waiting on busk. Phase 14 is the one exception: a question gates it, nothing else needs it,
-  and its engine step comes first inside the phase. Phases 20 to 22, added on 2026-11-11, are built
-  the same way: one item each, its engine step first, then the control that uses it. The TUI step
-  keeps the TUI phases' rules below.
+  and its engine step comes first inside the phase. Phases 20 to 22, added on 2026-11-11, and
+  Phase 25 are built the same way: one item each, its engine step first, then the control that
+  uses it. The TUI step keeps the TUI phases' rules below.
 - **Engine phases** change `src/busk/` and its tests. Each gap gets an entry and a Summary row in
   `docs/dev/tui/engine-gaps.md`. A wrong message or a missing range check is a bug, not a gap, and
   gets no number.
@@ -119,8 +119,9 @@ to be at `f851165`.
 | 20 | One undo step for an encoder drag (GAP-06) | busk, TUI | | Q6 |
 | 21 | Removing a family's own timing from a cue (GAP-42), on F4's TIME | busk, TUI | 18 | |
 | 22 | Moving and copying a cue (GAP-43); F4's `[number…]` and `[copy…]` | busk, TUI | 19 | |
-| 23 | F4 shows every family's entries | TUI | | Q7 |
+| 23 | F4 counts every other family's entries (`also`) | TUI | | Q7 |
 | 24 | A mode or profile change that loses elements in use, refused in words | busk | | |
+| 25 | Loading a cue into the programmer (GAP-44); F4's `[load]` | busk, TUI | | Q8 |
 
 ## 4. What busk does (checked on 2026-11-08)
 
@@ -192,6 +193,18 @@ Added on 2026-11-11, for Phase 24:
     names what uses them, as a cascade's question does; the operator edits those first, or deletes
     the fixture with `cascade`. A `cascade` on `fixture N mode` would be a gap of its own, not
     planned.
+
+Added on 2026-11-11, for Phase 25:
+
+16. **`load cue L/C` replaces the programmer:** its values, effects and selection become the
+    cue's, so what `[replace]` records back is the cue and the edit. It is one programmer step,
+    which `undo` takes back.
+17. **The line is `load cue L/C [only <family>…]`,** beside `record cue L/C`, and reads `only` as
+    `record` does.
+18. **What the programmer cannot hold comes as a value per target.** It holds a value or a preset
+    reference per slot, so a group's entry, a spread and per-target values come target by target.
+    Recording back finds the groups again by the cover, unless `freeze`; a spread comes back as
+    per-target values.
 
 ## 6. Phases
 
@@ -1800,8 +1813,67 @@ Q7. A TUI phase. Code: `src/busk_tui/widgets/cuetable.py`; `src/busk_tui/model.p
 
    Verify: a cue with only position values shows them; a cue with every family; the widths at 99
    and 150 columns; the perf gate on F4.
+
+   **Done** (2026-11-11), under Q7 (a) and the user's word on the widths (§8). In
+   `widgets/cuetable.py`: an `also` column after `colour`, 13 cells wide, and `_also`, which
+   counts the cue's entries whose attribute is neither `intensity` nor `color` (`SHOWN`) by
+   busk's family, in busk's order of families (`FAMILIES`, from `attributes.FAMILY_OF`):
+   `position 2, beam 1`, or `—` in the border's colour. An entry of any kind counts once: a
+   literal, a preset, a spread, per target. `CueInfo.values` already held every entry, so the
+   model and the bridge are unchanged. The order of dropping is now the curve (`drop=7`), then
+   `also` (`drop=6`), then as before. Measured: the cue table is 106 cells wide at 150 columns,
+   so `also` shows where the curve was from 150; from 160 every column shows; at 99 (stacked, 93
+   cells) and from 100 to 144 F4 shows what it showed before.
+
+   Tests: `test_tui_cues.py`, the cell (none, intensity and colour alone, a preset and a spread,
+   every family in busk's order with a colour wheel and a CTO under `color`) and the widths (at
+   160 the curve and `also`, at 150 `also` alone with a position-only cue's `position 2` on its
+   line, at 99 neither). Two tests that click the curve cell now run at 160 columns:
+   `test_a_row_goes_to_its_cue_and_an_edit_cell_opens_its_dialog` and the real-engine
+   `test_f4_edits_a_cues_timing_trigger_and_name_in_dialogs_on_the_real_engine`.
+   `test_tui_e2e.py`: on the club show at 150 columns, the header has `also` and no `curve`,
+   Verse's line has `position 2`; `sel fixture 101`, `set zoom 50` and `record cue 9/1 merge`
+   typed make the Intro `beam 1`, and `undo` takes it back to `—`.
+
+   Which the user may veto:
+   - **Every entry neither column shows counts,** by family: a `colorWheel`, `cto` or
+     `colorMacro` entry is `color 1` under `also`, beside a `colour` column that shows only
+     `color` entries. Leaving them out would let a cue of a colour wheel alone look empty.
+   - **At 145 to 149 columns the curve no longer shows,** where it did: it goes first, and `also`
+     does not fit either (the table is 101 to 105 cells wide). `RowTable` drops columns and never
+     puts one back that fits again; changing that changes every table's fitting, the option the
+     user did not take.
+   - **The column is there on every list,** `—` on each row of a list whose cues hold no other
+     family, so at 150 columns the curve gives way on those too. Columns that change with the
+     list shown would move under the mouse as lists change.
+   - **Busk's family words** (`color`, not `colour`), as F4's TIME chips have them.
 2. **The docs:** the guide's F4, the spec's §8.4 cue table line, and the report's Show row for
    cues.
+
+   **Done** (2026-11-11). The guide's F4: what `also` counts and the widths, and the screen drawn
+   again at 150 columns from a real `busk-tui`. The spec's §8.4 cue table line, with the order of
+   dropping. The report's header and its Cues Show row. §7's item, §3's row, §8's Q7 and
+   `CHANGELOG.md` under Added.
+
+**Phase 23 checks** (2026-11-11), on top of `1d7e23f`. The whole suite: 6,416 passed and 1
+skipped, in 8:16 with `uv run pytest -n 6`. `ruff check`, `ruff format --check` and `mypy src`
+clean. `test_tui_cues.py` and the two F4 real-engine tests that changed pass on Textual 8.2.0. Two
+mutations each fail a new test: `also` dropped first (Q7 as first written: the width test at 150
+and the real-engine test), and every entry counted (the cell test).
+
+The perf gate flaps on F6, a page this phase did not touch: three runs with the change gave F4
++0.182, +0.203 and +0.214 core and F6 +0.256, +0.236 and +0.251, against 0.25, so two runs failed
+on F6. Two runs with `HEAD`'s `cuetable.py`: one failed (which case was not kept), the other
+passed with F4 +0.166 and F6 +0.231. `_also` costs 12 µs a draw of list 9 (`cue_cells` 135 µs),
+about 0.0001 core at 10 Hz, so it is not what moves the numbers. A `busk-tui` on the TupperDMX
+show, not started by this phase, took about 0.09 core during those runs. No overruns in any case.
+
+A real `busk-tui --state-dir …` (which runs `busk run`) on the club show, in a pty: at 150
+columns (layout B), F4, Song: the header has `also` and no `curve`, Verse reads `position 2`;
+`sel fixture 101`, `set zoom 50` and `record cue 9/1 merge` typed at the prompt made the Intro
+`beam 1`, and `undo` took it back to `—`. At 99 columns (stacked) F4 shows the columns it showed
+before (no curve, no delay, no `also`: the real table is narrower there than the headless one).
+No error in the log.
 
 ### Phase 24: A mode change refused in words
 
@@ -1837,6 +1909,45 @@ Phase 20 while Q6 waits. Code: `src/busk/console/parser.py` (`_fixture_mode`, `_
    `docs/dev/tui/engine-gaps.md`, the report's "Found in Phase 19" side finding (removed), §7's
    item, and `CHANGELOG.md` under Fixed. F3 needs no change: its controls show busk's one line.
 
+### Phase 25: Loading a cue into the programmer
+
+The user's question of 2026-11-11, after Phase 22: F4 shows a cue's entries, but none is edited
+one by one. A cue's values change only by re-recording from the programmer (`[merge]`,
+`[replace]`, `[remove]`), and no line puts a cue's values in the programmer to start from. Its
+shape waits on Q8. The engine step comes first. Code: `src/busk/console/parser.py`,
+`src/busk/session/programmer.py` (a programmer command, as `SELECT_PLAYBACK` is),
+`src/busk/commands/types.py`; `src/busk_tui/pages/cues.py`, `src/busk_tui/commands.py`.
+
+1. **GAP-44: `load cue L/C [only <family>…]`** puts the cue's values into the programmer, under
+   Q8's answer, and selects their targets, as `sel playback N` does. It replaces what the
+   programmer holds (§5, call 16), in one programmer step. A preset reference stays a reference;
+   a group's entry, a spread and per-target values come as a value per target (call 18). The
+   cue's effects come too, with their ids, so `record cue L/C replace` puts them back. The cue's
+   timing, trigger and releases stay in the cue, and `replace` keeps them. An entry's own timing
+   (which only the generic edit sets) does not come, and `replace` would drop it: the reply says
+   so when the cue has one. The reply counts what came (`loaded cue 9/3 "Pre": 6 values on 4
+   fixtures, 1 effect`). `expected()` offers the families after `only`. Add GAP-44's entry and
+   Summary row to engine-gaps.md, and update `docs/console.md` and `busk help`.
+
+   Verify: each kind of entry (literal, preset, spread, per target, on a group and on targets);
+   effects and their ids; `only`; a cue of a tracking list, under Q8's answer; `undo` gives back
+   the programmer and selection as they were; with `blind on` the stage does not change; on
+   `OfflineShow` and a running `LiveShow`. **The round trip:** every cue of the club show loaded,
+   then recorded back with `replace` and nothing changed in between; list in the Done note what
+   differs from the cue as it was (a spread per target, a group the cover finds otherwise, an
+   entry equal to what a tracking list inherits).
+2. **F4's `[load]`** on the chosen cue, before `[merge]`: `load cue 9/3`. It asks the TUI's own
+   question first while the programmer holds values or effects, since it replaces them (`Load cue
+   9/3 "Pre" into the programmer? It replaces what the programmer holds.`). After it, the cue is
+   edited as any look is, on F2, F3 and F6, and `[replace]` records it back.
+
+   Verify: `[load]` on the real engine; the question only when the programmer holds something;
+   the programmer and the selection after; load, change one value, `[replace]`: the cue holds the
+   change and the rest as before; the perf gate on F4.
+
+Docs: the guide's F4 (the steps of an edit: `[load]`, change, `[replace]`), the report's Cues row
+"Change its values", `docs/console.md`, §7's item, and `CHANGELOG.md`.
+
 ## 7. Seen, and not in the sources
 
 Left out because the five places do not name them. Say if any should join a phase.
@@ -1851,7 +1962,8 @@ Those marked **Not planned** are extras or matter less, and stay here.
   steps 1 to 3. Done there: GAP-43, F4's `[number…]` and `[copy…]`.
 - Renumbering a cue list from F4 (the report's Cue lists table): **Phase 22**, step 3. Done
   there: the list's `[number…]`.
-- F4's table shows only intensity and colour entries: **Phase 23**, Q7.
+- F4's table shows only intensity and colour entries: **Phase 23**, Q7. Done there: the `also`
+  column.
 - Options when adding an effect from a template click: **Not planned**. F5's EFFECT panel changes
   them afterwards.
 - Deleting several presets, cues or lists in one line: **Not planned**. Fixtures take `thru`.
@@ -1933,6 +2045,9 @@ Those marked **Not planned** are extras or matter less, and stay here.
   lines of `groups[2].members[1].element: Fixture 'fx-…' has 1 element(s); element 1 does not
   exist`. F3's `[profile…]` would put them in the log. The first line is in words. Found on
   2026-11-11, in Phase 19. **Phase 24** (the user's word, 2026-11-11).
+- F4 shows a cue's entries, but none is edited one by one: a cue's values change only by
+  re-recording from the programmer, and no line loads a cue into the programmer to edit it. The
+  user's question, 2026-11-11, after Phase 22. **Phase 25** (the user's word, 2026-11-11), Q8.
 
 ## 8. Questions
 
@@ -1989,3 +2104,16 @@ Those marked **Not planned** are extras or matter less, and stay here.
      that a cue is not empty.
    - (b) A panel under the table listing every entry of the chosen cue, with values.
    - (c) Leave F4 as the spec says, and drop Phase 23.
+
+   ANSWER: (a), the recommended one (the user, 2026-11-11). But "dropped first" left it hidden at
+   150 and 99 columns (the table is 106 cells wide at 150 and its columns took 102), so the user
+   chose then that the curve goes first and `also` second: it shows from 150 columns. Built in
+   Phase 23.
+8. **What `load cue` takes** (Phase 25). A cue of a tracking list stores its changes only; on
+   stage it shows those over what the cues before it left.
+   - (a) The cue's own entries and effects: what it stores. **Recommended:** `[replace]` then gives
+     back the cue as it was, and the programmer holds nothing of other cues, so a `[merge]` into
+     another cue cannot carry their values there.
+   - (b) Its tracked state: what it shows on stage, the cues before it included, less its
+     releases. `[replace]` on a tracking list still stores only the changes, but the programmer
+     holds values the cue does not.

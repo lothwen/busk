@@ -8,17 +8,24 @@ the list's playback is on, ``L/C``, the name, the fade times (``1/3``, and
 a family's own: ``2, position 4``), the delays, the curve, the trigger's
 delay under ``follow`` or ``wait`` (``—`` for a GO), the intensity and
 colour entries (a value, a preset's name, ``spread``, ``per target``; a
-colour with its swatch), and the cue's effects by id. A click on a cell that
-is an edit (:data:`EDITS`) opens its dialog on F4.
+colour with its swatch), under ``also`` how many entries it holds of each
+family those two leave out (``position 2, beam 1``; a ``colorWheel`` entry
+is ``color 1``), and the cue's effects by id. A click on a cell that is an
+edit (:data:`EDITS`) opens its dialog on F4.
+
+When narrow, the curve goes first and ``also`` second: from 150 columns
+``also`` shows where the curve was, which ``[curve…]`` still shows; from
+160, both; below 150, neither.
 """
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import Final
 
 from rich.text import Text
 
-from busk_tui import colors
+from busk_tui import attributes, colors
 from busk_tui.colors import ColorMode
 from busk_tui.formats import delay_text, seconds, stored_text, time_text
 from busk_tui.model import CueInfo, CueListInfo, StoredValue
@@ -28,6 +35,12 @@ NONE: Final = "—"
 
 EDITS: Final = ("time", "delay", "curve", "follow", "wait")
 """The cue table's cells whose click opens an edit's dialog."""
+
+SHOWN: Final = ("intensity", "color")
+"""The attributes the cue table shows entries of, a column each."""
+
+FAMILIES: Final = tuple(dict.fromkeys(attributes.FAMILY_OF.values()))
+"""busk's families, in its order: ``also`` names them so."""
 
 
 class CueListTable(RowTable):
@@ -47,11 +60,12 @@ class CueTable(RowTable):
         Column("name", "name", 10, flex=True),
         Column("time", "time", 13, drop=1),  # never dropped before the trigger's two
         Column("delay", "delay", 6, drop=5),
-        Column("curve", "curve", 9, drop=6),
+        Column("curve", "curve", 9, drop=7),
         Column("follow", "follow", 6),
         Column("wait", "wait", 6),
         Column("intensity", "intensity", 10, drop=3),
         Column("color", "colour", 17, drop=4),
+        Column("also", "also", 13, drop=6),
         Column("fx", "fx", 8, drop=2),
     )
 
@@ -80,6 +94,7 @@ def cue_cells(cue_list: CueListInfo, cue: CueInfo, current: bool, mode: ColorMod
         "wait": _trigger(cue, "wait", trigger_delay),
         "intensity": _values(cue, "intensity", mode),
         "color": _values(cue, "color", mode),
+        "also": _also(cue),
         "fx": (
             cell(", ".join(effect.id for effect in cue.effects), colors.GREEN)
             if cue.effects
@@ -106,6 +121,20 @@ def _values(cue: CueInfo, attribute: str, mode: ColorMode) -> Text:
             text.append_text(_swatch(value, mode))
         text.append(stored_text(value), style=colors.FG)
     return text
+
+
+def _also(cue: CueInfo) -> Text:
+    """How many entries the cue holds of each family the intensity and
+    colour columns leave out: ``position 2, beam 1``."""
+    counts = Counter(
+        attributes.family_of(value.attribute)
+        for value in cue.values
+        if value.attribute not in SHOWN
+    )
+    if not counts:
+        return cell(NONE, colors.BORDER)
+    found = (f"{family} {counts[family]}" for family in FAMILIES if counts[family])
+    return cell(", ".join(found), colors.FG)
 
 
 def _swatch(value: StoredValue, mode: ColorMode) -> Text:

@@ -227,7 +227,7 @@ A table of all fixtures (minimum 96 columns; scrolls horizontally below that). C
 *Fig. 7 — Cuelist browser (left) and cue table for the selected list (right).*
 
 - **CUELISTS** (flex 1): every non-empty list: number · name · kind (seq / chase / flash) · cue count. Click selects the list (UI state).
-- **CUELIST n · Name** (flex 4): meta line (`mode` in amber: `sequence`, or `chase bpm "Main" x1 forward crossfade 0`; playback and level; groups). Cue table: `▶` on the current cue · L/C · name · in/out · delay · curve · follow · wait · dim · colour · fx id.
+- **CUELIST n · Name** (flex 4): meta line (`mode` in amber: `sequence`, or `chase bpm "Main" x1 forward crossfade 0`; playback and level; groups). Cue table: `▶` on the current cue · L/C · name · in/out · delay · curve · follow · wait · dim · colour · also (how many entries of each other family: `position 2, beam 1`) · fx id. When narrow, curve goes first and also second.
 - Row click → `cue L/C go`. Buttons: `[GO]` `go N`, `[BACK]` `back N`, `[record cue L]` `record cue L`, and a sequence/chase toggle (`cuelist N chase bpm x1` or `cuelist N sequence`).
 - Cell editing (time, curve, follow, wait) goes through the prompt: selecting a cell pre-fills the prompt with `cue L/C time ` etc. (not in the prototype yet).
 

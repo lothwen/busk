@@ -272,6 +272,55 @@ def test_times_triggers_and_values_as_stored() -> None:
     assert stored_text(colour_spread) == "spread"
 
 
+def test_also_counts_the_entries_of_the_families_the_other_columns_leave_out() -> None:
+    def also(*values: StoredValue) -> str:
+        return cue_cells(SONG, CueInfo("9", "", (), values=values), False, "256")["also"].plain
+
+    def entry(attribute: str) -> StoredValue:
+        return StoredValue(attribute, HEADS, "literal", value=0.5)
+
+    assert also() == "—"
+    assert also(entry("intensity"), entry("color")) == "—"  # in their own columns
+    aim = StoredValue("pan", HEADS, "preset", preset="Audience")
+    sweep = StoredValue("tilt", HEADS, "spread", value=0.0, to=10.0)
+    assert also(aim, sweep) == "position 2"  # an entry of any kind counts
+    every = (
+        "control", "strobeRate", "focus", "zoom", "gobo1", "colorWheel", "cto", "tilt", "pan",
+        "shutter", "intensity", "color",
+    )  # fmt: skip
+    assert also(*map(entry, every)) == (
+        "position 2, color 2, beam 2, focus 1, shutter 2, control 1"
+    )  # in busk's order of families; a colour wheel and a CTO are colour's
+
+
+@pytest.mark.parametrize(
+    ("width", "curve", "also"), [(160, True, True), (150, False, True), (99, False, False)]
+)
+def test_also_takes_the_curves_room_at_150_columns(width: int, curve: bool, also: bool) -> None:
+    """A cue with position values alone shows them at 150 columns, where
+    the curve was; below 100 neither shows, as the curve did not."""
+    aimed = (
+        StoredValue("pan", HEADS, "preset", preset="Audience"),
+        StoredValue("tilt", HEADS, "preset", preset="Audience"),
+    )
+    song = replace(SONG, cues=(CueInfo("1", "Aim", (), values=aimed), *SONG.cues[1:]))
+    bridge = FakeBridge()
+    bridge.events += [
+        ShowChanged(cues_show(cueLists=(song, CHASE, LOOP, SPARE))),
+        LiveChanged(live()),
+    ]
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        cues = page(app).cues
+        header, aim = (line.plain for line in cues.lines(cues.size.width)[:2])
+        assert ("curve" in header.split(), "also" in header.split()) == (curve, also)
+        assert ("position 2" in aim) == also
+
+    drive(app, body, size=(width, 48))
+
+
 def test_the_meta_line() -> None:
     show = cues_show()
     state = live()
@@ -377,7 +426,7 @@ def test_a_row_goes_to_its_cue_and_an_edit_cell_opens_its_dialog() -> None:
         await pilot.pause()
         assert [s.line for s in bridge.sent] == ["goto 9 3"]
 
-    drive(app, body)
+    drive(app, body, size=(160, 48))  # every column: at 150 ``also`` takes the curve's room
 
 
 def test_the_edits_act_on_the_chosen_cue() -> None:

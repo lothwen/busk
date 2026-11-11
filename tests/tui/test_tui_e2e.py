@@ -1904,6 +1904,44 @@ def test_f4_edits_a_cues_timing_trigger_and_name_in_dialogs_on_the_real_engine(
         assert errors == []
 
     try:
+        drive(app, body, size=(160, 48))  # every column: at 150 ``also`` takes the curve's room
+    finally:
+        bridge.stop()
+
+
+def test_f4_names_the_other_families_a_cue_holds_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """F4's ``also`` at 150 columns, where the curve was: the Verse's pan
+    and tilt are ``position 2``; a zoom merged into the Intro makes it
+    ``beam 1``, and ``undo`` takes it away."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=4), standalone=True)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.live is not None and app.view.show is not None)
+        app._select_playback(9)
+        cues = app.query_one(CueTable)
+        await until(pilot, lambda: column(cues, "cue")[:1] == ["9/1"])
+        assert column(cues, "also") == ["—", "position 2", "—", "—", "—"]
+        lines = [line.plain for line in cues.lines(cues.size.width)]
+        assert "also" in lines[0].split()
+        assert "curve" not in lines[0].split()
+        assert lines[2].split()[:2] == ["9/2", "Verse"]
+        assert "position 2" in lines[2]
+
+        for line in ("sel fixture 101", "set zoom 50", "record cue 9/1 merge"):
+            await pilot.press(*line, "enter")
+        await until(pilot, lambda: column(cues, "also")[0] == "beam 1")
+        assert "beam 1" in cues.lines(cues.size.width)[1].plain
+        await pilot.press(*"undo", "enter")
+        await until(pilot, lambda: column(cues, "also")[0] == "—")
+        log = app.query_one(LogView).entries
+        assert [text for kind, text in log if kind == "error"] == []
+
+    try:
         drive(app, body)
     finally:
         bridge.stop()

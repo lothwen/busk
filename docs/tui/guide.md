@@ -712,22 +712,21 @@ delete lists, set a list's tracking and chase, edit a cue's timing, trigger and 
 copy and renumber cues and lists.
 
 ```
- ┌─ CUELISTS ─────────────────────────┐┌─ CUELIST 9 · Song ────────────────────────────────────────────────────────────────────┐
- │   # name           kind  cues pb   ││ mode sequence · tracking   playback P9 @ 70%   groups Washes, Heads, Bar, All         │
- │   1 Warm           seq      1 P1   ││                                                                                       │
- │   …                                ││   cue    name           time          delay  curve     follow wait   intensity  …     │
- │   9 Song           seq      5 P9   ││   9/1    Intro          3             —      easeInOut —      —      60%        …     │
- │  10 Chase          chase    4 P10  ││   9/2    Verse          2, position 4 —      linear    —      —      70%        …     │
- │   …                                ││ ▶ 9/3    Pre            1/3           —      linear    —      8      100%, 30%  …     │
- │  20 Fast pulse     seq      1 P20  ││   9/4    Chorus         0.5/2         —      linear    —      —      100%, 100% …     │
- │                                    ││   9/5    Outro          6             —      linear    4      —      20%        …     │
- │ [+ list…]                          ││                                                                                       │
- └────────────────────────────────────┘│ [GO] [BACK] [record cue 9] [cuelist 9 chase bpm x 1]                                  │
-                                       │ list 9 Song [tracking off] [chase…] [rename…] [number…] [delete]                      │
-                                       │ edit cue 9/3 Pre [time…] [delay…] [curve…] [go…] [follow…] [wait…] [rename…]          │
-                                       │                  [number…] [copy…] [release…] [record at…] [merge] [replace]          │
-                                       │                  [remove] [delete]                                                    │
-                                       └───────────────────────────────────────────────────────────────────────────────────────┘
+ ┌─ CUELISTS ─────────────────────────┐┌─ CUELIST 9 · Song ─────────────────────────────────────────────────────────────────────────────────────────┐
+ │   # name           kind  cues pb   ││ mode sequence · tracking   playback P9 @ 70%   groups Washes, Heads, Bar, All                              │
+ │   1 Warm           seq      1 P1   ││                                                                                                            │
+ │   …                                ││   cue    name       time          delay  follow wait   intensity  colour            also          fx       │
+ │   9 Song           seq      5 P9   ││   9/1    Intro      3             —      —      —      60%        ██ Blue           —                      │
+ │  10 Chase          chase    4 P10  ││   9/2    Verse      2, position 4 —      —      —      70%        ██ 1.00 0.75 0.45 position 2             │
+ │   …                                ││ ▶ 9/3    Pre        1/3           —      —      8      100%, 30%  ██ Amber          —                      │
+ │  20 Fast pulse     seq      1 P20  ││   9/4    Chorus     0.5/2         —      —      —      100%, 100% ██ 1.00 1.00 1.00 —             rainbow  │
+ │                                    ││   9/5    Outro      6             —      4      —      20%        —                 —                      │
+ │ [+ list…]                          ││                                                                                                            │
+ └────────────────────────────────────┘│ [GO] [BACK] [record cue 9] [cuelist 9 chase bpm x 1]                                                       │
+                                       │ list 9 Song [tracking off] [chase…] [rename…] [number…] [delete]                                           │
+                                       │ edit cue 9/3 Pre [time…] [delay…] [curve…] [go…] [follow…] [wait…] [rename…] [number…] [copy…] [release…]  │
+                                       │                  [record at…] [merge] [replace] [remove] [delete]                                          │
+                                       └────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 **Which list.** F4 shows the cue list of the selected playback, so ← → (on an empty prompt)
@@ -742,7 +741,14 @@ the name, the fade times (`1/3`: in 1 s, out 3 s; a family's own after a comma, 
 position 4`), the delays, the curve, the delay of an automatic GO under `follow` (after the
 cue before has finished) or `wait` (after it has started), and the cue's intensity and colour
 entries: a value, a preset's name, `spread`, or `per target` (a value per fixture, as `record
-cue` stores a spread), with the colour's swatch; then the ids of its effects.
+cue` stores a spread), with the colour's swatch. Under `also`, how many entries the cue holds of
+each other family, so a cue that only moves the heads does not look empty: `position 2` (a pan
+and a tilt), `position 2, beam 1`. A colour wheel, a CTO or a colour macro is a colour entry the
+`colour` column does not show, so `also` counts it: `color 1`. Then the ids of its effects.
+
+The table drops columns when it is narrow, the curve first: from 150 columns `also` shows where
+the curve was, and `[curve…]` still shows a cue's curve. From 160 columns every column shows;
+below 150, neither the curve nor `also`.
 
 - A click on a row goes to that cue: `goto 9 3` on the list's playback (busk's `cue 9/3 go`
   sets the cue's trigger instead). A list no playback runs has no go-to: its rows only
