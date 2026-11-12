@@ -477,7 +477,9 @@ on|off]` and `[blind on|off]`, which follow the programmer and are lit while on,
 **PROGRAMMER CONTENTS** has a row per fixture the programmer holds a value for: intensity, the
 colour as a swatch and its components, pan, tilt, zoom, and the other attributes it holds. A
 value from a preset shows the preset's name; a fixture whose elements differ shows `mixed`;
-`·` is an attribute it does not hold.
+`·` is an attribute it does not hold. Other attributes that do not fit their column take more
+lines, each under `other`, as many to a line as fit; one too long for a line of its own breaks at
+its space (`gobo1`, then `breakup`).
 
 With the pane cursor (Tab on an empty prompt), a row's name puts its `set` in the prompt,
 `[−]` `[+]` run their step, so Enter Enter Enter steps the value, and an option's chip runs its

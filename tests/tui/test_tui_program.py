@@ -42,7 +42,14 @@ from busk_tui.widgets.controls import ButtonStrip
 from busk_tui.widgets.encoders import EncoderRow
 from busk_tui.widgets.log import LogView
 from busk_tui.widgets.options import LIT, OptionRow
-from busk_tui.widgets.programmer import EMPTY, ProgrammerTable, contents
+from busk_tui.widgets.programmer import (
+    EMPTY,
+    OTHER_AT,
+    OTHER_MIN,
+    ProgrammerTable,
+    contents,
+    other_lines,
+)
 
 SPOT = ProfileInfo(
     "Spot",
@@ -237,6 +244,29 @@ def test_the_programmer_table() -> None:
                             "strobeRate", "10Hz", "·", "shutter", "strobe"]  # fmt: skip
     assert bar.split() == ["301", "Bar", "301", "100%", "██", "mixed", "·", "·", "·"]
     assert len(contents(None, rig(), "256")) == 1  # the header alone
+
+
+def test_other_attributes_wrap_in_their_column() -> None:
+    items = ["strobeRate 10Hz", "gobo1 breakup", "shutter strobe", "prism off"]
+    assert other_lines(items, None) == [" · ".join(items)]
+    assert other_lines(items, 100) == [" · ".join(items)]
+    assert other_lines(items, 32) == [
+        "strobeRate 10Hz · gobo1 breakup",
+        "shutter strobe · prism off",
+    ]
+    assert other_lines(items, 14) == [
+        "strobeRate", "10Hz", "gobo1 breakup", "shutter strobe", "prism off",
+    ]  # fmt: skip
+    assert other_lines(["gobo1 breakup", "zoom"], 11) == ["gobo1", "breakup", "zoom"]
+    assert other_lines(["strobeRate 10Hz", "zoom"], 14) == ["strobeRate", "10Hz", "zoom"]
+    assert other_lines(["gobo1 open", "frost 0%"], 18) == ["gobo1 open", "frost 0%"]  # 21 with ·
+    assert other_lines(items, OTHER_MIN - 1) == [" · ".join(items)]  # the screen wraps it
+    assert other_lines([], 20) == []
+    values = (held(101, "strobeRate", 10.0), held(101, "gobo1", "breakup"))
+    _, spot = contents(heads(*values), rig(), "256", cells=OTHER_AT + 11)
+    first, *rest = spot.plain.split("\n")
+    assert first.split()[-1] == "strobeRate"
+    assert rest == [" " * OTHER_AT + part for part in ("10Hz", "gobo1", "breakup")]
 
 
 # ------------------------------------------------------------------ the page
@@ -562,6 +592,32 @@ def test_programmer_contents_follow_the_programmer() -> None:
         lines = plain(table).splitlines()
         assert [line.split()[0] for line in lines[1:]] == ["101", "102"]
         assert str(page.contents.border_title) == "PROGRAMMER CONTENTS · 2 fixtures"
+
+    drive(app, body)
+
+
+def test_at_99_columns_the_other_attributes_stay_in_their_column() -> None:
+    """The table is laid out again when the screen narrows: no value starts a
+    line under ``#`` (pending plan §7, 2026-11-12)."""
+    bridge = FakeBridge()
+    app = program_app(bridge)
+    values = (held(101, "gobo1", "breakup"), held(101, "shutter", "strobe"))
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge, prog=heads(*values))
+        await settle(pilot, app)
+        table = app.query_one(ProgrammerTable)
+        assert plain(table).splitlines()[1].endswith("gobo1 breakup · shutter strobe")
+        await pilot.resize_terminal(99, 60)
+        await settle(pilot, app)
+        room = table.size.width - OTHER_AT
+        assert OTHER_MIN <= room < len("gobo1 breakup")
+        rows = plain(table).splitlines()[1:]
+        assert rows[0].startswith("101 ")
+        assert all(row.startswith(" " * OTHER_AT) for row in rows[1:])
+        assert [row.strip() for row in rows[1:]] == ["breakup", "shutter", "strobe"]
+        assert rows[0].split()[-1] == "gobo1"
+        assert table.region.height == len(rows) + 1
 
     drive(app, body)
 

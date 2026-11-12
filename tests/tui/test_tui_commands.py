@@ -1054,10 +1054,8 @@ def test_what_the_cap_dialog_passes_busk_takes(show: busk.OfflineShow, text: str
     assert show_model(show.show).strobeMaxHz == float(text)
 
 
-@pytest.mark.parametrize("text", ["0", "-1", "0.0", "abc", "", "9" * 301])
+@pytest.mark.parametrize("text", ["0", "-1", "+4", "50%", "0.0", "abc", "", "9" * 301])
 def test_a_cap_the_dialog_refuses_busk_refuses_too(show: busk.OfflineShow, text: str) -> None:
-    """busk takes ``+4`` and ``50%`` (0.5 Hz), which the dialog refuses: the
-    pending plan's §7, 2026-11-12."""
     assert check_rate(text) is not None
     assert not show.execute(f"safety strobe {text}").ok
 

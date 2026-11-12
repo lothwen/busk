@@ -175,6 +175,13 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Fixed
 
+- `safety strobe 50%` set a strobe cap of 0.5 Hz and `safety strobe +4` one of 4 Hz, and `safety
+  strobe 0` or `-1` was refused with a document path (`safety.strobeMaxHz: …`). A cap is now a
+  plain number of Hz above 0, with no sign and no `%`, as a tempo is; anything else is refused in
+  one line: `expected a rate above 0 Hz, or off, got '50%'`.
+- F2's PROGRAMMER CONTENTS put the end of a long `other` cell on a line of its own, under the
+  fixture's number, on a narrow screen (99 columns, with `gobo1 breakup`). The other attributes
+  now take as many lines as they need, each under their column, laid out again at a resize.
 - `master add speed … bpm 0` (or above 999) and `steps 0, 1` were refused with a document path
   (`masters[1].defaultBpm: …`), and `bpm 50%` made a tempo of 0.5 BPM, at `master add speed` and
   at `bpm ["<master>"]`. A tempo is now plain BPM, above 0 and at most 999, and a multiplier step a

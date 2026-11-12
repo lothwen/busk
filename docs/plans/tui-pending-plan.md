@@ -2764,8 +2764,9 @@ TUI only. Code: `src/busk_tui/pages/program.py`, `src/busk_tui/widgets/options.p
    - **`[off]` asks nothing,** as busk's `confirmation()` asks nothing before `safety strobe off`
      and §1's rule names no safety line. `undo` and `[cap…]` put a cap back.
    - **The dialog takes a plain number above 0, with no top,** as busk has none (`safety strobe
-     1000` goes through). It refuses `+4` and `50%`, which busk takes (§7). It starts at the cap,
-     every digit, or empty with none, and sends nothing for the cap there is.
+     1000` goes through). It refuses `+4` and `50%`, as busk does since §7's fix of the same day.
+     It starts at the cap, every digit, or empty with none, and sends nothing for the cap there
+     is.
 3. **The show's title.** A click on the status bar's title opens a name dialog that sends `rename
    show "Club Night"`.
 
@@ -2970,12 +2971,27 @@ sequences, executors and recipes. Each doubtful point was checked on `OfflineSho
   refused by document path (`strobe cap 0 Hz: rejected, the show would not be valid` and
   `safety.strobeMaxHz: Input should be greater than 0`), not in words. `_cmd_safety` reads the rate
   with `self.number`. F7's `[cap…]` refuses all four itself, so only the prompt meets them. Found
-  on 2026-11-12, in Phase 36. Not fixed: Phase 36 is TUI only. The fix would read it as
-  `Parser.tempo` reads a tempo: plain, above 0.
+  on 2026-11-12, in Phase 36. Fixed on 2026-11-13, at the user's word ("fix the two findings"):
+  `_cmd_safety` reads the rate as `Parser.tempo` reads a tempo, plain and above 0, with no top, as
+  the model has none, and refuses anything else in one line (`expected a rate above 0 Hz, or off,
+  got '50%'`). Rows in `tests/test_console_parser.py`; the F7 dialog's agreement test now holds
+  `+4` and `50%` among the rates both refuse.
 - At 99 columns, F2's PROGRAMMER CONTENTS wraps a long `other` cell onto a line of its own, under
   the `#` column: with 101 holding `gobo1 breakup`, `breakup` stands alone on the next line. The
   table did not change in Phase 36, whose option chips first set such a value from F2. Found on
-  2026-11-12, in Phase 36's real-terminal check. Not fixed.
+  2026-11-12, in Phase 36's real-terminal check. Fixed on 2026-11-13, at the user's word: the other
+  attributes wrap in their own column (`other_lines` in `src/busk_tui/widgets/programmer.py`), as
+  many to a line as fit with `·` between them, and one too long for a line of its own breaks at
+  its space (`textwrap`); each later line starts under `other`. The table is laid out again at
+  each resize. Below 8 cells for the column (`OTHER_MIN`, where the fixed columns fill the screen
+  anyway), a row stays one line, as before. Under `busk run` at 99 columns, 101 holding `gobo1
+  breakup` and `shutter strobe` shows `gobo1`, `breakup`, `shutter`, `strobe` down the column,
+  which is 11 cells there. Tests: 2 in `tests/tui/test_tui_program.py`. Calls the user may veto:
+  wrapping, not cutting with `…` as the table's other cells are cut, so every value held shows;
+  and an attribute split from its value at a narrow column, not cut. With both fixes, the whole suite:
+  6,647 passed and 1 skipped, in 9:11 with `uv run pytest -n 6`. A first run failed F6's
+  real-engine preset test once, which passed alone three times and in its file under `-n 6`, as
+  in Phase 15. The perf gate: 8 passed, F2 +0.198 core, +0.237 with the heads moving.
 - Cue parts. **Not planned**: a family's own timing (GAP-42) and, after Phase 29, an entry's own
   timing do what parts are mostly used for.
 - A Control preset pool. **Not planned**: busk never programs `control` attributes (lamp on,

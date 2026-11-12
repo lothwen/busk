@@ -6,15 +6,19 @@ components (two decimals), pan, tilt, zoom, and the other attributes it
 holds (``strobeRate 10Hz · gobo1 breakup``). A value from a preset shows the
 preset's name. A fixture whose elements hold different values shows
 ``mixed``; ``·`` is a value it does not hold. Values are magenta: the
-programmer's colour.
+programmer's colour. Where the other attributes do not fit the line, they
+take as many lines as they need, each under the column, and the table is
+laid out again at each resize.
 """
 
 from __future__ import annotations
 
+import textwrap
 from collections.abc import Sequence
 from typing import Final
 
 from rich.text import Text
+from textual import events
 from textual.widgets import Static
 
 from busk_tui import attributes, colors
@@ -24,6 +28,13 @@ from busk_tui.model import HeldValue, ProgrammerModel, ShowModel
 COLUMNS: Final = (("#", 5), ("name", 18), ("intensity", 10), ("colour", 25), ("pan", 8),
                   ("tilt", 8), ("zoom", 8), ("other", 0))  # fmt: skip
 """The columns and their widths (0: the rest of the line)."""
+
+OTHER_AT: Final = sum(width for _, width in COLUMNS)
+"""Where the ``other`` column starts."""
+
+OTHER_MIN: Final = 8
+"""The narrowest ``other`` column its attributes wrap in; in a narrower one
+a row is one line, which the screen wraps."""
 
 MAIN: Final = ("intensity", "color", "pan", "tilt", "zoom")
 """The attributes with a column of their own."""
@@ -47,9 +58,13 @@ def held_text(values: Sequence[HeldValue]) -> tuple[str, HeldValue | None]:
 
 
 def contents(
-    programmer: ProgrammerModel | None, show: ShowModel | None, mode: ColorMode
+    programmer: ProgrammerModel | None,
+    show: ShowModel | None,
+    mode: ColorMode,
+    cells: int | None = None,
 ) -> list[Text]:
-    """The table's lines: the header, then a row per fixture."""
+    """The table's lines: the header, then a row per fixture, its other
+    attributes wrapped to fit a table ``cells`` wide (``None``: on one line)."""
     values = () if programmer is None else programmer.values
     by_fixture: dict[int, dict[str, list[HeldValue]]] = {}
     for value in values:
@@ -84,8 +99,31 @@ def contents(
             for attribute, group in held.items()
             if attribute not in MAIN
         ]
-        line.append(" · ".join(other), style=colors.MAGENTA)
+        room = None if cells is None else cells - OTHER_AT
+        indent = "\n" + " " * OTHER_AT
+        line.append(indent.join(other_lines(other, room)), style=colors.MAGENTA)
         lines.append(line)
+    return lines
+
+
+def other_lines(items: Sequence[str], room: int | None) -> list[str]:
+    """The other attributes (``gobo1 breakup``) in ``room`` cells: as many to
+    a line as fit, ``·`` between them, and one too long for a line of its own
+    wrapped at its spaces. All on one line without ``room``, or with less
+    than :data:`OTHER_MIN`."""
+    if room is None or room < OTHER_MIN:
+        return [" · ".join(items)] if items else []
+    lines: list[str] = []
+    joinable = False  # whether the last line may take another attribute
+    for item in items:
+        if len(item) > room:
+            lines += textwrap.wrap(item, room)
+            joinable = False
+        elif joinable and len(lines[-1]) + 3 + len(item) <= room:
+            lines[-1] += " · " + item
+        else:
+            lines.append(item)
+            joinable = True
     return lines
 
 
@@ -105,11 +143,23 @@ class ProgrammerTable(Static):
     def __init__(self) -> None:
         super().__init__(Text(EMPTY, style=colors.DIM))
         self.shown: list[Text] | None = None
+        self.state: tuple[ProgrammerModel | None, ShowModel | None, ColorMode] = (
+            None,
+            None,
+            "256",
+        )
 
     def show(
         self, programmer: ProgrammerModel | None, show: ShowModel | None, mode: ColorMode
     ) -> None:
-        lines = contents(programmer, show, mode)
+        self.state = (programmer, show, mode)
+        self._draw()
+
+    def on_resize(self, event: events.Resize) -> None:
+        self._draw()
+
+    def _draw(self) -> None:
+        lines = contents(*self.state, cells=self.size.width)
         if lines == self.shown:
             return
         self.shown = lines

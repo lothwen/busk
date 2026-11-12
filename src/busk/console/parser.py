@@ -3210,7 +3210,10 @@ class _Parser:
                 raise ParseError("no strobe cap is set")
             delete = {"type": "DELETE", "path": ["safety", "strobeMaxHz"]}
             return Submit(_labelled("removed the strobe cap", delete))
-        hz = self.number("a rate in Hz, or off")
+        token = self.take("a rate in Hz, or off")
+        hz = _plain(token)  # no sign and no %: 50% would be 0.5 Hz
+        if hz is None or hz <= 0:
+            raise ParseError(f"expected a rate above 0 Hz, or off, got {token.text!r}")
         self.done()
         command = {"type": "SET", "path": ["safety"], "value": {**safety, "strobeMaxHz": hz}}
         return Submit(_labelled(f"strobe cap {hz:g} Hz", command))
