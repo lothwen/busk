@@ -102,6 +102,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-42](#gap-42-removing-a-familys-own-timing) Removing a family's own timing | action | nice-to-have | F4 | **done** 2026-11-11 |
 | [GAP-43](#gap-43-moving-and-copying-a-cue) Moving and copying a cue | action | nice-to-have | F4 | **done** 2026-11-11 |
 | [GAP-44](#gap-44-loading-a-cue-into-the-programmer) Loading a cue into the programmer | action | important | F4 | **done** 2026-11-11 |
+| [GAP-52](#gap-52-a-dmx-readout) A DMX readout | action | nice-to-have | prompt, F8 | **done** 2026-11-12 |
 
 ---
 
@@ -2757,3 +2758,65 @@ modules' docs. What it settles:
   bindings, a running `LiveShow`), rows in `tests/test_console_parser.py` and
   `tests/test_console_prompt.py`, the cascade's binding in `tests/test_cascade.py`, and a load in
   `tests/test_eventlog.py`'s replayed run.
+
+## GAP-52: A DMX readout
+
+**Status:** done 2026-11-12 (see **Done** at the end of this section).
+
+The user's word of 2026-11-12, after comparing busk with a grandMA3 show-programming howto; built in
+Phase 34 of `docs/plans/tui-pending-plan.md`. GAP-45 to GAP-51 belong to that plan's Phases 26 to
+33, which come later.
+
+**Needed by:** the prompt, and F8's CHANNELS panel.
+
+**Today:** nothing shows what busk sends on each DMX channel, which is how an operator checks a
+fixture's personality. F3 shows attributes (intensity, colour, pan, tilt, zoom), and F8's map shows
+footprints. The TUI has every frame (`LiveShow.frame`, carried under `busk run` since GAP-11), but
+the prompt has nothing. Nor does `list universes` count overlaps, as F8 does.
+
+**Engine should provide:** `list dmx U [A [thru B]]`, the channel values of the last frame;
+`list dmx fixture N`, a fixture's channels with their functions from its mode; and `list universes`
+with the channels used and the overlaps.
+
+**Priority:** nice-to-have.
+
+**TUI until then:** nothing. F8's map shows footprints only.
+
+**TUI since** 2026-11-12: F8's hint row names a channel's function and value, and its CHANNELS
+panel lists the selected fixture's channels, live (Phase 34 of the pending plan). The TUI reads
+the values from `LiveShow.frame` and names the functions from the profile in `LiveShow.show`, as
+`list dmx fixture N` names them; it parses none of that line's text.
+
+**Done** (2026-11-12). The line is `_list_dmx` in `src/busk/console/parser.py`, a `Query` of kind
+`dmx`; `Console._dmx` prints it from a frame source that `Console` now takes (`frame=`). Documented
+in `docs/console.md`, `busk help` and the parser's module docs. What it settles:
+
+- **The last frame** (§5, call 24 of the plan): what goes out, after the masters, park, blackout,
+  limits and highlight, read from the engine's `Frame`. It is not what the programmer or a cue
+  holds. While `output off` holds, a first line says `output is off: no route sends these`.
+- **Fresh after a line.** `OfflineShow` ticks after every line, so its frame is current. A running
+  `LiveShow`, and `busk run`, sync with the engine (`EngineLink.sync`), then wait for a frame made
+  since, at most `FRAME_WAIT_S` (1 s) for each, so a script's `set` shows in the `list dmx` after
+  it. A `LiveShow` not yet started has no frame (`no frame yet: the engine has not run`); a
+  stopped one gives its last.
+- **Under `busk run`** the console process had no frames: only a frontend, or a read of
+  `LiveShow.frame` or `health`, asks the engine process for them (`WATCH`). The first `list dmx`
+  asks (`watch(frames=True)`), and from then on every frame goes to the console process, as under a
+  frontend. On the club show with the song and the chase running, the console process went from
+  0.015 to 0.036 core and the engine process from 0.148 to 0.159 core.
+- **`list dmx U`** prints 16 values to a line, after the address of the first (`1.17`), left-aligned
+  to the widest address. `A` alone prints one channel, `A thru B` a span, `thru` counting either
+  way. A channel outside 1 to 512 is refused in one line.
+- **`list dmx fixture N`** prints each channel of the footprint, aligned: the address, the function
+  and the value. A function is the channel's attribute (`pan`), or its emitter for a colour channel
+  (`red`, `white`), with `fine` and `ultra` for its other bytes where the profile puts them
+  (`byte_offsets`: the MH-X25's fine bytes are two channels on). On a mode of several elements, the
+  element's name comes first (`Cell 2 red`). A channel the mode does not describe is `unused`. An
+  unpatched fixture is refused in words (`fixture 101 is not patched`).
+- **`list universes`** adds the channels that fixtures take and, when there are any, the pairs of
+  fixtures that overlap (`    1  Stage                 77/512  1 overlap`), counted as F8 counts
+  them.
+- Tests: `tests/test_dmx_readout.py` (the frame, a span, alignment, an empty universe, functions, a
+  fine byte apart, elements, park, blackout and limits, `output off`, the counts, refusals, Tab, a
+  running `LiveShow`, and `busk run` with processes and with threads), and the list of kinds in
+  `tests/test_console_parser.py`.

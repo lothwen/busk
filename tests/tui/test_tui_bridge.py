@@ -9,6 +9,7 @@ import time
 from collections.abc import Callable, Iterator
 from dataclasses import replace
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 import pytest
@@ -24,6 +25,7 @@ from busk_tui.model import (
     BridgeEvent,
     Busy,
     CommandDone,
+    DmxChanged,
     EffectsChanged,
     ElementOutput,
     EngineFailed,
@@ -378,6 +380,76 @@ def test_the_output_only_while_watched_and_only_when_it_changes(
     while len(events.of(OutputChanged)) == sent:
         assert time.monotonic() < deadline, "not sent again"
         time.sleep(0.01)
+
+
+def dmx_frame(seq: int, value: int = 0) -> busk.DmxFrame:
+    universes = MappingProxyType({1: bytes([value]) + bytes(511), 2: bytes(512)})
+    return busk.DmxFrame(seq=seq, time=seq / 100, universes=universes)
+
+
+def test_the_dmx_frame_only_while_watched_and_only_when_it_changes(
+    running: tuple[Bridge, Events], stub: Stub
+) -> None:
+    """F8's channel values (the pending plan's Phase 34)."""
+    bridge, events = running
+    stub.frame = dmx_frame(1, 255)
+    time.sleep(0.2)
+    assert events.of(DmxChanged) == []  # not watched
+    bridge.watch(output=False, effects=False, dmx=True)
+    first = events.until(lambda e: isinstance(e, DmxChanged), "the frame")
+    assert isinstance(first, DmxChanged)
+    assert first.dmx.seq == 1
+    assert [number for number, _ in first.dmx.universes] == [1, 2]
+    assert first.dmx.universe(1) == bytes([255]) + bytes(511)
+    assert first.dmx.universe(3) is None
+    stub.frame = dmx_frame(2, 255)  # a new tick, the same bytes
+    time.sleep(0.2)
+    assert len(events.of(DmxChanged)) == 1
+    stub.frame = dmx_frame(3, 128)
+    events.until(lambda e: isinstance(e, DmxChanged) and e.dmx.seq == 3, "a change")
+    bridge.watch(output=False, effects=False)
+    time.sleep(0.2)
+    sent = len(events.of(DmxChanged))
+    stub.frame = dmx_frame(4, 0)
+    time.sleep(0.2)
+    assert len(events.of(DmxChanged)) == sent  # not watched any more
+    bridge.watch(output=False, effects=False, dmx=True)
+    events.until(lambda e: isinstance(e, DmxChanged) and e.dmx.seq == 4, "sent again")
+
+
+class ChangingStub(Stub):
+    """A stub whose frame is new, with new bytes, at every read."""
+
+    count = 0
+
+    @property  # type: ignore[override]
+    def frame(self) -> Any:
+        self.count += 1
+        return dmx_frame(self.count, self.count % 256)
+
+    @frame.setter
+    def frame(self, value: Any) -> None:
+        pass
+
+
+def test_the_dmx_frame_goes_ten_times_a_second_at_most() -> None:
+    stub = ChangingStub()
+    bridge = Bridge(stub, None)  # type: ignore[arg-type]
+    bridge.start()
+    try:
+        events = Events(bridge)
+        events.until(lambda e: isinstance(e, EngineRunning))
+        bridge.watch(output=False, effects=False, dmx=True)
+        events.until(lambda e: isinstance(e, DmxChanged), "the frame")
+        before = len(events.of(DmxChanged))
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline:  # a drain keeps only the newest of each kind
+            events.of(DmxChanged)
+            time.sleep(0.02)
+        sent = len(events.of(DmxChanged)) - before
+        assert 7 <= sent <= 13, sent  # the reader looks 20 times a second
+    finally:
+        bridge.stop()
 
 
 class CountingStub(Stub):

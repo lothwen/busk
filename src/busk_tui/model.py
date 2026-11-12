@@ -280,6 +280,18 @@ class OutputModel:
 
 
 @dataclass(frozen=True, slots=True)
+class DmxModel:
+    """What busk sends: the engine's newest frame (busk's ``DmxFrame``), 512
+    bytes per universe, by universe number."""
+
+    seq: int
+    universes: tuple[tuple[int, bytes], ...]  # by number
+
+    def universe(self, number: int) -> bytes | None:
+        return next((values for found, values in self.universes if found == number), None)
+
+
+@dataclass(frozen=True, slots=True)
 class EffectView:
     """One running effect instance (busk's ``EffectStatus``): a playback's
     (``playback``, and ``cue``, the cue that holds it) or the programmer's
@@ -571,6 +583,7 @@ class FixtureInfo:
     location: Location | None = None
     limits: Limits = Limits()
     orientation: Orientation = Orientation()
+    channels: tuple[str, ...] = ()  # what each channel of its footprint does, by offset
 
 
 @dataclass(frozen=True, slots=True)
@@ -739,6 +752,11 @@ class OutputChanged:
 
 
 @dataclass(frozen=True, slots=True)
+class DmxChanged:
+    dmx: DmxModel
+
+
+@dataclass(frozen=True, slots=True)
 class RoutesChanged:
     routes: tuple[RouteView, ...]
 
@@ -779,6 +797,7 @@ type BridgeEvent = (
     | ProgrammerChanged
     | EffectsChanged
     | OutputChanged
+    | DmxChanged
     | RoutesChanged
     | SurfacesChanged
     | HealthChanged
@@ -793,6 +812,7 @@ STATE_EVENTS: tuple[type, ...] = (
     ProgrammerChanged,
     EffectsChanged,
     OutputChanged,
+    DmxChanged,
     RoutesChanged,
     SurfacesChanged,
     HealthChanged,
@@ -831,7 +851,7 @@ class BridgeLike(Protocol):
 
     def expected(self, line: str) -> Completion: ...
 
-    def watch(self, output: bool, effects: bool) -> None: ...
+    def watch(self, output: bool, effects: bool, dmx: bool = False) -> None: ...
 
     def drain(self) -> list[BridgeEvent]: ...
 

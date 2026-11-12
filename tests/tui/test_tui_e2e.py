@@ -70,7 +70,13 @@ from busk_tui.pages.busk_stage import StageLayout, StagePlot
 from busk_tui.pages.cues import CuesPage
 from busk_tui.pages.fixtures import FixturesPage
 from busk_tui.pages.masters import MastersPage
-from busk_tui.pages.patch import PatchPage, RoutesTable, UniverseTable
+from busk_tui.pages.patch import (
+    NO_CHANNELS,
+    ChannelTable,
+    PatchPage,
+    RoutesTable,
+    UniverseTable,
+)
 from busk_tui.pages.presets import PresetsPage
 from busk_tui.pages.program import EncoderPanel
 from busk_tui.shell import BuskApp
@@ -2407,6 +2413,78 @@ def test_f3_shows_the_real_output_and_f8_selects_from_the_map(
         await pilot.click(app.query(DmxMap).first(), offset=(5 + 32, 0))  # channel 33: 201
         await until(pilot, lambda: bool(app.programmer and app.programmer.selection == ((201, 1),)))
         assert ("ui", "sel fixture 201") in app.query_one(LogView).entries
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_f8_shows_what_busk_sends_on_each_channel_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """F8's CHANNELS: the one fixture selected, each channel as busk's ``list
+    dmx fixture N`` prints it, live; the hint row the same under the mouse
+    (the pending plan's Phase 34)."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=8), standalone=True)
+
+    def rows() -> list[tuple[str, str, str]]:
+        table = app.query_one(ChannelTable)
+        return list(
+            zip(
+                column(table, "address"),
+                column(table, "function"),
+                column(table, "value"),
+                strict=True,
+            )
+        )
+
+    def printed(number: int) -> list[tuple[str, str, str]]:
+        show = bridge._show
+        assert show is not None
+        reply = show.execute(f"list dmx fixture {number}")
+        assert reply.ok, reply.text
+        found = []
+        for line in reply.text.splitlines():
+            address, rest = line.split(None, 1)
+            function, value = rest.rsplit(None, 1)
+            found.append((address, function, value))
+        return found
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.view.show is not None and app.view.dmx is not None)
+        assert app.query_one(ChannelTable).empty.plain == NO_CHANNELS
+        await pilot.press(*"sel fixture 101", "enter", *"set intensity 100%", "enter")
+        await until(pilot, lambda: ("1.9", "intensity", "255") in rows())
+        assert rows() == printed(101)
+        await pilot.press(*"set pan 10", "enter")
+        await until(pilot, lambda: rows()[0] != ("1.1", "pan", "128"))
+        assert rows() == printed(101)
+        dmx_map = app.query(DmxMap).first()
+        await pilot.hover(dmx_map, offset=(5 + 8, 0))  # channel 9
+        await until(
+            pilot,
+            lambda: (
+                plain_of(app.query_one(HintRow)) == "1.9 · fixture 101 · ch 9/16 intensity · 255"
+            ),
+        )
+        await pilot.press(*"set intensity 20%", "enter")  # the mouse stays where it is
+        await until(pilot, lambda: plain_of(app.query_one(HintRow)).endswith("intensity · 51"))
+        await pilot.press(*"sel fixture 301", "enter", *"set color 1 0 0", "enter")
+        await pilot.press(*"set intensity 100%", "enter")
+        await until(pilot, lambda: len(rows()) == 36 and rows()[0][2] != "0")
+        assert rows()[:4] == [
+            ("1.49", "Cell 1 red", "128"),  # at half: the bar's limit
+            ("1.50", "Cell 1 green", "0"),
+            ("1.51", "Cell 1 blue", "0"),
+            ("1.52", "Cell 2 red", "128"),
+        ]
+        assert rows() == printed(301)
+        await pilot.press(*"sel none", "enter")
+        await until(pilot, lambda: rows() == [])
 
     try:
         drive(app, body)

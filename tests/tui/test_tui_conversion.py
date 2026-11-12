@@ -167,6 +167,7 @@ def test_the_show_model_has_what_f1_and_f7_show(club: busk.OfflineShow) -> None:
     ]
     position = [p for p in model.presets if p.pool == "position"]
     assert [p.color for p in position] == [None, None]
+    fixtures = [replace(fixture, channels=()) for fixture in model.fixtures]  # tested apart
     bar = FixtureInfo(
         301,
         12,
@@ -177,7 +178,7 @@ def test_the_show_model_has_what_f1_and_f7_show(club: busk.OfflineShow) -> None:
         (1, 49),
         limits=Limits(intensity=0.5),
     )
-    assert bar in model.fixtures
+    assert bar in fixtures
     spot = FixtureInfo(
         101,
         1,
@@ -188,7 +189,34 @@ def test_the_show_model_has_what_f1_and_f7_show(club: busk.OfflineShow) -> None:
         (1, 1),
         limits=Limits(tilt=(-90.0, 10.0)),
     )
-    assert spot in model.fixtures
+    assert spot in fixtures
+
+
+@pytest.mark.parametrize("which", ["club", "tupper", "library"])
+def test_each_channels_function_is_what_list_dmx_fixture_prints(
+    which: str, show: busk.OfflineShow, tupper: busk.OfflineShow
+) -> None:
+    """F8's CHANNELS panel and its hints name each channel as busk's ``list
+    dmx fixture N`` does: on both shipped shows, and a fixture of each library
+    profile in each of its modes."""
+    found = {"club": show, "tupper": tupper}.get(which)
+    if found is None:
+        found = busk.OfflineShow(busk.new_show("Library"))
+        assert found.execute('universe add 1 "Stage"').ok
+        number, address = 1, 1
+        for profile in found.fixture_profiles:
+            for mode in profile.modes:
+                line = f'fixture add {number} "{profile.name}" mode {mode.name} at 1.{address}'
+                assert found.execute(line).ok, line
+                number, address = number + 1, address + mode.footprint
+    model = show_model(found.show)
+    patched = [fixture for fixture in model.fixtures if fixture.patch is not None]
+    assert len(patched) >= 5
+    for fixture in patched:
+        reply = found.execute(f"list dmx fixture {fixture.number}")
+        assert reply.ok, reply.text
+        printed = [line.split(None, 1)[1].rsplit(None, 1)[0] for line in reply.text.splitlines()]
+        assert list(fixture.channels) == printed, fixture.number
 
 
 def test_a_chase_names_its_master_when_the_show_has_two(show: busk.OfflineShow) -> None:

@@ -136,6 +136,13 @@ MONITOR_S: Final = 0.1
 """How often a :class:`LiveShow` (and ``busk run``'s console) looks at its
 routes and surfaces."""
 
+FRAME_WAIT_S: Final = 1.0
+"""How long ``list dmx`` waits for the engine to apply the lines sent before
+it, and then for a frame made since."""
+
+_FRAME_POLL_S: Final = 0.005
+"""How often ``list dmx`` looks for that frame."""
+
 
 @dataclass(frozen=True, kw_only=True)
 class DmxFrame:
@@ -470,6 +477,7 @@ class OfflineShow(_Facade):
             library if library is not None else ProfileLibrary(),
             status=lambda: status_line(self.snapshot),
             settle=self._settle,
+            frame=lambda: engine.latest,
         )
         self._time = 0.0
         self._read: OutputSnapshot | None = None  # the last tick's output, once read
@@ -707,6 +715,7 @@ class LiveShow(_Facade):
                 session,
                 library if library is not None else ProfileLibrary(),
                 status=self._status_line,
+                frame=self._fresh_frame,
             ),
             LocalEngine(engine),
             clock,
@@ -782,7 +791,9 @@ class LiveShow(_Facade):
         )
         live = cls.__new__(cls)
         live._setup(
-            Console(session, library, iface=iface, status=status, about=about),
+            Console(
+                session, library, iface=iface, status=status, about=about, frame=live._fresh_frame
+            ),
             link,
             clock,
             state_dir=state_dir,
@@ -856,6 +867,23 @@ class LiveShow(_Facade):
             cached = (latest, _dmx_frame(latest))
             self._latest = cached  # one assignment: other threads see the pair whole
         return cached[1]
+
+    def _fresh_frame(self) -> Frame | None:
+        """The frame ``list dmx`` prints (GAP-52): while the engine runs, one
+        made after it applied every line sent so far, so a script's ``set``
+        shows in the ``list dmx`` after it. ``busk run``'s show asks for
+        frames here, as :attr:`frame` does, and the first comes within a
+        tick. Waits at most :data:`FRAME_WAIT_S` s twice, then gives the
+        newest frame there is (a stalled engine's last), or ``None``."""
+        link = self._link
+        link.watch(frames=True)
+        if self._phase != "running" or not link.sync(FRAME_WAIT_S):
+            return link.frame
+        before = link.frame  # it may be older than the sync: wait for the next
+        deadline = time.monotonic() + FRAME_WAIT_S
+        while (latest := link.frame) is before and time.monotonic() < deadline:
+            time.sleep(_FRAME_POLL_S)
+        return latest
 
     @property
     def output(self) -> OutputSnapshot | None:

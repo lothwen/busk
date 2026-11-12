@@ -1100,9 +1100,9 @@ Every master, one panel per kind, three across on a wide terminal:
 
 ## F8 Patch
 
-The universes, the output routes and their state, and a map of each universe's channels.
-Universes and routes are added, changed and deleted here, and a free channel of a map takes a
-fixture.
+The universes, the output routes and their state, a map of each universe's channels, and
+what busk sends on the channels of the fixture selected. Universes and routes are added,
+changed and deleted here, and a free channel of a map takes a fixture.
 
 ```
  ┌─ UNIVERSES ───────────────────────────────────────────────────┐┌─ ROUTES ──────────────────────────────────────────────────────┐
@@ -1118,7 +1118,7 @@ fixture.
  │  129 ································································                                                          │
  │  …
  █ TupperDMX LED Bar   █ TupperDMX Blinder   █ TupperDMX Smoke Machine   █ TupperDMX PAR RGBW   █ TupperDMX Moving Head   █ start
- ▓ footprint   ╳ overlap   · free   hover a channel for its fixture; a click selects it
+ ▓ footprint   ╳ overlap   · free   hover a channel for its fixture and value; a click selects it
 ```
 
 **UNIVERSES**: each universe, how many fixtures are patched in it, how many of its 512
@@ -1187,9 +1187,37 @@ fixtures share a channel; `·` is free. The legend names the types. A fixture pa
 split patch (one address per element) shows its main patch only: busk does not run split
 patches yet, and F3 marks them `split`.
 
-Hover over a channel and the hint row says what it is (`1.94 · overlap · fixture 501 · ch
-3/12 · fixture 502 · ch 3/12`). A click on a fixture selects it (`sel fixture 101`), both on an
-overlap (`sel fixture 501, fixture 502`); Shift-click adds it, or takes it out.
+Hover over a channel and the hint row says what it is, what it does in the fixture's mode,
+and what busk sends on it now: `1.17 · fixture 102 · ch 1/16 pan · 128`, or `1.94 · overlap
+· fixture 501 · ch 3/12 tilt · fixture 502 · ch 3/12 tilt · 128`. The value follows the
+show while the mouse stays. A click on a fixture selects it (`sel fixture 101`), and on an
+overlap it selects both (`sel fixture 501, fixture 502`). Shift-click adds a fixture to the
+selection, or takes it out.
+
+**CHANNELS**, under the maps: with one fixture selected, each channel of its footprint, its
+address, the value busk sends on it, and its function, as `list dmx fixture 101` prints them
+at the prompt:
+
+```
+ ┌─ CHANNELS · fixture 101 Spot 101 · Generic Spot 16ch / 16ch · 1.1 ──────────────┐
+ │ address dmx function                                                            │
+ │ 1.1     132 pan                                                                 │
+ │ 1.2     189 pan fine                                                            │
+ │ 1.3     128 tilt                                                                │
+ │ …                                                                               │
+ │ 1.9     255 intensity                                                           │
+ │ 1.10    255 intensity fine                                                      │
+ │ …                                                                               │
+ │ 1.14      0 unused                                                              │
+ └─────────────────────────────────────────────────────────────────────────────────┘
+```
+
+The values are what goes out, 10 times a second: after the masters, park, blackout and the
+limits, and not what the programmer holds. A fine byte is named after its channel (`pan fine`),
+a colour channel after its emitter (`red`, `white`), and on a fixture of several elements each
+function starts with its element's name (`Cell 2 red`). `unused` is a channel the mode does not
+describe. With no fixture selected, or several, the panel says to select one; an unpatched
+fixture says so.
 
 **A place.** A click on a free channel sends nothing: it arms a place, and the strip above the
 maps reads `place 1.9 · 24 free from here`. It offers:

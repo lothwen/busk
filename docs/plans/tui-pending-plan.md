@@ -5,6 +5,8 @@
 > `docs/dev/tui/operations-report.md` ("What busk is missing", "What the TUI is missing" and "Side
 > findings"), `docs/plans/tui-rig-plan.md` §9, and what the last conversation left open. §5 holds
 > the plan's own calls, which the user may veto, and §8 the questions only the user can answer.
+> On 2026-11-12 the user added Phases 26 to 36. They cover the gaps found by comparing busk with a
+> grandMA3 show-programming howto (§7's items of that date).
 
 ## 1. How a phase runs
 
@@ -17,7 +19,9 @@
   or waiting on busk. Phase 14 is the one exception: a question gates it, nothing else needs it,
   and its engine step comes first inside the phase. Phases 20 to 22, added on 2026-11-11, and
   Phase 25 are built the same way: one item each, its engine step first, then the control that
-  uses it. The TUI step keeps the TUI phases' rules below.
+  uses it. The TUI step keeps the TUI phases' rules below. Phases 26 to 36, added on 2026-11-12,
+  follow the same pattern. Where an item's engine work is too large to share a phase, it gets a
+  phase of its own before the TUI's: 27 before 28, and 29 before 30. Phase 31 is engine only.
 - **Engine phases** change `src/busk/` and its tests. Each gap gets an entry and a Summary row in
   `docs/dev/tui/engine-gaps.md`. A wrong message or a missing range check is a bug, not a gap, and
   gets no number.
@@ -122,6 +126,17 @@ to be at `f851165`.
 | 23 | F4 counts every other family's entries (`also`) | TUI | | Q7 |
 | 24 | A mode or profile change that loses elements in use, refused in words | busk | | |
 | 25 | Loading a cue into the programmer (GAP-44); F4's `[load]` | busk, TUI | | Q8 |
+| 26 | Odd and even in a selection (GAP-45); `[odd]` `[even]` | busk, TUI | | Q9 |
+| 27 | A cue list's tracked states (GAP-46), `list cue L/C`, block cues (GAP-47) | busk | | |
+| 28 | F4's track sheet, and `[block]` | TUI | 27 | Q10 |
+| 29 | Timing per target, with a fan (GAP-48) | busk | | Q11 |
+| 30 | F4's timing per target | TUI | 29 | Q11 |
+| 31 | A recorded spread follows its group (GAP-49) | busk | | Q12 |
+| 32 | Effect shapes: a layer's cycles (GAP-50), five more library templates; F5's `[cycles…]` | busk, TUI | | |
+| 33 | Reusable effect settings (GAP-51); F5 | busk, TUI | 32 | Q13 |
+| 34 | A DMX readout: `list dmx` (GAP-52); F8's channel values | busk, TUI | | |
+| 35 | Masters renamed and deleted (GAP-53); made, renamed and deleted on F7 | busk, TUI | 33, if built | |
+| 36 | F2's option chips, the strobe cap on F7, the show's title | TUI | | |
 
 ## 4. What busk does (checked on 2026-11-08)
 
@@ -205,6 +220,24 @@ Added on 2026-11-11, for Phase 25:
     reference per slot, so a group's entry, a spread and per-target values come target by target.
     Recording back finds the groups again by the cover, unless `freeze`; a spread comes back as
     per-target values.
+
+Added on 2026-11-12, for Phases 26 to 36:
+
+19. **GAP-45 to GAP-53** are numbered here, in the order they are built.
+20. **A new cue list still starts without tracking,** unlike grandMA3, where tracking is the
+    default. A busking look is a list of one cue, a script that records cues keeps its meaning,
+    and F4's `[tracking on]` is one click. No phase changes this.
+21. **Odd and even count positions in the targets' order, not fixture numbers.** `sel fixture 108
+    thru 101 odd` gives 108, 106, 104 and 102, as a spread and an effect's phase count. A target
+    is an element, so a pixel bar's cells count one by one.
+22. **A tracked state is the list played by GO from its first cue,** read from the compiled show.
+    It is not what the stage shows, which other playbacks, the masters, park and the programmer
+    change.
+23. **A master in use is refused, not cascaded,** as a used template is (call 3). An effect's or a
+    chase's rate cannot lose its master and still run. Only the bindings that name it go, under
+    `cascade`.
+24. **`list dmx` prints the last frame:** what goes out, after the masters, blackout, park and
+    limits, not what the programmer or a cue holds.
 
 ## 6. Phases
 
@@ -2140,6 +2173,493 @@ then `y` logged `loaded cue 9/1 "Intro": 8 values on 4 fixtures` and PROG showed
 intensity 30%` typed and `[replace]` made the Intro's row 30 %; `undo` 60 % again. Every button
 shows at 99 columns, where on the Intro `[delete]` now wraps to a third row. No error in the log.
 
+### Phase 26: Odd and even in a selection
+
+The user's word of 2026-11-12, after the grandMA3 comparison (§7). grandMA3's groups by purpose
+(Spots Odd, Spots Even) take every other fixture of a selection. busk selects only by number, span
+and group, so today the line is `sel fixture 101, fixture 103, fixture 105, fixture 107`. Its shape
+waits on Q9. The engine step comes first. Code: `src/busk/console/parser.py` (`_cmd_sel`),
+`src/busk/commands/types.py` (`SELECT`), `src/busk/session/programmer.py`;
+`src/busk_tui/widgets/quick.py` (`group_buttons`), `src/busk_tui/commands.py`, and the places with
+group buttons: `pages/program.py`, `widgets/preset_panel.py`, `pages/busk_stack.py`,
+`pages/busk_stage.py`.
+
+1. **GAP-45: odd and even**, under Q9's answer. Under (a):
+   - `sel <targets> odd|even` keeps every other target of those the line names, in their order,
+     counted from 1. `odd` keeps the first, third and so on; `even` keeps the second, fourth and
+     so on (§5, call 21). A target is an element, so `sel fixture 301 even` selects the bar's even
+     cells. `sel + <targets> odd` adds those targets, and `sel - <targets> odd` takes them out.
+   - `sel odd` and `sel even` keep every other target of the current selection, in its order. The
+     parser does not see the selection, so this form is a programmer command: a mode of `SELECT`
+     or a command of its own, which the step chooses and names. It is one programmer step.
+   - The reply counts what is selected, as `sel` does. `sel odd` with nothing selected is refused
+     in one line. Tab offers `odd` and `even` after the targets and after `sel`.
+
+   Add the entry and its Summary row to engine-gaps.md, and update `docs/console.md` and `busk
+   help`.
+
+   Verify: each form on a group, a span, a span written backwards, a fixture's elements, and a
+   list of these; `sel odd` on a single target; `undo`; `record group 5 "Spots Odd"` afterwards
+   records those members in order; a running `LiveShow`.
+2. **`[odd]` and `[even]`** come after the group buttons (before `[none]` on a strip that has
+   one): on F2's SELECTION, F6's PRESET panel, F1 B's SELECTION and F1 C's QUICK. Each sends `sel
+   odd` or `sel even`, and is grey while fewer than two targets are selected. F3's GROUPS
+   `[record…]` then makes the group.
+
+   Verify: the line by a click and by the pane cursor; the grey state; the selection afterwards; a
+   test on the real engine; the perf gate on F1 and F2, whose strips change.
+
+Under (b), step 1 reads `every N [from K]` in place of the two words. `odd` and `even` stay as its
+two common cases, and step 2's buttons stay `[odd]` and `[even]`.
+
+Docs: the guide's F1, F2 and F6, F3's GROUPS (a group of every other fixture), and `CHANGELOG.md`.
+
+### Phase 27: Tracked states and block cues
+
+The user's word of 2026-11-12. A tracking list stores each cue's changes, and on stage a cue shows
+them over what the cues before it left. Nothing shows that today:
+
+- `list cues L` gives each cue's timing and trigger.
+- F4 shows what each cue stores (Phase 23's `also` counts it).
+- `load cue` brings only the cue's own changes (Q8 (a)).
+
+The compiler works out each cue's state (`src/busk/compiler/tracking.py`), but no facade reads it.
+A cue's `block` (a tracking stop: the cue is a whole state) is in the model. Only the generic edit
+sets it (`cue 9/3 block true`, which replies with a path), and neither `list cues` nor F4 shows it.
+This phase is engine only; F4 is Phase 28. Code: `src/busk/compiler/tracking.py`,
+`src/busk/runner.py`, `src/busk/console/console.py` (`list`), `src/busk/console/parser.py`
+(`_cue_verb`).
+
+1. **GAP-46: a cue list's tracked states.** `OfflineShow.tracking(L)` and `LiveShow.tracking(L)`
+   read the compiled show, not the engine (§5, call 22). For each cue, in order, the read gives:
+   - its number, name and `block`;
+   - for each target and attribute the cue gives a value: the value (a literal, or a preset by
+     name) and where it comes from, `own` (the cue stores it) or `tracked` from cue N;
+   - what the cue releases;
+   - its effects, own or tracked, in the same way.
+
+   A list without tracking has only `own`. Name and export the classes as the other reads are
+   (`TrackedCue`, `TrackedValue`). Check that the console process under `busk run` has the
+   compiled show to read.
+
+   Verify: Song with tracking on (Verse's colour is tracked from Intro); a release; a block cue;
+   an effect that tracks on; a list without tracking; a list with no cues; a chase (say what the
+   compiler does with tracking there); `OfflineShow` and a running `LiveShow`; the read's cost on
+   the reference rig, in `docs/dev/benchmarks.md`.
+2. **`list cue L/C`** prints the cue's state from GAP-46: a line per fixture with each value and
+   where it comes from (`101  intensity 100%  color Blue ← 9/1  pan 20 ← 9/2`), then what the cue
+   releases, then its effects. `list cues L` marks a block cue `block`. Tab offers `cue` after
+   `list`.
+
+   Verify: Song's five cues against GAP-46's read; a fixture whose elements differ; a released
+   attribute; a list without tracking.
+3. **GAP-47: `cue L/C block on|off`** is one undo step, with a reply in words (`cue 9/3 tracks
+   nothing from the cues before it`, `cue 9/3 tracks again`). On a list without tracking it goes
+   through, and the reply says it does nothing until tracking is on. Tab offers `block`, then `on`
+   and `off`.
+
+   Verify: on, off and `undo`; the compiled states change (a block cue drops what it tracked, and
+   the cues after it track from it); `list cues`; the generic edit still works.
+
+Add the entries and Summary rows for GAP-46 and GAP-47 to engine-gaps.md. Docs: `docs/console.md`
+(the List row, and "Tracking lists record changes only"), `docs/library.md` (the read), and
+`CHANGELOG.md`.
+
+### Phase 28: F4's track sheet
+
+Needs Phase 27. Its shape waits on Q10. Code: `src/busk_tui/bridge.py`, `src/busk_tui/model.py`,
+`src/busk_tui/pages/cues.py`, `src/busk_tui/widgets/cuetable.py`.
+
+1. **The bridge reads GAP-46** for the list F4 shows: when the list is shown and after a show edit,
+   not every tick.
+2. **The track view**, under Q10's answer. Under (b), the list's panel gets `[cues]` and `[track]`
+   chips. The `track` view keeps the table's rows (one per cue) and its first columns (`▶`, `L/C`,
+   name). Then it has a column per fixture for one family, chosen by chips (`intensity`, `color`,
+   `position`, `beam`, `focus`, `shutter`). Each cell is:
+   - the value the cue stores, bright;
+   - a tracked value, dim;
+   - `✕` where the cue releases it;
+   - `·` where there is nothing.
+
+   A fixture whose elements differ shows `mixed`, as F2's PROGRAMMER CONTENTS does. A block cue's
+   row is marked. Fixtures past the width either scroll or are counted (`+6 fixtures`); the step
+   picks one and says which. With the mouse on a cell, the hint row says where its value comes from
+   (`201 color Blue, tracked from 9/1`). A click on a row chooses the cue, as in `cues`, so the
+   `edit` row acts on it.
+3. **`[block]`**, in the `edit` row and lit on a block cue, sends `cue 9/3 block on|off` without a
+   question: `undo` takes it back.
+
+   Verify: the club show's Song with tracking on; every family chip; a narrow terminal; the perf
+   gate on F4; a test on the real engine (`[block]`, then the view changes).
+
+Docs: the guide's F4, the report's Cues rows, and `CHANGELOG.md`.
+
+### Phase 29: Timing per target
+
+The user's word of 2026-11-12. busk times a cue, and each family of a cue (`cue 9/2 time position
+4`), but not a single fixture: no line staggers eight spots, each starting a little after the one
+before. The model has an entry's own timing (`TimingOverride`), but only the generic edit reaches
+it, by rewriting the cue's whole `entries` list as JSON, since an entry has no id a path can name.
+`load cue` leaves that timing out, and `record … replace` drops it (Phase 25). Its shape waits on
+Q11. This phase is engine only; F4 is Phase 30. Code: `src/busk/model/entry.py`, where the
+compiler applies an entry's timing, `src/busk/commands/record.py`,
+`src/busk/session/programmer.py` (`LOAD_CUE`'s note), `src/busk/console/parser.py` (`_cue_verb`).
+
+1. **GAP-48: timing per target**, under Q11's answer. Under (a):
+   - An entry's timing takes a fan: `fadeTo` and `delayTo` beside `fade` and `delay`. The fan
+     spreads over the entry's targets in their order, as a spread value does (`spread_fraction`,
+     with its `curve`: linear, center or edges). An entry on a group fans over the group's members,
+     so a fixture that joins the group takes its place in the fan. The fields are optional, so
+     `schemaVersion` stays 1, as it did for `safety`.
+   - `cue L/C time <targets> <family> <fade> [to <fade>] [delay <d> [to <d>]] [center|edges]`
+     sets the own timing of the cue's entries of that family on exactly those targets: a group by
+     its number, fixtures as a list. The cue's other entries keep theirs. `cue L/C time <targets>
+     <family> none` removes it. A cue with no entry on those targets is refused in one line that
+     names the targets it has for that family (`cue 9/1 sets position on group 1 and fixture 301:
+     name one of them`). One undo step, with a reply in words.
+   - `record cue L/C merge|replace` keeps an entry's own timing when it records the same targets
+     and attribute again. The note `load cue` prints changes to say so.
+
+   Add the entry and its Summary row to engine-gaps.md, and update `docs/console.md`, `busk help`
+   and `expected()`.
+
+   Verify: the compiled fades (each target's start and end) for a fan up, down, center and edges;
+   a group that gains a member; a family's own timing beside an entry's (the entry's wins); `none`;
+   the refusal; `load` then `replace` keeps the timing; a show file of today loads; a running
+   `LiveShow`.
+
+Under (b), step 1 is timing in the programmer, as grandMA3 has it: `set … delay 0 to 2`, held with
+each slot's value and recorded into the entries. The step then says what `load cue` brings back.
+
+### Phase 30: F4's timing per target
+
+Needs Phase 29, built under Q11's answer. Code: `src/busk_tui/widgets/cue_dialogs.py`
+(`TimeDialog`), `src/busk_tui/pages/cues.py`, `src/busk_tui/commands.py`, `src/busk_tui/model.py`.
+
+1. **F4's TIME dialog chooses targets.** After a family chip comes a chip for each target that the
+   cue's entries of that family have (`Heads`, `301`), plus `[all]` for the family's own timing, as
+   today. On a target, the fields are the fade and its `to`, the delay and its `to`, and `[centre]`
+   `[edges]`, filled in with what the entry holds. The dialog sends `cue 9/1 time group 1 position
+   4 delay 0 to 2`, and `[none]` (Ctrl+N) takes the timing away.
+2. **The time cell** shows that a cue has timing per target, after the families (`2, position 4,
+   +1 own`), and the dialog shows which targets. The step may word this another way if it fits
+   better, and says why.
+
+   Verify: the dialog on the real engine; the cell; Esc sends nothing; 99 columns; the perf gate on
+   F4.
+
+Docs: the guide's F4, the report's Cues rows, and `CHANGELOG.md`.
+
+### Phase 31: A recorded spread follows its group
+
+The user's word of 2026-11-12. grandMA3's recipes rebuild a look for a rig that grows. In busk, a
+cue recorded on a group already follows the group. After `record group 1 merge` with four more
+heads:
+
+- every cue entry on group 1 reaches the new heads;
+- a preset of `global` or `profile` scope gives them its value;
+- an effect spreads its phase over the group as it now is.
+
+A spread does not follow. The programmer holds each target's value (phase-3-plan decision 7), and
+`record cue` stores those values per target even on a group, so a new head gets nothing. Checked on
+2026-11-12: `set pan spread -30 30` on group 1, then recorded, is stored as `perTarget`. Its shape
+waits on Q12. This phase is engine only. Code: `src/busk/commands/record.py`,
+`src/busk/compiler/cues.py` (`spread_fraction`, `spread_value`), `src/busk/session/programmer.py`.
+
+1. **GAP-49: a spread on a group**, under Q12's answer. Under (a), when recording finds a group and
+   the values differ, it checks whether they are a spread over the group's members in their order,
+   from the first member's value to the last's, `linear`, `center` or `edges`.
+   - If they are, it records `{"kind": "spread"}`; otherwise it records per target, as now.
+   - It works for scalars and colours, as `set … spread` takes them. The step says how close a value
+     must be to the spread's: exactly the float the spread gives, or within a tolerance.
+   - Two members always fit a linear spread, which plays the same.
+   - `freeze` records per target, as it already records targets.
+   - `load cue` still brings each target's value, and recording back finds the spread again. So
+     Phase 25's round trip now keeps a spread: update its note and test.
+
+   Add the entry and its Summary row to engine-gaps.md, and update `docs/console.md` ("Recording
+   keeps intent").
+
+   Verify: `set pan spread` on group 1, recorded, then a fixture merged into the group: it takes its
+   place in the fan and the others move. Also: center and edges; a spread over a span that is not a
+   group (per target, as now); values that are not a fan; a colour spread; a tracking list (a
+   spread equal to what the list inherits tracks); the round trip on both shipped shows.
+
+Under (b), the programmer keeps a fan as a third form of value, beside a literal and a preset
+reference, until a later line sets one of its slots, and recording writes it. Under (c) the phase
+is dropped.
+
+### Phase 32: Effect shapes
+
+The user's word of 2026-11-12. A layer runs one wave per effect cycle, so tilt cannot move at twice
+pan's rate: a figure eight is a `curve` wave of two cycles, with corners. The library has no tilt
+sweep, no random movement, no square dimmer and no two-colour alternation, though `effect template
+add` can build each. The engine steps come first. Code: `src/busk/model/effect.py` (`ScalarLayer`),
+`src/busk/engine/effects.py`, `src/busk/library/effects.json`, `src/busk/session/library.py`
+(`EffectDefaults`), `src/busk/console/parser.py` (`list effects`);
+`src/busk_tui/widgets/template_panel.py`.
+
+1. **GAP-50: a layer's `cycles`.** A whole number from 1: how many of its waves the layer runs in
+   one effect cycle. The default, 1, is left out of the show file. Its `phaseOffset` stays in
+   degrees of its own wave; the step checks this and says. `list effects` and `library` word it
+   (`tilt add sine ×2`). The field is optional, so `schemaVersion` stays 1.
+
+   Verify: the waveform at 2 and 3; a phase offset; `bounce` and `reverse`; a rate change keeps the
+   layers in step; 0 and 1.5 are refused.
+2. **The library gains five templates:**
+   - `Figure eight`: pan sine, tilt sine ×2;
+   - `Tilt sweep`: tilt triangle;
+   - `Wander`: pan and tilt random, smooth, different seeds;
+   - `Square`: intensity square, duty 0.5, phase 0 360;
+   - `Alternate`: red and blue, snap, `groups 2`, phase 0 180.
+
+   The library's defaults also take `groups`, `blocks` and `wings`, for Alternate. F5's TEMPLATES
+   lists the new templates at once.
+
+   Verify: each one added to the club show's heads and washes, and what `programmer` and F5 say.
+3. **F5's TEMPLATE panel** gets `[cycles…]` on a wave layer: a dialog for a whole number from 1,
+   which sends one `effect template update` line.
+
+   Verify: the dialog; the layer's words; a test on the real engine.
+
+Add GAP-50's entry and Summary row to engine-gaps.md. Docs: `docs/console.md` (Effects, and the
+library's list), the guide's F5, and `CHANGELOG.md`.
+
+### Phase 33: Reusable effect settings
+
+The user's word of 2026-11-12. grandMA3 stores a phaser in a preset, with its speed, size and
+phase, and applies it to any selection. A busk show template keeps only its layers. The library's
+templates bring defaults to `effect add` (Circle's size 20, Chase's phase 0 360), but a template of
+the show's own starts from busk's defaults. So a settled effect is typed in full each time, or set
+again on F5's EFFECT panel. Needs Phase 32, whose library defaults this phase extends. Its shape
+waits on Q13. The engine step comes first. Code: `src/busk/model/effect.py` (`EffectTemplate`),
+`src/busk/session/library.py`, `src/busk/console/parser.py` (`effect add`, `effect template`);
+`src/busk_tui/widgets/template_panel.py`, `src/busk_tui/widgets/effect_panel.py`.
+
+1. **GAP-51: a template's defaults**, under Q13's answer. Under (b):
+   - A show template keeps `defaults`: everything `effect add` takes except the id. That is the
+     rate, direction, size, low and high, phase, groups, blocks, wings, fade-in and masters.
+     Embedding a library template copies its defaults.
+   - `effect template defaults "Name" <what effect add takes>` sets them all at once, and `effect
+     template defaults "Name" none` removes them. `effect add "Name"` starts from them, and the
+     line's own words win.
+   - `list effects` and `effect_templates()` show them. A master named in the defaults counts as a
+     use, for `effect template delete` and for Phase 35's `delete master`.
+
+   Add the entry and its Summary row to engine-gaps.md, and update `docs/console.md` and `busk
+   help`.
+
+   Verify: `effect add` with and without defaults, and a line that overrides one; a library
+   template embedded; a master named and then deleted; `undo`; a show file of today loads.
+2. **F5.** The TEMPLATE panel shows the template's defaults, with `[none]`. The EFFECT panel's
+   `[keep as defaults]` sends the effect's settings as its template's defaults, in one line. A
+   template click then adds the effect with those settings.
+
+   Verify: both on the real engine; a template click after `[keep as defaults]`.
+
+Under (c), a preset holds effects as well as values. `record preset` records the programmer's
+effects without their targets, and `preset <pool> N` adds them on the selection; the cascades,
+`load` and F6's tiles change with it. That is too large for one phase and would be split. Under (a)
+the phase is dropped.
+
+Docs: `docs/console.md`, the guide's F5, and `CHANGELOG.md`.
+
+### Phase 34: A DMX readout
+
+The user's word of 2026-11-12. Checking a fixture's personality means seeing what busk sends on
+each channel, and nothing shows it: F3 shows attributes (intensity, colour, pan, tilt, zoom) and
+F8's map shows footprints. The TUI already has every frame (`Bridge.frame`, carried under `busk
+run` since GAP-11), but the prompt has nothing. Nor does `list universes` count overlaps, as F8
+does. The engine step comes first. Code: `src/busk/console/console.py`, `src/busk/runner.py`,
+`src/busk/process/` (what the console process gets under `busk run`);
+`src/busk_tui/widgets/dmxmap.py`, `src/busk_tui/pages/patch.py`, `src/busk_tui/hints.py`.
+
+1. **GAP-52: `list dmx`.**
+   - `list dmx U [A [thru B]]` prints the channel values of the last frame, which is what goes out
+     (§5, call 24), 16 to a line after their address.
+   - `list dmx fixture N` prints a fixture's channels with their functions from its mode (`1.17
+     pan 128`, `1.18  pan fine  0`).
+   - `list universes` adds the channels used and the overlaps (`1  Stage  66/512  2 overlaps`).
+
+   Check first how the console process gets frames under `busk run` with no frontend, and say what
+   this step adds there. Add the entry and its Summary row to engine-gaps.md, and update
+   `docs/console.md` and `busk help`.
+
+   Verify: the values against `OfflineShow.tick`'s frame; blackout and park; a fine channel; an
+   unpatched fixture, refused in words; a universe with no fixtures; under `busk run`.
+
+   **Done** (2026-11-12). `_list_dmx` in `src/busk/console/parser.py` makes a `Query` of kind
+   `dmx`, with a new `span` field. `Console._dmx` prints it from a frame source that `Console`
+   now takes (`frame=`): `OfflineShow` passes its engine's `latest`, and `LiveShow` passes
+   `_fresh_frame`. Both shows of `busk run` go through the latter (`_attached` too).
+   `_list_universes` counts from `_patched` and `_functions`, module helpers of `console.py`. The
+   entry, its Summary row and its **Done** are in engine-gaps.md. What this step adds under `busk
+   run`, which the step asked to check first:
+   - **Under `busk run` the console process had no frames.** The engine process sends frames to
+     the console process only while it watches them (`WATCH`). Only a frontend asks for them,
+     through `LiveShow.frame`, `output` or `health`. A `busk run` without one, at the prompt or
+     piped, had nothing. The first `list dmx` now asks (`link.watch(frames=True)`), and from then
+     on every frame goes to the console process, as under a frontend. That costs the console
+     process 0.015 to 0.036 core and the engine process 0.148 to 0.159 core, measured over 10 s
+     on the club show with the song and the chase running, with no frontend.
+   - **A frame made after the lines before.** While the engine runs, `_fresh_frame` syncs with
+     it (`EngineLink.sync`), then waits for a frame newer than the one it holds, at most
+     `FRAME_WAIT_S` (1 s) for each. So `set intensity 100%` then `list dmx 1 9`, piped into
+     `busk run`, shows 255. Under processes the first frame comes within a tick of the request.
+     A stalled engine gives its last frame after those waits. A `LiveShow` not yet started gives
+     `no frame yet: the engine has not run`, and a stopped one its last frame.
+
+   Calls the user may veto:
+   - **The layout of `list dmx U`:** 16 values to a line, each 4 cells wide, after the first
+     channel's address, which is left-aligned to the widest address of the reply (`1.1  128 …`,
+     `1.497   0 …`). A span starts its lines at `A`, not on a multiple of 16. `thru` counts either
+     way, as `unbind`'s does.
+   - **A fixture's lines:** the address, the function and the value, in aligned columns, one per
+     channel of the footprint. A colour channel is named after its emitter (`red`, `white`), not
+     after `set`'s components (`color.w`), which name the colour and not the channel. A fine
+     byte is `<function> fine` and an ultra byte `<function> ultra`, where the profile puts
+     them. On a mode of several elements the profile's element name comes first (`Cell 2 red`).
+     A channel the mode does not describe is `unused`, and the first definition of a channel
+     wins.
+   - **`output off`** adds a first line (`output is off: no route sends these`), since the frame
+     is then not what goes out. The reply is not an error.
+   - **`list universes`** gives `used/512` always and the overlaps only when there are some
+     (`  1 overlap`), as a pair count, the way F8 counts. The name is padded to 20, as `list
+     fixtures` pads.
+   - **Kind `action` in the Summary,** since it is a line at the prompt; the TUI's read is
+     `LiveShow.frame`, which already existed.
+   - GAP-45 to GAP-51 stay for Phases 26 to 33, which come later; GAP-52 is used first.
+2. **F8's channel values.** A channel's hint adds its function and value (`1.17 · fixture 102 · ch
+   1/16 pan · 128`). With one fixture selected, a CHANNELS panel under the maps lists its channels,
+   each with its address, function and value, live at 10 Hz.
+
+   Verify: the panel against `list dmx fixture N`; a fixture of several elements; no selection;
+   F8's cost (F8 is not in the perf gate: add it).
+
+   **Done** (2026-11-12). The view has a new part, `dmx` (`DmxModel`: the frame's bytes by
+   universe number, from busk's `DmxFrame`), sent as `DmxChanged`. The bridge's reader sends it
+   while a page with `WATCH_DMX` shows, at most every `DMX_S` (0.1 s), and only when the bytes
+   change. `Bridge.watch` takes `dmx=`, and the shell passes the page's `WATCH_DMX` (only F8's
+   is true). `FixtureInfo.channels` holds each footprint channel's function, from
+   `channel_functions(mode)` in `bridge.py`. On the map, `Footprint.functions` carries them,
+   `channel_text` adds the function and the value, and `DmxMap.values()` updates the hint while
+   the mouse stays still (the old `_channel` method is now `_under`, since `_channel` is the
+   channel under the mouse). F8 has a CHANNELS panel (`ChannelTable`, `channel_cells`) between
+   the maps and the legend. The perf gate runs F8 standalone and under `busk run`, with 101
+   selected while both heads move.
+
+   Calls the user may veto:
+   - **The functions come from the document, not from `list dmx fixture N`'s text,** which the
+     TUI never parses (engine-gaps.md, "Text is not parsed"). `channel_functions` names them by
+     the same rules as `Console._functions`, and
+     `test_each_channels_function_is_what_list_dmx_fixture_prints` holds the two equal on the
+     club show, the TupperDMX show and every mode of the library's profiles. The bridge already
+     reads each mode's channels for `profile_info`.
+   - **The panel's columns are address, value, then function,** where `list dmx fixture N` puts
+     the value last. The function column takes the room left, so a long name is never cut, and
+     the value sits next to its address on a wide screen. A value of 0 is dim, and `-` means no
+     frame has come yet.
+   - **The panel always shows.** With no fixture, or several, it says `select one fixture to see
+     what busk sends on its channels`, and on an unpatched one `fixture 701 is not patched`, as
+     the place strip says what it needs. Its title holds the fixture, its profile and mode, and
+     its address. The pane cursor does not stop on its rows, since nothing there acts.
+   - **The hint row gives the value of a free channel too** (`1.200 · free · 0`), and the value
+     once for an overlap, at the end. While no frame has come, it has no value part.
+   - **"One fixture selected"** is F8's own rule for the place (`placing()`): the elements of one
+     fixture count as one.
+   - The legend's last words are now `hover a channel for its fixture and value; a click selects
+     it`.
+
+Docs: `docs/console.md`, the guide's F8, and `CHANGELOG.md`.
+
+**Done** (2026-11-12). `docs/console.md`: the Session row, and a note "What goes out". `busk
+help` and the parser's module docs: the grammar line and a paragraph on GAP-52. The guide's F8:
+its first lines, the hint row, the CHANNELS panel and the legend. engine-gaps.md: GAP-52, with
+its **TUI since**. The report: its header, and the rows "Show" and "What busk sends" of Universes
+and routes. §7's item. `CHANGELOG.md` under Added.
+
+**Phase 34 checks** (2026-11-12), on top of `604dc3f`. The whole suite: 6,519 passed and 1
+skipped, in 7:56 with `uv run pytest -n 6`. `ruff check`, `ruff format --check`, `mypy src` and
+`mypy --strict tests/api_consumer.py` clean. The F8, bridge and conversion tests, the two F8
+real-engine tests, and the pages whose watch the shell now passes (F1's layouts, F2, F3, F5, F9,
+the frame, help, hints) pass on Textual 8.2.0: 498 tests.
+
+The perf gate passed, 8 of 8. Standalone, F8 kept 100.0 frames/s against 100.0 bare. Under `busk
+run`, F8 with 101 selected and P11's Circle running used +0.189 core and had 0 overruns in 1,007
+ticks. The other pages: F1 B +0.197, A +0.218, C +0.228, F2 +0.160 and +0.214, F3 +0.190, F4
++0.156, F5 +0.197, F6 +0.206.
+
+A real `busk run` with processes and one with `--threads` are in `tests/test_dmx_readout.py`:
+piped `list dmx 1 9` gave `1.9   0` before any frame was watched, then `set intensity 100%` and
+`list dmx fixture 101` gave `1.9   intensity      255`. The costs in step 1's notes come from
+a real `busk run club.show --state-dir …` with no frontend, the song and the chase running,
+`list dmx 1 1` piped in after 10 s. A real `busk-tui club.show --state-dir …` (which runs `busk
+run`), in a pty at 150 columns and at 99: F8, `sel fixture 101`, `set intensity 100%` and `set
+pan 10` typed. CHANNELS read `fixture 101 Spot 101 · Generic Spot 16ch / 16ch · 1.1`, with 1.1
+`132 pan`, 1.2 `189 pan fine` and 1.9 and 1.10 at 255. The hint on channel 9 read `1.9 · fixture
+101 · ch 9/16 intensity · 255`, then `… · 51` after `set intensity 20%`, the mouse still. `sel
+fixture 301`, `set color 1 0 0` and `set intensity 100%` gave 36 rows from `1.49 128 Cell 1 red`,
+the bar at its half limit. `list dmx fixture 101` typed in the TUI printed in the log. At 99
+columns the panel fits, under a map at 64 to a row. No error in the log.
+
+### Phase 35: Masters made on F7
+
+The user's word of 2026-11-12. Masters are made only at the prompt (`master add …`), and no line
+renames or deletes one: `rename master` and `delete master` are refused (`cannot delete 'master'`).
+Needs Phase 33, whose template defaults can name a master, unless Q13 drops it. The engine step
+comes first. Code:
+`src/busk/console/parser.py`, `src/busk/console/cascade.py`, `src/busk/console/console.py`
+(`confirmation`); `src/busk_tui/pages/masters.py`, `src/busk_tui/widgets/masters.py`.
+
+1. **GAP-53: `rename master "<name>" "<new>"` and `delete master "<name>" [cascade]`.**
+   - A rename refuses a name another master has, in any case, as `effect template rename` does.
+   - A delete is refused while an effect, a chase or a template's defaults name the master, and
+     the refusal names them (§5, call 23).
+   - A binding that names the master goes with it under `cascade`, after `confirmation()`'s
+     question.
+   - The grand master can be neither renamed nor deleted.
+   - Each is one undo step, with a reply in words. Tab offers the masters' names.
+
+   Add the entry and its Summary row to engine-gaps.md, and update `docs/console.md` and `busk
+   help`.
+
+   Verify: each kind of master; each use that refuses; a binding that goes, and comes back with
+   `undo`; a running `LiveShow` with the master at a level.
+2. **F7's masters.** `[+ master…]` opens a form: the kind (speed, size, group, fade time), the
+   name, and the group for a group master or the BPM for a speed one. It sends, for example,
+   `master add group "Washes" group 2`. Each master has `[rename…]` and `[delete]`; `[delete]` asks
+   busk's question for a cascade.
+
+   Verify: each kind added; a rename; a delete refused, in the log; a delete with a binding; a test
+   on the real engine.
+
+Docs: the guide's F7, and `CHANGELOG.md`.
+
+### Phase 36: The last setup lines on screen
+
+The user's word of 2026-11-12. Three setup lines have no control:
+
+- the discrete attributes on F2 (only F6's PRESET panel has their chips);
+- the strobe cap (`safety strobe 3`);
+- the show's title (`rename show "…"`).
+
+TUI only. Code: `src/busk_tui/pages/program.py`, `src/busk_tui/widgets/options.py`,
+`src/busk_tui/pages/masters.py`, `src/busk_tui/shell.py` (`StatusBar`).
+
+1. **F2's options.** F6's option rows (`widgets/options.py`) come to F2, one row per discrete
+   attribute the selection's profiles take: gobos, prisms, the colour wheel, shutter and fixture
+   effects. A chip sends `set gobo1 star`, and the programmer's option is lit. SHUTTER's `[set
+   shutter…]` gives way to its row.
+2. **The strobe cap,** in F7's PANIC, shows the cap now (`strobe cap 3 Hz`, or `off`), with `[cap…]`
+   (`safety strobe 3`) and `[off]` (`safety strobe off`).
+3. **The show's title.** A click on the status bar's title opens a name dialog that sends `rename
+   show "Club Night"`.
+
+   Verify: each one on the real engine; F2 at 99 columns with a spot and a bar selected; the perf
+   gate on F2.
+
+Docs: the guide's F2, F7 and the status bar, and `CHANGELOG.md`.
+
 ## 7. Seen, and not in the sources
 
 Left out because the five places do not name them. Say if any should join a phase.
@@ -2243,6 +2763,55 @@ Those marked **Not planned** are extras or matter less, and stay here.
   user's question, 2026-11-11, after Phase 22. **Phase 25** (the user's word, 2026-11-11), Q8.
   Done there: `load cue L/C [only <family>…]` (GAP-44) and F4's `[load]`.
 
+**From the grandMA3 howto (2026-11-12).** The user had busk compared, at `604dc3f`, with a
+grandMA3 guide to programming a live show: patch, attributes, groups, presets, phasers, cues,
+sequences, executors and recipes. Each doubtful point was checked on `OfflineShow` with
+`examples/club-night.busk`. What busk lacks went into Phases 26 to 36 (the user's word,
+2026-11-12). The rest stays here, **Not planned**, each with the reason.
+
+- Every other fixture of a selection (grandMA3's MAtricks interleave, used for groups like "Spots
+  Odd"): **Phase 26**, Q9.
+- A track sheet. Nothing shows what a cue of a tracking list puts on stage: there is no `list cue
+  L/C`, `list cues` gives only the timing, and F4 and `load cue` give what the cue stores.
+  **Phases 27 and 28**, Q10.
+- A cue's `block` is set only by the generic edit, which replies with a path, and `list cues` and
+  F4 never show it: **Phases 27 and 28**.
+- Timing per fixture, and a stagger over a selection: only the generic edit reaches an entry's own
+  timing, by rewriting the whole `entries` list. **Phases 29 and 30**, Q11.
+- A spread is recorded per target even on a group, so a fixture that joins the group gets nothing
+  from it, where entries, global and profile presets, and effects follow the group: **Phase 31**,
+  Q12. Recipes themselves (regenerating presets and cues for another rig): **Not planned**.
+- A figure eight (a layer at twice the rate of another), and library templates for a tilt sweep,
+  random movement, a square dimmer and a two-colour alternation: **Phase 32**.
+- A phaser kept with its settings for reuse (grandMA3 stores one in a preset): **Phase 33**, Q13.
+- What busk sends on each DMX channel, to check a fixture's personality; overlaps at the prompt:
+  **Phase 34**. Built there.
+- Masters are made only at the prompt, and no line renames or deletes one: **Phase 35**.
+- Three setup lines with no control: F2's discrete attributes, the strobe cap and the show's
+  title: **Phase 36**.
+- Cue parts. **Not planned**: a family's own timing (GAP-42) and, after Phase 29, an entry's own
+  timing do what parts are mostly used for.
+- A Control preset pool. **Not planned**: busk never programs `control` attributes (lamp on,
+  reset), by design.
+- A Gobo preset pool. **Not planned**: gobos record in `beam`, and `only beam` takes them.
+- The library ships five profiles, where grandMA3 ships thousands. **Not planned**: `profile
+  import` takes OFL and GDTF files, and F3's picker has `[import…]`.
+- A wave layer that steps through presets (a position phaser between position presets). **Not
+  planned**: only a colour palette takes presets, and a position step needs pan and tilt from one
+  preset, which is a layer kind of its own.
+- A form and a width for each effect, rather than for its template. **Not planned**: a copy of a
+  template is one line, or `[+ template…]` on F5.
+- Blocks, groups and wings for `set … spread` and for a timing fan, as for effects. **Not
+  planned**: `center` and `edges` cover two wings, and Phase 26 covers interleaving.
+- Times given with `record cue` (grandMA3 stores with a fade). **Not planned**: F4's `[time…]`
+  sets them in one click afterwards.
+- A position preset recorded at `target` scope, its pool's default, reaches no fixture added
+  later. **Not planned**: `profile` scope reaches every fixture of the profile, and F6's scope chips
+  choose it.
+- `busk-tui` opens a show but does not make one. **Not planned**: `busk new club.show --title
+  "…"` is one shell line.
+- New cue lists start without tracking: §5, call 20.
+
 ## 8. Questions
 
 1. **A show file that no longer loads** (blocks Phase 1, step 4). A `refreshHz` of 41 to 44 or a
@@ -2313,3 +2882,41 @@ Those marked **Not planned** are extras or matter less, and stay here.
      holds values the cue does not.
 
    ANSWER: (a), the recommended one (the user, 2026-11-11). Built in Phase 25.
+9. **How busk takes every other target** (Phase 26).
+   - (a) `odd` and `even`, after the targets of a `sel` line or alone on the selection.
+     **Recommended:** it is what the howto's groups need, in two words.
+   - (b) `every N [from K]`, with `odd` and `even` as its two common cases. Thirds and quarters
+     then come too, for three- and four-colour looks, at the cost of a longer grammar.
+10. **What F4 shows of tracking** (Phase 28).
+    - (a) A TRACK panel under the cue table for the chosen cue: each fixture, its value in each
+      family, and where it comes from. It is small, and it answers "why is this blue here".
+    - (b) A track sheet: F4's table switches to a view with the same rows, one per cue, and a
+      column per fixture for one family at a time. Own values are bright and tracked ones dim, and
+      releases and block cues are marked. **Recommended:** it is what the howto's track sheet is,
+      it shows how a value runs down the cues, and it keeps F4's rows, so a click still chooses a
+      cue.
+    - (c) Only `list cue L/C` at the prompt, and drop Phase 28.
+11. **How a fixture gets its own timing** (Phases 29, 30).
+    - (a) An entry's timing takes a fan (`delay 0 to 2`), set by `cue L/C time <targets> <family>
+      …` and by F4's TIME dialog. **Recommended:** the cue stays recorded on its groups, so a fan
+      follows a group as it grows, and the programmer and `load cue` do not change.
+    - (b) Timing in the programmer, as grandMA3 has it: `set … delay 0 to 2`, recorded into the
+      entries. The programmer, `record` and `load cue` all change, and each slot carries a time
+      beside its value.
+    - (c) Leave it out, and drop Phases 29 and 30.
+12. **How a recorded spread follows its group** (Phase 31).
+    - (a) Recording finds the fan: values on a group that form a spread over its members are
+      recorded as a spread. **Recommended:** the programmer does not change, and the cue plays the
+      same until the group changes.
+    - (b) The programmer keeps the fan that `set … spread` made, as a third form of value, and
+      recording writes it. This changes phase-3-plan's decision 7, and a later `set` on one target
+      has to break the fan.
+    - (c) Leave spreads per target, and drop Phase 31.
+13. **How an effect's settings are kept for reuse** (Phase 33).
+    - (a) As now. A playback holding one effect, on a busking page, already replays it with its
+      settings, and F5's EFFECT panel changes it afterwards. Drop Phase 33.
+    - (b) A show template keeps defaults, as the library's templates do, set from F5's EFFECT panel.
+      **Recommended:** it is the smallest change that makes a settled effect one click, and it fits
+      `effect add`'s words.
+    - (c) A preset holds effects, as grandMA3's phaser presets do. The model, `record preset`,
+      `preset`, the cascades, `load cue` and F6 all change, so it is two phases.

@@ -57,7 +57,9 @@ from typing import Any, Final, Literal, cast
 
 from busk.commands.classes import command_class
 from busk.commands.types import Command
+from busk.compiler.rig import byte_offsets
 from busk.console.parser import (
+    CHANNELS,
     HELP,
     Action,
     Context,
@@ -77,11 +79,13 @@ from busk.console.parser import (
     parse,
 )
 from busk.console.prompt import PROMPT, Editing, hints, split
+from busk.engine.loop import Frame
 from busk.engine.snapshot import EngineSnapshot
 from busk.io.osc import feedback_target
 from busk.model.common import TargetRef
 from busk.model.effect import ColorLayer, EffectInstance, EffectLayer
 from busk.model.entry import TargetSpec
+from busk.model.fixture import Fixture
 from busk.model.show import Show
 from busk.session.ids import RandomIds
 from busk.session.library import (
@@ -96,6 +100,9 @@ from busk.session.status import programmer_status
 
 MAX_DEPTH: Final = 8
 """How deeply ``source`` may nest (a script sourcing itself stops here)."""
+
+DMX_PER_LINE: Final = 16
+"""How many channel values ``list dmx U`` prints to a line."""
 
 
 @dataclass(frozen=True)
@@ -197,6 +204,7 @@ class Console:
         effects: EffectLibrary | None = None,
         about: Callable[[], Sequence[str]] | None = None,
         settle: Callable[[], None] | None = None,
+        frame: Callable[[], Frame | None] | None = None,
     ) -> None:
         """``iface`` is used by multicast and broadcast routes; ``status``
         returns the engine's status line for the ``status`` command;
@@ -205,7 +213,9 @@ class Console:
         processes and restarts). ``settle`` is called after every line,
         in scripts and sourced files too, while SIGINT is still held back:
         :class:`~busk.runner.OfflineShow` ticks its engine there, so each
-        line takes effect before the next one runs."""
+        line takes effect before the next one runs. ``frame`` returns the
+        engine's newest frame for ``list dmx`` (GAP-52), one made after the
+        lines run so far; ``None`` before the engine's first."""
         self.session = session
         self.library = library
         self.effects = effects if effects is not None else builtin_effects()
@@ -213,6 +223,7 @@ class Console:
         self._status = status
         self._about = about
         self._settle = settle
+        self._frame = frame
         self.quit_requested = False
         self.interrupted = False
         """Ctrl+C arrived while a command ran on the main thread (it was held
@@ -490,6 +501,8 @@ class Console:
     def _query(self, query: Query) -> str:
         if query.kind == "programmer":
             return self._programmer()
+        if query.kind == "dmx":
+            return self._dmx(query)
         if query.kind == "list" and query.arg == "cues" and query.number is not None:
             return self._list_cues(query.number)
         if query.kind == "list":
@@ -695,10 +708,74 @@ class Console:
         return lines
 
     def _list_universes(self, show: Show) -> list[str]:
-        return [
-            f"{u['number']:>5}  {u['name']}"
-            for u in sorted(show["universes"], key=lambda u: u["number"])
-        ]
+        """Each universe, the channels its fixtures take and the pairs of
+        them that overlap (GAP-52), as F8 counts them."""
+        lines = []
+        for universe in sorted(show["universes"], key=lambda u: u["number"]):
+            spans = [
+                (address, address + len(functions) - 1)
+                for _, address, functions in _patched(show, universe["id"])
+            ]
+            taken = {channel for first, last in spans for channel in range(first, last + 1)}
+            pairs = sum(
+                1
+                for index, (first, last) in enumerate(spans)
+                for other, end in spans[index + 1 :]
+                if first <= end and other <= last
+            )
+            line = f"{universe['number']:>5}  {universe['name']:<20} {len(taken):>3}/{CHANNELS}"
+            if pairs:
+                line += f"  {_count(pairs, 'overlap')}"
+            lines.append(line)
+        return lines
+
+    def _dmx(self, query: Query) -> str:
+        """``list dmx``: a universe's channels (``span``), or a fixture's
+        with their functions, as the engine's newest frame has them."""
+        show = self.session.show
+        frame = self._frame() if self._frame is not None else None
+        if frame is None or frame.layout is None:
+            return "no frame yet: the engine has not run"
+        rows = {universe.number: row for row, universe in enumerate(frame.layout.universes)}
+        if query.arg == "fixture":
+            fixture = next((f for f in show["fixtures"] if f["number"] == query.number), None)
+            if fixture is None:  # deleted since the line was parsed, by another thread
+                return f"no fixture {query.number}"
+            patch = fixture["patch"]
+            if patch is None:
+                return f"fixture {query.number} is not patched"
+            number = _by_id(show["universes"], patch["universeId"])["number"]
+            row = rows.get(number)
+            if row is None:
+                return f"universe {number} is not in the engine's frame yet"
+            values = frame.universes[row]
+            address = patch["address"]
+            found = [
+                (f"{number}.{address + offset}", function, values[address + offset - 1])
+                for offset, function in enumerate(_functions(show, fixture))
+            ]
+            where = max(len(at) for at, _, _ in found)
+            what = max(len(function) for _, function, _ in found)
+            text = [f"{at:<{where}}  {fn:<{what}} {value:>3}" for at, fn, value in found]
+        else:
+            assert query.number is not None
+            assert query.span is not None
+            row = rows.get(query.number)
+            if row is None:
+                if all(u["number"] != query.number for u in show["universes"]):
+                    return f"no universe {query.number}"
+                return f"universe {query.number} is not in the engine's frame yet"
+            values = frame.universes[row]
+            first, last = query.span
+            where = len(f"{query.number}.{last}")
+            text = [
+                f"{f'{query.number}.{start}':<{where}}"
+                + "".join(f"{value:>4}" for value in values[start - 1 : min(start + 15, last)])
+                for start in range(first, last + 1, DMX_PER_LINE)
+            ]
+        if not frame.outputEnabled:
+            text.insert(0, "output is off: no route sends these")
+        return "\n".join(text)
 
     def _list_routes(self, show: Show) -> list[str]:
         universes = {u["id"]: u["number"] for u in show["universes"]}
@@ -849,6 +926,44 @@ def _defaults(defaults: EffectDefaults) -> str:
 
 def _join(*parts: str, ok: bool) -> Reply:
     return Reply("\n".join(part for part in parts if part), ok=ok)
+
+
+def _patched(show: Show, universe: str) -> list[tuple[int, int, list[str]]]:
+    """The fixtures patched in ``universe`` (an id), by address: each one's
+    number, address and :func:`_functions`."""
+    found = [
+        (fixture["number"], patch["address"], _functions(show, fixture))
+        for fixture in show["fixtures"]
+        if (patch := fixture["patch"]) is not None and patch["universeId"] == universe
+    ]
+    return sorted(found, key=lambda item: (item[1], item[0]))
+
+
+def _functions(show: Show, fixture: Fixture) -> list[str]:
+    """What each channel of ``fixture``'s footprint does in its mode, by
+    offset, cut at channel 512: an attribute (``pan``) or an emitter
+    (``red``), with ``fine`` and ``ultra`` for its other bytes, the element's
+    name first on a fixture of several; ``unused`` where the mode says
+    nothing."""
+    profile = _by_id(show["profiles"], fixture["profileId"])
+    mode = _by_id(profile["modes"], fixture["modeId"])
+    elements = {element["index"]: element["name"] for element in mode["elements"]}
+    patch = fixture["patch"]
+    room = mode["footprint"] if patch is None else CHANNELS - patch["address"] + 1
+    functions = ["unused"] * min(mode["footprint"], room)
+    for channel in mode["channels"]:
+        name = channel.get("component", channel["attribute"])
+        if len(elements) > 1:
+            name = f"{elements.get(channel['element'], channel['element'] + 1)} {name}"
+        for offset, word in zip(byte_offsets(channel), ("", " fine", " ultra"), strict=False):
+            if offset < len(functions) and functions[offset] == "unused":
+                functions[offset] = name + word
+    return functions
+
+
+def _by_id(items: Iterable[Any], ident: str) -> Any:
+    """The item of ``items`` with id ``ident`` (the show names it, so it is there)."""
+    return next(item for item in items if item["id"] == ident)
 
 
 def _count(count: int, word: str) -> str:

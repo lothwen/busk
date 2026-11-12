@@ -34,6 +34,8 @@ from busk_tui import colors
 from busk_tui.formats import runs
 from busk_tui.model import (
     CommandDone,
+    DmxChanged,
+    DmxModel,
     FixtureInfo,
     ProfileInfo,
     ProgrammerChanged,
@@ -45,8 +47,10 @@ from busk_tui.model import (
 )
 from busk_tui.pages.fixtures import FixturesPage
 from busk_tui.pages.patch import (
+    NO_CHANNELS,
     NO_PLACE,
     NO_UNIVERSE_TO_SEND,
+    ChannelTable,
     PatchPage,
     RoutesTable,
     UniverseTable,
@@ -1684,5 +1688,151 @@ def test_nothing_to_show() -> None:
         assert "no universes" in app.query_one(UniverseTable).render().plain
         assert "no routes" in app.query_one(RoutesTable).render().plain
         assert len(app.query(DmxMap)) == 0
+
+    drive(app, body)
+
+
+# ------------------------------------------------- what busk sends (Phase 34)
+
+BAR = ("red", "green", "blue", "white", "intensity", "strobe", "unused")
+"""101's channels: what each does, as busk's ``list dmx fixture 101`` names them."""
+CELLS = ("Cell 1 red", "Cell 1 green", "Cell 1 blue", "Cell 2 red", "Cell 2 green", "Cell 2 blue")
+
+
+def channel_rig() -> ShowModel:
+    """The TupperDMX patch, its bar with its channels named, a pixel strip
+    of two cells at 2.1 and a fixture that is not patched."""
+    fixtures = tuple(
+        replace(fixture, channels=BAR) if fixture.number == 101 else fixture for fixture in FIXTURES
+    )
+    strip = FixtureInfo(601, 2, "Strip 601", "Strip", "6ch", 6, (2, 1), channels=CELLS)
+    loose = FixtureInfo(701, 1, "Spare 701", "Par", "6ch", 6, None)
+    return rig(fixtures=(*fixtures, strip, loose))
+
+
+def frame(seq: int, *values: tuple[int, int, int]) -> DmxChanged:
+    """A frame with ``values`` as (universe, channel, value), the rest dark."""
+    universes = {1: bytearray(512), 2: bytearray(512)}
+    for universe, channel, value in values:
+        universes[universe][channel - 1] = value
+    return DmxChanged(DmxModel(seq, tuple((n, bytes(b)) for n, b in universes.items())))
+
+
+def on_channels(bridge: FakeBridge, *selection: tuple[int, int]) -> BuskApp:
+    bridge.events += [
+        ShowChanged(channel_rig()),
+        ProgrammerChanged(programmer(selection=selection)),
+        RoutesChanged((route("ok", 10),)),
+    ]
+    return make_app(bridge, page=8)
+
+
+def test_the_hint_names_the_function_and_the_value() -> None:
+    prints = footprints(channel_rig().fixtures, 1, COLORS)
+    channels = owners(prints)
+    assert channel_text(1, 3, channels[2]) == "1.3 · fixture 101 · ch 3/7 blue"
+    assert channel_text(1, 3, channels[2], 200) == "1.3 · fixture 101 · ch 3/7 blue · 200"
+    assert channel_text(1, 94, channels[93], 0) == (
+        "1.94 · overlap · fixture 501 · ch 3/12 · fixture 502 · ch 3/12 · 0"
+    )  # no functions known for these
+    assert channel_text(1, 200, channels[199], 7) == "1.200 · free · 7"
+
+
+def test_hover_says_what_busk_sends_and_follows_it_live() -> None:
+    bridge = FakeBridge()
+    app = on_channels(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        assert bridge.watching_dmx
+        dmx_map = app.query(DmxMap).first()
+        await pilot.hover(dmx_map, offset=(5 + 2, 0))  # channel 3
+        await pilot.pause()
+        assert str(app.query_one(HintRow).render()) == "1.3 · fixture 101 · ch 3/7 blue"
+        bridge.events.append(frame(1, (1, 3, 200)))
+        await settle(pilot, app)
+        assert str(app.query_one(HintRow).render()) == "1.3 · fixture 101 · ch 3/7 blue · 200"
+        bridge.events.append(frame(2, (1, 3, 50)))  # the mouse has not moved
+        await settle(pilot, app)
+        assert str(app.query_one(HintRow).render()) == "1.3 · fixture 101 · ch 3/7 blue · 50"
+        await pilot.hover(app.query_one(UniverseTable))
+        await pilot.pause()
+        assert "type a command" in str(app.query_one(HintRow).render())
+        bridge.events.append(frame(3, (1, 3, 60)))  # off the map: the hint stays its own
+        await settle(pilot, app)
+        assert "type a command" in str(app.query_one(HintRow).render())
+
+    drive(app, body)
+
+
+def channel_rows(app: BuskApp) -> list[tuple[str, str, str]]:
+    table = app.query_one(ChannelTable)
+    return list(
+        zip(
+            column(table, "address"), column(table, "value"), column(table, "function"), strict=True
+        )
+    )
+
+
+def channels_title(app: BuskApp) -> str:
+    return str(app.query_one("#channels-panel").border_title)
+
+
+def test_channels_lists_the_one_fixture_selected_live() -> None:
+    bridge = FakeBridge()
+    app = on_channels(bridge, (101, 1))
+
+    async def select(pilot: Pilot[int], *selection: tuple[int, int]) -> None:
+        bridge.events.append(ProgrammerChanged(programmer(selection=selection)))
+        await settle(pilot, app)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        assert channels_title(app) == "CHANNELS · fixture 101 LED Bar 101 · LED Bar · 1.1"
+        assert channel_rows(app) == [(f"1.{k + 1}", "-", name) for k, name in enumerate(BAR)]
+        bridge.events.append(frame(1, (1, 1, 255), (1, 5, 128)))
+        await settle(pilot, app)
+        assert [value for _, value, _ in channel_rows(app)] == [
+            "255",
+            "0",
+            "0",
+            "0",
+            "128",
+            "0",
+            "0",
+        ]
+        bridge.events.append(frame(2, (1, 1, 10)))
+        await settle(pilot, app)
+        assert [value for _, value, _ in channel_rows(app)][:5] == ["10", "0", "0", "0", "0"]
+        await select(pilot, (601, 1), (601, 2))  # one fixture of two cells, at 2.1
+        assert channel_rows(app) == [(f"2.{k + 1}", "0", name) for k, name in enumerate(CELLS)]
+        assert channels_title(app).endswith("· 2.1")
+        await select(pilot)
+        table = app.query_one(ChannelTable)
+        assert table.rows == ()
+        assert table.empty.plain == NO_CHANNELS
+        assert channels_title(app) == "CHANNELS"
+        await select(pilot, (101, 1), (201, 1))
+        assert table.empty.plain == NO_CHANNELS
+        await select(pilot, (701, 1))
+        assert (table.rows, table.empty.plain) == ((), "fixture 701 is not patched")
+        assert bridge.lines() == []
+
+    drive(app, body)
+
+
+def test_f8_reads_the_frame_only_while_it_shows() -> None:
+    bridge = FakeBridge()
+    app = on_channels(bridge, (101, 1))
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        assert bridge.watching_dmx
+        await pilot.press("f3")
+        await settle(pilot, app)
+        assert not bridge.watching_dmx
+        await pilot.press("f8")
+        await settle(pilot, app)
+        assert bridge.watching_dmx
 
     drive(app, body)

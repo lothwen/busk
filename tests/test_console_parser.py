@@ -787,8 +787,8 @@ def test_queries_and_session_actions(line: str, action: object) -> None:
         (
             "list everything",
             "cannot list 'everything'; try one of fixtures, groups, presets, cuelists, "
-            "cues, playbacks, pages, masters, universes, routes, surfaces, bindings, profiles, "
-            "effects, park",
+            "cues, playbacks, pages, masters, universes, dmx, routes, surfaces, bindings, "
+            "profiles, effects, park",
         ),
     ],
 )

@@ -23,7 +23,13 @@ change …``, ``[off]`` or ``[on]``, and ``[delete]``. busk asks before ``off`` 
 A DMX MAP per universe (:mod:`busk_tui.widgets.dmxmap`), and a legend of
 the fixture types it shows. A click on a fixture's channels selects it
 (``sel fixture 101``; both fixtures of an overlap); a Shift-click adds it
-to the selection or takes it out.
+to the selection or takes it out. The hint row says what the channel under
+the mouse does and what busk sends on it.
+
+CHANNELS, under the maps: with one fixture selected, each channel of its
+footprint, its address, what busk sends on it (the engine's newest frame:
+after the masters, park, blackout and limits) and its function in the
+fixture's mode, as ``list dmx fixture N`` prints them, 10 times a second.
 
 A click on a free channel arms a place and sends nothing. The strip above the
 maps then offers ``[patch 102 here]``, for exactly one selected fixture, and
@@ -89,6 +95,7 @@ NO_UNIVERSES: Final = 'no universes · universe add 1 "Stage"'
 NO_ROUTES: Final = "no routes · route add 1 sacn 1"
 NO_UNIVERSE_TO_SEND: Final = "a route sends a universe: add one first"
 NO_PLACE: Final = "click a free channel to place a fixture there"
+NO_CHANNELS: Final = "select one fixture to see what busk sends on its channels"
 
 
 class UniverseTable(RowTable):
@@ -100,6 +107,37 @@ class UniverseTable(RowTable):
         Column("used", "used", 7, right=True),
         Column("overlaps", "overlaps", 8, right=True),
     )
+
+
+class ChannelTable(RowTable):
+    COLUMNS = (
+        Column("address", "address", 7),
+        Column("value", "dmx", 3, right=True),
+        Column("function", "function", 8, flex=True),
+    )
+
+
+def channel_cells(fixture: FixtureInfo, values: bytes | None) -> list[Cells]:
+    """A row per channel of ``fixture``'s footprint (patched): its address,
+    the value busk sends on it (``values``: its universe's, channel 1 first;
+    ``None``: not known yet, ``-``) and its function."""
+    assert fixture.patch is not None
+    universe, start = fixture.patch
+    rows: list[Cells] = []
+    for offset in range(fixture.footprint):
+        address = start + offset
+        function = fixture.channels[offset] if offset < len(fixture.channels) else ""
+        value = None if values is None or address > len(values) else values[address - 1]
+        rows.append(
+            {
+                "address": cell(f"{universe}.{address}", colors.CYAN),
+                "value": cell("-", colors.DIM)
+                if value is None
+                else cell(str(value), colors.FG if value else colors.DIM),
+                "function": cell(function, colors.DIM if function == "unused" else colors.MID),
+            }
+        )
+    return rows
 
 
 class RoutesTable(RowTable):
@@ -136,7 +174,7 @@ def legend(show: ShowModel, profile_colors: dict[str, str]) -> list[Text]:
         Text.assemble(("▓ ", colors.MID), ("footprint", colors.DIM)),
         Text.assemble((f"{OVERLAP} ", colors.RED), ("overlap", colors.DIM)),
         Text.assemble(("· ", colors.TRACK), ("free", colors.DIM)),
-        Text("hover a channel for its fixture; a click selects it", style=colors.DIM),
+        Text("hover a channel for its fixture and value; a click selects it", style=colors.DIM),
     ]
     return keys
 
@@ -194,6 +232,7 @@ class PatchPage(Page):
     PatchPage #patch-row.stacked > Panel {{ width: 100%; }}
     PatchPage #place-strip {{ margin-left: 1; }}
     PatchPage #dmx-maps {{ height: auto; }}
+    PatchPage #channels-panel {{ height: auto; }}
     PatchPage #patch-legend {{ margin-top: 1; color: {colors.DIM}; }}
     """
 
@@ -205,6 +244,8 @@ class PatchPage(Page):
             self.universe = universe
             self.address = address
 
+    WATCH_DMX = True
+
     def __init__(self, number: int, title: str) -> None:
         super().__init__(number, title)
         self.universes = UniverseTable(Text(NO_UNIVERSES, style=colors.DIM), id="universe-table")
@@ -214,6 +255,8 @@ class PatchPage(Page):
         self.place_strip = ButtonStrip(id="place-strip")
         self.place_strip.display = False
         self.maps_box = Vertical(id="dmx-maps")
+        self.channel_table = ChannelTable(Text(NO_CHANNELS, style=colors.DIM), id="channel-table")
+        self.channels_panel = Panel("channels", self.channel_table, id="channels-panel")
         self.legend = Legend(id="patch-legend")
         self.maps: dict[int, tuple[Panel, DmxMap]] = {}
         self.shown_universes: tuple[UniverseView, ...] = ()  # by number
@@ -226,6 +269,7 @@ class PatchPage(Page):
         self._on: tuple[bool, ...] = ()
         self._rates: tuple[float | None, ...] = ()
         self._mark: tuple[float, tuple[int, ...]] | None = None  # when, and each route's packets
+        self._channels_meta: str | None = None
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="patch-row"):
@@ -233,6 +277,7 @@ class PatchPage(Page):
             yield Panel("routes", self.routes, self.route_edits, id="routes-panel")
         yield self.place_strip
         yield self.maps_box
+        yield self.channels_panel
         yield self.legend
 
     def on_mount(self) -> None:
@@ -257,6 +302,33 @@ class PatchPage(Page):
             self._draw_routes()
         if "programmer" in changed:
             self._draw_place()
+        if "dmx" in changed:
+            for universe, (_, dmx_map) in self.maps.items():
+                dmx_map.values(None if view.dmx is None else view.dmx.universe(universe))
+        if changed & {"show", "programmer", "dmx"}:
+            self._draw_channels()
+
+    # -------------------------------------------------------- channels
+
+    def _draw_channels(self) -> None:
+        """CHANNELS: the one fixture selected, its channels and their values."""
+        fixture = self.placing()
+        meta: str | None = None
+        rows: list[Cells] = []
+        note = NO_CHANNELS
+        if fixture is not None and fixture.patch is None:
+            note = f"fixture {fixture.number} is not patched"
+        elif fixture is not None and fixture.patch is not None:
+            universe, start = fixture.patch
+            dmx = self._view.dmx
+            rows = channel_cells(fixture, None if dmx is None else dmx.universe(universe))
+            meta = f"fixture {fixture.number} {fixture.name}".rstrip()
+            kind = " / ".join(part for part in (fixture.profile, fixture.mode) if part)
+            meta += f" · {kind} · {universe}.{start}"
+        if meta != self._channels_meta:  # 10 times a second: only when it changes
+            self._channels_meta = meta
+            self.channels_panel.set_title("channels", meta)
+        self.channel_table.show(rows, empty=Text(note, style=colors.DIM))
 
     # ---------------------------------------------------------- routes
 

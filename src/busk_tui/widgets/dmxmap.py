@@ -10,7 +10,8 @@ footprints are the show's patch: a fixture's address and its mode's
 footprint, nothing decoded from DMX.
 
 Under the mouse, a fixture's channels light up and the hint row says what
-the channel is (``1.94 · fixture 501 · ch 3/12``); a click posts
+the channel is, what it does in the fixture's mode and what busk sends on
+it, live (``1.94 · fixture 501 · ch 3/12 tilt · 128``); a click posts
 :class:`DmxMap.Clicked` with the fixtures on the channel, and a click on a free
 channel :class:`DmxMap.PlaceClicked`. The page may then draw what a fixture
 would take from there (:meth:`DmxMap.place`): ``░`` in cyan, red where it
@@ -48,6 +49,7 @@ class Footprint:
     start: int  # its first address, 1..512
     size: int
     color: str
+    functions: tuple[str, ...] = ()  # what each of its channels does, by offset
 
     @property
     def end(self) -> int:
@@ -65,6 +67,7 @@ def footprints(
             fixture.patch[1],
             fixture.footprint,
             profile_colors.get(fixture.profile, colors.MID),
+            fixture.channels,
         )
         for fixture in fixtures
         if fixture.patch is not None and fixture.patch[0] == universe
@@ -130,16 +133,25 @@ def clashes(
     )
 
 
-def channel_text(universe: int, channel: int, found: Sequence[Footprint]) -> str:
-    """What the hint row says of a channel: ``1.94 · fixture 501 · ch 3/12``,
-    each fixture of an overlap, or ``free``."""
+def channel_text(
+    universe: int, channel: int, found: Sequence[Footprint], value: int | None = None
+) -> str:
+    """What the hint row says of a channel: ``1.94 · fixture 501 · ch 3/12
+    tilt · 128``, each fixture of an overlap, or ``free``, then the value
+    busk sends on it (``value``; ``None``: not known yet)."""
     parts = [f"{universe}.{channel}"]
     if not found:
         parts.append("free")
     for print_ in found:
-        parts.append(f"fixture {print_.fixture} · ch {channel - print_.start + 1}/{print_.size}")
+        offset = channel - print_.start
+        part = f"fixture {print_.fixture} · ch {offset + 1}/{print_.size}"
+        if offset < len(print_.functions):
+            part += f" {print_.functions[offset]}"
+        parts.append(part)
     if len(found) > 1:
         parts.insert(1, "overlap")
+    if value is not None:
+        parts.append(str(value))
     return " · ".join(parts)
 
 
@@ -171,6 +183,8 @@ class DmxMap(Widget):
         self.prints: tuple[Footprint, ...] = ()
         self._owners: list[tuple[Footprint, ...]] = owners(())
         self._hover: tuple[Footprint, ...] = ()  # the footprints under the mouse
+        self._channel: int | None = None  # the channel under the mouse
+        self._values: bytes | None = None  # what busk sends on each channel, channel 1 first
         self._hint: str | None = None
         self._marked: Footprint | None = None
         self._place: tuple[int, int, int | None] | None = None  # channel, size, own
@@ -181,6 +195,14 @@ class DmxMap(Widget):
             self._owners = owners(prints)
             self._hover, self._marked = (), None
             self.refresh()
+
+    def values(self, values: bytes | None) -> None:
+        """What busk sends on the universe's channels now (``None``: not
+        known): the hint row follows them while the mouse is on a channel."""
+        if values != self._values:
+            self._values = values
+            if self.mouse_hover:  # a page switch may have taken the map from under it unseen
+                self._tell(self._channel)
 
     def mark(self, index: int | None) -> None:
         """The pane cursor on footprint ``index`` (``None``: nowhere)."""
@@ -233,7 +255,7 @@ class DmxMap(Widget):
     def get_content_height(self, container: Size, viewport: Size, width: int) -> int:
         return CHANNELS // self.per_row(width)
 
-    def _channel(self, event: events.MouseEvent) -> int | None:
+    def _under(self, event: events.MouseEvent) -> int | None:
         """The channel under the mouse."""
         offset = event.get_content_offset(self)
         if offset is None:
@@ -245,12 +267,21 @@ class DmxMap(Widget):
         return offset.y * row_size + column + 1
 
     def on_mouse_move(self, event: events.MouseMove) -> None:
-        channel = self._channel(event)
+        channel = self._under(event)
         found = () if channel is None else self._owners[channel - 1]
         if found != self._hover:
             self._hover = found
             self.refresh()
-        hint = None if channel is None else channel_text(self.universe, channel, found)
+        self._tell(channel)
+
+    def _tell(self, channel: int | None) -> None:
+        """The hint row says what ``channel`` is (``None``: nothing)."""
+        self._channel = channel
+        hint = None
+        if channel is not None:
+            values = self._values
+            value = None if values is None or channel > len(values) else values[channel - 1]
+            hint = channel_text(self.universe, channel, self._owners[channel - 1], value)
         if hint != self._hint:
             self._hint = hint
             self.post_message(ShowHint(hint))
@@ -259,12 +290,10 @@ class DmxMap(Widget):
         if self._hover:
             self._hover = ()
             self.refresh()
-        if self._hint is not None:
-            self._hint = None
-            self.post_message(ShowHint(None))
+        self._tell(None)
 
     def on_click(self, event: events.Click) -> None:
-        channel = self._channel(event)
+        channel = self._under(event)
         if channel is None:
             return
         event.stop()

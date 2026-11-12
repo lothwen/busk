@@ -43,6 +43,7 @@ from busk_tui.model import (
     BridgeEvent,
     BridgeLike,
     CommandDone,
+    DmxChanged,
     EffectsChanged,
     EngineFailed,
     EngineNews,
@@ -320,6 +321,9 @@ class BuskApp(App[int]):
             case OutputChanged(output=output):
                 self.view.output = output
                 self._changed.add("output")
+            case DmxChanged(dmx=dmx):
+                self.view.dmx = dmx
+                self._changed.add("dmx")
             case RoutesChanged(routes=routes):
                 self.status.set_routes(routes)
                 self.view.routes = routes
@@ -546,7 +550,7 @@ class BuskApp(App[int]):
         """The page just shown: what the bridge reads for it, and all of it drawn."""
         page = self.current_page
         output, effects = page.watches(self.view)
-        self.bridge.watch(output=output, effects=effects)
+        self.bridge.watch(output=output, effects=effects, dmx=page.WATCH_DMX)
         self._changed |= ALL_PARTS
         self._redraw()
 
@@ -588,7 +592,7 @@ class BuskApp(App[int]):
         message.stop()
         if message.page is self.current_page:
             output, effects = message.page.watches(self.view)
-            self.bridge.watch(output=output, effects=effects)
+            self.bridge.watch(output=output, effects=effects, dmx=message.page.WATCH_DMX)
 
     def action_toggle_help(self) -> None:
         if self._modal():

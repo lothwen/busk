@@ -68,7 +68,7 @@ session, as the web remote's commands do. `help` prints the grammar.
 | Perform | `go 9`, `back 9`, `goto 9 4`, `release 3 [2]`, `fader 3 75%`, `flash 3 on\|off`, `toggle 3`, `button 3 2 on\|off`, `gm 0.5`, `master "Speed 1" 0.75`, `tap ["Speed 1"]`, `bpm ["Speed 1"] 128`, `blackout on\|off` |
 | Safety, panic | `park fixture 204 intensity 0`, `park group 2 color 1 0 0`, `unpark fixture 204 [intensity]`, `unpark all`, `fixture 101 thru 102 limits tilt -90 10`, `fixture 301 limits intensity 50%`, `fixture 101 limits tilt none`, `fixture 101 limits none`, `safety strobe 3\|off`, `highlight on\|off`, `release all [2]`, `output on\|off` |
 | Profiles | `profile update "Generic Spot 16ch"` (to the library's other revision), `profile "Generic Spot 16ch" category wash\|none`, `profile import "fixtures/spot.gdtf"`, `list profiles` |
-| Session | `undo`, `redo`, `save [PATH]`, `list fixtures\|groups\|presets\|cuelists\|playbacks\|pages\|universes\|routes\|surfaces\|bindings\|masters\|profiles\|effects\|park`, `list cues 9`, `library`, `info`, `status`, `source FILE`, `quit` |
+| Session | `undo`, `redo`, `save [PATH]`, `list fixtures\|groups\|presets\|cuelists\|playbacks\|pages\|universes\|routes\|surfaces\|bindings\|masters\|profiles\|effects\|park`, `list cues 9`, `list dmx 1 [17 [thru 32]]`, `list dmx fixture 101`, `library`, `info`, `status`, `source FILE`, `quit` |
 
 ## Notes
 
@@ -249,6 +249,33 @@ session, as the web remote's commands do. `help` prints the grammar.
   number order, each straight after the one before by its footprint, so a hole in the numbers
   leaves no hole in the channels. A span that would run past channel 512 is refused whole.
   `fixture N thru M patch none` unpatches them. Each is one undo step.
+* **What goes out.** `list dmx 1` prints universe 1 as the engine's last frame has it,
+  which is what the routes send, after the masters, park, blackout and limits. That is not
+  what the programmer or a cue holds. Each line has 16 values and starts with the address
+  of the first. `list dmx 1 17` prints one channel and `list dmx 1 17 thru 32` a span,
+  `thru` counting either way. `list dmx fixture 101` prints each channel of the fixture's
+  footprint with its function in its mode and its value:
+
+  ```
+  busk> list dmx fixture 101
+  1.1   pan            132
+  1.2   pan fine       189
+  1.3   tilt           128
+  …
+  1.9   intensity      128
+  1.10  intensity fine   0
+  …
+  1.14  unused           0
+  ```
+
+  An emitter goes by its name (`red`, `white`). On a fixture of several elements, each
+  function starts with its element's name (`Cell 2 red`). `unused` marks a channel the
+  mode does not describe. While `output off` holds, the readout says that no route sends
+  these values. Under `busk run` the first `list dmx` asks the engine process for its
+  frames, and each `list dmx` waits until the engine has applied the lines before it, so a
+  script's `set` shows in the `list dmx` that follows it. `list universes` counts the
+  channels that fixtures take and the pairs of fixtures that overlap (`1  Stage  84/512  1
+  overlap`), as F8 does.
 * **Importing a profile** (see [Fixture profiles](profiles.md#importing-ofl-and-gdtf-files)). `profile import
   "<path>"` embeds the profile of an OFL `.json`, a `.gdtf` or a busk profile file in the show,
   in one undo step, and says what the importer could not map. It is refused if the show holds

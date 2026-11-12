@@ -10,6 +10,13 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- `list dmx U [A [thru B]]` prints what busk sends on a universe's channels, 16 values to a line,
+  as the engine's last frame has them, after the masters, park, blackout and limits.
+  `list dmx fixture N` prints each channel of a fixture with its function in its mode (`pan`,
+  `pan fine`, `red`, `Cell 2 red`) and its value. `list universes` counts the channels the
+  fixtures take and the pairs of fixtures that overlap. On F8, the hint row names the function of
+  the channel under the mouse and its value, and a CHANNELS panel under the maps lists the
+  selected fixture's channels, with their values, 10 times a second.
 - `load cue L/C [only <family>…]` puts what a cue stores into the programmer, in place of what it
   holds, and selects its fixtures, in one undo step: a preset as the preset, a group's value or a
   spread as each fixture's value, and the cue's effects with their ids. A cue of a tracking list

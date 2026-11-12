@@ -77,6 +77,7 @@ class FakeBridge:
     started: bool = False
     stopped: bool = False
     watching: tuple[bool, bool] = (False, False)
+    watching_dmx: bool = False
     busy_line: Busy | None = None
     _tickets: Any = field(default_factory=lambda: itertools.count(1))
 
@@ -115,8 +116,9 @@ class FakeBridge:
         answer = self.show.expected(line)
         return Completion(answer.words, answer.values, answer.runnable, answer.error, answer.start)
 
-    def watch(self, output: bool, effects: bool) -> None:
+    def watch(self, output: bool, effects: bool, dmx: bool = False) -> None:
         self.watching = (output, effects)
+        self.watching_dmx = dmx
 
     def drain(self) -> list[BridgeEvent]:
         events, self.events = self.events, []

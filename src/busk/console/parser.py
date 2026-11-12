@@ -106,6 +106,7 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
                    | chase.rate.multiplier | notes | tags
         <optional> = chase | notes | tags
     undo | redo | save [PATH] | list <kind> | list cues L | library | info
+    list dmx U [A [thru B]] | list dmx fixture N
     status | help | source FILE | quit
 
 Slots and buttons are counted from 1, like the physical controls. Defaults
@@ -299,6 +300,15 @@ list brings its changes only. ``only`` reads families as ``record`` does.
 ``record cue L/C replace`` records it back; an entry's own timing does not
 come, so that drops it, as the reply says.
 
+The DMX readout (GAP-52). ``list dmx U`` prints universe ``U`` as the engine's
+last frame has it, which is what goes out after the masters, park, blackout and
+limits: 16 values to a line, after the address of the first. ``A`` prints one
+channel and ``A thru B`` a span. ``list dmx fixture N`` prints each channel of
+the fixture's footprint, with its function in the fixture's mode (``pan``, ``pan
+fine``, an emitter's name, the element's name first on a fixture of several) and
+its value. ``list universes`` counts the channels that fixtures take and the
+pairs of fixtures that overlap.
+
 An empty cue list (GAP-33). ``cuelist add N ["name"]`` makes a list with no
 cues, with the defaults of a list that ``record cue`` makes; ``record cue N``
 appends to it. ``go`` is refused on a playback whose list has no cues, since
@@ -394,11 +404,15 @@ class SubmitAll:
 @dataclass(frozen=True)
 class Query:
     """Print something: ``programmer``, ``list <kind>`` (``list cues L``:
-    ``number`` is ``L``), ``library``, ``info``, ``status`` or ``help``."""
+    ``number`` is ``L``), ``library``, ``info``, ``status`` or ``help``.
+    ``list dmx`` is kind ``dmx``: arg ``universe``, ``number`` the
+    universe and ``span`` its first and last channel, or arg ``fixture``
+    and ``number`` the fixture."""
 
     kind: str
     arg: str = ""
     number: int | None = None
+    span: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True)
@@ -3249,8 +3263,39 @@ class _Parser:
             self.by_number("cueLists", number, "cue list")
             self.done()
             return Query("list", kind, number)
+        if kind == "dmx":
+            return self._list_dmx()
         self.done()
         return Query("list", kind)
+
+    def _list_dmx(self) -> Action:
+        """``list dmx U [A [thru B]]`` and ``list dmx fixture N`` (GAP-52):
+        ``thru`` counts either way."""
+        if self.ending("fixture", need="a universe number"):
+            raise _Unfinished("expected a universe number or fixture N")
+        if self.keyword("fixture"):
+            number = self.integer("a fixture number")
+            fixture = self.by_number("fixtures", number, "fixture")
+            if fixture["patch"] is None:
+                raise ParseError(f"fixture {number} is not patched")
+            self.done()
+            return Query("dmx", "fixture", number)
+        number = self.integer("a universe number or fixture N")
+        self.by_number("universes", number, "universe")
+        first, last = 1, CHANNELS
+        if not self.ending(need=f"a channel from 1 to {CHANNELS}"):
+            first = last = self._channel()
+            if self.keyword("thru"):
+                last = self._channel()
+                first, last = min(first, last), max(first, last)
+        self.done()
+        return Query("dmx", "universe", number, (first, last))
+
+    def _channel(self) -> int:
+        token = self.take(f"a channel from 1 to {CHANNELS}")
+        if token.quoted or not token.text.isdecimal() or not 1 <= int(token.text) <= CHANNELS:
+            raise ParseError(f"expected a channel from 1 to {CHANNELS}, got {token.text!r}")
+        return int(token.text)
 
     def _cmd_library(self) -> Action:
         self.done()
@@ -3278,8 +3323,11 @@ class _Parser:
 
 LIST_KINDS: Final = (
     "fixtures", "groups", "presets", "cuelists", "cues", "playbacks", "pages",
-    "masters", "universes", "routes", "surfaces", "bindings", "profiles", "effects", "park",
+    "masters", "universes", "dmx", "routes", "surfaces", "bindings", "profiles", "effects",
+    "park",
 )  # fmt: skip
+CHANNELS: Final = 512
+"""The channels of a universe."""
 
 _COLLECTIONS: Final = {
     "fixture": ("fixtures", "fixture"),

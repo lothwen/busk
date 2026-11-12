@@ -17,8 +17,10 @@ Circle running, so F5's waves move, and F3 (Phase 4: every fixture's
 output) with it, so the heads' cells change, and F1's layouts A and C
 (Phase 5: the output in OUTPUT and on the stage) with it too, and F6
 editing a new position preset (``docs/plans/tui-presets-plan.md`` step 3:
-the PRESET panel's pan and tilt rows show the output). The gates are those
-of the plan's Phase 0 Done note.
+the PRESET panel's pan and tilt rows show the output), and F8 with one head
+selected (``docs/plans/tui-pending-plan.md`` Phase 34: the DMX frame at 10 Hz,
+the CHANNELS panel lists the head's channels as they move). The gates are
+those of the plan's Phase 0 Done note.
 """
 
 from __future__ import annotations
@@ -67,7 +69,7 @@ def rate(show: Any, seconds: float) -> float:
 
 
 @pytest.mark.parametrize(
-    ("page", "layout"), [(1, "B"), (1, "A"), (1, "C"), (2, "B"), (3, "B"), (5, "B")]
+    ("page", "layout"), [(1, "B"), (1, "A"), (1, "C"), (2, "B"), (3, "B"), (5, "B"), (8, "B")]
 )
 def test_standalone_keeps_the_engines_rate(
     club_path: Path, tmp_path: Path, page: int, layout: config.Layout
@@ -114,6 +116,10 @@ MOVING = ("sel group 1", "go 11", "fader 11 100%")
 """The heads selected and moving (P11's Circle): F2's encoders redraw as
 the output changes."""
 
+ONE_MOVING = ("sel fixture 101", *MOVING[1:])
+"""One head selected, both moving: F8's CHANNELS lists 101's channels as
+they change. A frontend that only waits does the same with :data:`MOVING`."""
+
 
 def run_frontend(
     mode: str,
@@ -157,7 +163,7 @@ def test_under_busk_run_the_engine_runs_on_time(
             (1, "C", MOVING, moving, None), (2, "B", (), idle, None),
             (2, "B", MOVING, moving, None), (3, "B", MOVING, moving, None),
             (4, "B", MOVING, moving, None), (5, "B", MOVING, moving, None),
-            (6, "B", MOVING, moving, "position"))  # fmt: skip
+            (6, "B", MOVING, moving, "position"), (8, "B", ONE_MOVING, moving, None))  # fmt: skip
     for page, layout, lines, bare, edit in runs:
         tui = run_frontend("tui", show, tmp_path, monkeypatch, page, lines, layout, edit)
         cores = tui["cpu"] / tui["seconds"] - bare["cpu"] / bare["seconds"]

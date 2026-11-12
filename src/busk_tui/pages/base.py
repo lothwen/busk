@@ -18,6 +18,7 @@ from textual.widget import Widget
 from busk_tui.colors import ColorMode
 from busk_tui.config import Layout
 from busk_tui.model import (
+    DmxModel,
     EffectsModel,
     LiveState,
     OutputModel,
@@ -29,11 +30,31 @@ from busk_tui.model import (
 from busk_tui.nav import Item, Stop
 
 type Part = Literal[
-    "show", "live", "programmer", "effects", "output", "beats", "playback", "routes", "surfaces"
+    "show",
+    "live",
+    "programmer",
+    "effects",
+    "output",
+    "dmx",
+    "beats",
+    "playback",
+    "routes",
+    "surfaces",
 ]
 
 ALL_PARTS: Final[frozenset[Part]] = frozenset(
-    ("show", "live", "programmer", "effects", "output", "beats", "playback", "routes", "surfaces")
+    (
+        "show",
+        "live",
+        "programmer",
+        "effects",
+        "output",
+        "dmx",
+        "beats",
+        "playback",
+        "routes",
+        "surfaces",
+    )
 )
 
 
@@ -47,6 +68,7 @@ class View:
     programmer: ProgrammerModel | None = None
     effects: EffectsModel | None = None
     output: OutputModel | None = None
+    dmx: DmxModel | None = None
     routes: tuple[RouteView, ...] = ()
     surfaces: tuple[SurfaceView, ...] = ()
     beats: tuple[float, ...] = ()  # each speed master's beat count, as LiveState.speed
@@ -69,6 +91,10 @@ class Page(VerticalScroll):
     WATCH_OUTPUT: ClassVar[bool] = False
     """Whether the page shows the fixtures' output (read, too, only while
     such a page is visible)."""
+
+    WATCH_DMX: ClassVar[bool] = False
+    """Whether the page shows the DMX frame, what busk sends on each
+    channel (read, too, only while such a page is visible)."""
 
     def __init__(self, number: int, title: str) -> None:
         super().__init__(id=f"page-{number}")

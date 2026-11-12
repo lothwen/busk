@@ -13,7 +13,8 @@ own (plan §4.1):
 * the **controls** worker runs the performance lines of the TUI's own
   controls, in order; they never wait for an ordered line (busk's GAP-12);
 * the **reader** looks at the show's published state 20 times a second (the
-  output and the running effects, while a page shows them, 10 times) and
+  output, the running effects and the DMX frame, while a page shows them, 10
+  times) and
   sends an event only when something changed; when the selection changes,
   it asks busk's completion which options the selection offers (busk's
   ``expected`` only reads, so any thread may ask);
@@ -73,6 +74,8 @@ from busk_tui.model import (
     Components,
     CueInfo,
     CueListInfo,
+    DmxChanged,
+    DmxModel,
     EffectInfo,
     EffectsChanged,
     EffectsModel,
@@ -147,6 +150,10 @@ EFFECTS_S: Final = 0.1
 """How often the reader looks at the running effects while they are watched
 (10 Hz, the spec's least for effect waveforms): each read changes while an
 effect runs, and F5 draws every row that runs again."""
+
+DMX_S: Final = 0.1
+"""How often the reader looks at the DMX frame while it is watched (10 Hz,
+as the output): F8's channel values."""
 
 _debug = logging.getLogger("busk_tui")
 
@@ -234,6 +241,8 @@ class _Seen:
     output_seq: int | None = None
     output: tuple[ElementOutput, ...] | None = None  # None: send the next read, whatever it is
     output_at: float = 0.0  # when the output was last read (monotonic)
+    dmx: tuple[tuple[int, bytes], ...] | None = None  # None: send the next read, whatever it is
+    dmx_at: float = 0.0  # when the frame was last read for it (monotonic)
     routes: tuple[RouteStatus, ...] | Literal["unread"] | None = "unread"
     surfaces: tuple[SurfaceStatus, ...] | Literal["unread"] | None = "unread"
     frame: int | None = None
@@ -279,7 +288,7 @@ class Bridge:
         self._busy: Busy | None = None
         self._help: tuple[str, ...] = ()
         self._session: SessionState | None = None
-        self._watching = (False, False)
+        self._watching = (False, False, False)  # output, effects, DMX
         self._seen = _Seen()
         self._news = _News(self._events.put)
         self._log_level: int | None = None
@@ -431,17 +440,21 @@ class Bridge:
             start=answer.start,
         )
 
-    def watch(self, output: bool, effects: bool) -> None:
-        """Which of the show's output and effects the reader polls (each
-        costs the reading process, so only while a page shows it). Once
-        watched again, the next read is sent even if it has not changed."""
+    def watch(self, output: bool, effects: bool, dmx: bool = False) -> None:
+        """Which of the show's output, effects and DMX frame the reader
+        polls (each costs the reading process, so only while a page shows
+        it). Once watched again, the next read is sent even if it has not
+        changed."""
         if effects and not self._watching[1]:
             self._seen.effects = None
             self._seen.effects_at = 0.0
         if output and not self._watching[0]:
             self._seen.output_seq = self._seen.output = None
             self._seen.output_at = 0.0
-        self._watching = (output, effects)
+        if dmx and not self._watching[2]:
+            self._seen.dmx = None
+            self._seen.dmx_at = 0.0
+        self._watching = (output, effects, dmx)
 
     def drain(self) -> list[BridgeEvent]:
         """The events since the last call, in order, with only the newest of
@@ -664,6 +677,12 @@ class Bridge:
             if snapshot is not None and snapshot.speed:
                 beats = tuple(speed.beats(frame.time) for speed in snapshot.speed)
                 put(Beat(frame.time, beats))
+        if self._watching[2] and frame is not None and time.monotonic() - seen.dmx_at >= DMX_S:
+            seen.dmx_at = time.monotonic()
+            universes = tuple(frame.universes.items())
+            if universes != seen.dmx:
+                seen.dmx = universes
+                put(DmxChanged(DmxModel(frame.seq, universes)))
         self._look_at_health(show.health)
 
     def _look_at_health(self, health: EngineHealth | None) -> None:
@@ -909,7 +928,30 @@ def fixture_info(
         location=location,
         limits=_limits(fixture.get("limits", {})),
         orientation=Orientation(**fixture["orientation"]),
+        channels=() if mode is None else channel_functions(mode),
     )
+
+
+def channel_functions(mode: Mapping[str, Any]) -> tuple[str, ...]:
+    """What each channel of ``mode``'s footprint does, by offset, as busk's
+    ``list dmx fixture N`` names it: an attribute (``pan``) or an emitter
+    (``red``), with ``fine`` and ``ultra`` for its other bytes, where the
+    profile puts them (right after it unless ``fineOffsets`` says), the
+    element's name first in a mode of several; ``unused`` where the mode
+    says nothing. (Read from the document, as :func:`profile_info` reads the
+    attributes; not cut at channel 512, which busk refuses to patch past.)"""
+    elements = {element["index"]: element["name"] for element in mode["elements"]}
+    functions = ["unused"] * mode["footprint"]
+    for channel in mode["channels"]:
+        name = channel.get("component", channel["attribute"])
+        if len(elements) > 1:
+            name = f"{elements.get(channel['element'], channel['element'] + 1)} {name}"
+        offset = channel["offset"]
+        fine = channel.get("fineOffsets", [offset + k for k in range(1, channel["bytes"])])
+        for at, word in zip((offset, *fine), ("", " fine", " ultra"), strict=False):
+            if at < len(functions) and functions[at] == "unused":
+                functions[at] = name + word
+    return tuple(functions)
 
 
 def _limits(limits: Mapping[str, Any]) -> Limits:

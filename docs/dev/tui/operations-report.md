@@ -27,7 +27,8 @@ the intensity and colour columns leave out. Its Phase 24 made busk refuse a mode
 lacks an element something names in one line, where F3's mode chips and `[profile…]` put one
 document path per element in the log; that side finding is gone. Its Phase 25 added the line that
 loads a cue into the programmer (GAP-44), and F4's `[load]`, so a cue's values are edited as any
-look is and recorded back.
+look is and recorded back. Its Phase 34 added the DMX readout (GAP-52): `list dmx` at the prompt,
+`list universes`'s counts, and F8's channel values, in its hint row and its CHANNELS panel.
 
 ## How to read it
 
@@ -107,7 +108,8 @@ In short:
 
 | Operation | busk line | Engine | TUI |
 |---|---|---|---|
-| Show | typed `LiveShow.show` and `.routes`; `list universes`, `list routes` | yes | control: F8 UNIVERSES, ROUTES with each route's state and packet rate, and a DMX map per universe |
+| Show | typed `LiveShow.show` and `.routes`; `list universes` (with the channels used and the overlaps, GAP-52), `list routes` | yes | control: F8 UNIVERSES, ROUTES with each route's state and packet rate, and a DMX map per universe |
+| What busk sends | typed `LiveShow.frame`; `list dmx U [A [thru B]]`, `list dmx fixture N` (GAP-52) | yes | control: F8's hint row names a channel's function and value, and its CHANNELS panel lists the selected fixture's channels, live |
 | Add a universe | `universe add N ["name"]` | yes | control: `[+ universe…]`, a form |
 | Delete a universe | `delete universe N cascade` (GAP-24), `delete universe N` | yes. A plain `delete` is refused in one line while a fixture is patched in it or a route sends it | control: `[delete]`, always `cascade`, after busk's question |
 | Rename | `rename universe N "…"` | yes | control: `[rename…]`, a name dialog |
