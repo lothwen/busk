@@ -924,6 +924,10 @@ def test_a_named_speed_master_picks_one_of_several() -> None:
         ("bpm 120", ("Speed", "Beats"), "several speed masters: name one"),
         ('tap "Grand"', ("Speed",), "no speed master 'Grand'"),
         ("bpm", ("Speed",), "expected a tempo"),
+        ("bpm 50%", ("Speed",), "expected a tempo above 0, up to 999 BPM, got '50%'"),
+        ("bpm 0", ("Speed",), "expected a tempo above 0, up to 999 BPM, got '0'"),
+        ("bpm 999.5", ("Speed",), "expected a tempo above 0, up to 999 BPM, got '999.5'"),
+        ("bpm -90", ("Speed",), "expected a tempo above 0, up to 999 BPM, got '-90'"),
         ("fade soon", (), "expected a time in seconds, got 'soon'"),
     ],
 )
@@ -1210,6 +1214,8 @@ def test_master_add_speed() -> None:
     assert added["value"]["id"].startswith("m-")
     custom = command('master add speed "Beats" steps 0.5, 1,2 bpm 128.5')["value"]
     assert (custom["defaultBpm"], custom["multiplierSteps"]) == (128.5, [0.5, 1, 2])
+    fastest = command('master add speed "Fast" bpm 999 steps .25')["value"]
+    assert (fastest["defaultBpm"], fastest["multiplierSteps"]) == (999, [0.25])
 
 
 @pytest.mark.parametrize(
@@ -1264,6 +1270,13 @@ def test_chase_bpm_needs_a_speed_master(line: str, names: tuple[str, ...], error
         ("master 1", 'expected a master name in quotes, e.g. "Speed 1", or add'),
         ('master add speed "Speed 1"', "a master named 'Speed 1' exists"),
         ('master add speed "S" steps', "expected a multiplier step"),
+        ('master add speed "S" bpm 0', "expected a tempo above 0, up to 999 BPM, got '0'"),
+        ('master add speed "S" bpm 1000', "expected a tempo above 0, up to 999 BPM, got '1000'"),
+        ('master add speed "S" bpm 50%', "expected a tempo above 0, up to 999 BPM, got '50%'"),
+        ('master add speed "S" bpm +120', "expected a tempo above 0, up to 999 BPM, got '+120'"),
+        ('master add speed "S" steps 0, 1', "expected a multiplier step above 0, got '0'"),
+        ('master add speed "S" steps 1, -2', "expected a multiplier step above 0, got '-2'"),
+        ('master add speed "S" steps 0.5, 50%', "expected a multiplier step above 0, got '50%'"),
         ('master add speed "S" bpm 120 bpm 90', "unexpected 'bpm'"),
         ("master add grand", "expected speed or size or group or fadetime, got 'grand'"),
         (

@@ -83,6 +83,7 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
     master add speed "<name>" [bpm <x>] [steps <a>, <b>…]
     master add size "<name>" | master add group "<name>" group N
     master add fadetime "<name>"
+    rename master "<name>" "<new name>" | delete master "<name>" [cascade]
     effect add "<template>" [id <id>] [hz <rate> | bpm ["<master>"] [x <m>]]
         [size <s>] [low <v> high <v>] [phase <start> <end>] [groups N] [blocks N]
         [wings N] [forward|reverse|bounce] [fadein <s>] [sizemaster "<name>"]
@@ -125,7 +126,9 @@ fades with the cue again (GAP-42).
 ``chase hz|bpm`` sets the list's chase settings (defaults: ×1, ``forward``,
 crossfade 0) and chase mode in one batch; ``cuelist N chase {json}`` is the
 generic edit. ``master add speed`` defaults to 120 BPM, tap on and steps
-0.25, 0.5, 1, 2, 4.
+0.25, 0.5, 1, 2, 4. A tempo (``bpm``, ``master add speed … bpm``) is read as
+plain BPM above 0 and at most ``MAX_BPM``, and a step as a plain number above
+0, each with no sign and no ``%``, as a time is: ``50%`` would be 0.5 BPM.
 
 Phase 5 sugar (phase-5-plan §5.12). ``effect add`` adds an effect instance
 on the selection, in order, to the programmer. The template is the show's
@@ -309,6 +312,18 @@ fine``, an emitter's name, the element's name first on a fixture of several) and
 its value. ``list universes`` counts the channels that fixtures take and the
 pairs of fixtures that overlap.
 
+Renaming and deleting a master (GAP-53). ``rename master`` and ``delete
+master`` name a master in quotes, in any case, as every master line does; Tab
+offers every master but the grand master, which is neither renamed nor
+deleted. ``rename`` refuses a name another master has, in any case. ``delete``
+is refused while a cue's effect, a cue list's chase or an effect in the
+programmer names the master, even with ``cascade``, and says which: their rate
+or size would have no master. A binding that drives it, taps it or names it in
+a command is refused in one line by a plain ``delete``, and goes with
+``cascade``, which asks first at a prompt. Each is one undo step. The engine
+drops a deleted master's level; ``undo`` brings the master back at its
+initial level.
+
 An empty cue list (GAP-33). ``cuelist add N ["name"]`` makes a list with no
 cues, with the defaults of a list that ``record cue`` makes; ``record cue N``
 appends to it. ``go`` is refused on a playback whose list has no cues, since
@@ -362,6 +377,7 @@ from busk.console.cascade import (
     element_users,
     fixture_cascade,
     group_cascade,
+    master_cascade,
     page_cascade,
     playback_cascade,
     preset_cascade,
@@ -371,6 +387,7 @@ from busk.model.attributes import ATTRIBUTES, AttributeDefinition
 from busk.model.common import MAX_DIGITS, TargetRef
 from busk.model.cue import CUE_NUMBER, cue_number_key
 from busk.model.effect import EffectTemplate
+from busk.model.master import MAX_BPM
 from busk.model.profile import PROFILE_CATEGORIES, FixtureProfile, option_capabilities
 from busk.model.show import Show
 from busk.model.validate import COLOR_COMPONENTS
@@ -797,12 +814,30 @@ class _Parser:
             return float(token.text[:-1]) / 100
         return _numeric(token.text)
 
-    def numbers(self, what: str) -> list[float]:
-        """``<x>[, <y>…]``: one number or more, comma-separated."""
-        values = [self.number(what)]
+    def tempo(self) -> float:
+        """A tempo in BPM, as a speed master takes it: above 0 and at most
+        ``MAX_BPM``, read as :meth:`seconds` reads a time, with no sign and no
+        ``%`` (``50%`` would be 0.5 BPM)."""
+        token = self.take("a tempo")
+        value = _plain(token)
+        if value is None or not 0 < value <= MAX_BPM:
+            raise ParseError(f"expected a tempo above 0, up to {MAX_BPM:g} BPM, got {token.text!r}")
+        return value
+
+    def steps(self) -> list[float]:
+        """``<a>[, <b>…]``: a speed master's multiplier steps, each above 0,
+        with no sign and no ``%``."""
+        values = [self._step()]
         while self.keyword(","):
-            values.append(self.number(what))
+            values.append(self._step())
         return values
+
+    def _step(self) -> float:
+        token = self.take("a multiplier step")
+        value = _plain(token)
+        if value is None or value <= 0:
+            raise ParseError(f"expected a multiplier step above 0, got {token.text!r}")
+        return value
 
     def pair(self, what: str) -> tuple[float, float]:
         """``<a>[/<b>]`` in seconds; ``b`` defaults to ``a``."""
@@ -2695,7 +2730,9 @@ class _Parser:
         return f"{_COLLECTIONS[head][1]} {item['number']}"
 
     def _cmd_rename(self) -> Action:
-        head = self.word("an entity", *sorted(_ENTITIES))
+        head = self.word("an entity", *sorted(_ENTITIES | {"master"}))
+        if head == "master":
+            return self._rename_master()
         if head not in _ENTITIES:
             raise ParseError(f"cannot rename {head!r}")
         path = self.entity_path(head)
@@ -2716,9 +2753,11 @@ class _Parser:
         )
 
     def _cmd_delete(self) -> Action:
-        head = self.word("an entity", *sorted(_ENTITIES - {"show"} | {"route"}))
+        head = self.word("an entity", *sorted(_ENTITIES - {"show"} | {"route", "master"}))
         if head == "route":
             return self._delete_route()
+        if head == "master":
+            return self._delete_master()
         if head not in _ENTITIES or head == "show":
             raise ParseError(f"cannot delete {head!r}")
         if head == "fixture" and (token := self.peek(1)) is not None and token.lower == "thru":
@@ -2771,6 +2810,54 @@ class _Parser:
         self.done()
         cascade = fixture_cascade(self.show, fixtures, self.ctx.programmer)
         return Submit(_labelled(cascade.label, *cascade.commands), confirm=cascade.question)
+
+    def _delete_master(self) -> Action:
+        """``delete master "<name>" [cascade]`` (GAP-53): refused while an
+        effect, a chase or the programmer names it, even with ``cascade``,
+        which takes the bindings that name it, after the question."""
+        master = self._own_master("deleted")
+        cascade = master_cascade(self.show, master, self.ctx.programmer)
+        if cascade.blocked is not None:  # before Tab offers a cascade that would not help
+            raise ParseError(cascade.blocked)
+        if self.keyword("cascade"):
+            self.done()
+            return Submit(_labelled(cascade.label, *cascade.commands), confirm=cascade.question)
+        self.done()
+        if cascade.refusal is not None:
+            raise self.fail(cascade.refusal)
+        return self.submit(_labelled(cascade.label, *cascade.commands))  # nothing names it
+
+    def _rename_master(self) -> Action:
+        """``rename master "<name>" "<new name>"`` (GAP-53): refused for a
+        name another master has, in any case."""
+        master = self._own_master("renamed")
+        name = self._name()
+        if name is None:
+            raise self.fail("expected a name in quotes")
+        self.done()
+        folded = name.casefold()
+        if any(
+            m["name"].casefold() == folded and m["id"] != master["id"] for m in self.show["masters"]
+        ):
+            raise ParseError(f"a master named {name!r} exists")
+        edit = {"type": "SET", "path": ["masters", {"id": master["id"]}, "name"], "value": name}
+        return Submit(_labelled(_renamed("master", master["name"], name), edit))
+
+    def _own_master(self, verb: str) -> Mapping[str, Any]:
+        """A master named in quotes (any case), but the grand master, which
+        is never ``verb``; Tab offers the others."""
+        what = 'a master name in quotes, e.g. "Speed 1"'
+        names = _quoted(m["name"] for m in self.show["masters"] if m["kind"] != "grand")
+        token = self.take(what, *names)
+        if not token.quoted:
+            raise ParseError(f"expected {what}")
+        folded = token.text.casefold()
+        found = next((m for m in self.show["masters"] if m["name"].casefold() == folded), None)
+        if found is None:
+            raise ParseError(f"no master {token.text!r}")
+        if found["kind"] == "grand":
+            raise ParseError(f"the grand master cannot be {verb}")
+        return found
 
     def _delete_route(self) -> Action:
         """``delete route <id>``: asks first at a prompt, as ``output off`` does."""
@@ -2897,9 +2984,7 @@ class _Parser:
         elif kind == "speed":
             options: dict[str, Any] = {}
             while (option := self.keyword("bpm", "steps")) is not None and option not in options:
-                options[option] = (
-                    self.number("a tempo") if option == "bpm" else self.numbers("a multiplier step")
-                )
+                options[option] = self.tempo() if option == "bpm" else self.steps()
             if option is not None:  # given twice
                 raise ParseError(f"unexpected {option!r}")
             value["defaultBpm"] = options.get("bpm", _DEFAULT_BPM)
@@ -2915,7 +3000,7 @@ class _Parser:
 
     def _cmd_bpm(self) -> Action:
         master = self.speed_master()
-        return self.submit({"type": "SET_BPM", "masterId": master, "bpm": self.number("a tempo")})
+        return self.submit({"type": "SET_BPM", "masterId": master, "bpm": self.tempo()})
 
     def speed_master(self) -> str:
         """A quoted speed master name, or else the show's only speed master
@@ -3346,6 +3431,14 @@ COMMANDS: Final = tuple(
 """The words a line can start with."""
 
 _BARE: Final = re.compile(r'[^\s",#][^\s",]*')
+
+
+def _plain(token: Token) -> float | None:
+    """``token`` as a number with no sign and no ``%``, as a time is read;
+    ``None`` if it is not one."""
+    if token.quoted or _SECONDS.fullmatch(token.text) is None:
+        return None
+    return _numeric(token.text)
 
 
 def _numeric(text: str) -> float:

@@ -12,8 +12,8 @@ log, so what the UI does is what you could type.
 > [F7 Masters](#f7-masters), and the rig: [F3 Fixtures](#f3-fixtures), [F8 Patch](#f8-patch)
 > and [F9 Surfaces](#f9-surfaces). Their edit modes and panels build a show from controls: the
 > rig, groups and park, presets, cues and cue lists, effects and their templates, playbacks and
-> pages. A few things are still typed at the prompt: renumbering a cue, a cue list or a page,
-> the options of an effect as it is added, and setting up masters, safety and the show's details.
+> pages, and masters. A few things are still typed at the prompt: renumbering a page, the
+> options of an effect as it is added, and setting up safety and the show's details.
 > F9 puts the start of a binding's line in the prompt.
 
 ## Install
@@ -1097,6 +1097,23 @@ Every master, one panel per kind, three across on a wide terminal:
   intensity 0%`), each with `[unpark]`, which sends `unpark fixture 204 intensity` at once. `[unpark
   all]` sends `unpark all` after a question (`Unpark everything? Park holds 2 values.`), and is grey
   with nothing parked. You park on [F3's FIXTURE panel](#edit-mode-and-the-fixture-panel).
+- **MASTERS**: a row per master but the grand master, with its name in its bar's colour and what
+  it is (`speed`, `size`, `group · 2 Washes`, `fade time`), and `[+ master…]`:
+  - `[+ master…]` opens a form: the kind as chips (speed, size, group, fade time; group only
+    when the show has groups), the name, and the group a group master scales, as chips, or a
+    speed master's tempo, which starts at 120. It sends one line, such as `master add group
+    "Washes" group 2` or `master add speed "Beat" bpm 128`, and refuses an empty name, a name
+    another master has in any case, and a tempo outside 0 to 999 BPM before it sends.
+  - `[rename…]` opens a name dialog and sends `rename master "FX" "Size"`.
+  - `[delete]` sends `delete master "FX" cascade`. busk asks first, and names the bindings that
+    go with it (`Delete master "FX"? It leaves 1 binding.`). A master that a cue's effect, a
+    chase or the programmer uses stays, and the log says which (`master "Speed 1" is used by the
+    chase of cue list 10 and effects in cues 11/1, 12/1, 13/1: change them first`). A group
+    master also goes when its group does.
+
+  The grand master has no row: busk neither renames nor deletes it. A master deleted at a level
+  lets go of what it held, and `undo` brings it back at its initial level. The pane cursor stops
+  on each `[rename…]` and `[delete]`, then `[+ master…]`.
 
 ## F8 Patch
 

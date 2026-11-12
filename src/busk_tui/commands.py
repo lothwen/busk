@@ -604,6 +604,31 @@ def unpark_all() -> Line:
     return Line("unpark all")
 
 
+# ----------------------------------------------------------------- masters
+
+
+def master_add(kind: str, name: str, *, group: int | None = None, bpm: str | None = None) -> Line:
+    """A new master of ``kind`` (``speed``, ``size``, ``group``, ``fadetime``):
+    ``master add group "Washes" group 2``, ``master add speed "Beat" bpm 128``.
+    ``bpm``: as typed, a number busk reads."""
+    words = ["master", "add", kind, quoted(name)]
+    if group is not None:
+        words += ["group", str(group)]
+    if bpm is not None:
+        words += ["bpm", bpm]
+    return Line(" ".join(words))
+
+
+def rename_master(name: str, new_name: str) -> Line:
+    return Line(f"rename master {quoted(name)} {quoted(new_name)}")
+
+
+def delete_master(name: str) -> Line:
+    """``delete master "FX" cascade``: busk asks, naming the bindings it
+    takes, and refuses a master an effect or a chase uses."""
+    return Line(f"delete master {quoted(name)} cascade")
+
+
 # ------------------------------------------------------------------- cues
 
 

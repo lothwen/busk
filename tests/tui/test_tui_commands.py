@@ -14,13 +14,14 @@ import pytest
 import busk
 from busk.commands.record import POOL_FAMILIES
 from busk.model.attributes import ATTRIBUTES
+from busk.model.master import MAX_BPM
 from busk.model.playback import ButtonFunction, FaderFunction, Playback
 from busk.output import dmxusb
 from busk_tui import attributes, commands, config
 from busk_tui import bridge as bridge_module
 from busk_tui.bridge import show_model
 from busk_tui.commands import Line
-from busk_tui.widgets import route_dialog
+from busk_tui.widgets import master_panel, route_dialog
 from busk_tui.widgets.chase_dialog import (
     DIRECTIONS,
     check_crossfade,
@@ -372,6 +373,29 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
     "rename group": (commands.rename_group(5, "Floor 2"), 'rename group 5 "Floor 2"', False),
     "renumber group": (commands.renumber_group(5, 7), "group 5 number 7", False),
     "delete group": (commands.delete_group(7), "delete group 7 cascade", False),
+    # Masters made, renamed and deleted (pending plan Phase 35).
+    "master add speed": (
+        commands.master_add("speed", "Speed 2", bpm="128.5"),
+        'master add speed "Speed 2" bpm 128.5',
+        False,
+    ),
+    "master add size": (commands.master_add("size", "FX 2"), 'master add size "FX 2"', False),
+    "master add group": (
+        commands.master_add("group", "Heads level", group=1),
+        'master add group "Heads level" group 1',
+        False,
+    ),
+    "master add fadetime": (
+        commands.master_add("fadetime", "Fade 2"),
+        'master add fadetime "Fade 2"',
+        False,
+    ),
+    "rename master": (
+        commands.rename_master("FX 2", 'Say "hi"'),
+        r'rename master "FX 2" "Say \"hi\""',
+        False,
+    ),
+    "delete master": (commands.delete_master("Fade"), 'delete master "Fade" cascade', False),
     "park": (
         commands.park("101 thru 102, 301.2", "intensity", "50%"),
         "park fixture 101 thru 102, fixture 301.2 intensity 50%",
@@ -627,7 +651,10 @@ def test_each_builder_is_marked_as_busk_runs_it(name: str) -> None:
     assert line.text == text
     assert line.performance is performance
     words = line.text.split()
-    edit = words[0] == "page" and (words[1] == "add" or "slot" in words)
+    edit = (words[0] == "page" and (words[1] == "add" or "slot" in words)) or words[:2] == [
+        "master",
+        "add",
+    ]
     assert (words[0] in PERFORMANCE_WORDS and not edit) is performance
 
 
@@ -977,6 +1004,42 @@ def test_the_chase_form_and_busk_agree_on_a_crossfade(
 ) -> None:
     assert (check_crossfade(text) is None) is ok
     assert show.execute(f"cuelist 9 chase hz 2 crossfade {text}").ok is ok
+
+
+def test_the_master_forms_kinds_and_fastest_tempo_are_busks(show: busk.OfflineShow) -> None:
+    assert master_panel.MAX_BPM == MAX_BPM
+    assert set(master_panel.KINDS) == set(show.expected("master add ").words)
+    for kind in master_panel.KINDS:
+        line = commands.master_add(kind, f"New {kind}", group=1 if kind == "group" else None)
+        reply = show.execute(line.text)
+        assert reply.ok, reply.text
+
+
+@pytest.mark.parametrize("text", ["120", "0.5", ".5", "128.", "999"])
+def test_what_the_master_form_passes_as_a_tempo_busk_takes(
+    show: busk.OfflineShow, text: str
+) -> None:
+    assert master_panel.check_bpm(text) is None
+    assert show.execute(commands.master_add("speed", "New", bpm=text).text).ok
+
+
+@pytest.mark.parametrize("text", ["0", "-1", "+120", "50%", "999.5", "1000", "abc", "", "9" * 301])
+def test_a_tempo_the_master_form_refuses_busk_refuses_too(
+    show: busk.OfflineShow, text: str
+) -> None:
+    assert master_panel.check_bpm(text) is not None
+    assert not show.execute(f'master add speed "New" bpm {text}').ok
+
+
+@pytest.mark.parametrize(("text", "ok"), [("Size", True), ("fx", False), ("SPEED 1", False)])
+def test_the_master_form_and_busk_agree_on_a_name(
+    show: busk.OfflineShow, text: str, ok: bool
+) -> None:
+    taken = [master["name"] for master in show.show["masters"]]
+    assert (master_panel.check_master_name(taken, None)(text) is None) is ok
+    assert show.execute(commands.master_add("size", text).text).ok is ok
+    assert master_panel.check_master_name(taken, "FX")("fx") is None  # its own, in another case
+    assert show.execute(commands.rename_master("FX", "fx").text).ok
 
 
 def test_the_timing_forms_words_are_busks(show: busk.OfflineShow) -> None:

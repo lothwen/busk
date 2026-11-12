@@ -10,6 +10,13 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- `rename master "<name>" "<new name>"` renames a master, and refuses a name another master has,
+  in any case. `delete master "<name>" [cascade]` deletes one, and is refused while a cue's effect,
+  a cue list's chase or an effect in the programmer names it, saying which; a binding that drives,
+  taps or names it needs `cascade`, and goes with it after the question. The grand master is
+  neither renamed nor deleted. Each is one undo step. F7 has a MASTERS panel: `[+ master…]` makes
+  a speed, size, group or fade-time master from a form, and each master but the grand one has
+  `[rename…]` and `[delete]`.
 - `list dmx U [A [thru B]]` prints what busk sends on a universe's channels, 16 values to a line,
   as the engine's last frame has them, after the masters, park, blackout and limits.
   `list dmx fixture N` prints each channel of a fixture with its function in its mode (`pan`,
@@ -162,6 +169,11 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Fixed
 
+- `master add speed … bpm 0` (or above 999) and `steps 0, 1` were refused with a document path
+  (`masters[1].defaultBpm: …`), and `bpm 50%` made a tempo of 0.5 BPM, at `master add speed` and
+  at `bpm ["<master>"]`. A tempo is now plain BPM, above 0 and at most 999, and a multiplier step a
+  plain number above 0, each with no sign and no `%`, as busk reads seconds; anything else is
+  refused in one line: `expected a tempo above 0, up to 999 BPM, got '50%'`.
 - `fixture N mode`, `fixture N profile` and `profile update` were refused with one document path
   per element when something named an element the new mode lacks: 22 lines of
   `groups[2].members[1].element: …` for the club show's bar. They are refused in one line now,

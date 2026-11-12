@@ -2625,6 +2625,36 @@ comes first. Code:
 
    Verify: each kind of master; each use that refuses; a binding that goes, and comes back with
    `undo`; a running `LiveShow` with the master at a level.
+
+   **Done** (2026-11-12), before Phases 26 to 33, at the user's word. `_rename_master`,
+   `_delete_master` and `_own_master` in `src/busk/console/parser.py`, and `master_cascade` in
+   `src/busk/console/cascade.py`, with the help line and a paragraph in both modules' docs.
+   GAP-53's entry, its Summary row and its **Done** are in engine-gaps.md. Phase 33 is not built,
+   so no template has defaults: when it builds them, a master they name joins the uses here, as
+   its step 1 says. Tests: `tests/test_master_lines.py` (43) and four rows of
+   `tests/test_console_prompt.py`.
+
+   Calls the user may veto:
+   - **The refusal of a used master** is one line naming the chases and the cues by number, and
+     the programmer: `master "Speed 1" is used by the chase of cue list 10 and effects in cues
+     11/1, 12/1, 13/1: change them first`. It comes with `cascade` or without, so a plain
+     `delete` never says `add cascade` for a master the cascade cannot take, and Tab then offers
+     no `cascade`.
+   - **A list in sequence mode that keeps chase settings on the master** counts as a chase: the
+     validator reads them, so the delete would fail by path. `cuelist N chase none` frees it.
+   - **A binding's `ADD_EFFECT` that names the master goes with `cascade`,** as the group's cascade
+     drops one that targets the group. It is a control, not one of the show's effects.
+   - **The words of a cascade with bindings** are the group's, preset's and playback's: `Delete
+     master "FX"? It leaves 1 binding.`, `deleted master "FX": left 1 binding`, and `master "FX"
+     is used by 1 binding: add cascade`. The master is named by its name in quotes, since it has
+     no number.
+   - **A rename to the name it has, or to an empty one,** goes through, as every other `rename`
+     does; F7's dialog sends neither.
+   - **`undo` brings a deleted master back at its initial level,** not at the level it had: the
+     engine keeps the levels of the masters the show has.
+   - Found while building (§7): `master add speed … bpm 0`, `bpm 1000` and `steps 0, 1` were
+     refused by document path, and `bpm 50%` gave a tempo of 0.5. Fixed the same day, at the
+     user's word: see §7.
 2. **F7's masters.** `[+ master…]` opens a form: the kind (speed, size, group, fade time), the
    name, and the group for a group master or the BPM for a speed one. It sends, for example,
    `master add group "Washes" group 2`. Each master has `[rename…]` and `[delete]`; `[delete]` asks
@@ -2633,7 +2663,56 @@ comes first. Code:
    Verify: each kind added; a rename; a delete refused, in the log; a delete with a binding; a test
    on the real engine.
 
+   **Done** (2026-11-12). F7 has a MASTERS panel (`MasterPanel` in
+   `src/busk_tui/widgets/master_panel.py`), the last of its panels. A row per master but the grand
+   master: its name in its bar's colour and what it is, then `[rename…]` and `[delete]`. Under the
+   rows, `[+ master…]` opens `MasterDialog`, in the same module: the kind's chips, the name, and the
+   group's chips or the tempo, by the kind. The builders are `commands.master_add`,
+   `rename_master` and `delete_master`, in the contract test. The page builds the panel again when
+   the masters change, as it builds the others, and gives it each new show, for the groups and the
+   names its dialogs check. Tests: 7 in `tests/tui/test_tui_masters.py` (4 changed for the new
+   panel), 22 in `tests/tui/test_tui_commands.py`, and
+   `test_f7_makes_renames_and_deletes_masters_from_controls_on_the_real_engine`.
+
+   Calls the user may veto:
+   - **One panel lists the masters, with their buttons,** rather than buttons in each kind's
+     panel. The panels an operator plays with keep their rows, so nothing moves under a fader;
+     MASTERS comes last, after PARKED, so PANIC stays where it was on a narrow screen.
+   - **The grand master has no row,** since busk neither renames nor deletes it. A show with no
+     other master says `no masters but the grand master · [+ master…]`.
+   - **The form starts with an empty name and the cursor in it,** with the kind chips above it
+     (speed first). The group chips are `1 Heads`, by number, and the group kind is left out on a
+     show with no groups. The tempo starts at 120, busk's own default, and the line always
+     carries it (`bpm 120`).
+   - **The form checks what it can before it sends:** an empty name, a name another master has
+     in any case, and a tempo outside 0 to 999 BPM (`MAX_BPM`, held equal to busk's), each in
+     words under the fields. A name is sent without the spaces around it.
+   - **`[delete]` always sends `cascade`,** as F3's group `[delete]` does: busk asks, and names
+     the bindings. A master in use is not greyed, since the TUI would have to read every cue's
+     effects for it: busk refuses it, the log says why, and nothing is asked.
+   - **The rename dialog's title is `RENAME MASTER`,** as F5's template one is: a name in a title
+     could read as markup.
+
 Docs: the guide's F7, and `CHANGELOG.md`.
+
+**Done** (2026-11-12). The guide's F7 (the MASTERS panel) and its first note; `docs/console.md`
+(the Effects, masters row, a paragraph, and a row of the cascade table); `busk help` and the
+parser's and the cascade's module docs; engine-gaps.md (GAP-53, with its **TUI since**); the
+report's header and its "Beyond this report"; §7's item; `CHANGELOG.md` under Added.
+
+**Phase 35 checks** (2026-11-12), on top of `e76e282`. The whole suite: 6,596 passed and 1
+skipped, in 8:24 with `uv run pytest -n 6`. `ruff check`, `ruff format --check`, `mypy src` and
+`mypy --strict tests/api_consumer.py` clean. F7's tests, the contract test, the hints and help
+tests, and the two F7 real-engine tests pass on Textual 8.2.0: 443 tests. The perf gate was not
+run: F7 is not in it, and its per-tick path (levels, beats) did not change; only a show change
+now also hands the new show to the panel.
+
+A real `busk run club.show --state-dir …` with processes, lines piped in: with `sel group 2`, `set
+intensity 100%` and `master "Wash level" 0%`, `list dmx fixture 201` gave `1.36  white 0`; after
+`delete master "Wash level"`, `255`. `rename master "FX" "Size"` and the refusal of `Speed 1` (the
+chase of cue list 10 and cues 11/1, 12/1, 13/1) read as in step 1's notes; a binding on `Fade`
+refused the plain delete, went with `cascade` (`left 1 binding`), and two `undo` brought both
+back.
 
 ### Phase 36: The last setup lines on screen
 
@@ -2786,7 +2865,25 @@ sequences, executors and recipes. Each doubtful point was checked on `OfflineSho
 - A phaser kept with its settings for reuse (grandMA3 stores one in a preset): **Phase 33**, Q13.
 - What busk sends on each DMX channel, to check a fixture's personality; overlaps at the prompt:
   **Phase 34**. Built there.
-- Masters are made only at the prompt, and no line renames or deletes one: **Phase 35**.
+- Masters are made only at the prompt, and no line renames or deletes one: **Phase 35**. Built
+  there.
+- `master add speed "X" bpm 0`, `bpm 1000` and `steps 0, 1` are refused by document path
+  (`masters[1].defaultBpm: The tempo must be greater than 0 and at most 999 BPM, got 0`), and `bpm
+  50%` makes a master at 0.5 BPM, where `cue L/C time` and the other seconds refuse `%` since
+  Phase 18. F7's form checks the tempo itself, so it never sends one of these; only the prompt
+  meets them. Found on 2026-11-12, in Phase 35. Fixed the same day, at the user's word ("Fix
+  those 2 findings"): `Parser.tempo` reads a tempo as plain BPM, above 0 and at most `MAX_BPM`,
+  and `Parser.steps` each step as a plain number above 0, both with no sign and no `%`, as
+  `seconds` reads a time. Anything else is refused in one line (`expected a tempo above 0, up to
+  999 BPM, got '50%'`, `expected a multiplier step above 0, got '0'`). `bpm ["<master>"] <bpm>`
+  read its tempo the same way (`bpm "Speed 1" 50%` set 0.5 BPM), so it takes the same reader;
+  `numbers`, whose only caller was the steps, is gone. Rows in `tests/test_console_parser.py`, and
+  `50%` and `+120` in the F7 form's agreement test, which now agrees with busk on both. The
+  chase's and an effect's `x <multiplier>` were not checked.
+- The guide's first note still said that renumbering a cue and a cue list is typed at the
+  prompt, though F4 has had `[number…]` for both since Phase 22. Found on 2026-11-12, in Phase
+  35, and fixed the same day: only a page's number is typed, as the report says. With both fixes, the
+  whole suite: 6,609 passed and 1 skipped, in 8:34 with `uv run pytest -n 6`.
 - Three setup lines with no control: F2's discrete attributes, the strobe cap and the show's
   title: **Phase 36**.
 - Cue parts. **Not planned**: a family's own timing (GAP-42) and, after Phase 29, an entry's own

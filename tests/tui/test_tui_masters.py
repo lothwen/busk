@@ -1,6 +1,8 @@
 """F7 Masters (spec §8.7, plan Phase 1): the grand master, the speed
-masters, the size and group masters, the fade-time masters and panic.
-Headless, with a fake bridge (and the club-night show's questions)."""
+masters, the size and group masters, the fade-time masters and panic; what
+park holds (pending plan Phase 12); the MASTERS panel, which makes, renames and
+deletes them (pending plan Phase 35). Headless, with a fake bridge (and the
+club-night show's questions)."""
 
 from __future__ import annotations
 
@@ -28,8 +30,9 @@ from busk_tui.model import (
 from busk_tui.pages.masters import MastersPage
 from busk_tui.shell import BuskApp
 from busk_tui.widgets.controls import CommandButton
-from busk_tui.widgets.dialogs import ConfirmDialog
+from busk_tui.widgets.dialogs import ConfirmDialog, TextDialog
 from busk_tui.widgets.log import LogView
+from busk_tui.widgets.master_panel import NO_MASTERS, MasterDialog
 from busk_tui.widgets.masters import BlackoutButton, MasterBar
 from busk_tui.widgets.panel import Panel
 from busk_tui.widgets.parked import ParkedPanel, held_text, parked_rows, row_text
@@ -92,6 +95,7 @@ def test_a_panel_per_kind_of_master() -> None:
             "FADE TIME",
             "PANIC",
             "PARKED",
+            "MASTERS",
         ]
         bars = {bar.master.name: bar for bar in page(app).query(MasterBar)}
         assert [(name, bar.level, bar.bar.color) for name, bar in bars.items()] == [
@@ -231,10 +235,13 @@ def test_a_new_master_rebuilds_the_page_and_keyboard_reaches_each_control() -> N
         await settle(pilot, app)
         assert [b.master.name for b in page(app).query(MasterBar)] == ["Grand Master", "Big"]
         assert not page(app).query(Tempo)
-        items = [item.line or item.prefill for item in page(app).items()]
-        assert items == [
+        items = page(app).items()
+        assert [item.line or item.prefill for item in items[:7]] == [
             "gm ", "blackout on", "gm 100%", 'master "Big" ',
             "release all", "output off", "output on",
+        ]  # fmt: skip
+        assert [item.label for item in items[7:]] == [
+            "rename master Big…", "delete master Big", "+ master…",
         ]  # fmt: skip
         await pilot.press("tab", "down", "down", "enter")
         assert bridge.lines() == ["gm 100%"]
@@ -358,7 +365,8 @@ def test_the_parked_panel_is_built_again_only_when_what_park_holds_changes() -> 
         assert bridge.sent == []
         assert len(page(app).query(ParkedPanel)) == 1
         items = [item.label for item in page(app).items()]
-        assert items[-1] == "OUTPUT ON"  # no stop on a grey [unpark all]
+        assert "unpark all" not in items  # no stop on a grey [unpark all]
+        assert items[items.index("OUTPUT ON") + 1] == "rename master Speed 1…"
 
     drive(app, body)
 
@@ -370,9 +378,250 @@ def test_the_pane_cursor_reaches_each_unpark() -> None:
     async def body(pilot: Pilot[int]) -> None:
         await settle(pilot, app)
         items = page(app).items()
-        assert [item.label for item in items][-3:] == [
+        labels = [item.label for item in items]
+        last = labels.index("unpark all")
+        assert labels[last - 2 : last + 1] == [
             "unpark 204 intensity", "unpark 301.2 intensity", "unpark all",
         ]  # fmt: skip
-        assert items[-2].line == "unpark fixture 301.2 intensity"
+        assert items[last - 1].line == "unpark fixture 301.2 intensity"
+
+    drive(app, body)
+
+
+# --------------------------------------------- MASTERS (pending plan Phase 35)
+
+GROUPS = (GroupInfo(2, "Washes"), GroupInfo(1, "Heads"))
+
+
+def on_setup(
+    bridge: FakeBridge,
+    masters: tuple[MasterView, ...] = MASTERS,
+    groups: tuple[GroupInfo, ...] = GROUPS,
+) -> BuskApp:
+    bridge.events += [ShowChanged(show_model(masters=masters, groups=groups)), LiveChanged(live())]
+    return make_app(bridge, page=7)
+
+
+async def tap(pilot: Pilot[int], widget: Any) -> None:
+    """A click on ``widget``, scrolled into sight first."""
+    widget.scroll_visible(animate=False)
+    await pilot.pause()
+    await pilot.click(widget)
+    await pilot.pause()
+
+
+def form(app: BuskApp) -> MasterDialog:
+    dialog = app.screen
+    assert isinstance(dialog, MasterDialog)
+    return dialog
+
+
+def test_a_row_per_master_but_the_grand_one() -> None:
+    bridge = FakeBridge()
+    app = on_setup(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        setup = page(app).setup
+        assert str(setup.border_title) == "MASTERS"
+        texts = [s.content for s in setup.query(".ms-text").results(Static)]
+        assert [t.plain for t in texts if isinstance(t, Text)] == [
+            "Speed 1 speed", "Slow speed", "FX size", "Wash level group · 2 Washes",
+            "Fade fade time",
+        ]  # fmt: skip
+        assert [str(t.style) for t in texts if isinstance(t, Text)] == [
+            colors.AMBER, colors.AMBER, colors.GREEN, colors.AMBER, colors.FG,
+        ]  # fmt: skip
+        assert [len(setup.renames), len(setup.deletes)] == [5, 5]
+        assert not setup.query(".ms-empty")
+        bridge.events.append(ShowChanged(show_model(masters=MASTERS[:1])))
+        await settle(pilot, app)
+        alone = page(app).setup
+        assert alone is not setup
+        assert (alone.renames, alone.deletes) == ([], [])
+        assert plain(alone.query_one(".ms-empty", Static)) == NO_MASTERS
+        assert [stop.item.label for stop in alone.stops()] == ["+ master…"]
+
+    drive(app, body)
+
+
+def test_the_form_adds_each_kind_of_master() -> None:
+    bridge = FakeBridge()
+    app = on_setup(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        setup = page(app).setup
+        await tap(pilot, setup.add)
+        dialog = form(app)
+        assert list(dialog.kind.labels) == ["speed", "size", "group", "fadetime"]
+        assert dialog.group is not None
+        assert list(dialog.group.labels.values()) == ["1 Heads", "2 Washes"]
+        assert dialog.focused is dialog.name_field
+        assert dialog.bpm_row.display
+        assert dialog.group_row is not None
+        assert not dialog.group_row.display
+        await pilot.press(*"Beat", "tab", "end", "ctrl+u", *"128", "enter")
+        await pilot.pause()
+
+        await tap(pilot, setup.add)
+        await pilot.press("shift+tab", "right")  # size
+        assert not form(app).bpm_row.display
+        await pilot.press("tab", *"Big", "enter")
+        await pilot.pause()
+
+        await tap(pilot, setup.add)
+        form(app).kind.pick("group")
+        await pilot.pause()
+        assert form(app).group_row.display  # type: ignore[union-attr]
+        await pilot.press(*"Washes level", "tab", "right", "enter")  # group 2
+        await pilot.pause()
+
+        await tap(pilot, setup.add)
+        form(app).kind.pick("fadetime")
+        await pilot.press(*"Slow fades", "enter")
+        await pilot.pause()
+        assert bridge.lines() == [
+            'master add speed "Beat" bpm 128',
+            'master add size "Big"',
+            'master add group "Washes level" group 2',
+            'master add fadetime "Slow fades"',
+        ]
+
+    drive(app, body)
+
+
+def test_the_form_says_what_is_wrong_and_sends_nothing() -> None:
+    bridge = FakeBridge()
+    app = on_setup(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        await tap(pilot, page(app).setup.add)
+        dialog = form(app)
+        for typed, error in [
+            ("enter", "a name cannot be empty"),
+            (" fx", 'a master named "fx" exists'),
+            ("ctrl+u", ""),
+        ]:
+            await pilot.press(*([typed] if typed in ("enter", "ctrl+u") else [*typed, "enter"]))
+            await pilot.pause()
+            if error:
+                assert plain(dialog.error) == error
+        await pilot.press(*"Beat", "tab", "end", "ctrl+u", "0", "enter")
+        await pilot.pause()
+        assert plain(dialog.error) == "a tempo above 0, up to 999 BPM"
+        dialog.kind.pick("size")  # the tempo is not the size's
+        await pilot.pause()
+        assert plain(dialog.error) == ""
+        await pilot.press("escape")
+        await pilot.pause()
+        assert not isinstance(app.screen, MasterDialog)
+        assert bridge.sent == []
+
+    drive(app, body)
+
+
+def test_without_groups_the_form_offers_no_group_master() -> None:
+    bridge = FakeBridge()
+    app = on_setup(bridge, groups=())
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        first = page(app).setup
+        await tap(pilot, first.add)
+        assert list(form(app).kind.labels) == ["speed", "size", "fadetime"]
+        assert form(app).group is None
+        await pilot.press("escape")
+        bridge.events.append(ShowChanged(show_model(masters=MASTERS, groups=GROUPS)))
+        await settle(pilot, app)
+        assert page(app).setup is first  # the same masters: nothing to build
+        await tap(pilot, first.add)
+        assert "group" in form(app).kind.labels  # the groups it reads are the show's now
+
+    drive(app, body)
+
+
+def test_rename_sends_the_new_name_and_nothing_for_the_same() -> None:
+    bridge = FakeBridge()
+    app = on_setup(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        setup = page(app).setup
+        await tap(pilot, setup.renames[2])  # FX
+        dialog = app.screen
+        assert isinstance(dialog, TextDialog)
+        assert (dialog.title_text, dialog.initial) == ("RENAME MASTER", "FX")
+        await pilot.press("ctrl+u", *"speed 1", "enter")
+        await pilot.pause()
+        assert plain(dialog.error) == 'a master named "speed 1" exists'
+        await pilot.press("ctrl+u", *"fx", "enter")  # its own, in another case
+        await pilot.pause()
+        await tap(pilot, setup.renames[2])
+        await pilot.press("enter")  # the name it has: nothing
+        await pilot.pause()
+        await tap(pilot, setup.renames[3])
+        await pilot.press("ctrl+u", *'Say "hi"', "enter")
+        await pilot.pause()
+        assert bridge.lines() == [
+            'rename master "FX" "fx"',
+            r'rename master "Wash level" "Say \"hi\""',
+        ]
+
+    drive(app, body)
+
+
+def test_delete_asks_busks_question_and_sends_the_cascade(club: busk.OfflineShow) -> None:
+    bridge = FakeBridge(show=club)
+    app = on_setup(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        setup = page(app).setup
+        await tap(pilot, setup.deletes[3])  # Wash level
+        dialog = app.screen
+        assert isinstance(dialog, ConfirmDialog)
+        assert dialog.question == 'Delete master "Wash level"?'
+        await pilot.press("n")
+        await settle(pilot, app)
+        assert bridge.sent == []
+        await tap(pilot, setup.deletes[3])
+        await pilot.press("y")
+        await settle(pilot, app)
+        await tap(pilot, setup.deletes[0])  # Speed 1: busk refuses it, and asks nothing
+        assert not isinstance(app.screen, ConfirmDialog)
+        assert bridge.lines() == [
+            'delete master "Wash level" cascade',
+            'delete master "Speed 1" cascade',
+        ]
+
+    drive(app, body)
+
+
+def test_the_pane_cursor_reaches_each_masters_controls() -> None:
+    bridge = FakeBridge()
+    app = on_setup(bridge, masters=MASTERS[:1] + MASTERS[3:5])
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        items = page(app).items()
+        labels = [item.label for item in items]
+        assert labels[-5:] == [
+            "rename master FX…", "delete master FX",
+            "rename master Wash level…", "delete master Wash level", "+ master…",
+        ]  # fmt: skip
+        action = items[-1].action
+        assert action is not None
+        action()
+        await pilot.pause()
+        assert isinstance(app.screen, MasterDialog)
+        await pilot.press("escape")
+        await pilot.pause()
+        delete = items[-4].action
+        assert delete is not None
+        delete()
+        await pilot.pause()
+        assert bridge.lines() == ['delete master "FX" cascade']
 
     drive(app, body)

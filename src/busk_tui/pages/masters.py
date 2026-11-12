@@ -11,6 +11,9 @@
   ``[OUTPUT ON]``.
 * PARKED (busk's): a row per value park holds, with ``[unpark]``, and
   ``[unpark all]`` (:mod:`busk_tui.widgets.parked`).
+* MASTERS (busk's): a row per master but the grand master, with
+  ``[rename…]`` and ``[delete]``, and ``[+ master…]``
+  (:mod:`busk_tui.widgets.master_panel`).
 
 Panels are laid out three across from 132 columns, two from 100, and one
 under the other below that.
@@ -31,6 +34,7 @@ from busk_tui.nav import Item, Stop
 from busk_tui.pages.base import Page, Part, View
 from busk_tui.widgets.controls import CommandButton, chip
 from busk_tui.widgets.digits import BigDigits
+from busk_tui.widgets.master_panel import MasterPanel
 from busk_tui.widgets.masters import BlackoutButton, MasterBar, master_item
 from busk_tui.widgets.panel import Panel
 from busk_tui.widgets.parked import ParkedPanel, ParkedRow, parked_rows
@@ -82,6 +86,7 @@ class MastersPage(Page):
         self.output_off = CommandButton("OUTPUT OFF", commands.output(False), "danger")
         self.output_on = CommandButton("OUTPUT ON", commands.output(True), "go")
         self.parked = ParkedPanel((), 0)
+        self.setup = MasterPanel(None)
 
     def compose(self) -> ComposeResult:
         yield self.grid
@@ -94,9 +99,11 @@ class MastersPage(Page):
 
     def update_view(self, view: View, changed: frozenset[Part]) -> None:
         show, live = view.show, view.live
-        if "show" in changed and show is not None and self._shape(show) != self.shape:
-            self.shape = self._shape(show)
-            self._build(show, live)
+        if "show" in changed and show is not None:
+            if self._shape(show) != self.shape:
+                self.shape = self._shape(show)
+                self._build(show, live)
+            self.setup.show = show  # its dialogs read the groups and the masters' names
         if changed & {"show", "live"} and live is not None:
             self._show_levels(live)
         if changed & {"live", "beats"} and live is not None:
@@ -140,6 +147,8 @@ class MastersPage(Page):
         panels.append(Panel("panic", self.output_state, buttons))
         self.parked = ParkedPanel(parked_rows(show.park, show.fixtures), len(show.park))
         panels.append(self.parked)
+        self.setup = MasterPanel(show)
+        panels.append(self.setup)
         self.grid.remove_children()
         self.grid.mount_all(panels)
 
@@ -176,4 +185,4 @@ class MastersPage(Page):
         stops += [Stop(master_item(bar.master), bar) for bar in self.bars]
         for button in (self.release_all, self.output_off, self.output_on):
             stops.append(Stop(Item(button.label, line=button.line.text), button))
-        return stops + self.parked.stops()
+        return stops + self.parked.stops() + self.setup.stops()

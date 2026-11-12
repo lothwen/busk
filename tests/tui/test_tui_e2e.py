@@ -18,7 +18,9 @@
   fixtures in one line each, imports a profile through the picker and brings
   a profile to the library's revision; F8 adds, renames, renumbers and deletes
   universes, edits a route through every protocol, and patches and adds at a
-  place on its map; a new show gets a rig from controls alone.
+  place on its map; F7 makes a master of each kind, renames one, shows busk's
+  refusal of one in use and deletes one a binding drives; a new show gets a rig
+  from controls alone.
 * On a running show with its output open (``--standalone``): F8 adds a route to
   a new universe, a fixture patched in it reaches a real receiver, and the route
   goes off, on and away.
@@ -94,6 +96,7 @@ from busk_tui.widgets.encoders import EncoderBar, EncoderRow
 from busk_tui.widgets.fixturetable import FixtureTable
 from busk_tui.widgets.frame import StatusBar
 from busk_tui.widgets.log import LogView
+from busk_tui.widgets.master_panel import MasterDialog
 from busk_tui.widgets.options import LIT, OptionRow
 from busk_tui.widgets.playback_panel import (
     CueListDialog,
@@ -500,6 +503,94 @@ def test_f3_and_f7_record_groups_park_and_unpark_from_controls_on_the_real_engin
         assert str(page.table.rows[0]["pan"].spans[0].style) != colors.AMBER
         await pilot.press(*"park fixture 101 tilt 0", "enter")  # one attribute: all the position
         await until(pilot, lambda: str(page.table.rows[0]["pan"].spans[0].style) == colors.AMBER)
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_f7_makes_renames_and_deletes_masters_from_controls_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """MASTERS adds one of each kind through its form, renames one, shows busk's
+    refusal of a master a chase and effects use, and deletes one a binding
+    drives, after busk's question; ``undo`` brings it back (pending plan Phase
+    35)."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=7), standalone=True)
+
+    def masters() -> dict[str, Any]:
+        show = app.view.show
+        return {} if show is None else {master.name: master for master in show.masters}
+
+    def bound() -> int:
+        show = app.view.show
+        return 0 if show is None else sum(b.what == 'master "Huge"' for b in show.bindings)
+
+    def tempo(name: str) -> float | None:
+        live = app.view.live
+        return None if live is None else next((s.bpm for s in live.speed if s.name == name), None)
+
+    async def control(pilot: Pilot[int], name: str, kind: str) -> None:
+        """A click on master ``name``'s ``[rename…]`` or ``[delete]``."""
+        page = app.query_one(MastersPage)
+        await until(pilot, lambda: name in [m.name for m in page.setup.masters])
+        index = [m.name for m in page.setup.masters].index(name)
+        buttons = page.setup.renames if kind == "rename" else page.setup.deletes
+        await tap(pilot, buttons[index])
+
+    async def add(pilot: Pilot[int], kind: str, *keys: str) -> None:
+        await tap(pilot, app.query_one(MastersPage).setup.add)
+        await until(pilot, lambda: isinstance(app.screen, MasterDialog))
+        app.screen.kind.pick(kind)  # type: ignore[attr-defined]
+        await pilot.press(*keys)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: "Speed 1" in masters())
+        await add(pilot, "speed", *"Beat", "tab", "end", "ctrl+u", *"128", "enter")
+        await until(pilot, lambda: "Beat" in masters())
+        await add(pilot, "size", *"Big", "enter")
+        await add(pilot, "group", *"Pair level", "tab", "right", "enter")  # group 2
+        await add(pilot, "fadetime", *"Slow fades", "enter")
+        await until(pilot, lambda: {"Big", "Pair level", "Slow fades"} <= set(masters()))
+        made = {name: masters()[name] for name in ("Beat", "Big", "Pair level", "Slow fades")}
+        assert [(m.kind, m.steps) for m in made.values()] == [
+            ("speed", (0.25, 0.5, 1.0, 2.0, 4.0)), ("size", ()), ("group", ()), ("fadeTime", ()),
+        ]  # fmt: skip
+        assert made["Pair level"].group is not None
+        assert made["Pair level"].group.number == 2
+        await until(pilot, lambda: tempo("Beat") == 128)
+
+        await control(pilot, "Big", "rename")
+        await until(pilot, lambda: isinstance(app.screen, TextDialog))
+        await pilot.press("ctrl+u", *"Huge", "enter")
+        await until(pilot, lambda: "Huge" in masters() and "Big" not in masters())
+
+        log = app.query_one(LogView)
+        await control(pilot, "Speed 1", "delete")
+        refusal = (
+            'error: master "Speed 1" is used by the chase of cue list 10 and effects in cues '
+            "11/1, 12/1, 13/1: change them first"
+        )
+        await until(pilot, lambda: ("error", refusal.removeprefix("error: ")) in log.entries)
+        assert not isinstance(app.screen, ConfirmDialog)
+        assert "Speed 1" in masters()
+
+        await pilot.press(*'bind "nanoKONTROL2" cc 1 99 master "Huge"', "enter")
+        await until(pilot, lambda: bound() == 1)
+        await control(pilot, "Huge", "delete")
+        await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+        question = 'Delete master "Huge"? It leaves 1 binding.'
+        assert app.screen.question == question  # type: ignore[attr-defined]
+        await pilot.press("y")
+        await until(pilot, lambda: "Huge" not in masters() and bound() == 0)
+        await pilot.press(*"undo", "enter")
+        await until(pilot, lambda: "Huge" in masters() and bound() == 1)
+        setup = app.query_one(MastersPage).setup
+        await until(pilot, lambda: "Huge" in [m.name for m in setup.masters])
 
     try:
         drive(app, body)

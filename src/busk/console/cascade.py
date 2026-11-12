@@ -34,6 +34,11 @@ playback`` does, and leaves their page slots empty. A playback leaves the
 slots that hold it, and its cue list stays. A page goes alone: its playbacks
 stay. A binding or a command that names what goes, goes too, whichever of
 these it is.
+
+A master (GAP-53) takes only the bindings that drive it, tap it or name it in a
+command. A cue's effect, a cue list's chase or an effect in the programmer that
+names it stops the line: their rate or size cannot lose the master and still
+run, and a used master is not cascaded.
 """
 
 from __future__ import annotations
@@ -275,6 +280,27 @@ def page_cascade(show: Show, page: _Doc) -> Cascade:
     commands = [*bindings, _delete(["pages", {"id": ident}])]
     said = [_count(len(bindings), "binding")]
     return _leaves(commands, f"page {number}", page, said, said)
+
+
+def master_cascade(show: Show, master: _Doc, programmer: Programmer) -> Cascade:
+    """``master`` goes from ``show``, with the bindings that name it. A cue's
+    effect, a chase or an effect of ``programmer`` that names it blocks it."""
+    ident = master["id"]
+    bindings = [
+        *_binding_edits(show, _master_command, ident),
+        *_action_edits(show, lambda a: a["kind"] in ("master", "tap") and a["masterId"] == ident),
+    ]
+    commands = [*bindings, _delete(["masters", {"id": ident}])]
+    subject = f"master {_quoted(master['name'])}"
+    said = [_count(len(bindings), "binding")]
+    question = f"Delete {subject}?{_sentence('It leaves ', said, '; ')}"
+    return Cascade(
+        tuple(commands),
+        _reply(subject, "left ", said),
+        question,
+        _refused(subject, said),
+        _master_users(show, ident, programmer, subject),
+    )
 
 
 # ------------------------------------------------------------- a fixture leaves
@@ -576,6 +602,57 @@ def _page_command(number: int) -> _Change[str]:
         return None if command["type"] == "PAGE" and command.get("number") == number else command
 
     return change
+
+
+# ------------------------------------------------------------- a master goes
+
+
+def _names_master(effect: _Doc, ident: str) -> bool:
+    """Whether an effect instance names master ``ident``: its rate's, its
+    speed master or its size master."""
+    rate = effect["rate"]
+    return (
+        (rate["kind"] == "bpm" and rate["masterId"] == ident)
+        or effect.get("speedMasterId") == ident
+        or effect.get("sizeMasterId") == ident
+    )
+
+
+def _master_command(command: _Doc, ident: str) -> _Doc | None:
+    """A binding's command, gone when it sets, taps or tempos master
+    ``ident``, or adds an effect that names it."""
+    if command["type"] in ("SET_MASTER", "TAP", "SET_BPM") and command["masterId"] == ident:
+        return None
+    if command["type"] == "ADD_EFFECT" and _names_master(command["effect"], ident):
+        return None
+    return command
+
+
+def _master_users(show: Show, ident: str, programmer: Programmer, subject: str) -> str | None:
+    """``master "Speed 1" is used by the chase of cue list 10, effects in cue
+    11/1 and the programmer: change them first``, or ``None`` when no chase
+    and no effect names it."""
+    chases = [
+        cue_list["number"]
+        for cue_list in show["cueLists"]
+        if "chase" in cue_list
+        and cue_list["chase"]["rate"]["kind"] == "bpm"
+        and cue_list["chase"]["rate"]["masterId"] == ident
+    ]
+    cues = [
+        f"{cue_list['number']}/{cue['number']}"
+        for cue_list in show["cueLists"]
+        for cue in cue_list["cues"]
+        if any(_names_master(cast(_Doc, effect), ident) for effect in cue["effects"])
+    ]
+    held = any(_names_master(cast(_Doc, effect), ident) for effect in programmer.effects)
+    uses = [
+        f"the chase{'s' * (len(chases) > 1)} of {_named('cue list', chases)}" if chases else "",
+        f"effects in {_named('cue', cues)}" if cues else "",
+        "the programmer" if held else "",
+    ]
+    joined = _joined(uses, ", ")
+    return f"{subject} is used by {joined}: change them first" if joined else None
 
 
 # ------------------------------------------------------------------- all

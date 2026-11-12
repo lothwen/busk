@@ -28,7 +28,9 @@ lacks an element something names in one line, where F3's mode chips and `[profil
 document path per element in the log; that side finding is gone. Its Phase 25 added the line that
 loads a cue into the programmer (GAP-44), and F4's `[load]`, so a cue's values are edited as any
 look is and recorded back. Its Phase 34 added the DMX readout (GAP-52): `list dmx` at the prompt,
-`list universes`'s counts, and F8's channel values, in its hint row and its CHANNELS panel.
+`list universes`'s counts, and F8's channel values, in its hint row and its CHANNELS panel. Its
+Phase 35 added the lines that rename and delete a master (GAP-53), and F7's MASTERS panel, which
+makes, renames and deletes them.
 
 ## How to read it
 
@@ -80,9 +82,10 @@ In short:
 - **busk lacks a little:** deleting several presets, cues or cue lists in one line, and the two
   limits of GAP-41 on an effect's settings (see
   [What busk is missing](#what-busk-is-missing)).
-- **Beyond this report,** the TUI sets up no master, surface, binding or safety setting, and no
-  show metadata. F7 and F9 operate and show them, F9 puts `bind`, `unbind`, `feedback` and `pickup`
-  lines in the prompt, and the rest is typed.
+- **Beyond this report,** the TUI sets up no surface, binding or safety setting, and no show
+  metadata. F7 and F9 operate and show them, F9 puts `bind`, `unbind`, `feedback` and `pickup`
+  lines in the prompt, and the rest is typed. Masters are the exception: F7's MASTERS panel makes,
+  renames and deletes them (`master add`, `rename master`, `delete master … cascade`).
 
 ## Fixtures and patch
 

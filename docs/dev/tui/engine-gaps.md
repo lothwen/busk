@@ -103,6 +103,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-43](#gap-43-moving-and-copying-a-cue) Moving and copying a cue | action | nice-to-have | F4 | **done** 2026-11-11 |
 | [GAP-44](#gap-44-loading-a-cue-into-the-programmer) Loading a cue into the programmer | action | important | F4 | **done** 2026-11-11 |
 | [GAP-52](#gap-52-a-dmx-readout) A DMX readout | action | nice-to-have | prompt, F8 | **done** 2026-11-12 |
+| [GAP-53](#gap-53-renaming-and-deleting-a-master) Renaming and deleting a master | action | nice-to-have | F7 | **done** 2026-11-12 |
 
 ---
 
@@ -2820,3 +2821,62 @@ in `docs/console.md`, `busk help` and the parser's module docs. What it settles:
   fine byte apart, elements, park, blackout and limits, `output off`, the counts, refusals, Tab, a
   running `LiveShow`, and `busk run` with processes and with threads), and the list of kinds in
   `tests/test_console_parser.py`.
+
+## GAP-53: Renaming and deleting a master
+
+**Status:** done 2026-11-12 (see **Done** at the end of this section).
+
+The user's word of 2026-11-12, after comparing busk with a grandMA3 show-programming howto; built in
+Phase 35 of `docs/plans/tui-pending-plan.md`. GAP-45 to GAP-51 belong to that plan's Phases 26 to
+33, which come later.
+
+**Needed by:** F7's masters, which the TUI makes, renames and deletes.
+
+**Today:** `master add` makes a master, and nothing renames or deletes one: `rename master` and
+`delete master` are refused (`cannot delete 'master'`). Only the generic edit can, which takes a
+name another master has, and leaves an effect, a chase or a binding naming a master that is gone.
+
+**Engine should provide:** `rename master "<name>" "<new>"` and `delete master "<name>"
+[cascade]`, each one undo step. A master in use by an effect or a chase is refused, not cascaded;
+the bindings that name it go under `cascade`. The grand master stays.
+
+**Priority:** nice-to-have.
+
+**TUI until then:** none: F7 sets masters' levels only.
+
+**TUI since** 2026-11-12: F7's MASTERS panel, with `[+ master…]`, and `[rename…]` and `[delete]` on
+each master but the grand one (Phase 35 of the pending plan).
+
+**Done** (2026-11-12). The lines are `_rename_master` and `_delete_master` in
+`src/busk/console/parser.py`, and the delete's walk is `master_cascade` in
+`src/busk/console/cascade.py`. Documented in `docs/console.md`, `busk help` and both modules' docs.
+No public name was added. What it settles:
+
+- **A master is named as every master line names it:** in quotes, in any case. Tab offers every
+  master but the grand master.
+- **The grand master is neither renamed nor deleted:** `the grand master cannot be renamed`, and
+  `… deleted`, with or without `cascade`.
+- **`rename` refuses a name another master has, in any case,** as `master add` does (`a master
+  named 'tempo' exists`). A master may change the case of its own name. The reply is in words:
+  `renamed master "FX" to "Size"`. What names the master names its id, so its effects, chases and
+  bindings follow the new name.
+- **A used master stays** (the plan's §5, call 23): a cue's effect whose rate is on its beat, or
+  that names it as its speed or size master, a cue list's chase on its beat (kept chase settings
+  too, which a list in sequence mode still has and the validator still reads), and an effect in the
+  programmer refuse the line, with `cascade` or without, in one line that names them: `master
+  "Speed 1" is used by the chase of cue list 10 and effects in cues 11/1, 12/1, 13/1: change them
+  first`. Tab then offers no `cascade`.
+- **A binding that names it goes with `cascade`:** a `master` or `tap` action (a MIDI clock's too),
+  and a command that sets, taps or sets the tempo of the master, or adds an effect that names it. A
+  plain `delete` is refused in one line while one does (`master "FX" is used by 1 binding: add
+  cascade`). The prompt asks first, always, as for every cascade (`Delete master "FX"? It leaves 1
+  binding.`), and the reply counts it (`deleted master "FX": left 1 binding`).
+- **On a running show** the engine drops the master's level, so what it held lets go at once: a
+  group master's group comes back up, and a fade-time master's override ends. `undo` brings the
+  master back at its initial level, not at the level it had.
+- A template's defaults (Phase 33 of the plan, GAP-51) do not exist yet. When that phase builds
+  them, a master named there counts as a use here, as its text says.
+- Tests: `tests/test_master_lines.py` (each kind renamed and deleted, the grand master, names in
+  any case, each use that refuses, each binding that goes, the question and the reply, the club
+  show's masters, a script, a running `LiveShow` with masters at a level), and rows in
+  `tests/test_console_prompt.py`.

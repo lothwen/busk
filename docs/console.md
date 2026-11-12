@@ -64,7 +64,7 @@ session, as the web remote's commands do. `help` prints the grammar.
 | Playbacks | `playback add 5 cuelist 10 [at [P.]S] ["name"]`, `playback 3 cuelist 10`, `playback 3 fader size`, `playback 3 flash.level 0.5`, `playback 3 exclusivity none` |
 | Timing, triggers | `cue 9/1 time 3 easeInOut`, `cue 9/3 time 1/3 delay 0/1`, `cue 9/2 time position 4 [delay 1] [easeOut]`, `cue 9/2 time position none`, `… bezier 0.4 0 0.2 1`, `cue 9/3 wait 8`, `cue 9/5 follow 4`, `cue 9/2 go`, `cue 9/5 release group 1 [only pan tilt]` |
 | Cue lists, tempo | `cuelist add 5 ["name"]`, `cuelist 9 tracking true`, `cuelist 10 chase bpm ["Speed 1"] [x 2] [forward\|reverse\|bounce\|random] [crossfade 0.25]`, `cuelist 10 chase hz 4`, `cuelist 10 sequence`, `master add speed "Speed 1" [bpm 120] [steps 0.5, 1, 2]` |
-| Effects, masters | `effect add "Circle" [id fx1] [hz 0.5 \| bpm ["Speed 1"] [x 0.5]] [size 15] [low 0 high 1] [phase 0 180] [groups N] [blocks N] [wings 2] [forward\|reverse\|bounce] [fadein 1] [sizemaster "FX"] [speedmaster "Speed 1"]`, `effect remove fx1`, `effect clear`, `effect stop fx1`, `effect run fx1`, `effect template add "Name" [{…layers…}]`, `effect template update "Name" [{…layers…}]`, `effect template rename "Name" "New"`, `effect template delete "Name"`, `cue 9/4 effect rainbow size 0.5`, `cue 9/4 effect rainbow remove`, `master add size "FX"`, `master add group "Wash level" group 2`, `master add fadetime "Fade"` |
+| Effects, masters | `effect add "Circle" [id fx1] [hz 0.5 \| bpm ["Speed 1"] [x 0.5]] [size 15] [low 0 high 1] [phase 0 180] [groups N] [blocks N] [wings 2] [forward\|reverse\|bounce] [fadein 1] [sizemaster "FX"] [speedmaster "Speed 1"]`, `effect remove fx1`, `effect clear`, `effect stop fx1`, `effect run fx1`, `effect template add "Name" [{…layers…}]`, `effect template update "Name" [{…layers…}]`, `effect template rename "Name" "New"`, `effect template delete "Name"`, `cue 9/4 effect rainbow size 0.5`, `cue 9/4 effect rainbow remove`, `master add size "FX"`, `master add group "Wash level" group 2`, `master add fadetime "Fade"`, `rename master "FX" "Size"`, `delete master "FX" [cascade]` |
 | Perform | `go 9`, `back 9`, `goto 9 4`, `release 3 [2]`, `fader 3 75%`, `flash 3 on\|off`, `toggle 3`, `button 3 2 on\|off`, `gm 0.5`, `master "Speed 1" 0.75`, `tap ["Speed 1"]`, `bpm ["Speed 1"] 128`, `blackout on\|off` |
 | Safety, panic | `park fixture 204 intensity 0`, `park group 2 color 1 0 0`, `unpark fixture 204 [intensity]`, `unpark all`, `fixture 101 thru 102 limits tilt -90 10`, `fixture 301 limits intensity 50%`, `fixture 101 limits tilt none`, `fixture 101 limits none`, `safety strobe 3\|off`, `highlight on\|off`, `release all [2]`, `output on\|off` |
 | Profiles | `profile update "Generic Spot 16ch"` (to the library's other revision), `profile "Generic Spot 16ch" category wash\|none`, `profile import "fixtures/spot.gdtf"`, `list profiles` |
@@ -147,7 +147,9 @@ session, as the web remote's commands do. `help` prints the grammar.
   reads seconds (`follow`, `wait`, `fade`, `release`, an effect's `fadein`); each Bézier
   control value runs from 0 to 1. In a chase, cue timing and triggers are ignored except the curve: the
   crossfade sets the step fade. Speed masters have no numbers, so they are named in quotes;
-  `tap` and `bpm` without a name use the show's only speed master.
+  `tap` and `bpm` without a name use the show's only speed master. A tempo (`bpm`, `master add
+  speed … bpm`) is plain BPM, above 0 and at most 999, and a multiplier step (`steps`) a plain
+  number above 0, each with no sign and no `%`, as times are.
 * **Moving and copying a cue.** `cue L/C number M` renumbers a cue, and the cue goes to its
   place in the list's order, past the others if it must, in one undo step; a playback on it
   stays on it. A `goto` that named the old number names no cue then, and busk warns of it.
@@ -182,6 +184,16 @@ session, as the web remote's commands do. `help` prints the grammar.
   template as `effect add` does, and is one undo step. They act on the show's own
   templates: one that only the library has is refused, and is changed by embedding a copy
   with `effect add` first.
+* **Renaming and deleting a master.** `rename master "FX" "Size"` renames one, and refuses
+  a name another master has, in any case. `delete master "FX"` deletes one, and is refused
+  while a cue's effect, a cue list's chase or an effect in the programmer names it, even with
+  `cascade`, since their rate or size would have no master:
+  `master "Speed 1" is used by the chase of cue list 10 and effects in cues 11/1, 12/1, 13/1:
+  change them first`. A binding that drives the master, taps it or names it in a command needs
+  `cascade`, and goes with it (see the table below). The grand master is neither renamed nor
+  deleted. Each is one undo step. A master deleted at a level lets go of what it held (a
+  group master's group comes back up, a fade-time master's override ends), and `undo` brings
+  it back at its initial level.
 * **Pages and surfaces.** `page N`, `page next` and `page prev` turn the
   engine's page (`list pages` marks it with `*`); `page add` creates one with empty slots,
   and `page P slot S playback N` fills a slot. `surface add osc` and `surface add web`
@@ -300,6 +312,7 @@ session, as the web remote's commands do. `help` prints the grammar.
   | `delete cuelist N cascade` | the playbacks that run it, as the next row does each | |
   | `delete playback N cascade` | its page slots, which go empty, its `fader playback N` bindings and the bindings that name it | its cue list; bindings by slot |
   | `delete page N cascade` | the bindings that go to it by number or assign to it | its playbacks |
+  | `delete master "<name>" cascade` | the bindings that drive it, tap it or name it in a command | refused while an effect, a chase or the programmer names it |
 
   `delete fixture N thru M cascade` deletes every fixture the span holds in one undo step and
   always needs `cascade`.
