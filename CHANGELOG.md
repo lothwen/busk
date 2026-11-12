@@ -10,6 +10,12 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- F2's panels have an option row per attribute set to a named option (gobos, prisms, the colour
+  wheel, colour macros, fixture effects, the shutter) while the selection offers options for it:
+  a chip per option sends `set gobo1 star`, and the first selected element's option is lit.
+  SHUTTER's `[set shutter…]` gave way to its row. F7's PANIC shows the strobe cap (`strobe cap 3
+  Hz`, or `off`), with `[cap…]` (`safety strobe 3`) and `[off]` (`safety strobe off`). A click on
+  the status bar's title renames the show (`rename show "…"`).
 - `rename master "<name>" "<new name>"` renames a master, and refuses a name another master has,
   in any case. `delete master "<name>" [cascade]` deletes one, and is refused while a cue's effect,
   a cue list's chase or an effect in the programmer names it, saying which; a binding that drives,

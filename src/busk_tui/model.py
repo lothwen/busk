@@ -649,6 +649,7 @@ class ShowModel:
     bindings: tuple[BindingInfo, ...] = ()  # in show order
     choices: tuple[ProfileChoice, ...] = ()  # what fixture add takes
     park: tuple[Parked, ...] = ()  # in show order
+    strobeMaxHz: float | None = None  # the strobe cap (safety strobe); None: off
 
     def group(self, number: int) -> GroupInfo | None:
         return next((info for info in self.groups if info.number == number), None)

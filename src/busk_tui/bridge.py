@@ -886,6 +886,7 @@ def show_model(
             )
             for entry in doc["park"]
         ),
+        strobeMaxHz=doc.get("safety", {}).get("strobeMaxHz"),
     )
 
 

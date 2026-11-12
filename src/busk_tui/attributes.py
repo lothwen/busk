@@ -222,14 +222,17 @@ def taken(show: ShowModel | None) -> frozenset[str]:
     return frozenset(found)
 
 
-def shown(show: ShowModel | None) -> list[tuple[str, tuple[Encoder, ...]]]:
-    """The panels with the rows that show: those the rig takes."""
+def shown(show: ShowModel | None) -> list[tuple[str, tuple[Encoder, ...], tuple[str, ...]]]:
+    """F2's panels, each with the encoder rows and the discrete attributes
+    (:data:`OPTIONS`) that show: those the rig takes."""
     rig = taken(show)
-    panels: list[tuple[str, tuple[Encoder, ...]]] = []
+    discrete = dict(OPTIONS)
+    panels: list[tuple[str, tuple[Encoder, ...], tuple[str, ...]]] = []
     for family, encoders in FAMILIES:
         rows = tuple(encoder for encoder in encoders if encoder.taken_as in rig)
-        if rows:
-            panels.append((family, rows))
+        options = tuple(attribute for attribute in discrete.get(family, ()) if attribute in rig)
+        if rows or options:
+            panels.append((family, rows, options))
     return panels
 
 

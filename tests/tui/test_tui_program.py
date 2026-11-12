@@ -1,10 +1,12 @@
 """F2 Program (spec §8.2, plan Phase 2): which encoders show, what they show
 and send, the pending value, the selection and group buttons, the quick
-lines and toggles, and PROGRAMMER CONTENTS. The rules first (no Textual),
-then headless, with a fake bridge."""
+lines and toggles, and PROGRAMMER CONTENTS; the option rows (pending plan
+Phase 36). The rules first (no Textual), then headless, with a fake bridge
+(and, for the options, busk's own completion on the example shows)."""
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -14,8 +16,11 @@ from textual.pilot import Pilot
 from textual.widget import Widget
 from tui_fakes import FakeBridge, drive, make_app, programmer, settle, show_model
 
+import busk
 from busk_tui import attributes, colors, config
 from busk_tui.attributes import Encoder, Reading, selected
+from busk_tui.bridge import selection_options
+from busk_tui.bridge import show_model as model_of
 from busk_tui.model import (
     ElementOutput,
     FixtureInfo,
@@ -36,6 +41,7 @@ from busk_tui.widgets import encoders
 from busk_tui.widgets.controls import ButtonStrip
 from busk_tui.widgets.encoders import EncoderRow
 from busk_tui.widgets.log import LogView
+from busk_tui.widgets.options import LIT, OptionRow
 from busk_tui.widgets.programmer import EMPTY, ProgrammerTable, contents
 
 SPOT = ProfileInfo(
@@ -115,17 +121,20 @@ RED = (("r", 1.0), ("g", 0.0), ("b", 0.0))
 
 
 def test_the_panels_follow_the_profiles_of_the_rig() -> None:
-    names = [(family, [e.attribute for e in rows]) for family, rows in attributes.shown(rig())]
+    names = [
+        (family, [e.attribute for e in rows], options)
+        for family, rows, options in attributes.shown(rig())
+    ]
     assert names == [
-        ("intensity", ["intensity"]),
-        ("position", ["pan", "tilt"]),
-        ("color", ["color.r", "color.g", "color.b", "color.w"]),
-        ("beam", ["zoom"]),
-        ("shutter", ["strobeRate"]),
+        ("intensity", ["intensity"], ()),
+        ("position", ["pan", "tilt"], ()),
+        ("color", ["color.r", "color.g", "color.b", "color.w"], ()),
+        ("beam", ["zoom"], ()),
+        ("shutter", ["strobeRate"], ("shutter",)),
     ]
     pars_only = rig(fixtures=(FixtureInfo(201, 1, "Par 201", "Par"),))
-    assert [family for family, _ in attributes.shown(pars_only)] == ["intensity", "color"]
-    colors_rows = dict(attributes.shown(pars_only))["color"]
+    assert [family for family, _, _ in attributes.shown(pars_only)] == ["intensity", "color"]
+    colors_rows = {family: rows for family, rows, _ in attributes.shown(pars_only)}["color"]
     assert [e.attribute for e in colors_rows] == ["color.r", "color.g", "color.b"]  # no white
     assert attributes.shown(None) == []
 
@@ -571,3 +580,231 @@ def test_panels_go_one_under_the_other_below_100_columns() -> None:
         assert page.grid.styles.grid_size_columns == 1
 
     drive(app, body)
+
+
+# ---------------------------------------- option rows (pending plan Phase 36)
+
+TUPPER = Path(__file__).resolve().parents[2] / "examples" / "tupperdmx" / "tupper-demo.show"
+
+
+@pytest.fixture
+def tupper() -> busk.OfflineShow:
+    """The TupperDMX demo show, to select on (not saved)."""
+    document, _ = busk.load_show(TUPPER)
+    return busk.OfflineShow(document)
+
+
+def selecting(
+    show: busk.OfflineShow, line: str | None, values: tuple[HeldValue, ...] = (), version: int = 1
+) -> ProgrammerModel:
+    """The programmer after ``line`` (``None``: nothing selected), holding
+    ``values``, with the options busk's completion offers the selection."""
+    if line is not None:
+        assert show.execute(line).ok
+    selection = () if line is None else show.programmer.selection
+    rig = attributes.taken(model_of(show.show))
+    options = selection_options(show.expected, selection, rig)
+    return programmer(selection=selection, options=options, values=values, version=version)
+
+
+def option_rows(app: BuskApp) -> dict[str, OptionRow]:
+    return {row.attribute: row for row in app.query(OptionRow)}
+
+
+def shown_rows(app: BuskApp) -> list[str]:
+    return [row.attribute for row in app.query(OptionRow) if row.display]
+
+
+def chips_of(row: OptionRow) -> list[str]:
+    """A row's chips, ``*`` before the lit one: ``["open", "*star"]``."""
+    return [
+        ("*" if str(button.label.spans[0].style) == LIT else "") + button.label.plain[1:-1]
+        for button in row.chips.buttons
+    ]
+
+
+async def tap_label(pilot: Pilot[int], strip: ButtonStrip, label: str) -> None:
+    """A click on the button of ``strip`` that reads ``label``."""
+    await pilot.pause()
+    strip.scroll_visible(animate=False)
+    await pilot.pause()
+    for y, line in enumerate(strip.lines(strip.size.width)):
+        x = line.plain.find(label)
+        if x >= 0:
+            await pilot.click(strip, offset=(x + 1, y))
+            return
+    raise AssertionError(f"no button {label}")
+
+
+def test_a_family_with_options_and_no_encoder_rows_has_a_panel() -> None:
+    gobos = ProfileInfo("Gobos", frozenset({"intensity", "gobo1", "prism"}), ())
+    show = rig(fixtures=(FixtureInfo(501, 1, "Gobo 501", "Gobos"),), profiles=(gobos,))
+    assert [(family, rows, options) for family, rows, options in attributes.shown(show)] == [
+        ("intensity", (encoder("intensity"),), ()),
+        ("beam", (), ("gobo1", "prism")),
+    ]
+
+
+def test_option_rows_show_what_the_selection_offers(tupper: busk.OfflineShow) -> None:
+    bridge = FakeBridge()
+    app = program_app(bridge)
+    show = model_of(tupper.show)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge, show, prog=selecting(tupper, "sel group 4"))  # the heads
+        await settle(pilot, app)
+        beam = next(panel for panel in app.query(EncoderPanel) if panel.family == "beam")
+        assert [type(child).__name__ for child in beam.children] == [
+            "EncoderRow", "OptionRow", "OptionRow", "OptionRow",
+        ]  # fmt: skip
+        assert shown_rows(app) == ["gobo1", "prism", "shutter"]  # no effect on a head
+        rows = option_rows(app)
+        assert chips_of(rows["prism"]) == ["off", "prism3"]
+        assert chips_of(rows["shutter"]) == ["closed", "open", "strobe", "pulse", "random"]
+        shutter = next(panel for panel in app.query(EncoderPanel) if panel.family == "shutter")
+        assert shutter.chips is None  # its row took [set shutter…]'s place
+        assert "set shutter" not in plain(shutter.query_one(OptionRow).chips)
+        await tap_label(pilot, rows["gobo1"].chips, "[star]")
+        await tap_label(pilot, rows["shutter"].chips, "[strobe]")
+        assert bridge.lines() == ["set gobo1 star", "set shutter strobe"]
+
+        blinders = selecting(tupper, "sel group 2", version=2)
+        bridge.events.append(ProgrammerChanged(blinders))
+        await settle(pilot, app)
+        assert shown_rows(app) == ["effect", "shutter"]
+        assert chips_of(rows["effect"]) == ["off", "autoProgram", "soundActive"]
+        assert chips_of(rows["shutter"]) == ["open", "strobe"]
+
+    drive(app, body, size=(150, 60))
+
+
+def test_the_lit_option_is_the_first_selected_elements(tupper: busk.OfflineShow) -> None:
+    bridge = FakeBridge()
+    app = program_app(bridge)
+    show = model_of(tupper.show)
+
+    def holding(*numbers: int, value: str) -> tuple[HeldValue, ...]:
+        return tuple(HeldValue(number, 1, "gobo1", value, None) for number in numbers)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge, show, prog=selecting(tupper, "sel group 4"))
+        await settle(pilot, app)
+        gobo = option_rows(app)["gobo1"]
+        assert not [chip for chip in chips_of(gobo) if chip.startswith("*")]
+        heads = selecting(tupper, "sel group 4", holding(501, 502, 503, 504, value="star"), 2)
+        bridge.events.append(ProgrammerChanged(heads))
+        await settle(pilot, app)
+        assert [chip for chip in chips_of(gobo) if chip.startswith("*")] == ["*star"]
+        spiral = selecting(tupper, "sel group 4", holding(502, value="spiral"), 3)
+        bridge.events.append(ProgrammerChanged(spiral))  # 502's, not the first's
+        await settle(pilot, app)
+        assert not [chip for chip in chips_of(gobo) if chip.startswith("*")]
+
+    drive(app, body, size=(150, 60))
+
+
+def test_no_option_row_shows_with_nothing_selected(tupper: busk.OfflineShow) -> None:
+    bridge = FakeBridge()
+    app = program_app(bridge)
+    show = model_of(tupper.show)
+
+    def gobo_stops() -> list[str]:
+        items = app.query_one(ProgramPage).items()
+        return [item.label for item in items if "gobo1" in item.label]
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge, show, prog=selecting(tupper, "sel group 4"))
+        await settle(pilot, app)
+        assert len(gobo_stops()) == 8
+        bridge.events.append(ProgrammerChanged(selecting(tupper, None, version=2)))
+        await settle(pilot, app)
+        assert list(option_rows(app)) == ["gobo1", "prism", "effect", "shutter"]
+        assert shown_rows(app) == []
+        assert gobo_stops() == []
+        bridge.events.append(ProgrammerChanged(selecting(tupper, "sel group 3", version=3)))
+        await settle(pilot, app)
+        assert shown_rows(app) == ["shutter"]  # the pars
+
+    drive(app, body, size=(150, 60))
+
+
+def test_options_in_a_panel_with_no_encoder_rows_always_show() -> None:
+    gobos = ProfileInfo("Gobos", frozenset({"intensity", "gobo1"}), ())
+    show = rig(fixtures=(FixtureInfo(501, 1, "Gobo 501", "Gobos"),), profiles=(gobos,))
+    bridge = FakeBridge()
+    app = program_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge, show, prog=programmer())
+        await settle(pilot, app)
+        assert shown_rows(app) == ["gobo1"]
+        gobo = option_rows(app)["gobo1"]
+        assert plain(gobo.none) == "nothing selected"
+        options = (("gobo1", ("open", "star")),)
+        bridge.events.append(
+            ProgrammerChanged(programmer(selection=((501, 1),), options=options, version=2))
+        )
+        await settle(pilot, app)
+        assert chips_of(gobo) == ["open", "star"]
+
+    drive(app, body)
+
+
+def test_the_pane_cursor_stops_on_each_option_after_its_panels_rows(
+    tupper: busk.OfflineShow,
+) -> None:
+    bridge = FakeBridge()
+    app = program_app(bridge)
+    show = model_of(tupper.show)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge, show, prog=selecting(tupper, "sel group 4"))
+        await settle(pilot, app)
+        labels = [item.label for item in app.query_one(ProgramPage).items()]
+        gobos = ("open", "breakup", "dots", "lines", "star", "spiral", "triangles", "closed")
+        start = labels.index("set gobo1 open")
+        assert labels[start : start + 10] == [
+            *(f"set gobo1 {gobo}" for gobo in gobos), "set prism off", "set prism prism3",
+        ]  # fmt: skip
+        assert labels.index("zoom") < start < labels.index("strobeRate")
+        assert labels.index("strobeRate") < labels.index("set shutter closed")
+        await pilot.press("tab")
+        for _ in range(start):
+            await pilot.press("down")
+        assert app.cursor.current is not None
+        assert app.cursor.current.line == "set gobo1 open"
+        await pilot.press("enter")
+        assert bridge.lines() == ["set gobo1 open"]
+
+    drive(app, body, size=(150, 60))
+
+
+def test_f2_at_99_columns_with_a_spot_and_a_bar_selected(club_path: Path) -> None:
+    """The club's spot offers a gobo and a shutter, its pixel bar neither: the
+    rows show the spot's, under one another, inside the screen."""
+    document, _ = busk.load_show(club_path)
+    club = busk.OfflineShow(document)
+    bridge = FakeBridge()
+    app = program_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge, model_of(club.show), prog=selecting(club, "sel fixture 101, fixture 301"))
+        await settle(pilot, app)
+        page = app.query_one(ProgramPage)
+        assert page.grid.styles.grid_size_columns == 1
+        assert shown_rows(app) == ["gobo1", "shutter"]
+        rows = option_rows(app)
+        assert [plain(row.chips) for row in rows.values()] == [
+            "[open] [breakup]", "[closed] [open] [strobe]",
+        ]  # fmt: skip
+        for row in rows.values():
+            assert row.region.right <= 99
+            assert row.region.height == 1
+            assert plain(row.name_text) == row.attribute
+            assert row.name_text.region.width == 11  # under the encoders' names
+        name = next(r for r in app.query(EncoderRow) if r.encoder.attribute == "zoom").name_text
+        assert name.region.x == rows["gobo1"].name_text.region.x
+        await tap_label(pilot, rows["gobo1"].chips, "[breakup]")
+        assert bridge.lines() == ["set gobo1 breakup"]
+
+    drive(app, body, size=(99, 60))

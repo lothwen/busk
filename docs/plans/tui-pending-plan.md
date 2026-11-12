@@ -2729,15 +2729,94 @@ TUI only. Code: `src/busk_tui/pages/program.py`, `src/busk_tui/widgets/options.p
    attribute the selection's profiles take: gobos, prisms, the colour wheel, shutter and fixture
    effects. A chip sends `set gobo1 star`, and the programmer's option is lit. SHUTTER's `[set
    shutter…]` gives way to its row.
+
+   **Done** (2026-11-12), before Phases 26 to 33, at the user's word. `attributes.shown` gives
+   each F2 panel its encoder rows and the discrete attributes of its family that the rig takes
+   (`OPTIONS`); a family with only options gets a panel too. `EncoderPanel` puts an `OptionRow`
+   per attribute under its encoder rows, and `show_options` draws them at a show or programmer
+   change, not with the output. `[set shutter…]` and `SHUTTER_PREFILL` are gone. Tests: 6 in
+   `tests/tui/test_tui_program.py`, on the TupperDMX show and the club show with busk's own
+   completion, and 1 changed.
+
+   Calls the user may veto:
+   - **A row shows only while the selection offers options for it,** as this step says ("the
+     selection's profiles"), where F6's rows stay and say why they offer nothing. F2 follows the
+     selection: a spot and a pixel bar show the spot's `gobo1` and `shutter`, and nothing selected
+     shows no row. A panel with no encoder rows keeps its option rows, which then say why, so it is
+     never an empty box.
+   - **The rows come under the panel's encoder rows,** before COLOR's swatches and chips, their
+     names 11 cells wide, under the encoders' names. A row's name puts nothing in the prompt, as on
+     F6; an encoder's name does.
+   - **`[set shutter…]` is gone,** not kept beside the row: the row's chips are what it led to. A
+     shutter the selection does not offer has no control on F2, and is typed.
 2. **The strobe cap,** in F7's PANIC, shows the cap now (`strobe cap 3 Hz`, or `off`), with `[cap…]`
    (`safety strobe 3`) and `[off]` (`safety strobe off`).
+
+   **Done** (2026-11-12). `ShowModel.strobeMaxHz`, read from `safety.strobeMaxHz` by the bridge;
+   `commands.strobe_cap` and `no_strobe_cap`, in the contract test. PANIC has a line under its
+   buttons: `strobe cap 3 Hz  [cap…]  [off]`, drawn at each show change (`MastersPage._show_cap`).
+   `[cap…]` opens a `TextDialog` (`STROBE CAP`), checked by the chase form's `check_rate`; `[off]`
+   is grey with no cap, and the pane cursor stops on it only then. Tests: 3 in
+   `tests/tui/test_tui_masters.py` (2 changed for the new stops), and 13 in
+   `tests/tui/test_tui_commands.py`.
+
+   Calls the user may veto:
+   - **`[off]` asks nothing,** as busk's `confirmation()` asks nothing before `safety strobe off`
+     and §1's rule names no safety line. `undo` and `[cap…]` put a cap back.
+   - **The dialog takes a plain number above 0, with no top,** as busk has none (`safety strobe
+     1000` goes through). It refuses `+4` and `50%`, which busk takes (§7). It starts at the cap,
+     every digit, or empty with none, and sends nothing for the cap there is.
 3. **The show's title.** A click on the status bar's title opens a name dialog that sends `rename
    show "Club Night"`.
+
+   **Done** (2026-11-12). The title in `StatusBar.left_text` carries `@click` meta for the app's
+   `action_rename_show`, as the tabs carry theirs, with the tabs' hover look. The action opens a
+   `TextDialog` (`RENAME SHOW`) and sends `commands.rename_show`. Tests: 2 in
+   `tests/tui/test_tui_frame.py`, and the line in the contract test.
+
+   Calls the user may veto:
+   - **Only the title is the link,** not `show` before it or the `*` after it; `—` is, on a show
+     with an empty title.
+   - **The dialog refuses an empty name,** as every rename dialog does, sends the name without the
+     spaces around it, and sends nothing for the title the show has. busk itself takes `rename show
+     ""`, as Phase 35's call says every `rename` does.
+   - **The click is the only control:** the pane cursor stays in the page, so the keyboard types
+     `rename show "…"`. Before the show is there, the click does nothing.
 
    Verify: each one on the real engine; F2 at 99 columns with a spot and a bar selected; the perf
    gate on F2.
 
+   **Done** (2026-11-12). `test_f2s_options_f7s_strobe_cap_and_the_title_on_the_real_engine`
+   selects a spot and a bar, sets a gobo from its chip and sees it lit, sets and takes away the cap,
+   brings it back with `undo`, and renames the show from the status bar. F2 at 99 columns: a
+   headless test, and a real terminal (pty and pyte) under `busk run`, where the spot's `gobo1` and
+   `shutter` rows drew under the encoders' names, one panel under another. The perf gate: in the
+   checks below.
+
 Docs: the guide's F2, F7 and the status bar, and `CHANGELOG.md`.
+
+**Done** (2026-11-12). The guide's first note (the strobe cap and the title are no longer typed),
+its status bar, F2 (option rows, the pane cursor) and F7 (PANIC); the report's header and its
+"Beyond this report"; §7's item; `CHANGELOG.md` under Added.
+
+**Phase 36 checks** (2026-11-12), on top of `5c816bd`. The whole suite: 6,637 passed and 1
+skipped, in 8:56 with `uv run pytest -n 6`. `ruff check`, `ruff format --check`, `mypy src` and
+`mypy --strict tests/api_consumer.py` clean. F2's, F7's, the frame's, F6's and the contract tests,
+and the three real-engine tests of F2 and F7, pass on Textual 8.2.0: 573 tests. 20 mutations of
+the new code: all caught, once the title's test pressed `end` before its space (Textual's input
+selects its text when it takes the focus, so the space had replaced the title) and clicked the
+`—` of a show not yet there; a line no mutation could fail, a new option row hidden before its
+first draw, was removed. The perf gate: 8 passed, F2 +0.201 core under busk run, +0.235 with the
+heads moving (the gate is 0.25). Every page read 0.04 to 0.05 core more than in Phase 18's notes,
+F1 B +0.233; the same gate on `5c816bd`, without this phase, read the same (F1 B +0.230, F2
++0.207 and +0.227), and the status bar's link costs 0.1 µs a draw, so the rise is not this phase's.
+
+A real `busk run club.show --state-dir …`, lines piped in: with 101 strobing at 20 Hz, `list dmx
+fixture 101` gave its shutter channel 28 under the club's cap of 3 Hz, 70 after `safety strobe 10`,
+and 131 after `safety strobe off`. `busk-tui` under `busk run`, in a pty at 99 columns (pyte): F2
+drew the spot's `gobo1` and `shutter` rows with `sel fixture 101, fixture 301`, and `[breakup]`
+sent `set gobo1 breakup` (`gobo1: 1 target; skipped 12 no gobo1`); F7's `[cap…]` set 4.5 Hz,
+`[off]` took it away, and a click on the title renamed the show (`show Late Night *`).
 
 ## 7. Seen, and not in the sources
 
@@ -2885,7 +2964,18 @@ sequences, executors and recipes. Each doubtful point was checked on `OfflineSho
   35, and fixed the same day: only a page's number is typed, as the report says. With both fixes, the
   whole suite: 6,609 passed and 1 skipped, in 8:34 with `uv run pytest -n 6`.
 - Three setup lines with no control: F2's discrete attributes, the strobe cap and the show's
-  title: **Phase 36**.
+  title: **Phase 36**. Built there.
+- `safety strobe 50%` sets a cap of 0.5 Hz, and `safety strobe +4` one of 4 Hz, where `bpm` and the
+  seconds refuse a sign and `%` since Phase 18 and Phase 35's fix. `safety strobe 0` and `-1` are
+  refused by document path (`strobe cap 0 Hz: rejected, the show would not be valid` and
+  `safety.strobeMaxHz: Input should be greater than 0`), not in words. `_cmd_safety` reads the rate
+  with `self.number`. F7's `[cap…]` refuses all four itself, so only the prompt meets them. Found
+  on 2026-11-12, in Phase 36. Not fixed: Phase 36 is TUI only. The fix would read it as
+  `Parser.tempo` reads a tempo: plain, above 0.
+- At 99 columns, F2's PROGRAMMER CONTENTS wraps a long `other` cell onto a line of its own, under
+  the `#` column: with 101 holding `gobo1 breakup`, `breakup` stands alone on the next line. The
+  table did not change in Phase 36, whose option chips first set such a value from F2. Found on
+  2026-11-12, in Phase 36's real-terminal check. Not fixed.
 - Cue parts. **Not planned**: a family's own timing (GAP-42) and, after Phase 29, an entry's own
   timing do what parts are mostly used for.
 - A Control preset pool. **Not planned**: busk never programs `control` attributes (lamp on,

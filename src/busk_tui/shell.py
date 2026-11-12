@@ -75,7 +75,13 @@ from busk_tui.pages.presets import PresetsPage
 from busk_tui.pages.program import ProgramPage
 from busk_tui.pages.surfaces import SurfacesPage
 from busk_tui.widgets.controls import FillPrompt, RunLine, ShowHint
-from busk_tui.widgets.dialogs import ConfirmDialog, QuitChoice, QuitDialog
+from busk_tui.widgets.dialogs import (
+    ConfirmDialog,
+    QuitChoice,
+    QuitDialog,
+    TextDialog,
+    check_name,
+)
 from busk_tui.widgets.frame import PAGES, KeyLegend, StatusBar, TabBar
 from busk_tui.widgets.help import HelpOverlay
 from busk_tui.widgets.log import LogView
@@ -602,6 +608,22 @@ class BuskApp(App[int]):
             self.close_help()
         else:
             self.open_help(self.bridge.help_lines)
+
+    def action_rename_show(self) -> None:
+        """A click on the status bar's title: a name dialog, then ``rename
+        show "…"``; nothing for the title it has, or before a show is there."""
+        if self._modal():
+            raise SkipAction
+        self._disarm()
+        if self.view.show is None:
+            return
+        title = self.view.show.title
+
+        def given(text: str | None) -> None:
+            if text is not None and text.strip() != title:
+                self._run(commands.rename_show(text.strip()))
+
+        self.push_screen(TextDialog("RENAME SHOW", title, check_name(True)), given)
 
     def open_help(self, lines: Sequence[str]) -> None:
         self.help_overlay.open(lines)

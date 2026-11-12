@@ -5,9 +5,13 @@
   Shift-click ``sel + group N``) and ``[none]`` (``sel none``).
 * The encoder panels, by busk's families: INTENSITY, POSITION, COLOR
   (with the output's colour and the programmer's as swatches, the colour
-  presets and ``set color …``), BEAM, FOCUS and SHUTTER (with ``set
-  shutter …``). A row shows when the rig takes its attribute
-  (:mod:`busk_tui.attributes`, :mod:`busk_tui.widgets.encoders`).
+  presets and ``set color …``), BEAM, FOCUS and SHUTTER. A row shows when
+  the rig takes its attribute (:mod:`busk_tui.attributes`,
+  :mod:`busk_tui.widgets.encoders`). Under the rows, an option row per
+  discrete attribute (``gobo1``, ``shutter`` …) shows while the selection
+  offers options for it: a chip sends ``set gobo1 star``, and the first
+  selected element's option is lit (:mod:`busk_tui.widgets.options`; pending
+  plan Phase 36).
 * quick: the configured lines, ``[highlight on|off]`` and ``[blind
   on|off]``, each a toggle that follows the programmer, and ``[fade …]``.
 * PROGRAMMER CONTENTS: a row per fixture with a value
@@ -39,6 +43,7 @@ from busk_tui.nav import Stop
 from busk_tui.pages.base import Page, Part, View
 from busk_tui.widgets.controls import ButtonStrip, StripButton, button_label
 from busk_tui.widgets.encoders import EncoderRow
+from busk_tui.widgets.options import OptionRow
 from busk_tui.widgets.panel import Panel
 from busk_tui.widgets.programmer import ProgrammerTable
 from busk_tui.widgets.quick import color_chips, group_buttons, strip_stops
@@ -49,7 +54,6 @@ PANEL_WIDTH: Final = 42
 NARROW: Final = 100
 """Below this many columns the panels go one under the other (spec §3)."""
 
-SHUTTER_PREFILL: Final = commands.set_prefill("shutter")
 COLOR_PREFILL: Final = commands.set_prefill("color")
 
 
@@ -75,21 +79,22 @@ def quick_buttons(lines: tuple[str, ...], programmer: ProgrammerModel | None) ->
 
 
 class EncoderPanel(Panel):
-    """One family's encoders, and its extras (see the module docs)."""
+    """One family's encoders, its option rows, and its extras (see the
+    module docs)."""
 
-    def __init__(self, family: str, encoders: tuple[Encoder, ...]) -> None:
+    def __init__(
+        self, family: str, encoders: tuple[Encoder, ...], options: tuple[str, ...] = ()
+    ) -> None:
         self.family = family
         self.rows = [EncoderRow(encoder) for encoder in encoders]
-        children: list[Widget] = list(self.rows)
+        self.options = [OptionRow(attribute) for attribute in options]
+        children: list[Widget] = [*self.rows, *self.options]
         self.swatches: Static | None = None
         self.chips: ButtonStrip | None = None
         if family == "color":
             self.swatches = Static("", classes="enc-swatches")
             self.chips = ButtonStrip(classes="enc-chips")
             children += [self.swatches, self.chips]
-        elif family == "shutter":
-            self.chips = ButtonStrip([prefill_button(SHUTTER_PREFILL)], classes="enc-chips")
-            children.append(self.chips)
         super().__init__(family, *children)
 
     def show(self, view: View, chosen: Selected) -> None:
@@ -101,6 +106,19 @@ class EncoderPanel(Panel):
             if line != self.swatches.content:
                 self.swatches.update(line)
 
+    def show_options(self, programmer: ProgrammerModel | None, chosen: Selected) -> None:
+        """Each option row the selection offers options for, the first
+        selected element's lit. In a panel with no encoder rows they all
+        show, and say why one offers nothing: the panel is never empty."""
+        for row in self.options:
+            shown = not self.rows or (
+                programmer is not None and bool(programmer.offered(row.attribute))
+            )
+            if row.display != shown:
+                row.display = shown
+            if shown:
+                row.show(programmer, chosen)
+
     def show_chips(self, view: View) -> None:
         if self.family == "color" and self.chips is not None:
             presets = () if view.show is None else view.show.presets
@@ -110,6 +128,9 @@ class EncoderPanel(Panel):
         stops: list[Stop] = []
         for row in self.rows:
             stops += row.stops()
+        for option in self.options:
+            if option.display:
+                stops += option.stops()
         if self.chips is not None:
             stops += strip_stops(self.chips)
         return stops
@@ -154,6 +175,7 @@ class ProgramPage(Page):
     ProgramPage #quick {{ width: 1fr; }}
     ProgramPage .enc-swatches {{ margin-top: 1; }}
     ProgramPage .enc-chips {{ margin-top: 1; }}
+    ProgramPage OptionRow > .opt-name {{ width: 11; }}
     """
 
     def __init__(self, number: int, title: str) -> None:
@@ -162,7 +184,7 @@ class ProgramPage(Page):
         self.groups = ButtonStrip(id="program-groups")
         self.grid = Grid(id="encoders")
         self.panels: list[EncoderPanel] = []
-        self.shape: list[tuple[str, tuple[Encoder, ...]]] | None = None
+        self.shape: list[tuple[str, tuple[Encoder, ...], tuple[str, ...]]] | None = None
         self.quick = ButtonStrip(id="quick")
         self.table = ProgrammerTable()
         self.contents = Panel("programmer contents", self.table, id="contents")
@@ -195,7 +217,7 @@ class ProgramPage(Page):
             shape = attributes.shown(show)
             if shape != self.shape:
                 self.shape = shape
-                self.panels = [EncoderPanel(family, rows) for family, rows in shape]
+                self.panels = [EncoderPanel(*panel) for panel in shape]
                 self.grid.remove_children()
                 if self.panels:
                     self.grid.mount_all(self.panels)
@@ -217,6 +239,8 @@ class ProgramPage(Page):
             chosen = attributes.selected(show, programmer, view.output)
             for panel in self.panels:
                 panel.show(view, chosen)
+                if changed & {"show", "programmer"}:  # what the options read
+                    panel.show_options(programmer, chosen)
 
     def _show_selection(self, view: View) -> None:
         show, programmer = view.show, view.programmer

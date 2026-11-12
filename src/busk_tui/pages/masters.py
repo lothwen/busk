@@ -8,7 +8,9 @@
 * FADE TIME (busk's): a bar per fade-time master, and the fade-time
   override that transitions starting now take.
 * PANIC (busk's): ``[release all]``, ``[OUTPUT OFF]`` (busk asks first),
-  ``[OUTPUT ON]``.
+  ``[OUTPUT ON]``; the strobe cap (``strobe cap 3 Hz``, or ``off``), with
+  ``[cap…]``, a rate dialog and then ``safety strobe 3``, and ``[off]``,
+  ``safety strobe off`` (pending plan Phase 36).
 * PARKED (busk's): a row per value park holds, with ``[unpark]``, and
   ``[unpark all]`` (:mod:`busk_tui.widgets.parked`).
 * MASTERS (busk's): a row per master but the grand master, with
@@ -32,7 +34,9 @@ from busk_tui import colors, commands
 from busk_tui.model import LiveState, MasterView, ShowModel
 from busk_tui.nav import Item, Stop
 from busk_tui.pages.base import Page, Part, View
-from busk_tui.widgets.controls import CommandButton, chip
+from busk_tui.widgets.chase_dialog import check_rate, plain_number
+from busk_tui.widgets.controls import ActionButton, CommandButton, RunLine, chip
+from busk_tui.widgets.dialogs import TextDialog
 from busk_tui.widgets.digits import BigDigits
 from busk_tui.widgets.master_panel import MasterPanel
 from busk_tui.widgets.masters import BlackoutButton, MasterBar, master_item
@@ -42,6 +46,8 @@ from busk_tui.widgets.tempo import Tempo
 
 PANEL_WIDTH = 44
 """The narrowest a panel is laid out (a speed panel's digits and buttons fit)."""
+
+CAP_NOTE = "The fastest any fixture strobes, in Hz."
 
 
 def what_it_scales(master: MasterView) -> str:
@@ -62,6 +68,7 @@ class MastersPage(Page):
     }
     MastersPage .buttons { height: 1; margin-top: 1; }
     MastersPage .buttons > CommandButton { margin-right: 2; }
+    MastersPage .buttons > .strobe-cap { width: auto; margin-right: 2; }
     MastersPage .sub { color: #767676; padding-left: 9; margin-bottom: 1; }
     MastersPage .gm-digits { margin-bottom: 1; }
     """
@@ -70,6 +77,7 @@ class MastersPage(Page):
         super().__init__(number, title)
         self.grid = Grid(id="masters-grid")
         self.shape: tuple[tuple[MasterView, ...], tuple[ParkedRow, ...]] | None = None
+        self.cap_hz: float | None = None  # the show's strobe cap, as last shown
         self._widgets()
 
     def _widgets(self) -> None:
@@ -85,6 +93,9 @@ class MastersPage(Page):
         self.release_all = CommandButton("release all", commands.release_all(), "tempo")
         self.output_off = CommandButton("OUTPUT OFF", commands.output(False), "danger")
         self.output_on = CommandButton("OUTPUT ON", commands.output(True), "go")
+        self.strobe_cap = Static("", classes="strobe-cap")
+        self.cap = ActionButton("cap…", self.ask_cap)
+        self.cap_off = CommandButton("off", commands.no_strobe_cap(), inert=True)
         self.parked = ParkedPanel((), 0)
         self.setup = MasterPanel(None)
 
@@ -104,6 +115,7 @@ class MastersPage(Page):
                 self.shape = self._shape(show)
                 self._build(show, live)
             self.setup.show = show  # its dialogs read the groups and the masters' names
+            self._show_cap(show.strobeMaxHz)
         if changed & {"show", "live"} and live is not None:
             self._show_levels(live)
         if changed & {"live", "beats"} and live is not None:
@@ -144,7 +156,8 @@ class MastersPage(Page):
             self.bars += fade_bars
             panels.append(Panel("fade time", *fade_bars, self.fade_now))
         buttons = Horizontal(self.release_all, self.output_off, self.output_on, classes="buttons")
-        panels.append(Panel("panic", self.output_state, buttons))
+        strobe = Horizontal(self.strobe_cap, self.cap, self.cap_off, classes="buttons")
+        panels.append(Panel("panic", self.output_state, buttons, strobe))
         self.parked = ParkedPanel(parked_rows(show.park, show.fixtures), len(show.park))
         panels.append(self.parked)
         self.setup = MasterPanel(show)
@@ -174,6 +187,27 @@ class MastersPage(Page):
             state.append_text(chip("OUTPUT OFF", True, colors.RED))
         self.output_state.update(state)
 
+    def _show_cap(self, hz: float | None) -> None:
+        """The strobe cap, and ``[off]`` grey without one (busk refuses it)."""
+        self.cap_hz = hz
+        text = Text("strobe cap ", style=colors.DIM)
+        text.append("off" if hz is None else f"{hz:g} Hz", style=colors.FG)
+        if text != self.strobe_cap.content:
+            self.strobe_cap.update(text)
+        self.cap_off.change(inert=hz is None)
+
+    def ask_cap(self) -> None:
+        """``[cap…]``: a rate dialog, then ``safety strobe 3``; nothing for
+        the cap there is."""
+        hz = self.cap_hz
+
+        def given(text: str | None) -> None:
+            if text is not None and plain_number(text.strip()) != hz:
+                self.post_message(RunLine(commands.strobe_cap(text.strip())))
+
+        start = "" if hz is None else commands.exact(hz)
+        self.app.push_screen(TextDialog("STROBE CAP", start, check_rate, CAP_NOTE), given)
+
     def stops(self) -> list[Stop]:
         stops: list[Stop] = []
         if self.gm_bar is not None:
@@ -185,4 +219,7 @@ class MastersPage(Page):
         stops += [Stop(master_item(bar.master), bar) for bar in self.bars]
         for button in (self.release_all, self.output_off, self.output_on):
             stops.append(Stop(Item(button.label, line=button.line.text), button))
+        stops.append(Stop(Item("strobe cap…", action=self.ask_cap), self.cap))
+        if not self.cap_off.inert:
+            stops.append(Stop(Item("strobe cap off", line=self.cap_off.line.text), self.cap_off))
         return stops + self.parked.stops() + self.setup.stops()

@@ -629,6 +629,23 @@ def delete_master(name: str) -> Line:
     return Line(f"delete master {quoted(name)} cascade")
 
 
+# ------------------------------------------------------------ safety, show
+
+
+def strobe_cap(hz: str) -> Line:
+    """``safety strobe 3``: the fastest any fixture strobes. ``hz``: as
+    typed, a number busk reads."""
+    return Line(f"safety strobe {hz}")
+
+
+def no_strobe_cap() -> Line:
+    return Line("safety strobe off")
+
+
+def rename_show(title: str) -> Line:
+    return Line(f"rename show {quoted(title)}")
+
+
 # ------------------------------------------------------------------- cues
 
 

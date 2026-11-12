@@ -1,8 +1,9 @@
 """F7 Masters (spec §8.7, plan Phase 1): the grand master, the speed
 masters, the size and group masters, the fade-time masters and panic; what
 park holds (pending plan Phase 12); the MASTERS panel, which makes, renames and
-deletes them (pending plan Phase 35). Headless, with a fake bridge (and the
-club-night show's questions)."""
+deletes them (pending plan Phase 35); the strobe cap in PANIC (pending plan
+Phase 36). Headless, with a fake bridge (and the club-night show's
+questions)."""
 
 from __future__ import annotations
 
@@ -241,7 +242,7 @@ def test_a_new_master_rebuilds_the_page_and_keyboard_reaches_each_control() -> N
             "release all", "output off", "output on",
         ]  # fmt: skip
         assert [item.label for item in items[7:]] == [
-            "rename master Big…", "delete master Big", "+ master…",
+            "strobe cap…", "rename master Big…", "delete master Big", "+ master…",
         ]  # fmt: skip
         await pilot.press("tab", "down", "down", "enter")
         assert bridge.lines() == ["gm 100%"]
@@ -366,7 +367,7 @@ def test_the_parked_panel_is_built_again_only_when_what_park_holds_changes() -> 
         assert len(page(app).query(ParkedPanel)) == 1
         items = [item.label for item in page(app).items()]
         assert "unpark all" not in items  # no stop on a grey [unpark all]
-        assert items[items.index("OUTPUT ON") + 1] == "rename master Speed 1…"
+        assert items[items.index("strobe cap…") + 1] == "rename master Speed 1…"
 
     drive(app, body)
 
@@ -623,5 +624,102 @@ def test_the_pane_cursor_reaches_each_masters_controls() -> None:
         delete()
         await pilot.pause()
         assert bridge.lines() == ['delete master "FX" cascade']
+
+    drive(app, body)
+
+
+# ----------------------------------------- the strobe cap (pending plan Phase 36)
+
+
+def on_cap(bridge: FakeBridge, cap: float | None) -> BuskApp:
+    bridge.events += [
+        ShowChanged(show_model(masters=MASTERS, strobeMaxHz=cap)),
+        LiveChanged(live()),
+    ]
+    return make_app(bridge, page=7)
+
+
+def test_panic_shows_the_strobe_cap_and_off_is_grey_without_one() -> None:
+    bridge = FakeBridge()
+    app = on_cap(bridge, 3.0)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        f7 = page(app)
+        assert plain(f7.strobe_cap) == "strobe cap 3 Hz"
+        assert f7.strobe_cap.parent is not None
+        assert f7.strobe_cap.parent.parent is f7.output_state.parent  # in PANIC
+        assert not f7.cap_off.inert
+        await tap(pilot, f7.cap_off)
+        assert not isinstance(app.screen, ConfirmDialog)
+        assert bridge.lines() == ["safety strobe off"]
+        bridge.events.append(ShowChanged(show_model(masters=MASTERS)))
+        await settle(pilot, app)
+        assert page(app).cap_off is f7.cap_off  # the same masters: nothing built again
+        assert plain(f7.strobe_cap) == "strobe cap off"
+        assert f7.cap_off.inert
+        await tap(pilot, f7.cap_off)
+        assert bridge.lines() == ["safety strobe off"]  # nothing more
+        bridge.events.append(ShowChanged(show_model(masters=MASTERS, strobeMaxHz=12.5)))
+        await settle(pilot, app)
+        assert plain(f7.strobe_cap) == "strobe cap 12.5 Hz"
+        assert not f7.cap_off.inert
+
+    drive(app, body)
+
+
+def test_cap_opens_a_rate_dialog_and_sends_a_new_cap() -> None:
+    bridge = FakeBridge()
+    app = on_cap(bridge, 3.0)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        await tap(pilot, page(app).cap)
+        dialog = app.screen
+        assert isinstance(dialog, TextDialog)
+        assert (dialog.title_text, dialog.initial) == ("STROBE CAP", "3")
+        for typed in ("0", "-1", "50%", ""):
+            await pilot.press("ctrl+u", *typed, "enter")
+            await pilot.pause()
+            assert plain(dialog.error) == "a rate above 0 Hz"
+        await pilot.press("ctrl+u", *"3.0", "enter")  # the cap there is: nothing
+        await pilot.pause()
+        assert not isinstance(app.screen, TextDialog)
+        await tap(pilot, page(app).cap)
+        await pilot.press("ctrl+u", *" 2.5 ", "enter")
+        await pilot.pause()
+        bridge.events.append(ShowChanged(show_model(masters=MASTERS)))
+        await settle(pilot, app)
+        await tap(pilot, page(app).cap)
+        assert isinstance(app.screen, TextDialog)
+        assert app.screen.initial == ""  # no cap
+        await pilot.press("escape")
+        await pilot.pause()
+        assert bridge.lines() == ["safety strobe 2.5"]
+
+    drive(app, body)
+
+
+def test_the_pane_cursor_reaches_cap_and_off_only_with_a_cap() -> None:
+    bridge = FakeBridge()
+    app = on_cap(bridge, 3.0)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        items = page(app).items()
+        labels = [item.label for item in items]
+        at = labels.index("OUTPUT ON")
+        assert labels[at + 1 : at + 3] == ["strobe cap…", "strobe cap off"]
+        assert items[at + 2].line == "safety strobe off"
+        action = items[at + 1].action
+        assert action is not None
+        action()
+        await pilot.pause()
+        assert isinstance(app.screen, TextDialog)
+        await pilot.press("escape")
+        bridge.events.append(ShowChanged(show_model(masters=MASTERS)))
+        await settle(pilot, app)
+        labels = [item.label for item in page(app).items()]
+        assert labels[labels.index("strobe cap…") + 1] == "rename master Speed 1…"
 
     drive(app, body)

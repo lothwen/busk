@@ -19,8 +19,9 @@
   a profile to the library's revision; F8 adds, renames, renumbers and deletes
   universes, edits a route through every protocol, and patches and adds at a
   place on its map; F7 makes a master of each kind, renames one, shows busk's
-  refusal of one in use and deletes one a binding drives; a new show gets a rig
-  from controls alone.
+  refusal of one in use and deletes one a binding drives; F2's option chips set
+  a gobo, F7 caps the strobe and takes the cap away, and the status bar's
+  title renames the show; a new show gets a rig from controls alone.
 * On a running show with its output open (``--standalone``): F8 adds a route to
   a new universe, a fixture patched in it reaches a real receiver, and the route
   goes off, on and away.
@@ -591,6 +592,67 @@ def test_f7_makes_renames_and_deletes_masters_from_controls_on_the_real_engine(
         await until(pilot, lambda: "Huge" in masters() and bound() == 1)
         setup = app.query_one(MastersPage).setup
         await until(pilot, lambda: "Huge" in [m.name for m in setup.masters])
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_f2s_options_f7s_strobe_cap_and_the_title_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """A spot and a bar selected: F2's gobo row offers the spot's gobos, and a
+    chip sets one, lit then; F7's PANIC changes the strobe cap and takes it
+    away, and ``undo`` brings it back; a click on the status bar's title
+    renames the show (pending plan Phase 36)."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=2), standalone=True)
+
+    def held(attribute: str) -> list[tuple[int, object]]:
+        programmer = app.programmer
+        values = () if programmer is None else programmer.values
+        return [(v.number, v.value) for v in values if v.attribute == attribute]
+
+    def cap() -> float | None:
+        show = app.view.show
+        return None if show is None else show.strobeMaxHz
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.programmer is not None and bool(app.query(OptionRow)))
+        await pilot.press(*"sel fixture 101, fixture 301", "enter")
+        rows = {row.attribute: row for row in app.query(OptionRow)}
+        await until(pilot, lambda: rows["gobo1"].display and bool(rows["gobo1"].chips.buttons))
+        assert [b.label.plain for b in rows["gobo1"].chips.buttons] == ["[open]", "[breakup]"]
+        await tap_button(pilot, rows["gobo1"].chips, "breakup")
+        await until(pilot, lambda: held("gobo1") == [(101, "breakup")])
+        await until(pilot, lambda: str(rows["gobo1"].chips.buttons[1].label.spans[0].style) == LIT)
+
+        await pilot.press("f7")
+        page = app.query_one(MastersPage)
+        await until(pilot, lambda: plain_of(page.strobe_cap) == "strobe cap 3 Hz")
+        await tap(pilot, page.cap)
+        await until(pilot, lambda: isinstance(app.screen, TextDialog))
+        await pilot.press("ctrl+u", *"5", "enter")
+        await until(pilot, lambda: cap() == 5.0)
+        await until(pilot, lambda: plain_of(page.strobe_cap) == "strobe cap 5 Hz")
+        await tap(pilot, page.cap_off)
+        await until(pilot, lambda: cap() is None and page.cap_off.inert)
+        assert plain_of(page.strobe_cap) == "strobe cap off"
+        await pilot.press(*"undo", "enter")
+        await until(pilot, lambda: cap() == 5.0 and not page.cap_off.inert)
+        log = app.query_one(LogView).entries
+        assert ("ui", "safety strobe 5") in log
+        assert ("ui", "safety strobe off") in log
+
+        status = app.query_one(StatusBar)
+        await pilot.click(StatusBar, offset=(status.left_text().plain.index("Club") + 1, 0))
+        await until(pilot, lambda: isinstance(app.screen, TextDialog))
+        await pilot.press("ctrl+u", *"Late Night", "enter")
+        await until(pilot, lambda: status.title == "Late Night")
+        assert "show Late Night *" in status.left_text().plain
 
     try:
         drive(app, body)

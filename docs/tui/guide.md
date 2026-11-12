@@ -12,9 +12,9 @@ log, so what the UI does is what you could type.
 > [F7 Masters](#f7-masters), and the rig: [F3 Fixtures](#f3-fixtures), [F8 Patch](#f8-patch)
 > and [F9 Surfaces](#f9-surfaces). Their edit modes and panels build a show from controls: the
 > rig, groups and park, presets, cues and cue lists, effects and their templates, playbacks and
-> pages, and masters. A few things are still typed at the prompt: renumbering a page, the
-> options of an effect as it is added, and setting up safety and the show's details.
-> F9 puts the start of a binding's line in the prompt.
+> pages, masters, the strobe cap and the show's title. A few things are still typed at the
+> prompt: renumbering a page, and the options of an effect as it is added. F9 puts the start of a
+> binding's line in the prompt.
 
 ## Install
 
@@ -76,7 +76,8 @@ the TUI crashes, the output stops. **For a show, start `busk-tui` without `--sta
 
 **The status bar**, from the left:
 
-- the show's title, with `*` while it has unsaved edits;
+- the show's title, with `*` while it has unsaved edits. A click on the title opens a name
+  dialog that sends `rename show "Late Night"`, and refuses an empty name;
 - `ENGINE STALLED`, `ENGINE RESTARTING` or `ENGINE FAILED` (red) while the engine does not
   run, and a dim `ENGINE STARTING` before it first does. Under `busk run` the watchdog
   restarts a stalled or crashed engine, and the chip clears once it runs again. A dim `LATE`
@@ -457,8 +458,17 @@ and zoom, after the masters), `—` with neither.
 - A colour component (`color.r` …) changes the colour the programmer holds, so its bar, too,
   works once there is one: click a colour chip under the rows (`preset color 2`) or type
   `set color 1 0.5 0`. The COLOR panel shows the output's colour and the programmer's as
-  swatches. `[set color…]` and SHUTTER's `[set shutter…]` put the line in the prompt.
+  swatches. `[set color…]` puts the line in the prompt.
 - A click on a row's name puts `set <attribute> ` in the prompt.
+
+**Option rows** come under a panel's encoders, one per attribute set to a named option: the colour
+wheel, colour macros and effects (`colorWheel`, `colorMacro`, `colorEffect`), gobos, prisms and
+fixture effects (`gobo1`, `gobo2`, `prism`, `effect`, `effect2`) and the shutter (`shutter`). A row
+has a chip per option the selection offers, as busk completes `set gobo1 `, and shows only while
+the selection offers some: with a spot and a pixel bar selected, BEAM has the spot's `gobo1` row
+and SHUTTER its `shutter` row; with nothing selected, there are none. A chip sends `set gobo1
+star`, and the first selected element's option is lit. A panel with no encoder rows, only options,
+keeps its rows, which then say why one offers nothing.
 
 **quick** runs ready-made lines (set them in the config file, below), then `[highlight
 on|off]` and `[blind on|off]`, which follow the programmer and are lit while on, and
@@ -469,9 +479,9 @@ colour as a swatch and its components, pan, tilt, zoom, and the other attributes
 value from a preset shows the preset's name; a fixture whose elements differ shows `mixed`;
 `·` is an attribute it does not hold.
 
-With the pane cursor (Tab on an empty prompt), a row's name puts its `set` in the prompt and
-`[−]` `[+]` run their step, so Enter Enter Enter steps the value. Below 100 columns the
-panels go one under the other.
+With the pane cursor (Tab on an empty prompt), a row's name puts its `set` in the prompt,
+`[−]` `[+]` run their step, so Enter Enter Enter steps the value, and an option's chip runs its
+`set`. Below 100 columns the panels go one under the other.
 
 ## F3 Fixtures
 
@@ -1092,7 +1102,11 @@ Every master, one panel per kind, three across on a wide terminal:
 - **FADE TIME**: a bar per fade-time master, and the fade time it imposes now (`override now
   1.6 s`, or `off`).
 - **PANIC**: whether the output is on, `[release all]`, `[OUTPUT OFF]` (busk asks first, as
-  for a typed `output off`) and `[OUTPUT ON]`.
+  for a typed `output off`) and `[OUTPUT ON]`. Under them, the strobe cap, the fastest any
+  fixture strobes ([the strobe-rate cap](../safety.md#the-strobe-rate-cap)): `strobe cap 3
+  Hz`, or `off`. `[cap…]` opens a rate dialog and sends `safety strobe 3`; it refuses a rate
+  that is not a plain number above 0, and sends nothing for the cap there is. `[off]` sends
+  `safety strobe off` at once, and is grey with no cap.
 - **PARKED**: a row per value park holds, by fixture (`204 intensity 0%`, `301.2 thru 301.3
   intensity 0%`), each with `[unpark]`, which sends `unpark fixture 204 intensity` at once. `[unpark
   all]` sends `unpark all` after a question (`Unpark everything? Park holds 2 values.`), and is grey

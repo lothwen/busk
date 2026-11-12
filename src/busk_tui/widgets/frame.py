@@ -39,6 +39,9 @@ NBSP = "\u00a0"  # keeps a tab's key and name together when the tabs wrap
 BLINK_S = 0.25
 """A route's light changes at most this often while it sends."""
 
+RENAME_SHOW = Style(meta={"@click": "app.rename_show"})
+"""The status bar's title: a click opens the show's name dialog."""
+
 _ENGINE_WARNINGS: dict[EngineState, bool] = {
     "starting": False,
     "stalled": True,
@@ -75,9 +78,15 @@ class StatusBar(Widget):
     """Row 1: what the show and the engine are doing (spec §5, plan §3 15).
 
     The app hands it each piece as it changes; it draws them all in one line,
-    the clock right-aligned, and cuts what does not fit."""
+    the clock right-aligned, and cuts what does not fit. A click on the
+    show's title runs the app's ``rename_show`` (pending plan Phase 36)."""
 
-    DEFAULT_CSS = f"StatusBar {{ height: 1; background: {colors.BAR}; }}"
+    DEFAULT_CSS = f"""
+    StatusBar {{
+        height: 1; background: {colors.BAR};
+        link-style: none; link-background-hover: {colors.SEL}; link-color-hover: {colors.FG};
+    }}
+    """
 
     def __init__(self, *, id: str | None = None) -> None:
         super().__init__(id=id)
@@ -122,7 +131,7 @@ class StatusBar(Widget):
         text.append(" busk ", style=f"bold {colors.BG} on {colors.CYAN}")
         text.append("  show ", style=colors.DIM)
         title = self.title if len(self.title) <= 24 else self.title[:23] + "…"
-        text.append(title or "—", style=colors.FG)
+        text.append(title or "—", style=Style(color=colors.FG) + RENAME_SHOW)
         if self.session is not None and self.session.dirty:
             text.append(" *", style=colors.AMBER)
         if self.engine != "running":

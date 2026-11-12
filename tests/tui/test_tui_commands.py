@@ -396,6 +396,10 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
         False,
     ),
     "delete master": (commands.delete_master("Fade"), 'delete master "Fade" cascade', False),
+    # The strobe cap and the show's title (pending plan Phase 36).
+    "safety strobe": (commands.strobe_cap("2.5"), "safety strobe 2.5", False),
+    "safety strobe off": (commands.no_strobe_cap(), "safety strobe off", False),
+    "rename show": (commands.rename_show('Say "hi"'), r'rename show "Say \"hi\""', False),
     "park": (
         commands.park("101 thru 102, 301.2", "intensity", "50%"),
         "park fixture 101 thru 102, fixture 301.2 intensity 50%",
@@ -1040,6 +1044,31 @@ def test_the_master_form_and_busk_agree_on_a_name(
     assert show.execute(commands.master_add("size", text).text).ok is ok
     assert master_panel.check_master_name(taken, "FX")("fx") is None  # its own, in another case
     assert show.execute(commands.rename_master("FX", "fx").text).ok
+
+
+@pytest.mark.parametrize("text", ["3", "0.5", ".5", "3.", "1000"])
+def test_what_the_cap_dialog_passes_busk_takes(show: busk.OfflineShow, text: str) -> None:
+    assert check_rate(text) is None
+    reply = show.execute(commands.strobe_cap(text).text)
+    assert reply.ok, reply.text
+    assert show_model(show.show).strobeMaxHz == float(text)
+
+
+@pytest.mark.parametrize("text", ["0", "-1", "0.0", "abc", "", "9" * 301])
+def test_a_cap_the_dialog_refuses_busk_refuses_too(show: busk.OfflineShow, text: str) -> None:
+    """busk takes ``+4`` and ``50%`` (0.5 Hz), which the dialog refuses: the
+    pending plan's §7, 2026-11-12."""
+    assert check_rate(text) is not None
+    assert not show.execute(f"safety strobe {text}").ok
+
+
+def test_the_strobe_cap_and_title_lines_do_what_they_say(show: busk.OfflineShow) -> None:
+    assert show_model(show.show).strobeMaxHz == 3.0  # the club's
+    assert show.execute(commands.no_strobe_cap().text).ok
+    assert show_model(show.show).strobeMaxHz is None
+    assert show.execute(commands.no_strobe_cap().text).text == "error: no strobe cap is set"
+    assert show.execute(commands.rename_show("Late Night").text).ok
+    assert show_model(show.show).title == "Late Night"
 
 
 def test_the_timing_forms_words_are_busks(show: busk.OfflineShow) -> None:

@@ -25,6 +25,7 @@ from busk_tui.model import (
     ShowChanged,
 )
 from busk_tui.shell import BuskApp
+from busk_tui.widgets.dialogs import TextDialog
 from busk_tui.widgets.frame import PAGES, StatusBar, TabBar
 from busk_tui.widgets.help import HelpOverlay
 from busk_tui.widgets.log import LogView
@@ -88,6 +89,58 @@ def test_a_tab_click_switches_the_page() -> None:
         assert app.page == 4
 
     drive(app, body)
+
+
+def test_a_click_on_the_title_renames_the_show() -> None:
+    """The status bar's title opens a name dialog (pending plan Phase 36)."""
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def title(pilot: Pilot[int]) -> None:
+        status = app.query_one(StatusBar)
+        await pilot.click(StatusBar, offset=(status.left_text().plain.index("Club") + 1, 0))
+        await pilot.pause()
+
+    async def body(pilot: Pilot[int]) -> None:
+        status = app.query_one(StatusBar)
+        dash = status.left_text().plain.index("—")
+        await pilot.click(StatusBar, offset=(dash, 0))  # no show yet: nothing to rename
+        await pilot.pause()
+        assert not isinstance(app.screen, TextDialog)
+        bridge.events.append(ShowChanged(show_model()))
+        await settle(pilot, app)
+        await pilot.click(StatusBar, offset=(status.left_text().plain.index("GM") + 1, 0))
+        await pilot.pause()
+        assert not isinstance(app.screen, TextDialog)  # only the title
+        await title(pilot)
+        dialog = app.screen
+        assert isinstance(dialog, TextDialog)
+        assert (dialog.title_text, dialog.initial) == ("RENAME SHOW", "Club Night")
+        await pilot.press("ctrl+u", "enter")
+        await pilot.pause()
+        assert str(dialog.error.render()) == "a name cannot be empty"
+        await pilot.press(*'Say "late"', "enter")
+        await pilot.pause()
+        assert not isinstance(app.screen, TextDialog)
+        await title(pilot)
+        await pilot.press("end", "space", "enter")  # the title it has, and a space: nothing
+        await pilot.pause()
+        assert bridge.lines() == [r'rename show "Say \"late\""']
+        assert ("ui", r'rename show "Say \"late\""') in app.query_one(LogView).entries
+
+    drive(app, body)
+
+
+def test_the_title_is_a_link_and_nothing_else_in_the_status_bar_is() -> None:
+    status = StatusBar()
+    status.title = "Club Night"
+    text = status.left_text()
+    clicks = [span for span in text.spans if "@click" in getattr(span.style, "meta", {})]
+    assert [text.plain[span.start : span.end] for span in clicks] == ["Club Night"]
+    status.title = ""
+    text = status.left_text()
+    clicks = [span for span in text.spans if "@click" in getattr(span.style, "meta", {})]
+    assert [text.plain[span.start : span.end] for span in clicks] == ["—"]
 
 
 def test_the_last_page_is_where_it_starts() -> None:
