@@ -1,0 +1,1873 @@
+# Festival Main Stage: a complete festival show on the TupperDMX profiles,
+# built with console commands only. Build it once on a new show:
+#
+#   busk new festival.show --title "Festival Main Stage"
+#   busk run festival.show --library examples/tupperdmx/profiles \
+#       --script examples/tupperdmx/festival.busk
+#
+# It saves festival.show, which embeds the profiles; after that,
+# `busk run festival.show` plays it. The output goes to TupperDMX's simulator
+# over Art-Net on 127.0.0.1 (see "output" below for a real rig).
+#
+# ------------------------------------------------------------------ the rig
+# 54 fixtures on one universe (506 of 512 channels, the one universe TupperDMX
+# simulates). Every row is numbered from stage left to stage right.
+#
+#   FOH truss        301-308  8 PAR RGBW             frontlight
+#   Front truss      101-106  6 Moving Head (spots)  downstage, hung
+#                    501-504  4 Blinder              audience blinders
+#   Mid truss        201-206  6 Moving Head (washes) hung
+#   Back truss       107-112  6 Moving Head (spots)  upstage, hung
+#                    309-316  8 PAR RGBW             colour backlight
+#   Upstage floor    207-212  6 Moving Head (washes) standing
+#                    401-404  4 LED Bar              riser front
+#                    505-508  4 Blinder              stage strobes
+#                    601-602  2 Smoke Machine        stage left, stage right
+#   Downstage lip    405-408  4 LED Bar              facing the audience
+#
+#   Patch (universe 1): spots 1-144, washes 145-288, PARs 289-384,
+#   LED bars 385-440, blinders 441-504, smoke 505 and 506.
+#
+# The 24 moving heads share one profile: the spots run gobos, prisms and
+# narrow zoom, the washes run open and wide. The blinders are the strobes:
+# four white cells (cold 1-2, warm 3-4) and a strobe channel. A smoke
+# machine's intensity is its fog output, so no look that lights "the stage"
+# ever names the smoke machines: only group 7 does.
+#
+# ------------------------------------------------------------------- numbers
+#   groups    1-9 by fixture type, 11-16 by position, 21-27 by purpose,
+#             31-40 rig rows and blinder cells (used to record presets)
+#   presets   color 1-10, position 1-7 (spots) and 11-17 (washes),
+#             beam 1-8, intensity 1-5 (Dimmer 0/25/50/75/100%)
+#   playbacks page P, slot S holds playback (and cue list) P*100+S
+#
+# -------------------------------------------------------------------- pages
+#   1 Songs              Song 1-3 (GO, BACK, GOTO), Busking FX, Special Looks
+#   2 Colors             ten colours and three colour effects, one at a time
+#   3 Positions & Beams  positions 1-7 and beams 11-18, one of each at a time
+#   4 Movement FX        spots 1-5 and washes 11-15, one per type at a time
+#   5 Dimmer FX          sine, square, chase, pulse, alternating
+#   6 Strobes & SFX      strobes (flash), blinder hit, smoke, LED bar programs
+#   7 House & Audience   house lights, audience lighting, MC light
+#
+# Slots 9 and 10 of every page hold the emergency playbacks: HOUSE FULL and
+# PANIC WORK LIGHT. Both play at band 200, above everything, kill the fog,
+# open every shutter and survive a swop. The web remote's header always has
+# blackout, the grand master, TAP and the other masters: the speed masters
+# "Beat" (songs, dimmer and colour effects) and "Move Speed" (movement
+# effects), the size masters "Move Size" and "FX Size", a group master per
+# fixture type (with "Smoke" as the fog level) and the fade-time master.
+#
+# Every position below is a starting point for the focus call: aim the heads
+# in the venue and record the presets again with `merge`.
+
+# ===================================================================== patch
+universe add 1 "Stage"
+fixture add 101 thru 112 "TupperDMX Moving Head" mode 12ch at 1.1
+fixture add 201 thru 212 "TupperDMX Moving Head" mode 12ch at 1.145
+fixture add 301 thru 316 "TupperDMX PAR RGBW" mode 6ch at 1.289
+fixture add 401 thru 408 "TupperDMX LED Bar" mode 7ch at 1.385
+fixture add 501 thru 508 "TupperDMX Blinder" mode 8ch at 1.441
+fixture add 601 thru 602 "TupperDMX Smoke Machine" mode 1ch at 1.505
+
+# ----------------------------------------------------------------- positions
+# Where each fixture hangs or stands, for a 3D view of the stage
+# (stage3d_bar.py): metres from the middle of the stage's downstage edge at
+# deck height, x towards stage right, y downstage (into the audience), z up.
+# rx, ry and rz are degrees, turned about x, then y, then z: at 0 a fixture
+# stands on its base with its beam straight up, so a hung one is rx 180.
+# Trusses: FOH 8 m out at 6 m, front at y -1 (6.5 m), mid at -4 (7 m), back
+# at -7 (7.5 m: the heads on its front chord, the PARs on its back one).
+# FOH truss: PARs, frontlight on the stage
+fixture 301 location {"x": -5.25, "y": 8, "z": 6, "rx": 120, "ry": 0, "rz": 0}
+fixture 302 location {"x": -3.75, "y": 8, "z": 6, "rx": 120, "ry": 0, "rz": 0}
+fixture 303 location {"x": -2.25, "y": 8, "z": 6, "rx": 120, "ry": 0, "rz": 0}
+fixture 304 location {"x": -0.75, "y": 8, "z": 6, "rx": 120, "ry": 0, "rz": 0}
+fixture 305 location {"x": 0.75, "y": 8, "z": 6, "rx": 120, "ry": 0, "rz": 0}
+fixture 306 location {"x": 2.25, "y": 8, "z": 6, "rx": 120, "ry": 0, "rz": 0}
+fixture 307 location {"x": 3.75, "y": 8, "z": 6, "rx": 120, "ry": 0, "rz": 0}
+fixture 308 location {"x": 5.25, "y": 8, "z": 6, "rx": 120, "ry": 0, "rz": 0}
+# front truss: spots, hung
+fixture 101 location {"x": -6.25, "y": -1, "z": 6.5, "rx": 180, "ry": 0, "rz": 0}
+fixture 102 location {"x": -3.75, "y": -1, "z": 6.5, "rx": 180, "ry": 0, "rz": 0}
+fixture 103 location {"x": -1.25, "y": -1, "z": 6.5, "rx": 180, "ry": 0, "rz": 0}
+fixture 104 location {"x": 1.25, "y": -1, "z": 6.5, "rx": 180, "ry": 0, "rz": 0}
+fixture 105 location {"x": 3.75, "y": -1, "z": 6.5, "rx": 180, "ry": 0, "rz": 0}
+fixture 106 location {"x": 6.25, "y": -1, "z": 6.5, "rx": 180, "ry": 0, "rz": 0}
+# front truss: blinders, between the spots, at the audience
+fixture 501 location {"x": -5, "y": -1, "z": 6.5, "rx": -120, "ry": 0, "rz": 0}
+fixture 502 location {"x": -2.5, "y": -1, "z": 6.5, "rx": -120, "ry": 0, "rz": 0}
+fixture 503 location {"x": 2.5, "y": -1, "z": 6.5, "rx": -120, "ry": 0, "rz": 0}
+fixture 504 location {"x": 5, "y": -1, "z": 6.5, "rx": -120, "ry": 0, "rz": 0}
+# mid truss: washes, hung
+fixture 201 location {"x": -6.25, "y": -4, "z": 7, "rx": 180, "ry": 0, "rz": 0}
+fixture 202 location {"x": -3.75, "y": -4, "z": 7, "rx": 180, "ry": 0, "rz": 0}
+fixture 203 location {"x": -1.25, "y": -4, "z": 7, "rx": 180, "ry": 0, "rz": 0}
+fixture 204 location {"x": 1.25, "y": -4, "z": 7, "rx": 180, "ry": 0, "rz": 0}
+fixture 205 location {"x": 3.75, "y": -4, "z": 7, "rx": 180, "ry": 0, "rz": 0}
+fixture 206 location {"x": 6.25, "y": -4, "z": 7, "rx": 180, "ry": 0, "rz": 0}
+# back truss, front chord: spots, hung
+fixture 107 location {"x": -6.25, "y": -6.85, "z": 7.5, "rx": 180, "ry": 0, "rz": 0}
+fixture 108 location {"x": -3.75, "y": -6.85, "z": 7.5, "rx": 180, "ry": 0, "rz": 0}
+fixture 109 location {"x": -1.25, "y": -6.85, "z": 7.5, "rx": 180, "ry": 0, "rz": 0}
+fixture 110 location {"x": 1.25, "y": -6.85, "z": 7.5, "rx": 180, "ry": 0, "rz": 0}
+fixture 111 location {"x": 3.75, "y": -6.85, "z": 7.5, "rx": 180, "ry": 0, "rz": 0}
+fixture 112 location {"x": 6.25, "y": -6.85, "z": 7.5, "rx": 180, "ry": 0, "rz": 0}
+# back truss, back chord: PARs, backlight
+fixture 309 location {"x": -7, "y": -7.15, "z": 7.5, "rx": -150, "ry": 0, "rz": 0}
+fixture 310 location {"x": -5, "y": -7.15, "z": 7.5, "rx": -150, "ry": 0, "rz": 0}
+fixture 311 location {"x": -3, "y": -7.15, "z": 7.5, "rx": -150, "ry": 0, "rz": 0}
+fixture 312 location {"x": -1, "y": -7.15, "z": 7.5, "rx": -150, "ry": 0, "rz": 0}
+fixture 313 location {"x": 1, "y": -7.15, "z": 7.5, "rx": -150, "ry": 0, "rz": 0}
+fixture 314 location {"x": 3, "y": -7.15, "z": 7.5, "rx": -150, "ry": 0, "rz": 0}
+fixture 315 location {"x": 5, "y": -7.15, "z": 7.5, "rx": -150, "ry": 0, "rz": 0}
+fixture 316 location {"x": 7, "y": -7.15, "z": 7.5, "rx": -150, "ry": 0, "rz": 0}
+# upstage floor: washes, standing
+fixture 207 location {"x": -6.25, "y": -6, "z": 0, "rx": 0, "ry": 0, "rz": 0}
+fixture 208 location {"x": -3.75, "y": -6, "z": 0, "rx": 0, "ry": 0, "rz": 0}
+fixture 209 location {"x": -1.25, "y": -6, "z": 0, "rx": 0, "ry": 0, "rz": 0}
+fixture 210 location {"x": 1.25, "y": -6, "z": 0, "rx": 0, "ry": 0, "rz": 0}
+fixture 211 location {"x": 3.75, "y": -6, "z": 0, "rx": 0, "ry": 0, "rz": 0}
+fixture 212 location {"x": 6.25, "y": -6, "z": 0, "rx": 0, "ry": 0, "rz": 0}
+# riser front: LED bars at the audience
+fixture 401 location {"x": -4.5, "y": -5, "z": 0.25, "rx": -90, "ry": 0, "rz": 0}
+fixture 402 location {"x": -1.5, "y": -5, "z": 0.25, "rx": -90, "ry": 0, "rz": 0}
+fixture 403 location {"x": 1.5, "y": -5, "z": 0.25, "rx": -90, "ry": 0, "rz": 0}
+fixture 404 location {"x": 4.5, "y": -5, "z": 0.25, "rx": -90, "ry": 0, "rz": 0}
+# upstage floor: stage strobes, tipped up at the audience
+fixture 505 location {"x": -7, "y": -5.5, "z": 0.25, "rx": -80, "ry": 0, "rz": 0}
+fixture 506 location {"x": -3, "y": -5.5, "z": 0.25, "rx": -80, "ry": 0, "rz": 0}
+fixture 507 location {"x": 3, "y": -5.5, "z": 0.25, "rx": -80, "ry": 0, "rz": 0}
+fixture 508 location {"x": 7, "y": -5.5, "z": 0.25, "rx": -80, "ry": 0, "rz": 0}
+# smoke: stage left and stage right, blowing on stage
+fixture 601 location {"x": -7.5, "y": -3, "z": 0.15, "rx": -90, "ry": 0, "rz": -90}
+fixture 602 location {"x": 7.5, "y": -3, "z": 0.15, "rx": -90, "ry": 0, "rz": 90}
+# downstage lip: LED bars at the audience
+fixture 405 location {"x": -4.5, "y": -0.15, "z": 0.05, "rx": -90, "ry": 0, "rz": 0}
+fixture 406 location {"x": -1.5, "y": -0.15, "z": 0.05, "rx": -90, "ry": 0, "rz": 0}
+fixture 407 location {"x": 1.5, "y": -0.15, "z": 0.05, "rx": -90, "ry": 0, "rz": 0}
+fixture 408 location {"x": 4.5, "y": -0.15, "z": 0.05, "rx": -90, "ry": 0, "rz": 0}
+
+# What each profile is, so a display draws it right: a head, a can, a bar.
+profile "TupperDMX Moving Head" category spot
+profile "TupperDMX PAR RGBW" category par
+profile "TupperDMX LED Bar" category pixel
+profile "TupperDMX Blinder" category blinder
+profile "TupperDMX Smoke Machine" category fog
+
+# -------------------------------------------------------------------- output
+# TupperDMX's simulator: Art-Net Port-Address 0.0.0 (its universe 0) on this
+# machine. For a real rig, use `route add 1 sacn 1` (and --iface) instead.
+route add 1 artnet 0.0.0 unicast 127.0.0.1
+
+# ==================================================================== groups
+# ------------------------------------------------ rig rows (31-40)
+sel fixture 101 thru 106
+record group 31 "Front Truss Spots"
+sel fixture 107 thru 112
+record group 32 "Back Truss Spots"
+sel fixture 201 thru 206
+record group 33 "Mid Truss Washes"
+sel fixture 207 thru 212
+record group 34 "Floor Washes"
+sel fixture 309 thru 316
+record group 35 "Back PARs"
+sel fixture 401 thru 404
+record group 36 "Riser LED Bars"
+sel fixture 405 thru 408
+record group 37 "Lip LED Bars"
+sel fixture 501 thru 504
+record group 38 "Audience Blinders"
+sel fixture 505 thru 508
+record group 39 "Stage Strobes"
+sel 501.3 thru 501.4, 502.3 thru 502.4, 503.3 thru 503.4, 504.3 thru 504.4
+record group 40 "Audience Blinders Warm"
+
+# ------------------------------------------------ A. by fixture type (1-9)
+sel fixture 101 thru 112
+record group 1 "All Spots"
+sel fixture 201 thru 212
+record group 2 "All Washes"
+sel fixture 401 thru 408
+record group 3 "All LED Bars"
+sel fixture 301 thru 316
+record group 4 "All PARs"
+sel fixture 501 thru 508
+record group 5 "All Strobes"
+sel group 1, group 2
+record group 6 "All Moving Heads"
+sel fixture 601 thru 602
+record group 7 "Smoke Machines"
+sel group 6, group 4, group 3
+record group 8 "All Colour"                     # everything that mixes colour
+sel group 8, group 5
+record group 9 "Full Stage"                     # every light, never the smoke
+
+# ------------------------------------------------ B. by position (11-16)
+# FOH is its own position: Stage Left and Right, Upstage, Downstage and
+# Center are the fixtures over and on the stage.
+sel fixture 101 thru 103, fixture 107 thru 109, fixture 201 thru 203, fixture 207 thru 209, fixture 309 thru 312, fixture 401 thru 402, fixture 405 thru 406, fixture 501 thru 502, fixture 505 thru 506
+record group 11 "Stage Left"
+sel fixture 104 thru 106, fixture 110 thru 112, fixture 204 thru 206, fixture 210 thru 212, fixture 313 thru 316, fixture 403 thru 404, fixture 407 thru 408, fixture 503 thru 504, fixture 507 thru 508
+record group 12 "Stage Right"
+sel group 32, group 34, group 35, group 36, group 39
+record group 13 "Upstage"
+sel group 31, group 37, group 38
+record group 14 "Downstage"
+sel fixture 103 thru 104, fixture 109 thru 110, fixture 203 thru 204, fixture 209 thru 210, fixture 304 thru 305, fixture 312 thru 313, fixture 402 thru 403, fixture 406 thru 407, fixture 502 thru 503, fixture 506 thru 507
+record group 15 "Center"
+sel fixture 301 thru 308
+record group 16 "FOH"
+
+# ------------------------------------------------ C. by purpose (21-27)
+sel fixture 102, 104, 106, 108, 110, 112
+record group 21 "Spots Even"
+sel fixture 101, 103, 105, 107, 109, 111
+record group 22 "Spots Odd"
+sel fixture 202, 204, 206, 208, 210, 212
+record group 23 "Washes Even"
+sel fixture 201, 203, 205, 207, 209, 211
+record group 24 "Washes Odd"
+sel group 32, group 34, group 35, group 36
+record group 25 "Backlight"
+sel group 16, group 33
+record group 26 "Frontlight"                    # FOH PARs and the mid-truss washes
+sel group 38, group 37
+record group 27 "Audience Lights"
+clear
+
+# =================================================================== presets
+# ------------------------------------------------ 5.1 position presets
+# Separate presets per fixture type: spots 1-7, washes 11-17. Inside each,
+# every truss gets its own values. Hung heads: tilt 0 points down, positive
+# tilts downstage. Standing heads (floor washes): tilt 0 points up, positive
+# tilts downstage, and pan runs the other way. A spread runs across the row,
+# stage left to stage right.
+
+# Position 1 - Center Stage
+sel group 31
+set pan spread -25 25
+set tilt -35
+sel group 32
+set pan spread -25 25
+set tilt 35
+record preset position 1 "Spots Center Stage"
+clear
+sel group 33
+set pan spread -20 20
+set tilt -10
+sel group 34
+set pan spread 20 -20
+set tilt 45
+record preset position 11 "Washes Center Stage"
+clear
+
+# Position 2 - Stage Left
+sel group 31
+set pan spread 10 45
+set tilt -30
+sel group 32
+set pan spread 10 45
+set tilt 30
+record preset position 2 "Spots Stage Left"
+clear
+sel group 33
+set pan spread 10 40
+set tilt -10
+sel group 34
+set pan spread -40 -10
+set tilt 45
+record preset position 12 "Washes Stage Left"
+clear
+
+# Position 3 - Stage Right
+sel group 31
+set pan spread -45 -10
+set tilt -30
+sel group 32
+set pan spread -45 -10
+set tilt 30
+record preset position 3 "Spots Stage Right"
+clear
+sel group 33
+set pan spread -40 -10
+set tilt -10
+sel group 34
+set pan spread 10 40
+set tilt 45
+record preset position 13 "Washes Stage Right"
+clear
+
+# Position 4 - Upstage
+sel group 31
+set pan spread -15 15
+set tilt -55
+sel group 32
+set pan spread -15 15
+set tilt -10
+record preset position 4 "Spots Upstage"
+clear
+sel group 33
+set pan spread -15 15
+set tilt -40
+sel group 34
+set pan spread 10 -10                           # floor washes: columns of light
+set tilt 15
+record preset position 14 "Washes Upstage"
+clear
+
+# Position 5 - Downstage
+sel group 31
+set pan spread -20 20
+set tilt 10
+sel group 32
+set pan spread -20 20
+set tilt 50
+record preset position 5 "Spots Downstage"
+clear
+sel group 33
+set pan spread -20 20
+set tilt 25
+sel group 34
+set pan spread 20 -20
+set tilt 70
+record preset position 15 "Washes Downstage"
+clear
+
+# Position 6 - Audience
+sel group 31
+set pan spread -40 40
+set tilt 75
+sel group 32
+set pan spread -35 35
+set tilt 85
+record preset position 6 "Spots Audience"
+clear
+sel group 33
+set pan spread -40 40
+set tilt 70
+sel group 34
+set pan spread 35 -35
+set tilt 80
+record preset position 16 "Washes Audience"
+clear
+
+# Position 7 - Cross Stage: each side aims at the other
+sel group 31
+set pan spread -50 50
+set tilt -30
+sel group 32
+set pan spread -50 50
+set tilt 30
+record preset position 7 "Spots Cross Stage"
+clear
+sel group 33
+set pan spread -45 45
+set tilt -10
+sel group 34
+set pan spread 45 -45
+set tilt 40
+record preset position 17 "Washes Cross Stage"
+clear
+
+# ------------------------------------------------ 5.2 colour presets (global)
+sel group 8
+set color 1 1 1
+record preset color 1 "Open White"
+set color 1 0 0
+record preset color 2 "Red"
+set color 0 0 1
+record preset color 3 "Blue"
+set color 0 1 0
+record preset color 4 "Green"
+set color 1 0.5 0
+record preset color 5 "Amber"
+set color 0 1 1
+record preset color 6 "Cyan"
+set color 1 0 1
+record preset color 7 "Magenta"
+set color 1 0.7 0.4
+record preset color 8 "CTO"
+set color 0.7 0.5 1
+record preset color 9 "Lavender"
+set color 0.25 0 1
+record preset color 10 "Deep Blue"
+clear
+
+# ------------------------------------------------ 5.3 beam presets (moving heads)
+# The head has no frost: Soft Beam is the widest zoom with the Dots gobo
+# turning slowly, which breaks up the edge of the beam.
+sel group 6
+set gobo1 open
+set gobo1Rotation 0
+set prism off
+set zoom 20
+record preset beam 1 "Open Beam"
+set zoom 12
+record preset beam 2 "Narrow Beam"
+set zoom 30
+record preset beam 3 "Wide Beam"
+set gobo1 breakup
+set gobo1Rotation 45
+set zoom 18
+record preset beam 4 "Gobo 1"
+set gobo1 star
+set gobo1Rotation -30
+record preset beam 5 "Gobo 2"
+set gobo1 open
+set gobo1Rotation 0
+set prism prism3
+set zoom 20
+record preset beam 6 "Prism"
+set zoom 12
+record preset beam 7 "Narrow Prism"
+set gobo1 dots
+set gobo1Rotation 8
+set prism off
+set zoom 28
+record preset beam 8 "Soft Beam"
+clear
+
+# ------------------------------------------------ 5.5 dimmer presets (global)
+sel group 9
+set intensity 0
+record preset intensity 1 "Dimmer 0%"
+set intensity 25%
+record preset intensity 2 "Dimmer 25%"
+set intensity 50%
+record preset intensity 3 "Dimmer 50%"
+set intensity 75%
+record preset intensity 4 "Dimmer 75%"
+set intensity 100%
+record preset intensity 5 "Dimmer 100%"
+clear
+
+# =================================================================== masters
+# "Beat" is the first speed master, so the web remote's TAP drives it; songs,
+# dimmer and colour effects follow it. Movement effects run in Hz, scaled by
+# the "Move Speed" fader's multiplier (x1/4 ... x4), free of the music.
+master add speed "Beat" bpm 128
+master add speed "Move Speed" bpm 120
+master add size "Move Size"
+master add size "FX Size"
+master add group "Spots" group 1
+master add group "Washes" group 2
+master add group "PARs" group 4
+master add group "LED Bars" group 3
+master add group "Strobes" group 5
+master add group "Smoke" group 7                # the fog level
+master add fadetime "Fade"
+
+# ============================================================ effect library
+# The built-in Circle, Chase, Pulse and Rainbow join the show when first used.
+# 6.1 dimmer effects
+effect template add "Sine Wave" [{"attribute": "intensity", "waveform": {"kind": "sine"}, "phaseOffset": 0, "mode": "absolute"}]
+effect template add "Square Wave" [{"attribute": "intensity", "waveform": {"kind": "square", "duty": 0.5}, "phaseOffset": 0, "mode": "absolute"}]
+effect template add "Alternating Dimmer" [{"attribute": "intensity", "waveform": {"kind": "square", "duty": 0.5}, "phaseOffset": 0, "mode": "absolute"}]
+# 6.2 movement effects: offsets around the current position (size in degrees).
+# Figure Eight: pan once and tilt twice per cycle.
+effect template add "Figure Eight" [{"attribute": "pan", "waveform": {"kind": "sine"}, "phaseOffset": 0, "mode": "add"}, {"attribute": "tilt", "waveform": {"kind": "curve", "points": [[0, 0.5], [0.0625, 0.8536], [0.125, 1], [0.1875, 0.8536], [0.25, 0.5], [0.3125, 0.1464], [0.375, 0], [0.4375, 0.1464], [0.5, 0.5], [0.5625, 0.8536], [0.625, 1], [0.6875, 0.8536], [0.75, 0.5], [0.8125, 0.1464], [0.875, 0], [0.9375, 0.1464], [1, 0.5]]}, "phaseOffset": 0, "mode": "add"}]
+effect template add "Pan Sweep" [{"attribute": "pan", "waveform": {"kind": "sine"}, "phaseOffset": 0, "mode": "add"}]
+effect template add "Tilt Sweep" [{"attribute": "tilt", "waveform": {"kind": "sine"}, "phaseOffset": 0, "mode": "add"}]
+effect template add "Random Movement" [{"attribute": "pan", "waveform": {"kind": "random", "smooth": true, "seed": 7}, "phaseOffset": 0, "mode": "add"}, {"attribute": "tilt", "waveform": {"kind": "random", "smooth": true, "seed": 13}, "phaseOffset": 0, "mode": "add"}]
+# 6.3 colour effects
+effect template add "Red/Blue Alternation" [{"attribute": "color", "palette": [{"r": 1, "g": 0, "b": 0}, {"r": 0, "g": 0, "b": 1}], "blend": "snap", "mode": "absolute"}]
+effect template add "Color Chase" [{"attribute": "color", "palette": [{"r": 1, "g": 0, "b": 0}, {"r": 1, "g": 0.5, "b": 0}, {"r": 0, "g": 1, "b": 0}, {"r": 0, "g": 1, "b": 1}, {"r": 0, "g": 0, "b": 1}, {"r": 1, "g": 0, "b": 1}], "blend": "snap", "mode": "absolute"}]
+
+# ===================================================================== pages
+rename page 1 "Songs"
+page add 2 "Colors"
+page add 3 "Positions & Beams"
+page add 4 "Movement FX"
+page add 5 "Dimmer FX"
+page add 6 "Strobes & SFX"
+page add 7 "House & Audience"
+
+# ========================================================= page 1: the songs
+# Tracking stacks: each cue stores only what changes, the rest tracks on.
+# Timing follows the attribute: dimmer over the cue's time, then position,
+# colour and beam each over their own (2 / 4 / 1 / 0.5 s in a normal cue).
+# Effects carry stable ids (move, wmove, dim, col): a later cue with the same
+# id replaces the effect, and a cue's release of its attributes stops it,
+# while the values the cue sets itself stay.
+
+# --------------------------------------- Song 1 "Opener" (cue list 101)
+cuelist add 101 "Song 1 Opener"
+cuelist 101 tracking true
+
+# 1 Intro: dark stage, blue backlight, haze for the beams.
+sel group 25
+preset intensity 3
+preset color 3
+sel group 32
+preset position 1
+preset beam 1
+sel group 34
+preset position 14
+preset beam 3
+sel group 7
+set intensity 40%
+record cue 101/1 "Intro"
+cue 101/1 time 3
+cue 101/1 time position 0
+
+# 2 Build Up: the spots join in lavender and start to circle.
+sel group 1
+preset intensity 4
+preset color 9
+preset beam 2
+sel group 31
+preset position 1
+sel group 1
+effect add "Circle" id move bpm "Beat" x 0.25 size 15 phase 0 360 fadein 4
+sel group 33
+preset intensity 3
+preset color 3
+preset position 11
+preset beam 3
+sel group 35, group 36
+preset intensity 4
+record cue 101/2 "Build Up"
+cue 101/2 time 2
+cue 101/2 time position 4
+cue 101/2 time color 1
+cue 101/2 time beam 0.5
+
+# 3 Drop: full intensity, white beams fanning over the crowd.
+sel group 6, group 4, group 3
+preset intensity 5
+preset color 1
+sel group 6
+preset beam 2
+sel group 1
+preset position 6
+effect add "Pan Sweep" id move bpm "Beat" x 0.5 size 25 phase 0 180 wings 2
+sel group 2
+preset position 14
+sel group 7
+set intensity 80%
+record cue 101/3 "Drop"
+cue 101/3 time 0/2
+cue 101/3 time position 1
+cue 101/3 time color 0
+cue 101/3 time beam 0
+
+# 4 Verse: warm frontlight, the spots dim and still with a breakup texture.
+effect remove move
+sel group 26
+preset intensity 4
+preset color 8
+sel group 33
+preset position 15
+preset beam 3
+sel group 1
+preset intensity 2
+preset color 5
+preset position 1
+preset beam 4
+sel group 34, group 37
+preset intensity 1
+sel group 35, group 36
+set intensity 40%
+preset color 5
+sel group 7
+set intensity 20%
+record cue 101/4 "Verse"
+cue 101/4 time 2
+cue 101/4 time position 4
+cue 101/4 time color 1
+cue 101/4 time beam 0.5
+cue 101/4 release group 1 only pan tilt         # stops the sweep
+
+# 5 Chorus: red and blue moving lights.
+sel group 22
+preset color 2
+sel group 21
+preset color 3
+sel group 24
+preset color 3
+sel group 23
+preset color 2
+sel group 6
+preset intensity 5
+sel group 1
+preset position 7
+preset beam 6
+effect add "Figure Eight" id move bpm "Beat" x 0.5 size 12 phase 0 180 groups 2
+sel group 2
+preset position 11
+preset beam 3
+effect add "Tilt Sweep" id wmove bpm "Beat" x 0.5 size 15 phase 0 360 groups 2
+sel group 35
+preset intensity 5
+preset color 2
+sel group 3
+preset intensity 5
+effect add "Red/Blue Alternation" id col bpm "Beat" x 0.5 phase 0 360 groups 2
+sel group 16
+preset intensity 2
+record cue 101/5 "Chorus"
+cue 101/5 time 1
+cue 101/5 time position 2
+cue 101/5 time color 0.5
+cue 101/5 time beam 0
+
+# 6 Breakdown: a dim deep-blue atmosphere, turning stars upstage.
+effect clear
+sel group 8
+preset color 10
+sel group 1
+preset intensity 2
+preset position 4
+preset beam 5
+sel group 2
+preset intensity 2
+preset position 14
+preset beam 3
+sel group 35, group 36
+preset intensity 2
+sel group 16, group 37
+preset intensity 1
+sel group 7
+set intensity 50%
+record cue 101/6 "Breakdown"
+cue 101/6 time 4
+cue 101/6 time position 3
+cue 101/6 time color 3
+cue 101/6 time beam 1
+cue 101/6 release group 6 only pan tilt         # stops both movements
+cue 101/6 release group 3 only color            # stops the red/blue alternation
+
+# 7 Final Drop: the full stage in white, movement and strobes.
+sel group 6, group 4, group 3
+preset intensity 5
+preset color 1
+sel group 1
+preset position 6
+preset beam 7
+effect add "Circle" id move bpm "Beat" x 1 size 20 phase 0 360
+sel group 2
+preset position 16
+preset beam 2
+effect add "Pan Sweep" id wmove bpm "Beat" x 0.5 size 30 phase 0 180 wings 2
+sel group 5
+preset intensity 5
+set shutter strobe
+set strobeRate 10
+sel group 4
+set shutter strobe
+set strobeRate 6
+sel group 7
+preset intensity 5
+record cue 101/7 "Final Drop"
+cue 101/7 time 0/3
+cue 101/7 time position 0.5
+cue 101/7 time color 0
+cue 101/7 time beam 0
+clear
+
+# --------------------------------------- Song 2 "Anthem" (cue list 102)
+cuelist add 102 "Song 2 Anthem"
+cuelist 102 tracking true
+
+# 1 Intro: cyan columns of light from the floor.
+sel group 34
+set intensity 60%
+preset color 6
+preset position 14
+preset beam 3
+sel group 7
+set intensity 30%
+record cue 102/1 "Intro"
+cue 102/1 time 4
+cue 102/1 time position 0
+
+# 2 Verse: warm frontlight, green star gobos drifting downstage.
+sel group 26
+set intensity 70%
+preset color 8
+sel group 33
+preset position 15
+preset beam 3
+sel group 31
+preset intensity 3
+preset color 4
+preset position 5
+preset beam 5
+effect add "Random Movement" id move bpm "Beat" x 0.125 size 8
+record cue 102/2 "Verse"
+cue 102/2 time 3
+cue 102/2 time position 4
+cue 102/2 time color 2
+cue 102/2 time beam 1
+
+# 3 Pre-Chorus: magenta waves across the back PARs (the effect is their
+# only intensity, so the wave runs from dark to full).
+sel group 35
+preset color 7
+effect add "Sine Wave" id dim bpm "Beat" x 0.5 low 0 high 1 phase 0 360
+sel group 36
+set intensity 80%
+preset color 6
+sel group 32
+set intensity 70%
+preset color 6
+preset position 4
+preset beam 2
+record cue 102/3 "Pre-Chorus"
+cue 102/3 time 2
+cue 102/3 time position 2
+cue 102/3 time color 1
+cue 102/3 time beam 0.5
+
+# 4 Chorus: green and cyan prisms, magenta washes, a colour chase on the
+# bars and an audience-blinder hit on the downbeat.
+effect remove dim                               # the cue's release stops it on stage
+sel group 22
+preset color 4
+sel group 21
+preset color 6
+sel group 1
+preset intensity 5
+preset position 7
+preset beam 6
+effect add "Figure Eight" id move bpm "Beat" x 0.5 size 15 phase 0 180 groups 2
+sel group 2
+preset intensity 5
+preset color 7
+preset position 11
+preset beam 3
+sel group 3
+preset intensity 5
+effect add "Color Chase" id col bpm "Beat" x 1 phase 0 360
+sel group 35
+preset intensity 4
+sel group 38
+preset intensity 5
+record cue 102/4 "Chorus"
+cue 102/4 time 0/1
+cue 102/4 time position 1
+cue 102/4 time color 0
+cue 102/4 time beam 0
+cue 102/4 release group 35 only intensity       # stops the wave; the 75 % stays
+
+# 5 Chorus (blinders out): goes by itself 0.3 s into the Chorus.
+sel group 38
+preset intensity 1
+record cue 102/5 "Chorus Hold"
+cue 102/5 time 1.5
+cue 102/5 wait 0.3
+
+# 6 Bridge: lavender, soft beams, a slow circle.
+sel group 8
+preset color 9
+sel group 1
+preset intensity 3
+preset position 4
+preset beam 8
+effect add "Circle" id move bpm "Beat" x 0.125 size 10 phase 0 360
+sel group 2, group 3, group 35
+preset intensity 2
+sel group 16
+preset intensity 1
+sel group 7
+set intensity 50%
+record cue 102/6 "Bridge"
+cue 102/6 time 4
+cue 102/6 time position 4
+cue 102/6 time color 3
+cue 102/6 time beam 1
+cue 102/6 release group 3 only color            # stops the colour chase
+
+# 7 Final Chorus: white gobos over the crowd, green everywhere, a rainbow
+# on the bars.
+sel group 1
+preset intensity 5
+preset color 1
+preset position 6
+preset beam 4
+effect add "Figure Eight" id move bpm "Beat" x 0.5 size 15 phase 0 180 groups 2
+sel group 2
+preset intensity 5
+preset color 4
+preset position 16
+preset beam 2
+effect add "Random Movement" id wmove bpm "Beat" x 0.25 size 20
+sel group 35
+preset intensity 5
+preset color 4
+sel group 16
+set intensity 60%
+preset color 8
+sel group 3
+preset intensity 5
+effect add "Rainbow" id col bpm "Beat" x 0.25 phase 0 360
+sel group 7
+preset intensity 5
+record cue 102/7 "Final Chorus"
+cue 102/7 time 0/2
+cue 102/7 time position 1
+cue 102/7 time color 0
+cue 102/7 time beam 0
+
+# 8 Outro: everything fades out over 6 s but a deep-blue glow at the back;
+# the heads drift home as they fade.
+effect clear
+sel group 9
+preset intensity 1
+sel group 35
+preset intensity 2
+preset color 10
+sel group 7
+preset intensity 1
+record cue 102/8 "Outro"
+cue 102/8 time 6
+cue 102/8 release group 6 only pan tilt
+cue 102/8 release group 3 only color
+clear
+
+# --------------------------------------- Song 3 "Ballad" (cue list 103)
+cuelist add 103 "Song 3 Ballad"
+cuelist 103 tracking true
+
+# 1 Intro: a single white special from the two centre spots.
+sel fixture 103 thru 104
+set intensity 60%
+preset color 1
+preset position 1
+preset beam 2
+sel group 7
+set intensity 20%
+record cue 103/1 "Intro"
+cue 103/1 time 5
+cue 103/1 time position 0
+
+# 2 Verse: soft warm frontlight, amber backlight.
+sel group 26
+preset intensity 3
+preset color 8
+sel group 33
+preset position 15
+preset beam 8
+sel group 35, group 36
+set intensity 40%
+preset color 5
+record cue 103/2 "Verse"
+cue 103/2 time 4
+cue 103/2 time position 4
+cue 103/2 time color 2
+cue 103/2 time beam 1
+
+# 3 Chorus: lavender columns, amber soft beams swaying slowly.
+sel group 34
+set intensity 70%
+preset color 9
+preset position 14
+preset beam 3
+sel group 1
+preset intensity 3
+preset color 5
+preset position 1
+preset beam 8
+effect add "Pan Sweep" id move bpm "Beat" x 0.125 size 10 phase 0 180 wings 2
+sel group 7
+set intensity 30%
+record cue 103/3 "Chorus"
+cue 103/3 time 3
+cue 103/3 time position 5
+cue 103/3 time color 2
+cue 103/3 time beam 1
+
+# 4 Solo: lavender and deep-blue stars out over the audience.
+sel group 22
+preset color 9
+sel group 21
+preset color 10
+sel group 1
+preset intensity 4
+preset position 6
+preset beam 5
+effect add "Tilt Sweep" id move bpm "Beat" x 0.125 size 10 phase 0 360 groups 2
+sel group 26
+preset intensity 2
+record cue 103/4 "Solo"
+cue 103/4 time 4
+cue 103/4 time position 6
+cue 103/4 time color 3
+cue 103/4 time beam 1
+
+# 5 Last Chorus: warm and wide; the bars breathe from the centre out.
+sel group 1
+preset color 5
+preset beam 8
+effect add "Pan Sweep" id move bpm "Beat" x 0.125 size 10 phase 0 180 wings 2
+sel group 2
+preset intensity 4
+preset color 9
+sel group 26
+preset intensity 4
+sel group 3
+preset intensity 1
+preset color 5
+effect add "Sine Wave" id dim bpm "Beat" x 0.25 low 0.2 high 0.8 phase 0 360 wings 2
+record cue 103/5 "Last Chorus"
+cue 103/5 time 3
+cue 103/5 time position 4
+cue 103/5 time color 2
+cue 103/5 time beam 1
+
+# 6 Outro: back to the single special over 8 s.
+effect clear
+sel group 9
+preset intensity 1
+sel fixture 103 thru 104
+set intensity 40%
+preset color 1
+preset position 1
+preset beam 2
+sel group 7
+preset intensity 1
+record cue 103/6 "Outro"
+cue 103/6 time 8
+cue 103/6 release group 3 only intensity        # stops the bar wave
+cue 103/6 release group 1 only pan tilt         # stops the sweep; 103-104 keep their special
+clear
+
+# --------------------------------------- Busking FX (cue list 107)
+# A sequence of movement and dimmer effects to GO through between songs: its
+# fader sets their size, over whatever look is up.
+cuelist add 107 "Busking FX"
+sel group 6
+effect add "Random Movement" id move bpm "Beat" x 0.25 size 25
+record cue 107/1 "Ballyhoo"
+clear
+sel group 1
+effect add "Pan Sweep" id move bpm "Beat" x 0.25 size 30 phase 0 180 wings 2
+sel group 2
+effect add "Tilt Sweep" id wmove bpm "Beat" x 0.25 size 20 phase 0 360 groups 2
+record cue 107/2 "Fan and Tilt"
+clear
+sel group 6
+effect add "Circle" id move bpm "Beat" x 0.25 size 15 phase 0 360
+record cue 107/3 "Circles"
+clear
+sel group 6
+effect add "Figure Eight" id move bpm "Beat" x 0.25 size 15 phase 0 180 groups 2
+record cue 107/4 "Figure Eights"
+clear
+sel group 6
+effect add "Alternating Dimmer" id dim bpm "Beat" x 0.5 low 0 high 1 phase 0 360 groups 2
+sel group 4, group 3
+effect add "Red/Blue Alternation" id col bpm "Beat" x 0.5 phase 0 360 groups 2
+record cue 107/5 "Alternate"
+clear
+cue 107/1 time 2
+cue 107/2 time 2
+cue 107/3 time 2
+cue 107/4 time 2
+cue 107/5 time 1
+
+# --------------------------------------- Special Looks (cue list 108)
+# Whole-stage looks to GO through: each cue is complete, nothing tracks.
+cuelist add 108 "Special Looks"
+sel group 8
+preset intensity 5
+preset color 1
+sel group 1
+preset position 6
+preset beam 2
+sel group 2
+preset position 14
+preset beam 2
+record cue 108/1 "Full Stage White"
+clear
+sel group 3
+preset intensity 5
+set effect fuego                                # the bars' own fire program
+set effectRate 70%
+sel group 35
+preset intensity 4
+preset color 2
+effect add "Flicker" id dim bpm "Beat" x 1 size 0.6
+sel group 2
+preset intensity 4
+preset color 5
+preset position 14
+preset beam 3
+sel group 7
+set intensity 60%
+record cue 108/2 "Fire"
+clear
+sel group 2
+set intensity 70%
+preset color 10
+preset position 11
+preset beam 3
+effect add "Tilt Sweep" id wmove hz 0.1 size 10 phase 0 360
+sel group 1
+set intensity 60%
+preset color 6
+preset position 5
+preset beam 4
+sel group 35
+preset intensity 3
+preset color 3
+sel group 3
+set intensity 30%
+preset color 6
+sel group 7
+set intensity 40%
+record cue 108/3 "Ocean"
+clear
+sel group 3
+preset intensity 5
+set effect starfield
+set effectRate 40%
+sel group 1
+set intensity 40%
+preset color 1
+preset position 6
+preset beam 5
+effect add "Random Movement" id move bpm "Beat" x 0.125 size 10
+record cue 108/4 "Starfield"
+clear
+sel group 35, group 36, group 34
+preset intensity 5
+preset color 1
+sel group 34
+preset position 14
+preset beam 3
+sel group 7
+set intensity 50%
+record cue 108/5 "Silhouette"
+clear
+cue 108/1 time 1
+cue 108/2 time 2
+cue 108/3 time 3
+cue 108/4 time 3
+cue 108/5 time 1
+
+# --------------------------------------- page 1 playbacks
+playback add 101 cuelist 101 at 1.1 "Song 1 Opener"
+playback add 102 cuelist 102 at 1.2 "Song 2 Anthem"
+playback add 103 cuelist 103 at 1.3 "Song 3 Ballad"
+playback add 107 cuelist 107 at 1.7 "Busking FX"
+playback add 108 cuelist 108 at 1.8 "Special Looks"
+playback 101 goto 7                             # Final Drop
+playback 102 goto 4                             # Chorus
+playback 103 goto 4                             # Solo
+playback 101 buttons ["go", "back", "release", "goto"]
+playback 102 buttons ["go", "back", "release", "goto"]
+playback 103 buttons ["go", "back", "release", "goto"]
+playback 101 exclusivity song                   # starting a song releases the last
+playback 102 exclusivity song
+playback 103 exclusivity song
+playback 101 releaseTime 3
+playback 102 releaseTime 3
+playback 103 releaseTime 3
+playback 107 fader size
+playback 107 buttons ["go", "back", "release"]
+playback 108 buttons ["go", "back", "release"]
+playback 108 releaseTime 2
+
+# ======================================================= page 2: colours
+# Colour only, on every colour fixture: the newest colour wins over the song
+# below, and one colour (or colour effect) plays at a time.
+sel group 8
+preset color 1
+cuelist add 201 "Open White"
+record cue 201/1
+preset color 2
+cuelist add 202 "Red"
+record cue 202/1
+preset color 3
+cuelist add 203 "Blue"
+record cue 203/1
+preset color 4
+cuelist add 204 "Green"
+record cue 204/1
+preset color 5
+cuelist add 205 "Amber"
+record cue 205/1
+preset color 6
+cuelist add 206 "Cyan"
+record cue 206/1
+preset color 7
+cuelist add 207 "Magenta"
+record cue 207/1
+preset color 8
+cuelist add 208 "CTO"
+record cue 208/1
+preset color 9
+cuelist add 211 "Lavender"
+record cue 211/1
+preset color 10
+cuelist add 212 "Deep Blue"
+record cue 212/1
+clear
+sel group 8
+effect add "Red/Blue Alternation" id col bpm "Beat" x 0.5 phase 0 360 groups 2 sizemaster "FX Size"
+cuelist add 213 "FX Red/Blue"
+record cue 213/1
+clear
+sel group 8
+effect add "Rainbow" id col bpm "Beat" x 0.125 phase 0 360 sizemaster "FX Size"
+cuelist add 214 "FX Rainbow"
+record cue 214/1
+clear
+sel group 8
+effect add "Color Chase" id col bpm "Beat" x 0.5 phase 0 360 sizemaster "FX Size"
+cuelist add 215 "FX Color Chase"
+record cue 215/1
+clear
+
+playback add 201 cuelist 201 at 2.1 "Open White"
+playback add 202 cuelist 202 at 2.2 "Red"
+playback add 203 cuelist 203 at 2.3 "Blue"
+playback add 204 cuelist 204 at 2.4 "Green"
+playback add 205 cuelist 205 at 2.5 "Amber"
+playback add 206 cuelist 206 at 2.6 "Cyan"
+playback add 207 cuelist 207 at 2.7 "Magenta"
+playback add 208 cuelist 208 at 2.8 "CTO"
+playback add 211 cuelist 211 at 2.11 "Lavender"
+playback add 212 cuelist 212 at 2.12 "Deep Blue"
+playback add 213 cuelist 213 at 2.13 "FX Red/Blue"
+playback add 214 cuelist 214 at 2.14 "FX Rainbow"
+playback add 215 cuelist 215 at 2.15 "FX Color Chase"
+playback 213 fader size
+playback 214 fader size
+playback 215 fader size
+playback 201 exclusivity color
+playback 202 exclusivity color
+playback 203 exclusivity color
+playback 204 exclusivity color
+playback 205 exclusivity color
+playback 206 exclusivity color
+playback 207 exclusivity color
+playback 208 exclusivity color
+playback 211 exclusivity color
+playback 212 exclusivity color
+playback 213 exclusivity color
+playback 214 exclusivity color
+playback 215 exclusivity color
+cue 201/1 time 1
+cue 202/1 time 1
+cue 203/1 time 1
+cue 204/1 time 1
+cue 205/1 time 1
+cue 206/1 time 1
+cue 207/1 time 1
+cue 208/1 time 1
+cue 211/1 time 1
+cue 212/1 time 1
+playback 201 buttons ["toggle", "flash", "release"]
+playback 202 buttons ["toggle", "flash", "release"]
+playback 203 buttons ["toggle", "flash", "release"]
+playback 204 buttons ["toggle", "flash", "release"]
+playback 205 buttons ["toggle", "flash", "release"]
+playback 206 buttons ["toggle", "flash", "release"]
+playback 207 buttons ["toggle", "flash", "release"]
+playback 208 buttons ["toggle", "flash", "release"]
+playback 211 buttons ["toggle", "flash", "release"]
+playback 212 buttons ["toggle", "flash", "release"]
+playback 213 buttons ["toggle", "flash", "release"]
+playback 214 buttons ["toggle", "flash", "release"]
+playback 215 buttons ["toggle", "flash", "release"]
+
+# ============================================ page 3: positions and beams
+# Positions 1-7 (spots preset N, washes preset 1N) on every head; the fader
+# crossfades the position by hand. Beams 1-8 on every head, snapping fast.
+sel group 1
+preset position 1
+sel group 2
+preset position 11
+cuelist add 301 "Center Stage"
+record cue 301/1
+sel group 1
+preset position 2
+sel group 2
+preset position 12
+cuelist add 302 "Stage Left"
+record cue 302/1
+sel group 1
+preset position 3
+sel group 2
+preset position 13
+cuelist add 303 "Stage Right"
+record cue 303/1
+sel group 1
+preset position 4
+sel group 2
+preset position 14
+cuelist add 304 "Upstage"
+record cue 304/1
+sel group 1
+preset position 5
+sel group 2
+preset position 15
+cuelist add 305 "Downstage"
+record cue 305/1
+sel group 1
+preset position 6
+sel group 2
+preset position 16
+cuelist add 306 "Audience"
+record cue 306/1
+sel group 1
+preset position 7
+sel group 2
+preset position 17
+cuelist add 307 "Cross Stage"
+record cue 307/1
+clear
+sel group 6
+preset beam 1
+cuelist add 311 "Open Beam"
+record cue 311/1
+preset beam 2
+cuelist add 312 "Narrow Beam"
+record cue 312/1
+preset beam 3
+cuelist add 313 "Wide Beam"
+record cue 313/1
+preset beam 4
+cuelist add 314 "Gobo 1"
+record cue 314/1
+preset beam 5
+cuelist add 315 "Gobo 2"
+record cue 315/1
+preset beam 6
+cuelist add 316 "Prism"
+record cue 316/1
+preset beam 7
+cuelist add 317 "Narrow Prism"
+record cue 317/1
+preset beam 8
+cuelist add 318 "Soft Beam"
+record cue 318/1
+clear
+
+playback add 301 cuelist 301 at 3.1 "Center Stage"
+playback add 302 cuelist 302 at 3.2 "Stage Left"
+playback add 303 cuelist 303 at 3.3 "Stage Right"
+playback add 304 cuelist 304 at 3.4 "Upstage"
+playback add 305 cuelist 305 at 3.5 "Downstage"
+playback add 306 cuelist 306 at 3.6 "Audience"
+playback add 307 cuelist 307 at 3.7 "Cross Stage"
+playback add 311 cuelist 311 at 3.11 "Open Beam"
+playback add 312 cuelist 312 at 3.12 "Narrow Beam"
+playback add 313 cuelist 313 at 3.13 "Wide Beam"
+playback add 314 cuelist 314 at 3.14 "Gobo 1"
+playback add 315 cuelist 315 at 3.15 "Gobo 2"
+playback add 316 cuelist 316 at 3.16 "Prism"
+playback add 317 cuelist 317 at 3.17 "Narrow Prism"
+playback add 318 cuelist 318 at 3.18 "Soft Beam"
+playback 301 exclusivity position
+playback 302 exclusivity position
+playback 303 exclusivity position
+playback 304 exclusivity position
+playback 305 exclusivity position
+playback 306 exclusivity position
+playback 307 exclusivity position
+playback 301 ltpFaderMode followFader
+playback 302 ltpFaderMode followFader
+playback 303 ltpFaderMode followFader
+playback 304 ltpFaderMode followFader
+playback 305 ltpFaderMode followFader
+playback 306 ltpFaderMode followFader
+playback 307 ltpFaderMode followFader
+cue 301/1 time 2
+cue 302/1 time 2
+cue 303/1 time 2
+cue 304/1 time 2
+cue 305/1 time 2
+cue 306/1 time 2
+cue 307/1 time 2
+playback 301 releaseTime 2
+playback 302 releaseTime 2
+playback 303 releaseTime 2
+playback 304 releaseTime 2
+playback 305 releaseTime 2
+playback 306 releaseTime 2
+playback 307 releaseTime 2
+playback 311 exclusivity beam
+playback 312 exclusivity beam
+playback 313 exclusivity beam
+playback 314 exclusivity beam
+playback 315 exclusivity beam
+playback 316 exclusivity beam
+playback 317 exclusivity beam
+playback 318 exclusivity beam
+cue 311/1 time 0.5
+cue 312/1 time 0.5
+cue 313/1 time 0.5
+cue 314/1 time 0.5
+cue 315/1 time 0.5
+cue 316/1 time 0.5
+cue 317/1 time 0.5
+cue 318/1 time 0.5
+playback 301 buttons ["toggle", "flash", "release"]
+playback 302 buttons ["toggle", "flash", "release"]
+playback 303 buttons ["toggle", "flash", "release"]
+playback 304 buttons ["toggle", "flash", "release"]
+playback 305 buttons ["toggle", "flash", "release"]
+playback 306 buttons ["toggle", "flash", "release"]
+playback 307 buttons ["toggle", "flash", "release"]
+playback 311 buttons ["toggle", "flash", "release"]
+playback 312 buttons ["toggle", "flash", "release"]
+playback 313 buttons ["toggle", "flash", "release"]
+playback 314 buttons ["toggle", "flash", "release"]
+playback 315 buttons ["toggle", "flash", "release"]
+playback 316 buttons ["toggle", "flash", "release"]
+playback 317 buttons ["toggle", "flash", "release"]
+playback 318 buttons ["toggle", "flash", "release"]
+
+# ===================================================== page 4: movement FX
+# Spots on slots 1-5, washes on 11-15; one movement per type at a time. Each
+# fader sets its effect's size; "Move Size" scales them all and "Move Speed"
+# sets their speed.
+sel group 1
+effect add "Circle" id move hz 0.25 size 15 phase 0 360 fadein 1 speedmaster "Move Speed" sizemaster "Move Size"
+cuelist add 401 "Spots Circle"
+record cue 401/1
+clear
+sel group 1
+effect add "Figure Eight" id move hz 0.2 size 15 phase 0 180 groups 2 fadein 1 speedmaster "Move Speed" sizemaster "Move Size"
+cuelist add 402 "Spots Figure 8"
+record cue 402/1
+clear
+sel group 1
+effect add "Pan Sweep" id move hz 0.2 size 30 phase 0 180 wings 2 fadein 1 speedmaster "Move Speed" sizemaster "Move Size"
+cuelist add 403 "Spots Pan Sweep"
+record cue 403/1
+clear
+sel group 1
+effect add "Tilt Sweep" id move hz 0.25 size 20 phase 0 360 groups 2 fadein 1 speedmaster "Move Speed" sizemaster "Move Size"
+cuelist add 404 "Spots Tilt Sweep"
+record cue 404/1
+clear
+sel group 1
+effect add "Random Movement" id move hz 0.3 size 20 fadein 1 speedmaster "Move Speed" sizemaster "Move Size"
+cuelist add 405 "Spots Random"
+record cue 405/1
+clear
+sel group 2
+effect add "Circle" id move hz 0.2 size 12 phase 0 360 fadein 1 speedmaster "Move Speed" sizemaster "Move Size"
+cuelist add 411 "Washes Circle"
+record cue 411/1
+clear
+sel group 2
+effect add "Figure Eight" id move hz 0.15 size 12 phase 0 180 groups 2 fadein 1 speedmaster "Move Speed" sizemaster "Move Size"
+cuelist add 412 "Washes Figure 8"
+record cue 412/1
+clear
+sel group 2
+effect add "Pan Sweep" id move hz 0.15 size 30 phase 0 180 wings 2 fadein 1 speedmaster "Move Speed" sizemaster "Move Size"
+cuelist add 413 "Washes Pan Sweep"
+record cue 413/1
+clear
+sel group 2
+effect add "Tilt Sweep" id move hz 0.2 size 20 phase 0 360 groups 2 fadein 1 speedmaster "Move Speed" sizemaster "Move Size"
+cuelist add 414 "Washes Tilt Sweep"
+record cue 414/1
+clear
+sel group 2
+effect add "Random Movement" id move hz 0.25 size 20 fadein 1 speedmaster "Move Speed" sizemaster "Move Size"
+cuelist add 415 "Washes Random"
+record cue 415/1
+clear
+
+playback add 401 cuelist 401 at 4.1 "Spots Circle"
+playback add 402 cuelist 402 at 4.2 "Spots Figure 8"
+playback add 403 cuelist 403 at 4.3 "Spots Pan Sweep"
+playback add 404 cuelist 404 at 4.4 "Spots Tilt Sweep"
+playback add 405 cuelist 405 at 4.5 "Spots Random"
+playback add 411 cuelist 411 at 4.11 "Washes Circle"
+playback add 412 cuelist 412 at 4.12 "Washes Figure 8"
+playback add 413 cuelist 413 at 4.13 "Washes Pan Sweep"
+playback add 414 cuelist 414 at 4.14 "Washes Tilt Sweep"
+playback add 415 cuelist 415 at 4.15 "Washes Random"
+playback 401 fader size
+playback 402 fader size
+playback 403 fader size
+playback 404 fader size
+playback 405 fader size
+playback 411 fader size
+playback 412 fader size
+playback 413 fader size
+playback 414 fader size
+playback 415 fader size
+playback 401 exclusivity move-spots
+playback 402 exclusivity move-spots
+playback 403 exclusivity move-spots
+playback 404 exclusivity move-spots
+playback 405 exclusivity move-spots
+playback 411 exclusivity move-washes
+playback 412 exclusivity move-washes
+playback 413 exclusivity move-washes
+playback 414 exclusivity move-washes
+playback 415 exclusivity move-washes
+playback 401 buttons ["toggle", "flash", "release"]
+playback 402 buttons ["toggle", "flash", "release"]
+playback 403 buttons ["toggle", "flash", "release"]
+playback 404 buttons ["toggle", "flash", "release"]
+playback 405 buttons ["toggle", "flash", "release"]
+playback 411 buttons ["toggle", "flash", "release"]
+playback 412 buttons ["toggle", "flash", "release"]
+playback 413 buttons ["toggle", "flash", "release"]
+playback 414 buttons ["toggle", "flash", "release"]
+playback 415 buttons ["toggle", "flash", "release"]
+
+# ======================================================= page 5: dimmer FX
+# On the beat of "Beat", sized by their faders and the "FX Size" master. The
+# absolute ones light their fixtures by themselves; Pulse dims what is up.
+sel group 1
+effect add "Sine Wave" id dim bpm "Beat" x 0.5 low 0 high 1 phase 0 360 sizemaster "FX Size"
+cuelist add 501 "Sine Spots"
+record cue 501/1
+clear
+sel group 2
+effect add "Sine Wave" id dim bpm "Beat" x 0.5 low 0 high 1 phase 0 360 wings 2 sizemaster "FX Size"
+cuelist add 502 "Sine Washes"
+record cue 502/1
+clear
+sel group 4
+effect add "Square Wave" id dim bpm "Beat" x 1 low 0 high 1 phase 0 360 sizemaster "FX Size"
+cuelist add 503 "Square PARs"
+record cue 503/1
+clear
+sel group 3
+effect add "Chase" id dim bpm "Beat" x 1 low 0 high 1 phase 0 360 sizemaster "FX Size"
+cuelist add 504 "Chase Bars"
+record cue 504/1
+clear
+sel group 5
+effect add "Chase" id dim bpm "Beat" x 1 low 0 high 1 phase 0 360 blocks 4 sizemaster "FX Size"
+cuelist add 505 "Chase Strobes"
+record cue 505/1
+clear
+sel group 9
+effect add "Pulse" id dim bpm "Beat" x 1 size 0.7 sizemaster "FX Size"
+cuelist add 506 "Pulse Stage"
+record cue 506/1
+clear
+sel group 6
+effect add "Alternating Dimmer" id dim bpm "Beat" x 0.5 low 0 high 1 phase 0 360 groups 2 sizemaster "FX Size"
+cuelist add 507 "Alternate Heads"
+record cue 507/1
+clear
+sel group 4
+effect add "Alternating Dimmer" id dim bpm "Beat" x 0.5 low 0 high 1 phase 0 360 groups 2 sizemaster "FX Size"
+cuelist add 508 "Alternate PARs"
+record cue 508/1
+clear
+
+playback add 501 cuelist 501 at 5.1 "Sine Spots"
+playback add 502 cuelist 502 at 5.2 "Sine Washes"
+playback add 503 cuelist 503 at 5.3 "Square PARs"
+playback add 504 cuelist 504 at 5.4 "Chase Bars"
+playback add 505 cuelist 505 at 5.5 "Chase Strobes"
+playback add 506 cuelist 506 at 5.6 "Pulse Stage"
+playback add 507 cuelist 507 at 5.7 "Alternate Heads"
+playback add 508 cuelist 508 at 5.8 "Alternate PARs"
+playback 501 fader size
+playback 502 fader size
+playback 503 fader size
+playback 504 fader size
+playback 505 fader size
+playback 506 fader size
+playback 507 fader size
+playback 508 fader size
+playback 501 buttons ["toggle", "flash", "release"]
+playback 502 buttons ["toggle", "flash", "release"]
+playback 503 buttons ["toggle", "flash", "release"]
+playback 504 buttons ["toggle", "flash", "release"]
+playback 505 buttons ["toggle", "flash", "release"]
+playback 506 buttons ["toggle", "flash", "release"]
+playback 507 buttons ["toggle", "flash", "release"]
+playback 508 buttons ["toggle", "flash", "release"]
+
+# ============================================ page 6: strobes and SFX
+# Strobes come first on the flash button; the fader sets their level. The
+# strobe cap (safety, below) holds every strobe at 10 Hz at most.
+sel group 5
+preset intensity 5
+set shutter strobe
+set strobeRate 10
+cuelist add 601 "Strobes"
+record cue 601/1
+clear
+sel group 6
+preset intensity 5
+preset color 1
+set shutter strobe
+set strobeRate 12
+cuelist add 602 "Strobe Heads"
+record cue 602/1
+clear
+sel group 4
+preset intensity 5
+preset color 1
+set shutter strobe
+set strobeRate 12
+cuelist add 603 "Strobe PARs"
+record cue 603/1
+clear
+sel group 3
+preset intensity 5
+preset color 1
+set effect strobo                               # the bars' own strobe program
+set effectRate 100%
+cuelist add 604 "Strobe Bars"
+record cue 604/1
+clear
+sel group 38
+preset intensity 5
+cuelist add 605 "Blinder Hit"
+record cue 605/1
+clear
+sel group 7
+preset intensity 5
+cuelist add 606 "Smoke"                         # the fader is the fog output
+record cue 606/1
+clear
+sel group 3
+preset intensity 5
+set effect fuego
+set effectRate 70%
+cuelist add 607 "Bars Fire"
+record cue 607/1
+clear
+sel group 3
+preset intensity 5
+set effect starfield
+set effectRate 40%
+cuelist add 608 "Bars Starfield"
+record cue 608/1
+clear
+
+playback add 601 cuelist 601 at 6.1 "Strobes"
+playback add 602 cuelist 602 at 6.2 "Strobe Heads"
+playback add 603 cuelist 603 at 6.3 "Strobe PARs"
+playback add 604 cuelist 604 at 6.4 "Strobe Bars"
+playback add 605 cuelist 605 at 6.5 "Blinder Hit"
+playback add 606 cuelist 606 at 6.6 "Smoke"
+playback add 607 cuelist 607 at 6.7 "Bars Fire"
+playback add 608 cuelist 608 at 6.8 "Bars Starfield"
+playback 601 buttons ["flash", "toggle", "release"]
+playback 602 buttons ["flash", "toggle", "release"]
+playback 603 buttons ["flash", "toggle", "release"]
+playback 604 buttons ["flash", "toggle", "release"]
+playback 605 buttons ["flash", "toggle", "release"]
+playback 606 buttons ["toggle", "flash", "release"]
+playback 607 buttons ["toggle", "flash", "release"]
+playback 608 buttons ["toggle", "flash", "release"]
+playback 601 releaseTime 0
+playback 602 releaseTime 0
+playback 603 releaseTime 0
+playback 604 releaseTime 0
+playback 605 releaseTime 0.5
+playback 606 releaseTime 0
+playback 604 exclusivity bar-program            # one LED bar program at a time
+playback 607 exclusivity bar-program
+playback 608 exclusivity bar-program
+
+# =========================================== page 7: house and audience
+# There are no house-light dimmers in this rig: the audience blinders' warm
+# cells, the lip LED bars and the FOH PARs light the crowd.
+
+# --------------------------------------- House Lights (cue list 701)
+cuelist add 701 "House Lights"
+sel group 40
+set intensity 60%
+sel group 37
+set intensity 50%
+preset color 8
+sel group 35
+set intensity 30%
+preset color 10
+record cue 701/1 "Walk-in"
+sel group 40
+set intensity 30%
+sel group 37
+set intensity 25%
+record cue 701/2 "House to Half"
+sel group 40, group 37, group 35
+preset intensity 1
+record cue 701/3 "House Out"
+clear
+sel group 40
+set intensity 40%
+sel group 37
+set intensity 40%
+preset color 8
+sel group 26
+set intensity 60%
+preset color 8
+sel group 33
+preset position 11
+preset beam 3
+record cue 701/4 "Changeover"
+clear
+sel group 40
+preset intensity 5
+sel group 37
+set intensity 80%
+preset color 1
+sel group 16
+set intensity 60%
+preset color 1
+record cue 701/5 "End of Show"
+clear
+cue 701/1 time 3
+cue 701/2 time 5
+cue 701/3 time 5
+cue 701/4 time 3
+cue 701/5 time 3
+
+# --------------------------------------- Audience Lighting (cue list 702)
+cuelist add 702 "Audience Lighting"
+cuelist 702 tracking true
+sel group 40
+set intensity 40%
+sel group 37
+set intensity 60%
+preset color 5
+record cue 702/1 "Audience Glow"
+sel group 1
+set intensity 70%
+preset color 1
+preset position 6
+preset beam 1
+effect add "Pan Sweep" id move bpm "Beat" x 0.25 size 30 phase 0 180 wings 2
+record cue 702/2 "Audience Sweep"
+sel group 37
+effect add "Rainbow" id col bpm "Beat" x 0.25 phase 0 360
+sel group 1
+effect add "Color Chase" id col2 bpm "Beat" x 0.5 phase 0 360
+record cue 702/3 "Audience Colour"
+sel group 38
+preset intensity 5
+record cue 702/4 "Audience Hit"
+sel group 38
+preset intensity 1
+sel group 40
+set intensity 40%
+record cue 702/5 "Audience Glow Again"
+clear
+cue 702/1 time 2
+cue 702/2 time 2
+cue 702/2 time position 3
+cue 702/3 time 1
+cue 702/4 time 0/1
+cue 702/5 time 2
+cue 702/5 wait 0.3
+
+# --------------------------------------- single looks
+sel group 38
+preset intensity 5
+cuelist add 703 "Audience Blinders"
+record cue 703/1
+clear
+sel group 26
+set intensity 80%
+preset color 8
+sel group 33
+preset position 15
+preset beam 3
+sel group 31
+set intensity 70%
+preset color 1
+preset position 5
+preset beam 1
+cuelist add 704 "MC Light"                      # announcements between acts
+record cue 704/1
+clear
+cue 704/1 time 2
+
+# --------------------------------------- emergency: HOUSE FULL and PANIC
+# Band 200 sits above every playback and the programmer; at band 200 a fog
+# level of 0 kills the smoke whatever plays below.
+sel group 38
+preset intensity 5
+set shutter open
+set effect off
+sel group 37
+preset intensity 5
+preset color 1
+set effect on
+sel group 16
+preset intensity 5
+preset color 1
+set shutter open
+sel group 7
+preset intensity 1
+cuelist add 709 "HOUSE FULL"
+record cue 709/1
+clear
+sel group 9
+preset intensity 5
+sel group 8
+preset color 1
+sel group 6, group 4, group 5
+set shutter open
+sel group 5
+set effect off
+sel group 3
+set effect on
+sel group 1
+preset position 5
+sel group 2
+preset position 15
+sel group 6
+preset beam 3
+sel group 7
+preset intensity 1
+cuelist add 710 "PANIC WORK LIGHT"
+record cue 710/1
+clear
+
+playback add 701 cuelist 701 at 7.1 "House Lights"
+playback add 702 cuelist 702 at 7.2 "Audience Lighting"
+playback add 703 cuelist 703 at 7.3 "Audience Blinders"
+playback add 704 cuelist 704 at 7.4 "MC Light"
+playback add 709 cuelist 709 at 7.9 "HOUSE FULL"
+playback add 710 cuelist 710 at 7.10 "PANIC WORK LIGHT"
+playback 701 buttons ["go", "back", "release"]
+playback 702 buttons ["go", "back", "release"]
+playback 701 releaseTime 5
+playback 702 releaseTime 3
+playback 703 buttons ["flash", "toggle", "release"]
+playback 703 releaseTime 0.5
+playback 704 buttons ["toggle", "flash", "release"]
+playback 704 releaseTime 2
+playback 709 priority 200
+playback 710 priority 200
+playback 709 fader none
+playback 710 fader none
+playback 709 autoStart false
+playback 710 autoStart false
+playback 709 autoRelease false
+playback 710 autoRelease false
+playback 709 protectFromSwop true
+playback 710 protectFromSwop true
+playback 709 releaseTime 3
+playback 710 releaseTime 2
+playback 709 buttons ["toggle", "release"]
+playback 710 buttons ["toggle", "release"]
+
+# --------------------------------------- the emergency pair on every page
+page 1 slot 9 playback 709
+page 1 slot 10 playback 710
+page 2 slot 9 playback 709
+page 2 slot 10 playback 710
+page 3 slot 9 playback 709
+page 3 slot 10 playback 710
+page 4 slot 9 playback 709
+page 4 slot 10 playback 710
+page 5 slot 9 playback 709
+page 5 slot 10 playback 710
+page 6 slot 9 playback 709
+page 6 slot 10 playback 710
+
+# ================================================================ safety
+# Nothing strobes or flashes faster than 10 Hz. For a venue that follows
+# photosensitivity guidance, use `safety strobe 3`.
+safety strobe 10
+
+# ============================================================== surfaces
+# The web remote: open the "Web s-..." address busk prints on a tablet on the
+# same network. Its header has blackout, the grand master, TAP ("Beat") and
+# every other master; its strips are the current page's playbacks.
+surface add web "Tablet"
+
+# Play it from a Korg nanoKONTROL2 in its factory CC mode (set its LED mode to
+# "external" in the Korg Kontrol Editor, so the LEDs follow the show) and from
+# a phone on the same network: open the "Web s-…" address busk prints.
+#
+#   faders 1–8          the playbacks of the current page
+#   S / M / R           toggle / flash (swop on page 2's washes) / release
+#   knob 1, ▶ ◀◀ ●      the song: level, GO, BACK, release
+#   knob 2, ▶▶          the chase: level, on and off
+#   cycle, knob 3       tap the tempo, "Speed 1"'s multiplier (×¼ … ×4)
+#   knobs 4–6           the size of the circle, the pulse and the bar wave
+#   track ◀ / ▶         the circle / the pulse on and off
+#   knob 7              the "FX" size master
+#   knob 8, ■           the grand master, blackout on and off
+#   marker ◀ / ▶        previous / next page (the faders take over softly)
+#   marker SET          release every playback
+#
+#
+# ------------------------------------------------- nanoKONTROL2 (CC mode)
+surface add midi "nanoKONTROL2"
+bind "nanoKONTROL2" cc 1 0 fader 1
+bind "nanoKONTROL2" cc 1 1 fader 2
+bind "nanoKONTROL2" cc 1 2 fader 3
+bind "nanoKONTROL2" cc 1 3 fader 4
+bind "nanoKONTROL2" cc 1 4 fader 5
+bind "nanoKONTROL2" cc 1 5 fader 6
+bind "nanoKONTROL2" cc 1 6 fader 7
+bind "nanoKONTROL2" cc 1 7 fader 8
+bind "nanoKONTROL2" cc 1 32 button 1 1
+bind "nanoKONTROL2" cc 1 33 button 2 1
+bind "nanoKONTROL2" cc 1 34 button 3 1
+bind "nanoKONTROL2" cc 1 35 button 4 1
+bind "nanoKONTROL2" cc 1 36 button 5 1
+bind "nanoKONTROL2" cc 1 37 button 6 1
+bind "nanoKONTROL2" cc 1 38 button 7 1
+bind "nanoKONTROL2" cc 1 39 button 8 1
+bind "nanoKONTROL2" cc 1 48 button 1 2
+bind "nanoKONTROL2" cc 1 49 button 2 2
+bind "nanoKONTROL2" cc 1 50 button 3 2
+bind "nanoKONTROL2" cc 1 51 button 4 2
+bind "nanoKONTROL2" cc 1 52 button 5 2
+bind "nanoKONTROL2" cc 1 53 button 6 2
+bind "nanoKONTROL2" cc 1 54 button 7 2
+bind "nanoKONTROL2" cc 1 55 button 8 2
+bind "nanoKONTROL2" cc 1 64 button 1 3
+bind "nanoKONTROL2" cc 1 65 button 2 3
+bind "nanoKONTROL2" cc 1 66 button 3 3
+bind "nanoKONTROL2" cc 1 67 button 4 3
+bind "nanoKONTROL2" cc 1 68 button 5 3
+bind "nanoKONTROL2" cc 1 69 button 6 3
+bind "nanoKONTROL2" cc 1 70 button 7 3
+bind "nanoKONTROL2" cc 1 71 button 8 3
+bind "nanoKONTROL2" cc 1 23 master gm
+bind "nanoKONTROL2" cc 1 42 blackout
+
+# ------------------------------------------------- nanoKONTROL2: song and chase
+bind "nanoKONTROL2" cc 1 16 fader 9            # knob 1: the song
+bind "nanoKONTROL2" cc 1 17 fader 10           # knob 2: the chase
+bind "nanoKONTROL2" cc 1 41 button 9 1         # ▶: GO
+bind "nanoKONTROL2" cc 1 43 button 9 2         # ◀◀: BACK
+bind "nanoKONTROL2" cc 1 45 button 9 3         # ●: release the song
+bind "nanoKONTROL2" cc 1 44 button 10 1        # ▶▶: chase on/off
+#bind "nanoKONTROL2" cc 1 46 tap                # cycle: tap tempo
+bind "nanoKONTROL2" cc 1 18 master "Beat"      # knob 3: the multiplier
+
+# ------------------------------------------------ nanoKONTROL2: effects
+bind "nanoKONTROL2" cc 1 19 fader 11           # knob 4: circle size
+bind "nanoKONTROL2" cc 1 20 fader 12           # knob 5: pulse size
+bind "nanoKONTROL2" cc 1 21 fader 13           # knob 6: bar wave
+bind "nanoKONTROL2" cc 1 22 master "FX Size"   # knob 7: size master
+bind "nanoKONTROL2" cc 1 58 button 11 1        # track ◀: circle on/off
+bind "nanoKONTROL2" cc 1 59 button 12 1        # track ▶: pulse on/off
+
+# ======================================================== pages
+# After a page change a fader does nothing until it passes the playback's
+# level (soft takeover).
+surface "nanoKONTROL2" pickup soft
+
+# ------------------------------------------------ nanoKONTROL2: pages and LEDs (LED mode: external)
+bind "nanoKONTROL2" cc 1 61 page -1           # marker ◀
+bind "nanoKONTROL2" cc 1 62 page +1           # marker ▶
+feedback "nanoKONTROL2" cc 1 32 thru 39 led   # S: the slot's playback is active
+feedback "nanoKONTROL2" cc 1 48 thru 55 led   # M: flash or swop held
+feedback "nanoKONTROL2" cc 1 64 thru 71 led   # R: active
+feedback "nanoKONTROL2" cc 1 41 thru 45 led   # play, stop (blackout), rewind, fast-forward, record
+#feedback "nanoKONTROL2" cc 1 46 led           # cycle: the beat
+
+# ------------------------------------------------ panic on marker SET
+bind "nanoKONTROL2" cc 1 60 release all
+
+save
