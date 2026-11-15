@@ -1,0 +1,743 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>busk stage</title>
+<!--
+  The busk stage view (busk/web/stage.py): the show's rig in 3D, lit by the
+  engine's frames. It reads the web remote's WebSocket: it sends {"type":
+  "stage"} and gets a "rig", then a "look" each time a fixture's look
+  changes, besides the remote's "state" (for OUTPUT OFF). A new rig reloads
+  the page. The phone page shows it in a frame; small, it hides the key help
+  and the haze panel.
+
+  It loads three.js from jsDelivr: the browser needs the internet the first
+  time (it caches it after that). It draws with WebGPU, or with WebGL 2 in a
+  browser without it (a page on plain http from another machine has no WebGPU).
+-->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #020203;
+               font: 13px/1.5 system-ui, sans-serif; color: #c9ced6; }
+  #hud { position: fixed; left: 12px; top: 10px; pointer-events: none;
+         text-shadow: 0 1px 2px #000; }
+  #hud b { color: #fff; }
+  #hud .warn { color: #f0b86e; }
+  #keys { position: fixed; left: 12px; bottom: 10px; opacity: .55; pointer-events: none; }
+  #panel { position: fixed; right: 12px; bottom: 10px; display: flex; flex-direction: column;
+           align-items: flex-end; gap: 6px; padding: 8px 10px; border-radius: 6px;
+           background: rgba(12, 12, 16, .7); }
+  #panel label { display: flex; align-items: center; gap: 8px; }
+  #panel input { width: 140px; accent-color: #9aa4b8; }
+  #panel output { min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; }
+  /* Small (in the phone page's frame, or on a phone): no key help, no haze panel. */
+  @media (max-width: 699px), (max-height: 449px), (pointer: coarse) { #keys { display: none; } }
+  @media (max-width: 499px), (max-height: 299px) {
+    #panel { display: none; }
+    #hud { left: 8px; top: 6px; font-size: 11px; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.webgpu.js",
+    "three/webgpu": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.webgpu.js",
+    "three/tsl": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.tsl.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/" } }
+</script>
+</head>
+<body>
+<div id="hud">loading three.js…</div>
+<div id="keys">drag: orbit · right-drag: pan · wheel: zoom · W work light ·
+  R front of house · F fullscreen</div>
+<div id="panel">
+  <label>haze <input id="haze" type="range" min="0" max="150" step="5" value="35">
+    <output id="hazeOut">35%</output></label>
+</div>
+<script type="module" onerror="document.getElementById('hud').textContent =
+  'three.js did not load: the stage view needs the internet the first time'">
+import * as THREE from 'three/webgpu';
+import { float, mix, normalView, pass, perspectiveDepthToViewZ, cameraFar, cameraNear,
+         cameraViewMatrix, positionLocal, positionViewDirection, positionWorld,
+         screenCoordinate, screenUV, smoothstep, step, texture3D, time, triNoise3D, uniform, uv,
+         vec3, vec4, vertexStage } from 'three/tsl';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
+import { bayer16 } from 'three/addons/tsl/math/Bayer.js';
+import Stats from 'three/addons/libs/stats.module.js';
+
+// ------------------------------------------------------------- connection
+// The web remote's WebSocket, behind the same key. The first rig builds the
+// stage; a different one later (a fixture moved, patched, added) reloads the
+// page. It reconnects every second. Declared before the first await, since
+// messages come while three.js starts.
+let rigText = null, looks = [], connected = false, outputOn = true, redraw = () => {};
+let gotRig;
+const rigReady = new Promise((resolve) => { gotRig = resolve; });
+function connect() {
+  const ws = new WebSocket('ws://' + location.host + '/ws' + location.search);
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ type: 'stage' }));
+    connected = true;
+    redraw();
+  };
+  ws.onmessage = (event) => {
+    const message = JSON.parse(event.data);
+    if (message.type === 'look') looks = message.looks;
+    else if (message.type === 'rig') {
+      if (rigText === null) { rigText = event.data; gotRig(message); }
+      else if (event.data !== rigText) location.reload();
+    } else if (message.type === 'state' && message.outputEnabled !== outputOn) {
+      outputOn = message.outputEnabled;
+      redraw();
+    }
+  };
+  ws.onclose = () => {
+    connected = false;
+    redraw();
+    setTimeout(connect, 1000);
+  };
+}
+connect();
+document.getElementById('hud').textContent = 'waiting for busk…';
+const rig = await rigReady;
+const W = rig.stage.width, D = rig.stage.depth, H = rig.stage.height;
+const rad = (degrees) => degrees * Math.PI / 180;
+
+// --------------------------------------------------------------- renderer
+// WebGPU where the browser has it, WebGL 2 where it does not. No multisampling:
+// blending the beams into a multisampled image costs ten times as much.
+const renderer = new THREE.WebGPURenderer();
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.appendChild(renderer.domElement);
+await renderer.init();
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x020203);
+const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 300);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.maxDistance = 100;
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// The stage group works in busk's own metres: x to stage right, y downstage,
+// z up. Turned onto three.js's y-up world, the audience looks along +z.
+const stage = new THREE.Group();
+stage.rotation.x = -Math.PI / 2;
+scene.add(stage);
+const world = (x, y, z) => new THREE.Vector3(x, z, -y);
+function frontOfHouse() {
+  camera.position.copy(world(0, 16, 4.5));
+  controls.target.copy(world(0, -D / 2, 2.5));
+  controls.update();
+}
+frontOfHouse();
+
+// The camera stays over the audience's floor (world y is busk's z): it
+// orbits no lower than LOWEST, and what it looks at stays above the floor.
+const LOWEST = -H + 0.5;
+function steer() {
+  const reach = camera.position.distanceTo(controls.target);
+  controls.maxPolarAngle =
+    Math.acos(THREE.MathUtils.clamp((LOWEST - controls.target.y) / reach, -1, 1));
+  controls.update();
+  controls.target.y = Math.max(controls.target.y, -H);
+  camera.position.y = Math.max(camera.position.y, LOWEST);
+  camera.lookAt(controls.target);
+}
+
+const DIM = 0.3, WORK = 6;
+const work = new THREE.HemisphereLight(0x9aa4b8, 0x202024, DIM);
+scene.add(work);
+
+// ------------------------------------------------------------------ venue
+// Scenery, the same for every show, sized to its stage: an arena around it.
+const surface = (color, roughness = 0.85, metalness = 0) =>
+  new THREE.MeshStandardMaterial({ color, roughness, metalness });
+const BODY = surface(0x17181b, 0.5, 0.5);
+const METAL = surface(0x8a8d93, 0.4, 0.8);
+const add = (geometry, material, x, y, z) => {
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.position.set(x, y, z);
+  stage.add(mesh);
+  return mesh;
+};
+const FLOOR = -H;                                   // the audience's floor
+const HALF = Math.max(24, W / 2 + 15), BACK = 42;   // the arena's floor: |x| < HALF, y < BACK
+const BARRIER = 2.2, FOH = 26;                      // the crowd barrier, the mix position
+
+const deck = new THREE.Mesh(new THREE.BoxGeometry(W, D, H), surface(0x2a241f));
+deck.position.set(0, -D / 2, -H / 2);
+stage.add(deck);
+// The ground, under the arena and out to the horizon, where the fog takes it.
+// It glows a little of its own, or the dim house would leave it black.
+const GROUND = 1000;
+add(new THREE.PlaneGeometry(GROUND, GROUND), surface(0x2a2c31, 0.95), 0, 0, FLOOR)
+  .material.emissive.setHex(0x0d0e11);
+scene.fog = new THREE.Fog(scene.background, 60, 300);
+
+// The backcloth, on a pipe behind the deck.
+add(new THREE.PlaneGeometry(W + 4, 12).rotateX(-Math.PI / 2), surface(0x2c2e35, 1), 0, -D - 0.3, 6)
+  .material.side = THREE.DoubleSide;
+add(new THREE.CylinderGeometry(0.03, 0.03, W + 4.4, 8).rotateZ(Math.PI / 2), METAL,
+    0, -D - 0.3, 12);
+
+// The crowd barrier, closing the pit in front of the stage, and the mix
+// position: a riser with two desks.
+const RAIL = surface(0x5c5f66, 0.5, 0.6);
+add(new THREE.BoxGeometry(W + 2, 0.06, 1.1), RAIL, 0, BARRIER, FLOOR + 0.55);
+for (const side of [-1, 1])
+  add(new THREE.BoxGeometry(0.06, BARRIER, 1.1), RAIL,
+      side * (W / 2 + 1), BARRIER / 2, FLOOR + 0.55);
+add(new THREE.BoxGeometry(6, 4, 0.4), BODY, 0, FOH + 2, FLOOR + 0.2);
+for (const side of [-1, 1])
+  add(new THREE.BoxGeometry(2.2, 0.9, 0.9), BODY, side * 1.3, FOH + 1.2, FLOOR + 0.85);
+
+// The PA: a main hang and an outfill either side of the stage, flown and
+// curving down at the floor, and a row of subs on the floor under the lip.
+// Every cabinet is a unit box from its front top edge, turned and scaled.
+const cabinets = [];
+function hang(x, y, top, toe, width, splays) {
+  const m = new THREE.Matrix4().makeRotationZ(rad(toe)).setPosition(x, y, top);
+  for (const splay of splays) {
+    m.multiply(new THREE.Matrix4().makeRotationX(-rad(splay)));
+    cabinets.push(m.clone().scale(new THREE.Vector3(width, 0.55, 0.36)));
+    m.multiply(new THREE.Matrix4().makeTranslation(0, 0, -0.36));
+  }
+}
+for (const side of [-1, 1]) {
+  hang(side * (W / 2 + 2.5), 0.8, 10.5, 0, 1.2, [3, 0.5, 0.5, 1, 1, 1.5, 2, 3, 4, 5, 6, 7]);
+  hang(side * (W / 2 + 7), 0.2, 10, -side * 35, 1.0, [5, 1, 1, 2, 3, 4, 6, 8]);
+}
+const subs = Math.floor(W / 1.4);
+for (let i = 0; i < subs; i++)
+  for (const top of [0.55, 1.1])
+    cabinets.push(new THREE.Matrix4().makeScale(1.3, 1, 0.55)
+      .setPosition((i - (subs - 1) / 2) * 1.4, 1.1, FLOOR + top));
+for (const [geometry, material] of [
+  [new THREE.BoxGeometry(1, 1, 1).translate(0, -0.5, -0.5), surface(0x111113, 0.8)],
+  [new THREE.PlaneGeometry(0.94, 0.86).rotateX(-Math.PI / 2).translate(0, 0.01, -0.5),
+   surface(0x2a2c31, 1)],                                                  // the grille
+]) {
+  const mesh = new THREE.InstancedMesh(geometry, material, cabinets.length);
+  cabinets.forEach((m, i) => mesh.setMatrixAt(i, m));
+  stage.add(mesh);
+}
+
+// Stands on three sides of the floor: a wall, rows of steps, a back wall.
+const SEAT_ROWS = 14, RISE = 0.45, TREAD = 0.85, WALL = 2.5, SIDES_FROM = -2;
+const profile = new THREE.Shape().moveTo(0, 0);   // across a stand: out, up
+for (let row = 0; row < SEAT_ROWS; row++)
+  profile.lineTo(row * TREAD, WALL + row * RISE).lineTo((row + 1) * TREAD, WALL + row * RISE);
+const deep = SEAT_ROWS * TREAD, high = WALL + SEAT_ROWS * RISE + 2;
+profile.lineTo(deep, high).lineTo(deep + 0.3, high).lineTo(deep + 0.3, 0);
+const STANDS = [   // where each starts, the way it runs, the way it rises
+  { length: BACK - SIDES_FROM, origin: [HALF, BACK], along: [0, -1], out: [1, 0] },
+  { length: BACK - SIDES_FROM, origin: [-HALF, SIDES_FROM], along: [0, 1], out: [-1, 0] },
+  { length: 2 * HALF, origin: [-HALF, BACK], along: [1, 0], out: [0, 1] },
+];
+const SEATS = surface(0x1c202c, 0.9);
+for (const { length, origin, along, out } of STANDS) {
+  const mesh = new THREE.Mesh(
+    new THREE.ExtrudeGeometry(profile, { depth: length, bevelEnabled: false }), SEATS);
+  mesh.matrixAutoUpdate = false;
+  mesh.matrix.makeBasis(new THREE.Vector3(out[0], out[1], 0), new THREE.Vector3(0, 0, 1),
+                        new THREE.Vector3(along[0], along[1], 0))
+    .setPosition(origin[0], origin[1], FLOOR);
+  stage.add(mesh);
+}
+
+// The audience, still: thick at the barrier and thinner to the back and the
+// sides, the stands half full, the crew at the desks. Two figures, hands
+// down and hands up, each drawn as one instanced mesh.
+let seed = 7;
+const random = () => (seed = seed * 16807 % 2147483647) / 2147483647;
+const crowd = [[], []];   // [x, y, z] of each person, hands down and hands up
+const person = (x, y, z) => crowd[random() < 0.2 ? 1 : 0].push([x, y, z]);
+for (let y = BARRIER + 0.6; y < BACK - 0.5; y += 0.65)
+  for (let x = -HALF + 0.5; x < HALF - 0.5; x += 0.65) {
+    const atFoh = Math.abs(x) < 4 && y > FOH - 1 && y < FOH + 5;
+    const thick = 0.95 - 0.6 * (y - BARRIER) / (BACK - BARRIER)
+                - 0.5 * Math.max(0, Math.abs(x) - W / 2 - 2) / HALF;
+    if (!atFoh && random() < thick)
+      person(x + 0.4 * (random() - 0.5), y + 0.4 * (random() - 0.5), FLOOR);
+  }
+for (const { length, origin, along, out } of STANDS)
+  for (let row = 0; row < SEAT_ROWS; row++)
+    for (let s = 0.4; s < length - 0.4; s += 0.55) {
+      const u = (row + 0.5) * TREAD;
+      if (random() < 0.5)
+        person(origin[0] + along[0] * s + out[0] * u, origin[1] + along[1] * s + out[1] * u,
+               FLOOR + WALL + row * RISE);
+    }
+for (const x of [-1.3, 0, 1.3]) person(x, FOH + 2.2, FLOOR + 0.4);
+
+function figure(handsUp) {
+  const parts = [
+    new THREE.CylinderGeometry(0.2, 0.13, 1.45, 6).translate(0, 0.725, 0),
+    new THREE.SphereGeometry(0.11, 6, 4).translate(0, 1.6, 0),
+  ];
+  for (const side of handsUp ? [-1, 1] : [])
+    parts.push(new THREE.CylinderGeometry(0.035, 0.035, 0.7, 4).translate(0, 0.35, 0)
+      .rotateZ(-side * 0.3).translate(side * 0.17, 1.38, 0));
+  return mergeGeometries(parts).rotateX(Math.PI / 2);   // standing on z = 0
+}
+const CLOTHES = surface(0xffffff, 0.9);
+crowd.forEach((where, handsUp) => {
+  const mesh = new THREE.InstancedMesh(figure(handsUp), CLOTHES, where.length);
+  const m = new THREE.Matrix4(), tone = new THREE.Color();
+  where.forEach(([x, y, z], i) => {
+    const tall = 0.9 + 0.2 * random();
+    m.makeRotationZ(2 * Math.PI * random()).scale(new THREE.Vector3(tall, tall, tall));
+    mesh.setMatrixAt(i, m.setPosition(x, y, z));
+    mesh.setColorAt(i, tone.setHSL(random(), 0.15 + 0.15 * random(), 0.05 + 0.12 * random()));
+  });
+  stage.add(mesh);
+});
+
+// A truss over every row of fixtures hung at the same depth and height.
+const rows = new Map();
+for (const f of rig.fixtures) {
+  if (f.loc.z < 1.5) continue;
+  const key = `${f.loc.y.toFixed(1)}|${f.loc.z.toFixed(1)}`;
+  const row = rows.get(key) || { y: f.loc.y, z: f.loc.z, min: Infinity, max: -Infinity };
+  row.min = Math.min(row.min, f.loc.x);
+  row.max = Math.max(row.max, f.loc.x);
+  rows.set(key, row);
+}
+for (const row of rows.values()) {
+  const length = row.max - row.min + 1.2;
+  const chord = new THREE.CylinderGeometry(0.025, 0.025, length, 8).rotateZ(Math.PI / 2);
+  for (const [dy, dz] of [[-0.14, 0.06], [0.14, 0.06], [-0.14, 0.34], [0.14, 0.34]]) {
+    const mesh = new THREE.Mesh(chord, METAL);
+    mesh.position.set((row.min + row.max) / 2, row.y + dy, row.z + dz);
+    stage.add(mesh);
+  }
+}
+
+// -------------------------------------------------------------------- air
+// The haze drifts on a slow wind (three.js's triNoise3D) and thins with
+// height, and smoke from the smoke machines thickens it where it goes. Beams
+// are as bright as it is thick where they pass; the fog volume below draws it.
+const AIR = { x: W / 2 + 16, top: 16, out: 24 };   // half its width; its top; how far out
+const WIND = new THREE.Vector3(0.1, 0.02, -0.25);  // m/s, three.js world: the audience is -z
+const hazeLevel = uniform(0.35);
+
+// Smoke is a grid of half-metre cells over the stage and the front of the
+// floor (in stage metres), that the puffs below are splatted into each frame:
+// the haze reads it with one texture fetch, however many puffs there are.
+const CELL = 0.5, SMOKE_MAX = 4;   // metres; the density a full cell holds
+const GRID = { x: -W / 2 - 6, y: -D - 0.3, z: -H, nx: Math.ceil((W + 12) / CELL),
+               ny: Math.ceil((D + 12.3) / CELL), nz: Math.ceil((H + 8) / CELL) };
+const smokeCells = new Float32Array(GRID.nx * GRID.ny * GRID.nz);
+const smoke = new THREE.Data3DTexture(new Uint8Array(smokeCells.length), GRID.nx, GRID.ny, GRID.nz);
+smoke.format = THREE.RedFormat;
+smoke.minFilter = smoke.magFilter = THREE.LinearFilter;
+smoke.unpackAlignment = 1;
+smoke.needsUpdate = true;
+
+function air(p, smokeWeight = 1) {   // the haze's density at p (three.js world)
+  const drifted = p.sub(vec3(WIND.x, WIND.y, WIND.z).mul(time));
+  const edge = (metres) => metres.div(3).saturate();   // the haze fades out at the sides
+  const inside = edge(float(AIR.x).sub(p.x.abs())).mul(edge(float(AIR.top).sub(p.y)))
+    .mul(edge(p.z.add(AIR.out)));
+  const room = hazeLevel.mul(inside).mul(mix(1, 0.35, smoothstep(3, 14, p.y.add(H))))
+    .mul(triNoise3D(drifted.mul(0.05), 0.4, time).mul(3.5).pow(1.5));
+  const cell = vec3(p.x, p.z.negate(), p.y).sub(vec3(GRID.x, GRID.y, GRID.z))
+    .div(vec3(GRID.nx, GRID.ny, GRID.nz).mul(CELL));
+  const smoky = texture3D(smoke, cell).r.mul(SMOKE_MAX)
+    .mul(triNoise3D(drifted.mul(0.5), 1.5, time).mul(3));   // billows
+  return room.add(smoky.mul(smokeWeight));
+}
+
+// --------------------------------------------------------------- fixtures
+// A beam is a cone as bright as the haze is thick where it passes (worked out
+// at the cone's vertices: the haze changes over metres, and a beam overlaps
+// many others), and a pool on the surface it lands on: a quad cut to that
+// surface (lo..hi, in stage metres), or it would hang past the deck's edge.
+const BEAM_LENGTH = 20;
+const cone = new THREE.ConeGeometry(BEAM_LENGTH, BEAM_LENGTH, 64, 48, true)
+  .translate(0, -BEAM_LENGTH / 2, 0).rotateX(-Math.PI / 2);   // apex at 0, along +z, 45°
+const onStage = vec3(positionWorld.x, positionWorld.z.negate(), positionWorld.y);   // metres
+// Nothing of a beam shows behind the backcloth, in the deck or under the floor.
+const open = step(-D - 0.3, onStage.y).mul(step(FLOOR, onStage.z))
+  .mul(step(0, onStage.z).max(step(onStage.y, -D)).max(step(0, onStage.y))
+         .max(step(W / 2, onStage.x.abs())));
+
+function lens(radius, z, parent) {
+  const mesh = new THREE.Mesh(new THREE.CircleGeometry(radius, 24),
+                              new THREE.MeshBasicMaterial({ color: 0x0a0a0a }));
+  mesh.position.z = z;
+  parent.add(mesh);
+  return mesh;
+}
+
+const additive = () => new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false,
+  blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+
+function beam(parent, z) {
+  const glow = { color: uniform(new THREE.Color()), strength: uniform(0) };
+  const shine = additive();
+  shine.colorNode = glow.color.mul(glow.strength)
+    .mul(positionLocal.z.div(BEAM_LENGTH).saturate().oneMinus().pow(2))   // fades along it
+    .mul(normalView.dot(positionViewDirection).abs().pow(2))              // soft at its sides
+    .mul(vertexStage(air(positionWorld))).mul(open);
+  const mesh = new THREE.Mesh(cone, shine);
+  mesh.position.z = z;
+  parent.add(mesh);
+  const paint = { color: uniform(new THREE.Color()), strength: uniform(0),
+                  lo: uniform(new THREE.Vector3()), hi: uniform(new THREE.Vector3()) };
+  const inside = step(paint.lo, onStage).mul(step(onStage, paint.hi));
+  const material = additive();
+  material.colorNode = paint.color.mul(paint.strength)
+    .mul(smoothstep(0.55, 1, uv().mul(2).sub(1).length()).oneMinus())
+    .mul(inside.x).mul(inside.y).mul(inside.z);
+  const pool = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
+  pool.matrixAutoUpdate = false;
+  pool.visible = false;
+  stage.add(pool);
+  return { mesh, glow, pool, paint };
+}
+
+const cylinder = (radius, length) =>
+  new THREE.CylinderGeometry(radius, radius, length, 24).rotateX(Math.PI / 2);   // along z
+const box = (x, y, z, g, dims) => {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(...dims), BODY);
+  mesh.position.set(x, y, z);
+  g.add(mesh);
+  return mesh;
+};
+
+const BUILD = {
+  head(g) {
+    box(0, 0, 0.06, g, [0.36, 0.3, 0.12]);
+    const yoke = new THREE.Group();
+    yoke.position.z = 0.12;
+    g.add(yoke);
+    for (const side of [-1, 1]) box(side * 0.17, 0, 0.17, yoke, [0.04, 0.09, 0.34]);
+    const pivot = new THREE.Group();
+    pivot.position.z = 0.28;
+    yoke.add(pivot);
+    pivot.add(new THREE.Mesh(cylinder(0.13, 0.34), BODY));
+    return { yoke, pivot, lenses: [lens(0.1, 0.171, pivot)], beam: beam(pivot, 0.172) };
+  },
+  par(g) {
+    const can = new THREE.Mesh(cylinder(0.11, 0.26), BODY);
+    can.position.z = 0.13;
+    g.add(can);
+    return { lenses: [lens(0.095, 0.261, g)], beam: beam(g, 0.262) };
+  },
+  bar(g, f) {
+    box(0, 0, 0.04, g, [1.0, 0.07, 0.08]);
+    const width = 0.98 / f.cells, lenses = [];
+    for (let i = 0; i < f.cells; i++) {
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(width - 0.006, 0.05),
+                                  new THREE.MeshBasicMaterial({ color: 0x0a0a0a }));
+      face.position.set(-0.49 + width * (i + 0.5), 0, 0.081);
+      g.add(face);
+      lenses.push(face);
+    }
+    return { lenses };
+  },
+  blinder(g, f) {
+    box(0, 0, 0.07, g, [0.44, 0.44, 0.14]);
+    const columns = Math.ceil(Math.sqrt(f.cells)), lines = Math.ceil(f.cells / columns);
+    const lenses = [];
+    for (let i = 0; i < f.cells; i++) {
+      const cell = lens(0.085, 0.141, g);
+      cell.position.x = ((i % columns) - (columns - 1) / 2) * 0.2;
+      cell.position.y = ((lines - 1) / 2 - Math.floor(i / columns)) * 0.2;
+      lenses.push(cell);
+    }
+    return { lenses, beam: beam(g, 0.142) };
+  },
+  fog(g) {
+    box(0, 0, 0.25, g, [0.3, 0.25, 0.5]);
+    const nozzle = new THREE.Mesh(cylinder(0.04, 0.08), METAL);
+    nozzle.position.z = 0.54;
+    g.add(nozzle);
+    return { lenses: [], nozzle };
+  },
+};
+
+const fixtures = rig.fixtures.map((f, index) => {
+  const g = new THREE.Group();
+  g.position.set(f.loc.x, f.loc.y, f.loc.z);
+  g.rotation.set(rad(f.loc.rx), rad(f.loc.ry), rad(f.loc.rz), 'ZYX');   // x, then y, then z
+  stage.add(g);
+  return { ...f, index, ...BUILD[f.kind](g, f) };
+});
+
+// -------------------------------------------------------------------- fog
+// The haze is also a volume three.js raymarches (VolumeNodeMaterial), glowing
+// of its own: with the stage's light near the stage, with the work light
+// everywhere. That shows smoke as clouds and gives the stage its air. It
+// holds no lights (three.js would work out every beam at every step of every
+// pixel), and is drawn at a quarter of the screen's resolution and blurred.
+const HAZE = 1;   // the fog volume's layer
+const workGlow = uniform(new THREE.Color()), stageGlow = uniform(new THREE.Color());
+const scenePass = pass(scene, camera);
+const sceneDepth = scenePass.getTextureNode('depth').sample(screenUV);
+const airMaterial = new THREE.VolumeNodeMaterial();
+airMaterial.steps = 16;
+airMaterial.fog = false;
+airMaterial.offsetNode = bayer16(screenCoordinate);   // dithers the steps against banding
+airMaterial.scatteringEmissiveNode = ({ positionRay: p }) => {
+  const ahead = step(perspectiveDepthToViewZ(sceneDepth, cameraNear, cameraFar),
+                     cameraViewMatrix.mul(vec4(p, 1)).z);   // not behind the deck, a person, …
+  const off = p.sub(vec3(0, 2, D / 2));                     // from the middle of the stage
+  // Smoke, the denser, glows more: a jet out of a nozzle is a short way through.
+  return air(p, 3).mul(ahead).mul(workGlow.add(stageGlow.div(off.dot(off).div(80).add(1))));
+};
+const volume = new THREE.Mesh(
+  new THREE.BoxGeometry(2 * AIR.x, AIR.top + H, AIR.out + D + 0.3), airMaterial);
+volume.position.set(0, (AIR.top - H) / 2, (D + 0.3 - AIR.out) / 2);
+volume.layers.set(HAZE);
+scene.add(volume);
+
+const hazeOnly = new THREE.Layers();
+hazeOnly.set(HAZE);
+const airPass = pass(scene, camera, { depthBuffer: false });
+airPass.setLayers(hazeOnly);
+airPass.setResolutionScale(0.25 / renderer.getPixelRatio());   // of CSS pixels, any screen
+const pipeline = new THREE.RenderPipeline(renderer);
+const lit = scenePass.add(gaussianBlur(airPass, uniform(0.6)));
+pipeline.outputNode = lit.add(bloom(lit, 0.7, 0.5, 0.8));
+
+// A smoke machine blows puffs out of its nozzle: fast, then braked by the
+// air, swelling and thinning as they drift on the wind and rise a little,
+// never through the deck or the floor. Puffs are in stage metres.
+const SMOKE = { rate: 6, speed: 7, life: 8 };   // puffs a second at full; m/s; seconds
+const WIND_ON_STAGE = new THREE.Vector3(WIND.x, -WIND.z, WIND.y);
+const puffs = [];
+let smoky = false;   // whether the grid holds smoke
+const jitter = () => new THREE.Vector3(Math.random(), Math.random(), Math.random())
+  .subScalar(0.5).multiplyScalar(0.25);
+function blow(f, level, dt) {
+  f.owed = (f.owed ?? 0) + dt * SMOKE.rate * level;
+  for (; f.owed >= 1; f.owed--) {
+    const at = stage.worldToLocal(f.nozzle.getWorldPosition(new THREE.Vector3()));
+    const out = stage.worldToLocal(f.nozzle.localToWorld(new THREE.Vector3(0, 0, 1)));
+    const v = out.sub(at).normalize().add(jitter()).normalize()
+      .multiplyScalar(SMOKE.speed * (0.7 + 0.6 * Math.random()));
+    puffs.push({ at, v, level, age: 0, radius: 0.3 });
+  }
+}
+function drift(dt) {
+  for (const puff of puffs) {
+    puff.age += dt;
+    puff.v.multiplyScalar(Math.exp(-dt / 0.6));
+    puff.at.addScaledVector(puff.v, dt).addScaledVector(WIND_ON_STAGE, dt);
+    puff.at.z += 0.06 * dt;
+    puff.radius = 0.3 + 1.8 * (1 - Math.exp(-puff.age / 1.5)) + 0.1 * puff.age;
+    const overDeck = Math.abs(puff.at.x) < W / 2 && puff.at.y > -D && puff.at.y < 0;
+    puff.at.z = Math.max(puff.at.z, (overDeck ? 0 : FLOOR) + 0.3 * puff.radius);
+  }
+  for (let i = puffs.length - 1; i >= 0; i--) if (puffs[i].age > SMOKE.life) puffs.splice(i, 1);
+  if (!puffs.length && !smoky) return;
+  smokeCells.fill(0);
+  for (const puff of puffs) splat(puff);
+  const bytes = smoke.image.data;
+  for (let i = 0; i < bytes.length; i++) bytes[i] = Math.min(255, smokeCells[i] * 255 / SMOKE_MAX);
+  smoke.needsUpdate = true;
+  smoky = puffs.length > 0;
+}
+function splat(puff) {   // into the cells within its radius, the grid's edge cells left empty
+  const { nx, ny, nz } = GRID, r = puff.radius, reach = r / CELL;
+  const thick = puff.level * 2 * Math.min(1, puff.age / 0.15) * Math.exp(-puff.age / 4)
+              * 0.4 / r;
+  const ci = (puff.at.x - GRID.x) / CELL - 0.5, cj = (puff.at.y - GRID.y) / CELL - 0.5;
+  const ck = (puff.at.z - GRID.z) / CELL - 0.5;   // in cells, a cell's middle at a whole number
+  const from = (c) => Math.max(1, Math.ceil(c - reach)), to = (c, n) => Math.min(n - 2, c + reach);
+  const reach2 = reach * reach;
+  for (let k = from(ck); k <= to(ck, nz); k++) {
+    const dk2 = (k - ck) ** 2;
+    for (let j = from(cj); j <= to(cj, ny); j++) {
+      const djk2 = dk2 + (j - cj) ** 2;
+      if (djk2 >= reach2) continue;
+      const row = nx * (j + ny * k);
+      for (let i = from(ci); i <= to(ci, nx); i++) {
+        const d2 = djk2 + (i - ci) ** 2;
+        if (d2 >= reach2) continue;
+        const near = 1 - Math.sqrt(d2) / reach;   // 1 at the middle, 0 at the edge
+        smokeCells[row + i] += thick * near * Math.sqrt(near);
+      }
+    }
+  }
+}
+
+// ------------------------------------------------------------------- live
+let hazeBase = 0.35, hazeBoost = 0;
+const LENS_GAIN = 6, BEAM_GAIN = 0.02, POOL_GAIN = 3;
+const WORK_GLOW = 0.4, SPILL = 3;   // how much the fog glows with the work light, the stage
+const UP = new THREE.Vector3(0, 0, 1), DOWNSTAGE = new THREE.Vector3(0, 1, 0);
+const apex = new THREE.Vector3(), ahead = new THREE.Vector3();
+const u = new THREE.Vector3(), w = new THREE.Vector3();
+
+function shutter(code, hz, t, seed) {
+  if (code === 1) return 0;
+  if (code === 0) return 1;
+  const rate = hz > 0 ? hz : 10, phase = (t * rate) % 1;
+  if (code === 3) return 1 - phase;                                        // pulse
+  if (code === 4) {                                                        // random
+    const n = Math.sin(Math.floor(t * rate) * 12.9898 + seed * 78.233) * 43758.5453;
+    return n - Math.floor(n) > 0.5 && phase < 0.3 ? 1 : 0;
+  }
+  return phase < 0.25 ? 1 : 0;                                             // strobe
+}
+
+// Where a beam from `o` along `d` first lands: the deck, the audience's
+// floor or the back drape (stage metres).
+const box3 = (x0, y0, z0, x1, y1, z1) =>
+  new THREE.Box3(new THREE.Vector3(x0, y0, z0), new THREE.Vector3(x1, y1, z1));
+const SURFACES = [   // [normal, the plane's distance along it, its extent]
+  [UP, 0, box3(-W / 2, -D, -0.1, W / 2, 0, 0.1)],                         // the deck
+  [UP, FLOOR, box3(-GROUND / 2, -GROUND / 2, FLOOR - 0.1,
+                   GROUND / 2, GROUND / 2, FLOOR + 0.1)],                  // the ground
+  [DOWNSTAGE, -D - 0.3, box3(-W / 2 - 2, -D - 0.4, 0, W / 2 + 2, -D - 0.2, 12)],   // the drape
+];
+function landing(o, d) {
+  let best = null;
+  for (const [normal, offset, extent] of SURFACES) {
+    const along = d.dot(normal);
+    if (Math.abs(along) < 1e-6) continue;
+    const t = (offset - o.dot(normal)) / along;
+    if (!(t > 0.05) || (best && t >= best.t)) continue;
+    const p = o.clone().addScaledVector(d, t);
+    if (extent.containsPoint(p)) best = { t, p, normal, extent };
+  }
+  return best;
+}
+
+function pool(b, level, color, half) {
+  b.mesh.getWorldPosition(apex);
+  ahead.set(0, 0, 1);
+  b.mesh.localToWorld(ahead);
+  stage.worldToLocal(apex);
+  stage.worldToLocal(ahead).sub(apex).normalize();
+  const hit = landing(apex, ahead);
+  if (!hit) { b.pool.visible = false; return; }
+  const cos = Math.abs(ahead.dot(hit.normal));
+  const radius = hit.t * Math.tan(half), stretch = 1 / Math.max(cos, 0.3);
+  u.copy(ahead).addScaledVector(hit.normal, -ahead.dot(hit.normal));
+  if (u.lengthSq() < 1e-6) u.set(1, 0, 0);
+  u.normalize();
+  w.crossVectors(hit.normal, u);
+  b.pool.matrix.makeBasis(u.multiplyScalar(radius * stretch), w.multiplyScalar(radius), hit.normal)
+    .setPosition(hit.p.addScaledVector(hit.normal, 0.01));
+  b.pool.matrixWorldNeedsUpdate = true;
+  // A narrower beam, nearer, square on, lands brighter.
+  const solid = 2 * Math.PI * (1 - Math.cos(half));
+  b.paint.color.value.copy(color);
+  b.paint.strength.value = Math.min(3, POOL_GAIN * level * cos / (solid * hit.t * hit.t));
+  b.paint.lo.value.copy(hit.extent.min);
+  b.paint.hi.value.copy(hit.extent.max);
+  b.pool.visible = true;
+}
+
+const color = new THREE.Color(), spill = new THREE.Color();
+const stats = new Stats();   // the frames-a-second meter
+stats.dom.style.cssText = 'position: static; cursor: pointer; opacity: .9';
+document.getElementById('panel').prepend(stats.dom);
+let last = performance.now();
+function frame(now) {
+  const t = now / 1000, dt = Math.min(0.1, (now - last) / 1000);
+  last = now;
+  steer();
+  stage.updateMatrixWorld(true);
+
+  // Smoke thickens the haze too, slowly, and it lingers once the machines stop.
+  let fog = 0;
+  for (const f of fixtures) {
+    const level = f.nozzle && looks[f.index] ? looks[f.index][0] : 0;
+    if (level > 0.01) blow(f, level, dt);
+    fog += level;
+  }
+  drift(dt);
+  const target = 0.4 * fog;
+  hazeBoost += (target - hazeBoost) * (1 - Math.exp(-dt / (target > hazeBoost ? 6 : 40)));
+  hazeLevel.value = Math.min(1.5, hazeBase + hazeBoost);
+
+  const lit = [];
+  let beams = 0;
+  spill.setRGB(0, 0, 0);
+  for (const f of fixtures) {
+    const look = looks[f.index];
+    if (!look) continue;
+    const n = f.cells * 3;
+    const [pan, tilt, zoom, code, hz] = look.slice(n);
+    const gate = shutter(code, hz, t, f.index);
+    if (f.yoke) {
+      f.yoke.rotation.z = rad(pan);
+      f.pivot.rotation.x = -rad(tilt);
+    }
+    let r = 0, g = 0, b = 0;
+    f.lenses.forEach((lensMesh, e) => {
+      const [lr, lg, lb] = [look[3 * e] * gate, look[3 * e + 1] * gate, look[3 * e + 2] * gate];
+      lensMesh.material.color.setRGB(
+        0.03 + lr * LENS_GAIN, 0.03 + lg * LENS_GAIN, 0.03 + lb * LENS_GAIN);
+      r += lr; g += lg; b += lb;
+    });
+    if (!f.beam) continue;
+    const cells = Math.max(1, f.lenses.length);
+    color.setRGB(r / cells, g / cells, b / cells);
+    const level = Math.max(color.r, color.g, color.b);
+    const half = rad(Math.min(170, Math.max(1, zoom)) / 2), spread = Math.tan(half);
+    f.beam.mesh.scale.set(spread, spread, 1);
+    f.beam.mesh.visible = level > 0.002;
+    f.beam.glow.color.value.copy(color);
+    f.beam.glow.strength.value = BEAM_GAIN / Math.max(spread, 0.05);
+    beams++;
+    if (level > 0.002) {
+      spill.add(color);
+      lit.push([f.beam, level, color.clone().multiplyScalar(1 / level), half]);
+    } else f.beam.pool.visible = false;
+  }
+  stage.updateMatrixWorld(true);
+  for (const [b, level, hue, half] of lit) pool(b, level, hue, half);
+  workGlow.value.set(0x9aa4b8).multiplyScalar(work.intensity * WORK_GLOW);
+  stageGlow.value.copy(spill).multiplyScalar(SPILL / Math.max(1, beams));
+  pipeline.render();
+  stats.update();
+}
+renderer.setAnimationLoop(frame);
+
+// -------------------------------------------------------------------- hud
+const hud = document.getElementById('hud');
+function drawHud() {
+  const warn = (text) => `<span class="warn">${text}</span>`;
+  const title = rig.title.replace(/[&<>]/g, (c) => `&#${c.charCodeAt(0)};`);
+  const lines = [`<b>${title}</b> · ${rig.fixtures.length} fixtures`];
+  if (!connected) lines.push(warn('lost busk: reconnecting…'));
+  else if (!outputOn) lines.push(warn('OUTPUT OFF: the rig is dark; this is what busk would send'));
+  hud.innerHTML = lines.join('<br>');
+}
+redraw = drawHud;
+
+const slider = document.getElementById('haze'), sliderOut = document.getElementById('hazeOut');
+slider.addEventListener('input', () => {
+  hazeBase = slider.value / 100;
+  sliderOut.value = `${slider.value}%`;
+});
+
+addEventListener('keydown', (e) => {
+  const key = e.key.toLowerCase();
+  if (key === 'w') work.intensity = work.intensity === WORK ? DIM : WORK;
+  else if (key === 'r') frontOfHouse();
+  else if (key === 'f') document.fullscreenElement ? document.exitFullscreen()
+                                                    : document.documentElement.requestFullscreen();
+  else return;
+  drawHud();
+});
+drawHud();
+</script>
+</body>
+</html>

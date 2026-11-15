@@ -421,7 +421,14 @@ snapshot) at most 30 times a second. A phone sends performance commands (`PAGE`,
 `SET_FADER`, `PLAYBACK_BUTTON`, `SET_MASTER`, `TAP`, `BLACKOUT`, …) and gets an `error`
 with the command's id when one is refused. Show edits and programmer commands are refused:
 the console stays the only editor (§23). The buttons a phone holds are released when it
-disconnects.
+disconnects. The stage view (`/stage`, `busk.web.stage`) reads the same WebSocket: a client
+that sends `{"type": "stage"}` gets a `rig` (the session's show's fixtures, each placed by
+its `location` or in a row of its kind) whenever what it draws changes, and a `look` (each
+fixture's colour per cell, pan, tilt, zoom, shutter and strobe rate) whenever one changes,
+at most 30 times a second. The broadcaster decodes the looks from the engine's frames
+through each fixture's profile mode, only while a client watches; the first one asks the
+engine for its frames (`EngineLink.watch`). The page is three.js, from jsDelivr; the phone
+page shows it in a frame that exists only while the view is open.
 
 **Output** (`busk.output`). At start-up `build_routes` creates and opens one sender per
 enabled route (`SacnSender`, `ArtNetSender`, `EnttecSender`); routes that are disabled,

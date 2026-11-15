@@ -1103,6 +1103,10 @@ class LiveShow(_Facade):
             snapshot = link.snapshot
             return None if snapshot is None or snapshot.page is None else snapshot.page.id
 
+        def frame() -> Frame | None:  # for the web's stage view: the first read asks for frames
+            link.watch(frames=True)
+            return link.frame
+
         resolver = BindingResolver(
             session.show,
             compiled,
@@ -1118,6 +1122,8 @@ class LiveShow(_Facade):
             submit=session.submit,
             clock=clock.now,
             key=self._web_key(),
+            show=lambda: session.snapshot.show,
+            frame=frame,
         )
         surfaces = SurfaceManager(resolver.handle, web, say=self._say, warn=self._warn)
         surfaces.reconcile(compiled)

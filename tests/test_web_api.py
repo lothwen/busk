@@ -21,10 +21,10 @@ from typing import Any, cast
 
 import pytest
 
-from builders import APPENDIX_A, Doc, compile_doc, load_doc
+from builders import APPENDIX_A, Doc, compile_doc, load_doc, show_of
 from busk.commands.bus import CommandRejected
 from busk.commands.types import Command, CommandOrigin
-from busk.compiler.compile import CompiledShow
+from busk.compiler.compile import CompiledShow, compile_show
 from busk.io.ratelimit import WEB_BURST
 from busk.io.surfaces import SurfaceManager
 from busk.model.surface import ControlSurface
@@ -32,7 +32,7 @@ from busk.process import report
 from busk.session.session import CommandResult
 from busk.web import api as web_api
 from busk.web.api import PROTOCOL_VERSION, STATE_HZ, WebApi, WebLink, WebSurface
-from busk.web.server import index_page
+from busk.web.server import index_page, stage_page
 from busk.web.websocket import WebSocket
 from harness import Harness
 from ws_client import WsClient, request
@@ -64,7 +64,8 @@ class Link:
     as :meth:`Session.submit`'s performance branch does, and is recorded."""
 
     def __init__(self, compiled: CompiledShow | None = None) -> None:
-        self.compiled = compiled or compile_doc(doc())
+        self.show = show_of(doc())
+        self.compiled = compiled or compile_show(self.show)
         self.harness = Harness(self.compiled)
         self.harness.tick(0.0)
         self.submitted: queue.Queue[tuple[Command, CommandOrigin]] = queue.Queue()
@@ -76,6 +77,8 @@ class Link:
             submit=self.submit,
             clock=lambda: 12.5,
             key=KEY,
+            show=lambda: self.show,
+            frame=lambda: self.harness.engine.latest,
         )
 
     def submit(self, command: Command, origin: CommandOrigin) -> CommandResult:
@@ -553,3 +556,92 @@ def test_a_taken_port_is_reported(link: Link, capsys: pytest.CaptureFixture[str]
     assert captured.err.startswith(f"Web s-web: cannot listen on 127.0.0.1:{first.server.port}")
     manager.close()
     first.close()
+
+
+# --------------------------------------------------------------------- the stage view
+
+
+def test_the_stage_goes_only_to_a_client_that_asks(link: Link) -> None:
+    api = WebApi("s-web", link.link())
+    phone, stage = connect(api), connect(api)
+    assert say(api, stage, {"type": "stage"}) == []
+    rig = stage.slots["rig"]
+    assert [f["number"] for f in rig["fixtures"]] == [101, 102, 201]
+    before = stage.slots["look"]["looks"]
+    assert before[0][:3] == [0.0, 0.0, 0.0]  # the heads are dark
+    fader = {"type": "SET_FADER", "playbackId": "pb-song", "level": 1.0}
+    assert say(api, phone, {"id": "1", "command": fader}) == []
+    assert say(api, phone, {"id": "2", "command": button(True, 0, playbackId="pb-song")}) == []
+    link.harness.tick(0.02)  # GO
+    link.harness.tick(1.0)  # the song's cue has faded the heads in
+    api.broadcast()
+    after = stage.slots["look"]["looks"]
+    assert min(after[0][:3]) > 0
+    assert "rig" not in phone.slots
+    assert "look" not in phone.slots
+    published = stage.published
+    api.broadcast()  # nothing new
+    assert stage.published == published
+
+
+def test_a_client_that_left_gets_no_more_looks(link: Link) -> None:
+    api = WebApi("s-web", link.link())
+    stage = connect(api)
+    say(api, stage, {"type": "stage"})
+    api.disconnected(cast(WebSocket, stage))
+    published = stage.published
+    phone = connect(api)
+    say(
+        api,
+        phone,
+        {"id": "1", "command": {"type": "SET_FADER", "playbackId": "pb-song", "level": 1.0}},
+    )
+    say(api, phone, {"id": "2", "command": button(True, 0, playbackId="pb-song")})
+    link.harness.tick(0.02)
+    link.harness.tick(1.0)
+    api.broadcast()
+    assert phone.slots["state"]["playbacks"][0]["state"] == "active"  # the show did change
+    assert stage.published == published
+
+
+def stage_text() -> str:
+    return stage_page().decode("utf-8")
+
+
+def test_the_stage_page_asks_for_the_stage_on_the_remote_s_socket() -> None:
+    text = stage_text()
+    assert "new WebSocket('ws://' + location.host + '/ws' + location.search)" in text
+    assert "JSON.stringify({ type: 'stage' })" in text
+    # three.js, pinned, is all it loads from outside: from jsDelivr, once (the browser caches it).
+    outside = set(re.findall(r"https?://[^\s\"']+", text))
+    assert outside
+    assert all(url.startswith("https://cdn.jsdelivr.net/npm/three@0.186.1/") for url in outside)
+
+
+def test_the_remote_shows_the_stage_in_a_frame_only_when_asked() -> None:
+    text = page_text()
+    assert 'made.src = "stage" + location.search;' in text
+    assert 'tab.href = "stage" + location.search;' in text
+
+
+def test_the_stage_page_is_served_with_the_key_only(surface: WebSurface) -> None:
+    assert surface.server.port is not None
+    connection, response = request(surface.server.port, f"/stage?k={KEY}")
+    connection.close()
+    assert response.status == 200
+    assert response.body == stage_page()
+    assert response.headers["content-type"] == "text/html; charset=utf-8"
+    connection, response = request(surface.server.port, "/stage")
+    connection.close()
+    assert response.status == 403
+
+
+def test_a_stage_round_trip(surface: WebSurface) -> None:
+    assert surface.server.port is not None
+    client = WsClient(surface.server.port, KEY)
+    assert [json.loads(client.recv_text())["type"] for _ in range(3)] == ["hello", "show", "state"]
+    client.send_text(json.dumps({"type": "stage"}))
+    messages = [json.loads(client.recv_text()) for _ in range(2)]
+    assert [m["type"] for m in messages] == ["rig", "look"]
+    assert len(messages[1]["looks"]) == len(messages[0]["fixtures"]) == 3
+    client.close()

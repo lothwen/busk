@@ -264,6 +264,8 @@ class Performance:
             submit=self.submit,
             clock=lambda: self.now,
             key="key",
+            show=lambda: stage.show,
+            frame=lambda: engine.latest,
         )
         self.api = WebApi(stage.surface("Phone"), link)
         self.phone = PhoneClient()
@@ -609,6 +611,8 @@ def test_the_phone_over_a_real_websocket(stage: Stage) -> None:
         submit=performance.submit,
         clock=lambda: performance.now,
         key="phone-key",
+        show=lambda: stage.show,
+        frame=lambda: engine.latest,
     )
     surface = next(s for s in stage.show["surfaces"] if s["id"] == phone_id)
     local = cast(ControlSurface, {**surface, "match": {"port": 0, "host": "127.0.0.1"}})

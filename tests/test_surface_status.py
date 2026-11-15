@@ -90,13 +90,16 @@ def lines() -> dict[str, list[str]]:
 @pytest.fixture
 def manager(lines: dict[str, list[str]]) -> Iterator[SurfaceManager]:
     """A manager that can serve web surfaces, closed after the test."""
-    compiled = compile_show(load_show(GOLDEN / "phase3_built_show.json")[0])
+    show = load_show(GOLDEN / "phase3_built_show.json")[0]
+    compiled = compile_show(show)
     web = WebLink(
         snapshot=lambda: None,
         compiled=lambda: compiled,
         submit=lambda command, origin: CommandResult(ok=True, message=""),
         clock=lambda: 0.0,
         key=KEY,
+        show=lambda: show,
+        frame=lambda: None,
     )
     made = SurfaceManager(
         lambda event: None, web, say=lines["say"].append, warn=lines["warn"].append

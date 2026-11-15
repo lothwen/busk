@@ -10,6 +10,14 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- The web remote shows the stage in 3D: the **3D** button in its header opens a view of the
+  show's rig above the strips (beside them on a phone held sideways), lit by what the engine
+  outputs (intensity, colour, shutter and strobe, pan, tilt and zoom), with beams in haze and
+  an arena sized to the stage. Its buttons make it full screen or open it in a tab of its own
+  (`/stage?k=…`). Each fixture stands where its `location` puts it, or in a row with the others
+  of its kind; moving, patching or adding one redraws the view. While it is open on a narrow
+  or short screen, the masters fold behind the **Masters** button. It loads three.js from the
+  internet the first time; the rest of the remote still needs none.
 - F2's panels have an option row per attribute set to a named option (gobos, prisms, the colour
   wheel, colour macros, fixture effects, the shutter) while the selection offers options for it:
   a chip per option sends `set gobo1 star`, and the first selected element's option is lit.

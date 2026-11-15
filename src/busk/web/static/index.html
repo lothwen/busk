@@ -19,6 +19,13 @@
   down and up by playback id: what you touch is what you get. The page name
   opens a list of the pages. The page reconnects every second when the
   connection drops.
+
+  The 3D button shows the stage view (stage.html, served beside this page) in
+  a frame above the strips, beside them on a phone held sideways, with a full
+  screen button and a link that opens it in a tab of its own. The frame is
+  made when the view opens and dropped when it closes, so a closed view costs
+  nothing; this browser remembers whether it was open. The stage view is the
+  one part that needs the internet (once, for three.js).
 -->
 <style>
   :root {
@@ -41,7 +48,8 @@
   #page { flex: 1; min-width: 0; font-weight: 600; font-size: 16px;
     overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   #page:not(:disabled)::after { content: " \25BE"; color: var(--dim); }
-  #prev, #next { width: 56px; }
+  #prev, #next, #view { width: 56px; }
+  body.show-stage #view { border-color: var(--accent); color: var(--accent); }
   #more { display: none; }
   body.show-masters #more { border-color: var(--accent); color: var(--accent); }
   #bo { width: 64px; font-weight: 700; }
@@ -64,8 +72,22 @@
   .hfader .fill { position: absolute; inset: 0 auto 0 0; background: #2f4f7a; }
   .hfader .text { position: relative; display: flex; justify-content: space-between;
     padding: 0 10px; line-height: 38px; white-space: nowrap; }
-  main { flex: 1; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(88px, 1fr);
-    gap: 8px; padding: 8px 16px; overflow-x: auto; min-height: 0; }
+  #deck { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  /* The stage view takes the room the strips leave, from 140 px to 520 px (past that, the
+     strips grow): a strip keeps its name and its buttons. */
+  #stage { position: relative; flex: 100 1 0; min-height: 140px; max-height: 520px;
+    margin: 8px 16px 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
+    background: #020203; }
+  #stage iframe { display: block; width: 100%; height: 100%; border: 0; }
+  #stage .tools { position: absolute; top: 6px; right: 6px; display: flex; gap: 6px; }
+  #stage .tools > * { display: flex; align-items: center; justify-content: center; width: 36px;
+    height: 36px; padding: 0; border: 1px solid var(--line); border-radius: 8px;
+    background: rgba(27, 29, 33, 0.8); color: var(--text); touch-action: manipulation; }
+  #stage svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; }
+  #stage:fullscreen { border: 0; border-radius: 0; }
+  main { flex: 1 1 auto; display: grid; grid-auto-flow: column;
+    grid-auto-columns: minmax(88px, 1fr); gap: 8px; padding: 8px 16px; overflow-x: auto;
+    min-height: 0; }
   .strip { display: flex; flex-direction: column; gap: 6px; min-height: 0; padding: 6px;
     border: 1px solid var(--line); border-top: 4px solid var(--idle); border-radius: 8px;
     background: var(--panel); }
@@ -87,6 +109,16 @@
     border-top: 1px solid var(--line); }
   #masters:empty { display: none; }
   #masters .master { display: flex; gap: 6px; flex: 1 1 240px; }
+  /* A narrow or short screen with the stage view open (a phone held upright, a laptop): the
+     masters fold behind the Masters button, as on a phone on its side, or the stage and the
+     strips get no room. */
+  @media (max-width: 699px), (max-height: 800px) {
+    body.show-stage #more { display: block; }
+    body.show-stage:not(.show-masters) #masters { display: none; }
+    body.show-stage.show-masters #deck { display: none; }
+    body.show-stage.show-masters #masters { flex: 1; align-content: flex-start; overflow-y: auto;
+      border-top: 0; padding-top: 6px; }
+  }
   /* A phone on its side: the header in one row, the masters behind a button, each strip's
      fader beside its buttons, and the strips scroll before they clip. */
   @media (orientation: landscape) and (max-height: 500px) {
@@ -101,8 +133,10 @@
     .vfader { grid-area: 4 / 1; min-height: 64px; }
     .buttons { grid-area: 4 / 2; align-content: start; }
     .buttons button { padding: 8px 4px; }
+    #deck { flex-direction: row; }
+    #stage { flex: 0 0 45%; min-height: 0; max-height: none; margin: 6px 0 6px 16px; }
     body:not(.show-masters) #masters { display: none; }
-    body.show-masters main { display: none; }
+    body.show-masters #deck { display: none; }
     body.show-masters #masters { flex: 1; align-content: flex-start; overflow-y: auto;
       border-top: 0; padding-top: 6px; }
   }
@@ -114,6 +148,7 @@
     <button id="prev" aria-label="previous page">&#9664;</button>
     <button id="page" aria-label="choose a page" disabled>&mdash;</button>
     <button id="next" aria-label="next page">&#9654;</button>
+    <button id="view" aria-label="3D stage view">3D</button>
   </div>
   <div class="row">
     <button id="bo">BO</button>
@@ -125,7 +160,17 @@
   <div id="status">connecting&hellip;</div>
 </header>
 <div id="out" hidden><b>OUTPUT OFF</b> &middot; no DMX is sent &middot; turn it on at the console</div>
-<main id="strips"></main>
+<div id="deck">
+  <div id="stage" hidden>
+    <div class="tools">
+      <button id="full" aria-label="full screen"><svg viewBox="0 0 24 24">
+        <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg></button>
+      <a id="tab" target="_blank" rel="noopener" aria-label="open in a new tab">
+        <svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v6H4V6h6"/></svg></a>
+    </div>
+  </div>
+  <main id="strips"></main>
+</div>
 <section id="masters"></section>
 <div id="picker" hidden><div id="pages"></div></div>
 <script>
@@ -463,6 +508,43 @@ document.getElementById("tap").addEventListener("pointerdown", () => {
   if (tapMaster) sendNow({type: "TAP", masterId: tapMaster.id});
 });
 
+// ------------------------------------------------------------------ stage view
+
+const STAGE_OPEN = "busk.stage";  // localStorage: "1" while the view is open
+
+function showStage(open) {
+  const box = document.getElementById("stage");
+  box.hidden = !open;
+  document.body.classList.toggle("show-stage", open);
+  const frame = box.querySelector("iframe");
+  if (open && !frame) {
+    const made = el("iframe");
+    made.title = "3D stage";
+    made.allow = "fullscreen";
+    made.src = "stage" + location.search;
+    box.prepend(made);
+  } else if (!open && frame) {
+    if (document.fullscreenElement === box) document.exitFullscreen();
+    frame.remove();  // its WebSocket and its rendering go with it
+  }
+  try { localStorage.setItem(STAGE_OPEN, open ? "1" : ""); } catch (e) { /* not kept */ }
+}
+
+document.getElementById("view").addEventListener("click", () => {
+  showStage(document.getElementById("stage").hidden);
+});
+const full = document.getElementById("full");
+full.hidden = !document.fullscreenEnabled;  // an iPhone has none: the tab link is there
+full.addEventListener("click", () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.getElementById("stage").requestFullscreen();
+});
+const tab = document.getElementById("tab");
+tab.href = "stage" + location.search;
+
+let stageOpen = false;
+try { stageOpen = localStorage.getItem(STAGE_OPEN) === "1"; } catch (e) { /* closed */ }
+showStage(stageOpen);
 connect();
 requestAnimationFrame(beat);
 </script>

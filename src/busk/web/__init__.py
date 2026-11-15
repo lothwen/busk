@@ -9,11 +9,17 @@
     access key and the origin check.
 ``busk.web.api``
     :class:`~busk.web.api.WebApi`: the JSON protocol (hello, show, state,
-    commands) and the broadcaster; :class:`~busk.web.api.WebSurface`: one
-    ``web`` surface in ``busk run``.
+    commands, the stage) and the broadcaster;
+    :class:`~busk.web.api.WebSurface`: one ``web`` surface in ``busk run``.
+``busk.web.stage``
+    :class:`~busk.web.stage.StageFeed`: the stage view's rig, from the show,
+    and each fixture's look, from the engine's frames.
 ``static/index.html``
     The phone page: one file, vanilla JS and CSS, no external resources.
     ``static/commands.json`` lists the command types it sends.
+``static/stage.html``
+    The stage view: the rig in 3D, with three.js from jsDelivr (the one
+    external resource, loaded only when the view is opened).
 
 Standard library only (decision 19). The engine never imports this package:
 the web surface reads published snapshots and submits commands, as the

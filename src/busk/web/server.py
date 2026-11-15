@@ -3,11 +3,14 @@
 Routes
 ------
 * ``GET /`` and ``GET /index.html`` serve the phone page;
+* ``GET /stage`` serves the 3D stage view (:mod:`busk.web.stage`), which
+  the phone page also shows in a frame;
 * ``GET /ws`` upgrades to a WebSocket (:mod:`busk.web.websocket`);
 * anything else is 404, and a method other than ``GET`` is 501.
 
-No path ever reaches the file system: the page is one file read from the
-package with :mod:`importlib.resources` (:func:`index_page`).
+No path ever reaches the file system: each page is one file read from the
+package with :mod:`importlib.resources` (:func:`index_page`,
+:func:`stage_page`).
 
 Access
 ------
@@ -55,6 +58,7 @@ from busk.web.websocket import (
 )
 
 PAGE_PATHS: Final = ("/", "/index.html")
+STAGE_PATH: Final = "/stage"
 SOCKET_PATH: Final = "/ws"
 
 HTTP_TIMEOUT: Final = 10.0
@@ -69,6 +73,11 @@ KEY_HINT: Final = b"Open the address printed by busk run: it ends with ?k=<key>.
 def index_page() -> bytes:
     """The phone page, from the package."""
     return importlib.resources.files("busk.web").joinpath("static/index.html").read_bytes()
+
+
+def stage_page() -> bytes:
+    """The 3D stage view, from the package."""
+    return importlib.resources.files("busk.web").joinpath("static/stage.html").read_bytes()
 
 
 class WebApp(Protocol):
@@ -104,6 +113,7 @@ class WebServer:
         self._key = key.encode("utf-8")
         self._port = port
         self.page = index_page() if page is None else page
+        self.stage = stage_page()
         self.stall = stall
         self.linger = linger
         self.port: int | None = None
@@ -214,14 +224,15 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         url = urlsplit(self.path)
         web = self.server.web
-        if url.path not in (*PAGE_PATHS, SOCKET_PATH):
+        if url.path not in (*PAGE_PATHS, STAGE_PATH, SOCKET_PATH):
             self._respond(404, b"Not found.\n")
             return
         if not web.allows(parse_qs(url.query).get("k", [""])[0]):
             self._respond(403, KEY_HINT)
             return
         if url.path != SOCKET_PATH:
-            self._respond(200, web.page, "text/html; charset=utf-8")
+            page = web.stage if url.path == STAGE_PATH else web.page
+            self._respond(200, page, "text/html; charset=utf-8")
             return
         try:
             key = check_upgrade(self.headers)

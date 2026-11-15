@@ -84,6 +84,31 @@ open with the **Masters** button. While `output off` holds, a red OUTPUT OFF bar
 It sends the same commands as a controller, so both drive the show together, and it
 reconnects by itself (after a console restart too).
 
+### The stage view
+
+The **3D** button in the header shows the show's rig in 3D, above the strips (beside them
+on a phone held sideways), lit by what busk sends: each fixture's intensity, colour,
+shutter and strobe, pan, tilt and zoom, with beams in haze, in an arena sized to the stage.
+Drag to orbit; two fingers (or the right mouse button and the wheel) pan and zoom. The
+corner buttons make it full screen and open it in a tab of its own (`/stage?k=…`, the
+remote's address with `stage` in place of the page), where W turns a work light on and
+off, R goes back to the front of house view, and a panel sets the haze. While the view is
+open on a narrow or short screen, the masters fold behind the **Masters** button. The
+browser remembers whether the view was open.
+
+A fixture stands where its `location` puts it (`fixture 101 location {"x": 0, "y": -3,
+"z": 6, "rx": 180, "ry": 0, "rz": 0}`): x, y and z in metres from the middle of the
+stage's downstage edge at deck height, x towards stage right, y downstage, z up; rx, ry
+and rz in degrees, turned about x, then y, then z. At 0 a fixture stands on its base and
+points up, so a hung one is rx 180. A fixture without a location stands in a row with
+the others of its kind, which comes from its profile's category. Moving, patching or
+adding a fixture redraws the view.
+
+The view draws what the engine outputs, also while `output off` holds (it says so). It
+needs the internet the first time, for three.js (the browser keeps it after that); the
+rest of the remote never does. It draws with WebGPU where the browser has it, which a page
+opened at the machine's network address does not, and with WebGL 2 otherwise.
+
 A phone sends **performance commands only**: it plays the show but cannot edit it or the
 programmer. The buttons it holds are released when it disconnects, so a phone that loses
 Wi-Fi in the middle of a flash does not leave the flash up.

@@ -18,14 +18,23 @@ Server →    When
             most :data:`STATE_HZ` times a second: the
             :class:`~busk.engine.snapshot.EngineSnapshot` as JSON
 ``error``   a command refused: ``id`` (the client's) and ``message``
+``rig``     to a client that asked for the stage, then when what the stage
+            view draws of the show changes: the rig (:mod:`busk.web.stage`)
+``look``    to a client that asked for the stage, then when a fixture's look
+            in the engine's frame changes, at most :data:`STATE_HZ` times a
+            second: every fixture's look
 ==========  =================================================================
 
-A client sends ``{"id": <its id>, "command": {…}}``. Only *performance*
-commands are accepted (decision 15: single writer; programmer and show edits
-stay on the console), so the session lock is never taken. They go through
-``submit`` with the origin ``{surfaceId, remote: "ip:port"}``; a command the
-bus rejects is answered with an ``error``, an accepted one with nothing (the
-next ``state`` shows it).
+A client sends ``{"id": <its id>, "command": {…}}``, or ``{"type":
+"stage"}`` to get the ``rig`` and the ``look`` messages from then on (the
+stage view, ``static/stage.html``: a phone that never asks never gets them,
+and the engine sends its frames to the console only once one has asked).
+
+Only *performance* commands are accepted (decision 15: single writer;
+programmer and show edits stay on the console), so the session lock is never
+taken. They go through ``submit`` with the origin ``{surfaceId, remote:
+"ip:port"}``; a command the bus rejects is answered with an ``error``, an
+accepted one with nothing (the next ``state`` shows it).
 
 Rate limit
 ----------
@@ -71,12 +80,15 @@ from typing import TYPE_CHECKING, Final, cast
 from busk.commands.classes import command_class
 from busk.commands.types import Command, CommandOrigin
 from busk.compiler.compile import CompiledShow
+from busk.engine.loop import Frame
 from busk.engine.snapshot import EngineSnapshot
 from busk.io.ratelimit import WEB_BURST, WEB_RATE, TokenBucket
 from busk.model.common import PlaybackId, SurfaceId
+from busk.model.show import Show
 from busk.model.surface import ControlSurface
 from busk.output.netif import ipv4_addresses
 from busk.web.server import WebServer
+from busk.web.stage import StageFeed
 from busk.web.websocket import LINGER, STALL_TIMEOUT, WebSocket
 
 if TYPE_CHECKING:
@@ -100,6 +112,8 @@ class WebLink:
     submit: Callable[[Command, CommandOrigin], CommandResult]  # Session.submit
     clock: Callable[[], float]  # engine time
     key: str  # the access key (busk.persistence.paths.web_key)
+    show: Callable[[], Show]  # the show the session holds, for the stage view's rig
+    frame: Callable[[], Frame | None]  # the engine's newest frame (asks for frames at once)
 
 
 def show_message(compiled: CompiledShow) -> Message:
@@ -182,6 +196,8 @@ class WebApi:
         self._snapshot: EngineSnapshot | None = None
         self._show: str | None = None
         self._state: str | None = None
+        self._watchers: set[WebSocket] = set()  # the clients that asked for the stage
+        self._stage = StageFeed()
         self.errors = 0
 
     # ------------------------------------------------------------ clients
@@ -218,6 +234,9 @@ class WebApi:
         if not isinstance(message, dict):
             self._error(client, None, 'expected an object {"id": …, "command": {…}}')
             return
+        if message.get("type") == "stage":
+            self._watch(client)
+            return
         ident = message.get("id")
         if not isinstance(ident, str | int) or isinstance(ident, bool):
             ident = None
@@ -250,6 +269,7 @@ class WebApi:
         with self._lock:
             held = self._clients.pop(client, set())
             self._buckets.pop(client, None)
+            self._watchers.discard(client)
         for playback, slot, button in sorted(held, key=repr):
             command: Message = {"type": "PLAYBACK_BUTTON", "button": button, "down": False}
             if playback is not None:
@@ -272,6 +292,18 @@ class WebApi:
             self._error(client, None, f"rate limit: {dropped} {noun} dropped")
         return False
 
+    def _watch(self, client: WebSocket) -> None:
+        """Send ``client`` the rig and the looks, now and from now on."""
+        with self._lock:
+            if client not in self._clients:
+                return  # gone meanwhile
+            self._watchers.add(client)
+            self._update_stage()
+            if self._stage.rig is not None:
+                client.publish("rig", self._stage.rig)
+            if self._stage.look is not None:
+                client.publish("look", self._stage.look)
+
     def _origin(self, client: WebSocket) -> CommandOrigin:
         return {"surfaceId": self.surface_id, "remote": client.remote}
 
@@ -281,7 +313,8 @@ class WebApi:
     # ------------------------------------------------------------ broadcast
 
     def broadcast(self) -> None:
-        """Hand a new show or state to every client."""
+        """Hand a new show or state to every client, and a new rig or look
+        to every client that asked for the stage."""
         with self._lock:
             show, state = self._update()
             for client in self._clients:
@@ -289,6 +322,19 @@ class WebApi:
                     client.publish("show", show)
                 if state is not None:
                     client.publish("state", state)
+            if self._watchers:
+                self._update_stage()
+
+    def _update_stage(self) -> None:
+        """Read the show and the frame into the stage feed, and hand a
+        changed rig or look to every client that asked for the stage
+        (under the lock)."""
+        rig, look = self._stage.update(self._link.show(), self._link.frame())
+        for client in self._watchers:
+            if rig is not None:
+                client.publish("rig", rig)
+            if look is not None:
+                client.publish("look", look)
 
     def _update(self) -> tuple[str | None, str | None]:
         """Serialise the show and the snapshot if they changed (under the
