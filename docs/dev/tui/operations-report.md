@@ -27,7 +27,9 @@ the intensity and colour columns leave out. Its Phase 24 made busk refuse a mode
 lacks an element something names in one line, where F3's mode chips and `[profile…]` put one
 document path per element in the log; that side finding is gone. Its Phase 25 added the line that
 loads a cue into the programmer (GAP-44), and F4's `[load]`, so a cue's values are edited as any
-look is and recorded back. Its Phase 34 added the DMX readout (GAP-52): `list dmx` at the prompt,
+look is and recorded back. Its Phase 27 added the read of a cue list's tracked states (GAP-46),
+`list cue L/C`, and `cue L/C block on|off` (GAP-47), and its Phase 28 F4's TRACK panel, which
+shows the chosen cue's, and `[block]`. Its Phase 34 added the DMX readout (GAP-52): `list dmx` at the prompt,
 `list universes`'s counts, and F8's channel values, in its hint row and its CHANNELS panel. Its
 Phase 35 added the lines that rename and delete a master (GAP-53), and F7's MASTERS panel, which
 makes, renames and deletes them. Its Phase 36 gave the last setup lines a control: F2's option rows
@@ -149,6 +151,8 @@ In short:
 | Trigger | `cue L/C go`, `… follow <d>`, `… wait <d>` | yes | control: F4 `[follow…]`, `[wait…]` and a click on those cells, dialogs; `go`: pre-fill, a whole line |
 | Rename | `rename cue L/C "…"` | yes | control: F4 `[rename…]`, a name dialog |
 | Release targets | `cue L/C release <targets> [only …]` | yes | control: F4 `[release…]`, a form that starts at the selection |
+| Show the tracked state | `list cue L/C`; typed `LiveShow.tracking(L)` (GAP-46) | yes: what each cue puts on stage when the list plays by GO from its first cue, each value with the cue that stores it, and what it releases | control: F4's TRACK panel, under the cue table, for the chosen cue: a row per fixture, a column per family the list uses; its own values bright, tracked ones dim with the cue they come from (`← 9/1`), `✕` a release. Read when F4 shows the list, and after each show edit |
+| Block | `cue L/C block on\|off` (GAP-47) | yes | control: F4 `[block]`, lit on a block cue, without a question; TRACK says when the chosen cue is one |
 | Renumber, move, copy | `cue L/C number M`, `cue L/C copy [L2/]M` (GAP-43) | yes: a renumbered cue goes to its place in the list, past its neighbours if it must; a copy has a new id, in its own list or another. A move to another list is a copy, then a delete | control: F4 `[number…]` and `[copy…]` (a list, the one shown first, and a number), dialogs that refuse a number the list has |
 
 ## Cue lists

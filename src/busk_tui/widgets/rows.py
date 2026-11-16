@@ -5,7 +5,7 @@ A :class:`RowTable` is one widget, drawn line by line: a page hands it new
 rows (:meth:`RowTable.show`), and only the lines that changed are drawn
 again, without a layout pass while the number of rows stays (F5's running
 effects change 20 times a second, the others not). Its columns are a
-class's :data:`COLUMNS`; when
+class's :data:`COLUMNS`, or a table's own (:meth:`RowTable.columns`); when
 the table is narrower than all of them, the columns with the highest
 ``drop`` go first, and a ``flex`` column takes the room left. A click posts
 :class:`RowTable.Clicked` with the row and the name of the column under the
@@ -133,6 +133,11 @@ class RowTable(Widget):
             changed |= {row for row in (was, chosen) if row is not None}
         self._redraw_rows(changed | (lit ^ was_lit))
 
+    def columns(self) -> tuple[Column, ...]:
+        """The table's columns: its class's :data:`COLUMNS`, unless a table
+        makes its own (F4's TRACK panel, a column per family the list uses)."""
+        return self.COLUMNS
+
     def mark(self, index: int | None) -> None:
         """The pane cursor on spot ``index`` (``None``: nowhere)."""
         before = self._marked
@@ -152,7 +157,7 @@ class RowTable(Widget):
         """Line ``y``: the header (0), else row ``y - 1``."""
         if not self.rows:
             return self.empty.copy()
-        shown = fit(self.COLUMNS, width)
+        shown = fit(self.columns(), width)
         if y == 0:
             header = Text(style=f"{colors.CYAN} on {colors.BAR}")
             for index, (column, size) in enumerate(shown):
@@ -213,7 +218,7 @@ class RowTable(Widget):
         if offset is None or not 0 < offset.y <= len(self.rows):
             return None, None
         left = 0
-        for column, size in fit(self.COLUMNS, self.size.width):
+        for column, size in fit(self.columns(), self.size.width):
             if left <= offset.x < left + size:
                 return offset.y - 1, column.name
             left += size + 1

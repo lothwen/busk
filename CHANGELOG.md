@@ -10,6 +10,11 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- F4 has a TRACK panel under the cue table: what the chosen cue puts on stage when its list plays
+  by GO from its first cue, a row per fixture and a column per family. A value the cue stores is
+  bright, one it tracks from an earlier cue dim, with that cue after it (`██ Blue ← 9/1`), and a
+  release is `✕`. With the mouse on a cell, the hint row says it in words (`201 color Blue,
+  tracked from 9/1`). F4's `[block]`, lit on a block cue, sends `cue 9/3 block on` or `off`.
 - `list cue L/C` prints what a cue puts on stage when its list is played by GO from its first
   cue: a line per fixture (per element where a fixture's elements differ) with each value, `←
   9/1` after one tracked from an earlier cue, then what the cue releases and its effects.

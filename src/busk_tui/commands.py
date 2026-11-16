@@ -687,6 +687,12 @@ def cue_release(cue_list: int, cue: str, targets: str, only: Sequence[str] = ())
     return Line(f"cue {cue_list}/{cue} release {targets}{attributes}")
 
 
+def cue_block(cue_list: int, cue: str, on: bool) -> Line:
+    """``cue 9/3 block on``: the cue tracks nothing from the cues before it;
+    ``off``: it tracks again."""
+    return Line(f"cue {cue_list}/{cue} block {'on' if on else 'off'}")
+
+
 def cue_time(
     cue_list: int,
     cue: str,

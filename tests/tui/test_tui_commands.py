@@ -256,6 +256,8 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
     ),
     "renumber cue": (commands.renumber_cue(9, "1", "7"), "cue 9/1 number 7", False),
     "load cue": (commands.load_cue(9, "2"), "load cue 9/2", False),
+    "cue block on": (commands.cue_block(9, "3", True), "cue 9/3 block on", False),
+    "cue block off": (commands.cue_block(9, "3", False), "cue 9/3 block off", False),
     "copy cue": (commands.copy_cue(9, "7", 9, "8"), "cue 9/7 copy 8", False),
     "copy cue to another list": (commands.copy_cue(9, "7", 10, "5"), "cue 9/7 copy 10/5", False),
     "cuelist add": (
@@ -1209,6 +1211,10 @@ def test_the_cue_and_list_lines_do_what_they_say(show: busk.OfflineShow) -> None
     assert cue_list(30)["cues"][0]["entries"] == []
     run(commands.cuelist_tracking(30, True))
     assert cue_list(30)["tracking"] is True
+    run(commands.cue_block(30, "2.5", True))
+    assert cue_list(30)["cues"][0]["block"] is True
+    run(commands.cue_block(30, "2.5", False))
+    assert "block" not in cue_list(30)["cues"][0]
     run(commands.chase_settings(30, hz="0.125", direction="bounce", crossfade="0.5"))
     assert cue_list(30)["mode"] == "chase"
     assert cue_list(30)["chase"]["rate"] == {"kind": "hz", "value": 0.125}

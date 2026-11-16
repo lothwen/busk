@@ -14,7 +14,8 @@ own (plan §4.1):
   controls, in order; they never wait for an ordered line (busk's GAP-12);
 * the **reader** looks at the show's published state 20 times a second (the
   output, the running effects and the DMX frame, while a page shows them, 10
-  times) and
+  times; a cue list's tracked states, while F4 shows the list, once
+  and after each show edit) and
   sends an event only when something changed; when the selection changes,
   it asks busk's completion which options the selection offers (busk's
   ``expected`` only reads, so any thread may ask);
@@ -60,6 +61,7 @@ from busk import (
     Show,
     ShowLoadError,
     SurfaceStatus,
+    TrackedCue,
     load_show,
 )
 from busk_tui import attributes, commands
@@ -130,6 +132,10 @@ from busk_tui.model import (
     SurfaceView,
     Targets,
     TemplateInfo,
+    TrackCue,
+    TrackingChanged,
+    TrackSheet,
+    TrackValue,
     UniverseView,
     Value,
     newest_only,
@@ -243,6 +249,8 @@ class _Seen:
     output_at: float = 0.0  # when the output was last read (monotonic)
     dmx: tuple[tuple[int, bytes], ...] | None = None  # None: send the next read, whatever it is
     dmx_at: float = 0.0  # when the frame was last read for it (monotonic)
+    tracked: tuple[Show | None, int | None] = (None, None)  # the last sheet's document and list
+    sheet: TrackSheet | None = None  # None: send the next read, whatever it is
     routes: tuple[RouteStatus, ...] | Literal["unread"] | None = "unread"
     surfaces: tuple[SurfaceStatus, ...] | Literal["unread"] | None = "unread"
     frame: int | None = None
@@ -289,6 +297,7 @@ class Bridge:
         self._help: tuple[str, ...] = ()
         self._session: SessionState | None = None
         self._watching = (False, False, False)  # output, effects, DMX
+        self._tracking: int | None = None  # the cue list whose tracked states the reader reads
         self._seen = _Seen()
         self._news = _News(self._events.put)
         self._log_level: int | None = None
@@ -455,6 +464,17 @@ class Bridge:
             self._seen.dmx = None
             self._seen.dmx_at = 0.0
         self._watching = (output, effects, dmx)
+
+    def track(self, cue_list: int | None) -> None:
+        """Which cue list's tracked states the reader reads (busk's GAP-46,
+        F4's TRACK panel; ``None``: none): at once, and again after each show
+        edit, not at every look, since a long list costs busk a read of
+        each cue's every value. Asked again, the next read is sent even if
+        it has not changed."""
+        self._tracking = cue_list
+        self._seen.tracked, self._seen.sheet = (None, None), None
+        if cue_list is not None:
+            self._poke.set()
 
     def drain(self) -> list[BridgeEvent]:
         """The events since the last call, in order, with only the newest of
@@ -684,6 +704,14 @@ class Bridge:
                 seen.dmx = universes
                 put(DmxChanged(DmxModel(frame.seq, universes)))
         self._look_at_health(show.health)
+        tracking, (was_doc, was_list) = self._tracking, seen.tracked
+        if tracking is not None and (doc is not was_doc or tracking != was_list):
+            cues = show.tracking(tracking)  # after an edit only: a long list costs busk
+            sheet = None if cues is None else track_sheet(tracking, cues)
+            seen.tracked = (doc, tracking)
+            if sheet is not None and sheet != seen.sheet:
+                seen.sheet = sheet
+                put(TrackingChanged(sheet))
 
     def _look_at_health(self, health: EngineHealth | None) -> None:
         seen = self._seen
@@ -1096,6 +1124,34 @@ def cue_info(cue: Mapping[str, Any], names: _Names) -> CueInfo:
         trigger=trigger["kind"],
         delay=float(trigger.get("delay", 0.0)),
         values=tuple(stored_value(entry, names) for entry in cue["entries"]),
+        block=bool(cue.get("block", False)),
+    )
+
+
+def track_sheet(cue_list: int, cues: Sequence[TrackedCue]) -> TrackSheet:
+    """Cue list ``cue_list``'s tracked states (busk's ``tracking(L)``)."""
+    return TrackSheet(
+        cue_list,
+        tuple(
+            TrackCue(
+                number=cue.number,
+                name=cue.name,
+                block=cue.block,
+                values=tuple(
+                    TrackValue(
+                        number=value.number,
+                        element=value.element,
+                        attribute=value.attribute,
+                        value=_value(value.value),
+                        preset=None if value.preset is None else value.preset[2],
+                        since=value.trackedFrom,
+                    )
+                    for value in cue.values
+                ),
+                released=cue.released,
+            )
+            for cue in cues
+        ),
     )
 
 

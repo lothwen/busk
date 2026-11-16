@@ -6,6 +6,13 @@ chosen one: a meta line (its mode, the playbacks that run it with their
 level, the groups and fixtures its cues set), its cues
 (:mod:`busk_tui.widgets.cuetable`), its buttons and the edits of one cue.
 
+**TRACK** (pending plan Phase 28, Q10 (a)), a panel under CUELIST, shows
+what the chosen cue puts on stage when the list plays by GO from its first
+cue (:mod:`busk_tui.widgets.trackpanel`): a row per fixture, a column per
+family, and the cue each tracked value comes from. The bridge reads the
+list's tracked states while F4 shows it (:meth:`tracks`), once and after
+each show edit.
+
 **Which list.** The list of the selected playback (Space, ``[ ]``, ``P9`` in
 the prompt): ← → on an empty prompt step through the lists of the page's
 playbacks. A click on a list chooses it, and selects the playback that runs
@@ -44,7 +51,9 @@ list keeps, else ``bpm x 1`` (busk refuses the spec's ``x1``).
 list…]``, under CUELISTS, adds one and shows it.
 
 **The cue's row**, after those: ``[release…]`` (targets and attributes
-in a form, ``cue 9/3 release group 1 only pan``), ``[record at…]`` (a free
+in a form, ``cue 9/3 release group 1 only pan``), ``[block]`` (lit on a
+block cue: ``cue 9/3 block on|off``, with no question, since ``undo`` takes
+it back), ``[record at…]`` (a free
 number and a name; the new cue is chosen), ``[load]`` (``load cue 9/3``:
 what the cue stores, in the programmer, to edit it and ``[replace]`` it
 back), ``[merge]``, ``[replace]`` and ``[remove]`` (``record cue 9/3
@@ -68,13 +77,14 @@ from typing import Final
 from rich.text import Text
 from textual import events
 from textual.app import ComposeResult
-from textual.containers import Horizontal
+from textual.containers import Horizontal, Vertical
 from textual.widgets import Static
 
 from busk_tui import colors, commands
+from busk_tui.colors import ColorMode
 from busk_tui.commands import Line, exact, exact_pair
 from busk_tui.formats import numbers_text, selection_text
-from busk_tui.model import CueInfo, CueListInfo, LiveState, ShowModel
+from busk_tui.model import CueInfo, CueListInfo, LiveState, ShowModel, TrackSheet
 from busk_tui.nav import Item, Stop
 from busk_tui.pages.base import Page, Part, View
 from busk_tui.widgets.chase_dialog import ChaseDialog
@@ -102,12 +112,18 @@ from busk_tui.widgets.panel import Panel
 from busk_tui.widgets.playbacks import LEVEL_COLORS, PlaybackRow
 from busk_tui.widgets.quick import strip_stops
 from busk_tui.widgets.rows import RowTable
+from busk_tui.widgets.trackpanel import Track, TrackTable, families, track
 
 NARROW: Final = 100
 """Below this many columns the panels go one under the other (spec §3)."""
 
 NO_LISTS: Final = "no cue lists · select fixtures, set a look, then record cue 1"
 NO_CUES: Final = "no cues · record cue {} records the programmer as one"
+READING: Final = "reading the tracked states…"
+NOTHING_ON_STAGE: Final = "cue {}/{} gives no fixture a value"
+
+BLOCK_LIT: Final = f"bold {colors.BG} on {colors.AMBER}"
+"""``[block]`` on a block cue: reversed, as a lit toggle."""
 
 
 def meta_text(cue_list: CueListInfo, show: ShowModel, live: LiveState | None) -> Text:
@@ -163,6 +179,14 @@ def grey(label: str) -> StripButton:
     return StripButton(Text(f"[{label}]", style=colors.BORDER), Line(""), note=True)
 
 
+def block_button(cue_list: int, cue: CueInfo) -> StripButton:
+    """``[block]``, lit on a block cue: ``cue 9/3 block on``, or ``off`` on
+    a block cue. The style is a span, so lit or not compare different."""
+    label = Text()
+    label.append("[block]", style=BLOCK_LIT if cue.block else colors.AMBER)
+    return StripButton(label, commands.cue_block(cue_list, cue.number, not cue.block))
+
+
 def cue_words(cue_list: int, cue: CueInfo) -> str:
     """``cue 9/3 "Pre"``, for a question."""
     return f"cue {cue_list}/{cue.number}" + (f' "{cue.name}"' if cue.name else "")
@@ -193,10 +217,13 @@ class CuesPage(Page):
     DEFAULT_CSS = """
     CuesPage #cues-row { height: auto; }
     CuesPage #cuelists { width: 38; }
-    CuesPage #cuelist { width: 1fr; }
+    CuesPage #cue-side { width: 1fr; height: auto; }
+    CuesPage #cue-side > Panel { width: 100%; }
     CuesPage #cues-row.stacked { layout: vertical; }
     CuesPage #cues-row.stacked > Panel { width: 100%; }
+    CuesPage #cues-row.stacked > #cue-side { width: 100%; }
     CuesPage #cuelist-meta { margin-bottom: 1; }
+    CuesPage #track-note { margin-bottom: 1; }
     CuesPage #cue-buttons { margin-top: 1; }
     CuesPage #cuelist-add { margin-top: 1; }
     CuesPage .cue-row { height: auto; }
@@ -209,6 +236,9 @@ class CuesPage(Page):
         self.lists = CueListTable(Text(NO_LISTS, style=colors.DIM), id="cuelist-table")
         self.meta = Static("", id="cuelist-meta")
         self.cues = CueTable(id="cue-table")
+        self.track_note = Static("", id="track-note")
+        self.track_table = TrackTable(id="track-table")
+        self.track_panel = Panel("track", self.track_note, self.track_table, id="track")
         self.buttons = ButtonStrip(id="cue-buttons")
         self.list_label = Static("", id="cue-list-label", classes="cue-row-label")
         self.list_edits = ButtonStrip(id="cue-list-edits", classes="cue-row-strip")
@@ -216,6 +246,7 @@ class CuesPage(Page):
         self.edits = ButtonStrip(id="cue-edits", classes="cue-row-strip")
         self.list_add = ButtonStrip([ask("+ list…", self.ask_add_list)], id="cuelist-add")
         self.panel = Panel("cuelist", id="cuelist")
+        self.side = Vertical(id="cue-side")
         self.browser = Panel("cuelists", self.lists, self.list_add, id="cuelists")
         self.list: int | None = None  # the chosen list's number
         self.cue: str | None = None  # the chosen cue's number, until the list changes
@@ -223,20 +254,26 @@ class CuesPage(Page):
         self._view = View()
         self._shown_lists: tuple[CueListInfo, ...] = ()
         self._shown_cues: tuple[CueInfo, ...] = ()
+        self._told: int | None = None  # the list whose tracked states the page last asked for
+        self._families: tuple[TrackSheet, tuple[str, ...]] | None = None  # the newest sheet's
+        self._track: tuple[TrackSheet, str, ColorMode, Track] | None = None  # the newest drawn
+        self._track_title: tuple[str, str | None] | None = None
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="cues-row"):
             yield self.browser
-            with self.panel:
-                yield self.meta
-                yield self.cues
-                yield self.buttons
-                with Horizontal(id="cue-list-row", classes="cue-row"):
-                    yield self.list_label
-                    yield self.list_edits
-                with Horizontal(id="cue-edit-row", classes="cue-row"):
-                    yield self.edit_label
-                    yield self.edits
+            with self.side:
+                with self.panel:
+                    yield self.meta
+                    yield self.cues
+                    yield self.buttons
+                    with Horizontal(id="cue-list-row", classes="cue-row"):
+                        yield self.list_label
+                        yield self.list_edits
+                    with Horizontal(id="cue-edit-row", classes="cue-row"):
+                        yield self.edit_label
+                        yield self.edits
+                yield self.track_panel
 
     def on_resize(self, event: events.Resize) -> None:
         """Below :data:`NARROW` the chosen list goes on top, the lists under it."""
@@ -245,9 +282,9 @@ class CuesPage(Page):
         if stacked != row.has_class("stacked"):
             row.set_class(stacked, "stacked")
             if stacked:
-                row.move_child(self.panel, before=self.browser)
+                row.move_child(self.side, before=self.browser)
             else:
-                row.move_child(self.browser, before=self.panel)
+                row.move_child(self.browser, before=self.side)
 
     # ------------------------------------------------------------ state
 
@@ -255,7 +292,7 @@ class CuesPage(Page):
         self._view = view
         if changed & {"show", "playback"}:
             self._follow()
-        if changed & {"show", "live", "playback", "programmer"}:
+        if changed & {"show", "live", "playback", "programmer", "tracking"}:
             self._draw()
 
     def _follow(self) -> None:
@@ -278,6 +315,17 @@ class CuesPage(Page):
     def _choose(self, number: int | None) -> None:
         if number != self.list:
             self.list, self.cue = number, None
+
+    def tracks(self) -> int | None:
+        """The chosen list: TRACK shows its tracked states."""
+        return self.list
+
+    def _tell_tracks(self) -> None:
+        """Ask the bridge for the tracked states of the list shown, once it
+        shows another (or none)."""
+        if self.tracks() != self._told:
+            self._told = self.tracks()
+            self.post_message(Page.WatchesChanged(self))
 
     def runner(self) -> int | None:
         """The chosen list's playback: the selected one if it runs the list,
@@ -324,6 +372,7 @@ class CuesPage(Page):
     # ------------------------------------------------------------- draw
 
     def _draw(self) -> None:
+        self._tell_tracks()
         view, show = self._view, self._view.show
         lists = () if show is None else show.cueLists
         self._shown_lists = lists
@@ -335,18 +384,60 @@ class CuesPage(Page):
         self.panel.display = cue_list is not None
         if show is None or cue_list is None:
             self._shown_cues = ()
+            self.track_panel.display = False
             return
         self.panel.set_title(f"cuelist {cue_list.number}", cue_list.name)
         self._update(self.meta, meta_text(cue_list, show, view.live))
         self._shown_cues = cue_list.cues
         current = self.current()
-        rows = [cue_cells(cue_list, cue, cue.number == current, view.mode) for cue in cue_list.cues]
         picked = self.chosen_cue()
         empty = Text(NO_CUES.format(cue_list.number), style=colors.DIM)
+        rows = [cue_cells(cue_list, c, c.number == current, view.mode) for c in cue_list.cues]
         self.cues.show(rows, None if picked is None else cue_list.cues.index(picked), empty)
         self.buttons.show(self._buttons(cue_list))
         self._draw_list_edits(cue_list)
         self._draw_edits(cue_list.number, picked)
+        self._draw_track(cue_list, picked)
+
+    def _draw_track(self, cue_list: CueListInfo, cue: CueInfo | None) -> None:
+        """TRACK: what the chosen cue puts on stage, from the newest sheet of
+        the list, once the bridge has read it; none on a list with no cues."""
+        self.track_panel.display = cue is not None
+        if cue is None:
+            return
+        title = (f"track {cue_list.number}/{cue.number}", cue.name or None)
+        if title != self._track_title:
+            self._track_title = title
+            self.track_panel.set_title(*title)
+        note = ""
+        if cue.block and cue_list.tracking:
+            note = "a block cue: it tracks nothing from the cues before it"
+        elif not cue_list.tracking:
+            note = f"cue list {cue_list.number} does not track: each value is the cue's own"
+        self.track_note.display = bool(note)
+        self._update(self.track_note, Text(note, style=colors.DIM))
+        shown = self._tracked(cue_list.number, cue.number)
+        empty = NOTHING_ON_STAGE.format(cue_list.number, cue.number) if shown else READING
+        self.track_table.show_track(shown, Text(empty, style=colors.DIM))
+
+    def _tracked(self, cue_list: int, cue: str) -> Track | None:
+        """The newest sheet's table of ``cue``, made again only for a new
+        sheet, cue or colour mode; ``None`` until the bridge has read the
+        list, or the cue (one just made)."""
+        sheet, mode = self._view.tracking, self._view.mode
+        if sheet is None or sheet.cueList != cue_list:
+            return None
+        made = self._track
+        if made is not None and made[0] is sheet and made[1:3] == (cue, mode):
+            return made[3]
+        found = next((tracked for tracked in sheet.cues if tracked.number == cue), None)
+        if found is None:
+            return None
+        if self._families is None or self._families[0] is not sheet:
+            self._families = (sheet, families(sheet))
+        table = track(found, cue_list, self._families[1], mode)
+        self._track = (sheet, cue, mode, table)
+        return table
 
     def _buttons(self, cue_list: CueListInfo) -> list[StripButton]:
         runner = self.runner()
@@ -428,6 +519,7 @@ class CuesPage(Page):
                 ask("number…", self.ask_number),
                 ask("copy…", self.ask_copy),
                 ask("release…", self.ask_release),
+                block_button(cue_list, cue),
                 record_at,
                 load,
                 *writes,

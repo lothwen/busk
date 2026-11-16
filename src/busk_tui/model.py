@@ -464,6 +464,43 @@ class CueInfo:
     trigger: str = "go"  # go, follow, wait
     delay: float = 0.0  # a follow's or a wait's delay
     values: tuple[StoredValue, ...] = ()  # its value entries, in the order stored
+    block: bool = False  # a block cue tracks nothing from the cues before it
+
+
+@dataclass(frozen=True, slots=True)
+class TrackValue:
+    """One value of a cue's tracked state (busk's ``TrackedValue``): what it
+    gives one attribute of one fixture element, and ``since``, the number of
+    the cue of the list that stores it (``None``: the cue itself)."""
+
+    number: int
+    element: int  # counted from 1
+    attribute: str
+    value: Value
+    preset: str | None  # the preset's name, for a preset reference
+    since: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class TrackCue:
+    """One cue of a list as it plays when the list is played by GO from its
+    first cue (busk's ``TrackedCue``): the values it puts on stage, by
+    fixture number, element and attribute, and the ``(number, element,
+    attribute)`` slots it takes away."""
+
+    number: str
+    name: str
+    block: bool
+    values: tuple[TrackValue, ...]
+    released: tuple[tuple[int, int, str], ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class TrackSheet:
+    """A cue list's tracked states (busk's ``tracking(L)``): F4's TRACK panel."""
+
+    cueList: int
+    cues: tuple[TrackCue, ...]  # in list order
 
 
 @dataclass(frozen=True, slots=True)
@@ -758,6 +795,13 @@ class DmxChanged:
 
 
 @dataclass(frozen=True, slots=True)
+class TrackingChanged:
+    """The tracked states of the list the UI asked for (:meth:`BridgeLike.track`)."""
+
+    sheet: TrackSheet
+
+
+@dataclass(frozen=True, slots=True)
 class RoutesChanged:
     routes: tuple[RouteView, ...]
 
@@ -799,6 +843,7 @@ type BridgeEvent = (
     | EffectsChanged
     | OutputChanged
     | DmxChanged
+    | TrackingChanged
     | RoutesChanged
     | SurfacesChanged
     | HealthChanged
@@ -814,6 +859,7 @@ STATE_EVENTS: tuple[type, ...] = (
     EffectsChanged,
     OutputChanged,
     DmxChanged,
+    TrackingChanged,
     RoutesChanged,
     SurfacesChanged,
     HealthChanged,
@@ -853,6 +899,11 @@ class BridgeLike(Protocol):
     def expected(self, line: str) -> Completion: ...
 
     def watch(self, output: bool, effects: bool, dmx: bool = False) -> None: ...
+
+    def track(self, cue_list: int | None) -> None:
+        """Read the tracked states of cue list ``cue_list`` (``None``: of
+        none), now and after each show edit, as :class:`TrackingChanged`."""
+        ...
 
     def drain(self) -> list[BridgeEvent]: ...
 

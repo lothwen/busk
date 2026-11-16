@@ -78,6 +78,7 @@ class FakeBridge:
     stopped: bool = False
     watching: tuple[bool, bool] = (False, False)
     watching_dmx: bool = False
+    tracking: int | None = None  # the cue list whose tracked states the UI asked for
     busy_line: Busy | None = None
     _tickets: Any = field(default_factory=lambda: itertools.count(1))
 
@@ -119,6 +120,9 @@ class FakeBridge:
     def watch(self, output: bool, effects: bool, dmx: bool = False) -> None:
         self.watching = (output, effects)
         self.watching_dmx = dmx
+
+    def track(self, cue_list: int | None) -> None:
+        self.tracking = cue_list
 
     def drain(self) -> list[BridgeEvent]:
         events, self.events = self.events, []
@@ -245,7 +249,7 @@ def column(table: RowTable, name: str) -> list[str]:
 async def click_cell(pilot: Pilot[int], table: RowTable, row: int, name: str) -> None:
     """Click row ``row`` of ``table``, in its column ``name``."""
     x = 0
-    for shown, width in fit(type(table).COLUMNS, table.size.width):
+    for shown, width in fit(table.columns(), table.size.width):
         if shown.name == name:
             break
         x += width + 1
@@ -303,6 +307,8 @@ class Stub:
     effects: Any = None
     output: Any = None
     effect_templates: tuple[busk.EffectTemplateInfo, ...] = ()
+    tracked: dict[int, tuple[busk.TrackedCue, ...]] = field(default_factory=dict)  # by list
+    tracking_reads: list[int] = field(default_factory=list)
     fixture_profiles: tuple[busk.FixtureProfileInfo, ...] = ()
     warnings: tuple[Any, ...] = ()
     gates: dict[str, threading.Event] = field(default_factory=dict)  # line → held until set
@@ -330,6 +336,10 @@ class Stub:
 
     def confirmation(self, line: str) -> str | None:
         return "Really?" if line == "output off" else None
+
+    def tracking(self, cue_list: int) -> tuple[busk.TrackedCue, ...] | None:
+        self.tracking_reads.append(cue_list)
+        return self.tracked.get(cue_list)
 
     def expected(self, line: str) -> Any:
         return busk.Expected(words=("sacn",), start=len(line))

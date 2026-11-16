@@ -62,6 +62,7 @@ from busk_tui.model import (
     SessionState,
     ShowChanged,
     SurfacesChanged,
+    TrackingChanged,
 )
 from busk_tui.nav import PaneCursor
 from busk_tui.pages.base import ALL_PARTS, Page, Part, View
@@ -330,6 +331,9 @@ class BuskApp(App[int]):
             case DmxChanged(dmx=dmx):
                 self.view.dmx = dmx
                 self._changed.add("dmx")
+            case TrackingChanged(sheet=sheet):
+                self.view.tracking = sheet
+                self._changed.add("tracking")
             case RoutesChanged(routes=routes):
                 self.status.set_routes(routes)
                 self.view.routes = routes
@@ -557,6 +561,7 @@ class BuskApp(App[int]):
         page = self.current_page
         output, effects = page.watches(self.view)
         self.bridge.watch(output=output, effects=effects, dmx=page.WATCH_DMX)
+        self.bridge.track(page.tracks())
         self._changed |= ALL_PARTS
         self._redraw()
 
@@ -593,12 +598,13 @@ class BuskApp(App[int]):
         page.add_fixture((message.universe, message.address))
 
     def on_page_watches_changed(self, message: Page.WatchesChanged) -> None:
-        """A page now watches other parts (F6's edit mode): the bridge reads
-        them if it is the page shown."""
+        """A page now watches other parts (F6's edit mode, F4's list):
+        the bridge reads them if it is the page shown."""
         message.stop()
         if message.page is self.current_page:
             output, effects = message.page.watches(self.view)
             self.bridge.watch(output=output, effects=effects, dmx=message.page.WATCH_DMX)
+            self.bridge.track(message.page.tracks())
 
     def action_toggle_help(self) -> None:
         if self._modal():

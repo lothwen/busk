@@ -2413,6 +2413,25 @@ Needs Phase 27. Its shape waits on Q10. Code: `src/busk_tui/bridge.py`, `src/bus
 
 1. **The bridge reads GAP-46** for the list F4 shows: when the list is shown and after a show edit,
    not every tick.
+
+   **Done** (2026-11-16). `Bridge.track(L)` (in `BridgeLike` too) says which list the reader reads.
+   The app calls it with the shown page's `Page.tracks()`, as it calls `watch` with `watches`: on
+   a page switch, and when a page posts `Page.WatchesChanged`. F4's `tracks()` is the list it
+   shows (other pages' `None`), and F4 posts the message when that changes. The
+   reader calls `LiveShow.tracking(L)` at its next look, then again only when the show document
+   is a new object (an edit) or the list changes. It sends `TrackingChanged(TrackSheet)` when the
+   sheet differs from the last one sent; after a new `track`, it sends the next read whatever it
+   is. `track_sheet` turns busk's `TrackedCue`s into the model's `TrackSheet`, `TrackCue` and
+   `TrackValue` (a preset by its name, the value as `_value` reads one, `since` for
+   `trackedFrom`). `CueInfo.block` now comes from the show, for `[block]`. The read runs on the
+   reader thread, never the UI's; Phase 27 measured up to 162 ms on the reference rig, once per
+   edit.
+
+   Calls the user may veto:
+   - **Read only while F4 shows the list,** not while another page shows: each read costs busk a
+     pass over every value of every cue.
+   - **The sheet leaves the effects out.** TRACK's cells are values; the cue table's `fx` column
+     and F5 show effects, and only the cue's own.
 2. **The track view**, under Q10's answer. Under (b), the list's panel gets `[cues]` and `[track]`
    chips. The `track` view keeps the table's rows (one per cue) and its first columns (`▶`, `L/C`,
    name). Then it has a column per fixture for one family, chosen by chips (`intensity`, `color`,
@@ -2427,13 +2446,100 @@ Needs Phase 27. Its shape waits on Q10. Code: `src/busk_tui/bridge.py`, `src/bus
    picks one and says which. With the mouse on a cell, the hint row says where its value comes from
    (`201 color Blue, tracked from 9/1`). A click on a row chooses the cue, as in `cues`, so the
    `edit` row acts on it.
+
+   **Done** (2026-11-16), under Q10 (a), the user's word after a first build under (b). That
+   first build was a track view: `[cues]` and `[track]` chips switched F4's table to a row per cue
+   and a column per fixture for one family, 8 cells wide, with `[◂]` `[▸]` along the fixtures.
+   The user's check found it confusing and its columns too narrow to read ("change my mind and
+   implement it following the (a) answer"), so it was taken out, chips, scrolling and all, and
+   TRACK built in its place.
+
+   `src/busk_tui/widgets/trackpanel.py`: `families(sheet)` gives the families the list's cues use,
+   and `track(cue, L, families, mode)` the chosen cue's table, which F4 keeps for the newest
+   sheet, cue and colour mode. `TrackTable` is a `RowTable` whose columns are its own:
+   `RowTable.columns()` now returns the class's `COLUMNS`, and `TrackTable` overrides it.
+   - **Where:** a panel of its own, `TRACK 9/3 · Pre`, under CUELIST (both in a column of their
+     own, which goes over CUELISTS below 100 columns, as CUELIST did). It follows the chosen cue,
+     as the `edit` row does: the row clicked last, else the cue the playback is on, else the
+     first. A list with no cues has no panel.
+   - **Rows** are the fixtures the cue gives a value of, or takes one away from, by number.
+   - **Columns** are the families that any cue of the list uses (`intensity`, `colour`,
+     `position`, `beam`, `focus`, `shutter`, in that order), so they stay while the operator
+     moves from cue to cue. Each has a least width (intensity 14, colour 24, position and beam 22,
+     focus 12, shutter 16), the last takes the room left, and when narrow the last go first. At
+     80 columns Song's three families show.
+   - **A cell**: the cue's own value bright; a tracked one dim, then `← 9/1` in grey. A preset by
+     its name, a colour with its swatch and components, a number in its unit. Each attribute
+     named where the family has several (`pan -30° tilt 40°`), once where one preset gives them
+     all (`Audience ← 9/2`). Where they come from different cues, each says its own, with `·`
+     between (`pan -30° · tilt 40° ← 9/2`). `mixed` where the elements' values or presets
+     differ, `← several cues` where they come from different cues. `✕` in amber for an attribute
+     released, `✕ released` for the whole family, `·` for nothing.
+   - **A line over the table** says when the cue is a block cue (`a block cue: it tracks nothing
+     from the cues before it`) or the list does not track (`cue list 10 does not track: each
+     value is the cue's own`). Until the sheet arrives, the table says `reading the tracked
+     states…`; a cue with nothing on stage, `cue 30/1 gives no fixture a value`.
+   - **The hint row**, with the mouse on a cell: `201 color Blue, tracked from 9/1`, `101
+     intensity 70%, stored in this cue`, `101 pan released · tilt released`.
+   - The panel is only to look: no click, and no pane cursor stop.
+
+   Calls the user may veto:
+   - **A panel of its own under CUELIST,** not inside it between the table and the buttons: its
+     height changes with each cue's fixtures, and would move the buttons under the mouse.
+   - **The columns are the list's families, not the cue's,** so they do not jump from cue to cue;
+     a family the chosen cue lacks shows `·`.
+   - **The cue's own values carry no mark**, only the tracked ones a `← L/C`.
+   - **A literal colour shows its components** (`1.00 0.75 0.45`), as F2's PROGRAMMER CONTENTS.
+   - **The effects are not shown:** see step 1's calls.
 3. **`[block]`**, in the `edit` row and lit on a block cue, sends `cue 9/3 block on|off` without a
    question: `undo` takes it back.
 
    Verify: the club show's Song with tracking on; every family chip; a narrow terminal; the perf
    gate on F4; a test on the real engine (`[block]`, then the view changes).
 
+   **Done** (2026-11-16). `commands.cue_block`, with two rows in the contract table and a run in
+   `test_the_cue_and_list_lines_do_what_they_say`. `[block]` comes after `[release…]`, amber, and
+   reversed on a block cue: a span, not the label's base style, since `Text`'s equality ignores
+   that, and the strip would not redraw. It sends without a question. On the real engine,
+   `[block]` on Pre makes TRACK say so and drop the heads and Blue from Pre, and the heads'
+   position from the Chorus, and `undo` brings them back.
+
+   Call the user may veto: **`[block]` stays live on a list without tracking.** busk takes the
+   line and says that it changes nothing until tracking is on.
+
 Docs: the guide's F4, the report's Cues rows, and `CHANGELOG.md`.
+
+**Done** (2026-11-16). The guide's F4: its drawing redrawn from a 150-column capture, with
+`[block]` and TRACK on Pre, a TRACK section, and a `[block]` item in the `edit` row. The report:
+the Phase 27 and 28 sentence in its opening, and two Cues rows, "Show the tracked state" and
+"Block". `CHANGELOG.md` under Added. §7's items and Q10's answer.
+
+**Phase 28 checks** (2026-11-16), on top of `7b716b6`, after the rebuild under (a). The whole
+suite: 6,714 passed and 1 skipped, in 8:50 with `uv run pytest -n 6`. `ruff check`, `ruff format
+--check`, `mypy src` and `mypy --strict tests/api_consumer.py` clean. On Textual 8.2.0, the
+floor, the new tests, F4's, the commands' and the bridge's: 532 passed. New tests:
+`tests/tui/test_tui_track.py` (10: the table, its cells and hints on the club show's real
+states, named and mixed attributes, a list without tracking, the bridge's reads, and on F4 the
+panel following the cue and the list, a block cue, a cue with nothing, a list with no cues, the
+hint row, 80 columns and `[block]`), the real-engine
+`test_f4_tracks_the_chosen_cue_and_blocks_it_on_the_real_engine`, and two contract rows. Two F4
+tests changed: the `edit` row and the pane cursor's stops have `[block]`.
+
+The perf gate: F4, which now reads and draws TRACK, +0.189 with no overruns. The gate failed on
+F6 editing a position preset (+0.273), a page this phase did not change. Run one by one, F6
+gave +0.256 and +0.258 with this phase and +0.257 and +0.240 at `7b716b6`, so it sits on the
+limit on this host as it is; F8 +0.199. During the first build, the gate failed on F1 C
+(+0.251). Ten runs each, at `7b716b6` and with the first build, in both orders, averaged +0.247
+and +0.252, and whichever ran second was higher: F1 C sits on the limit too. The rest passed:
+F1 B +0.205, A +0.210, C +0.215, F2 +0.181 and +0.248 with P11's Circle running, F3 +0.204,
+F5 +0.234, and every standalone page at 98% of the bare rate or more.
+
+A real terminal (`busk-tui club.show --state-dir …`, which runs `busk run` with processes, in a
+pty, at 150 and 99 columns): TRACK on Pre showed the heads' 70% and Audience from 9/2 and the
+washes' Blue from 9/1, and on the Outro `✕ released` for the heads' position. `[block]` on Pre
+said so over the table and dropped the heads and Blue, and `undo` brought them back. The hint
+row named `201 color Blue, tracked from 9/1` under the mouse. At 99 columns TRACK sits between
+CUELIST and CUELISTS. The guide's drawing comes from the 150-column capture.
 
 ### Phase 29: Timing per target
 
@@ -3073,10 +3179,11 @@ sequences, executors and recipes. Each doubtful point was checked on `OfflineSho
   Odd"): **Phase 26**, Q9.
 - A track sheet. Nothing shows what a cue of a tracking list puts on stage: there is no `list cue
   L/C`, `list cues` gives only the timing, and F4 and `load cue` give what the cue stores.
-  **Phases 27 and 28**, Q10. Phase 27 built the read (`tracking(L)`, GAP-46) and `list cue L/C`.
+  **Phases 27 and 28**, Q10. Phase 27 built the read (`tracking(L)`, GAP-46) and `list cue L/C`,
+  and Phase 28 F4's TRACK panel, for the chosen cue.
 - A cue's `block` is set only by the generic edit, which replies with a path, and `list cues` and
   F4 never show it: **Phases 27 and 28**. Phase 27 built `cue L/C block on|off` (GAP-47), and
-  `list cues` marks a block cue.
+  `list cues` marks a block cue; Phase 28 F4's `[block]`, and TRACK says when a cue is one.
 - Timing per fixture, and a stagger over a selection: only the generic edit reaches an entry's own
   timing, by rewriting the whole `entries` list. **Phases 29 and 30**, Q11.
 - A spread is recorded per target even on a group, so a fixture that joins the group gets nothing
@@ -3241,6 +3348,10 @@ sequences, executors and recipes. Each doubtful point was checked on `OfflineSho
       it shows how a value runs down the cues, and it keeps F4's rows, so a click still chooses a
       cue.
     - (c) Only `list cue L/C` at the prompt, and drop Phase 28.
+
+    ANSWER: (a) (the user, 2026-11-16). Phase 28 was built first under (b), the recommended one;
+    the user's check found the track sheet confusing and its columns too narrow to read, and
+    chose (a): "the info deploys in a new panel under the current cue table". Built in Phase 28.
 11. **How a fixture gets its own timing** (Phases 29, 30).
     - (a) An entry's timing takes a fan (`delay 0 to 2`), set by `cue L/C time <targets> <family>
       …` and by F4's TIME dialog. **Recommended:** the cue stays recorded on its groups, so a fan

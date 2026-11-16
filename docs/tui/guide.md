@@ -720,24 +720,35 @@ table and the FIXTURE panel.
 ## F4 Cues
 
 Every cue list, and the cues of one: go to a cue, record, re-record and delete cues, load a cue
-to edit its values, make and delete lists, set a list's tracking and chase, edit a cue's timing,
-trigger and name, and move, copy and renumber cues and lists.
+to edit its values, see what each cue of a tracking list puts on stage, make and delete lists,
+set a list's tracking and chase, edit a cue's timing, trigger and name, make a cue a block cue,
+and move, copy and renumber cues and lists.
 
 ```
  ┌─ CUELISTS ─────────────────────────┐┌─ CUELIST 9 · Song ─────────────────────────────────────────────────────────────────────────────────────────┐
- │   # name           kind  cues pb   ││ mode sequence · tracking   playback P9 @ 70%   groups Washes, Heads, Bar, All                              │
+ │   # name           kind  cues pb   ││ mode sequence · tracking   playback P9 @ 0%   groups Washes, Heads, Bar, All                               │
  │   1 Warm           seq      1 P1   ││                                                                                                            │
- │   …                                ││   cue    name       time          delay  follow wait   intensity  colour            also          fx       │
- │   9 Song           seq      5 P9   ││   9/1    Intro      3             —      —      —      60%        ██ Blue           —                      │
- │  10 Chase          chase    4 P10  ││   9/2    Verse      2, position 4 —      —      —      70%        ██ 1.00 0.75 0.45 position 2             │
- │   …                                ││ ▶ 9/3    Pre        1/3           —      —      8      100%, 30%  ██ Amber          —                      │
- │  20 Fast pulse     seq      1 P20  ││   9/4    Chorus     0.5/2         —      —      —      100%, 100% ██ 1.00 1.00 1.00 —             rainbow  │
- │                                    ││   9/5    Outro      6             —      4      —      20%        —                 —                      │
- │ [+ list…]                          ││                                                                                                            │
- └────────────────────────────────────┘│ [GO] [BACK] [record cue 9] [cuelist 9 chase bpm x 1]                                                       │
-                                       │ list 9 Song [tracking off] [chase…] [rename…] [number…] [delete]                                           │
+ │   2 Cool           seq      1 P2   ││   cue    name       time          delay  follow wait   intensity  colour            also          fx       │
+ │   …                                ││   9/1    Intro      3             —      —      —      60%        ██ Blue           —                      │
+ │   9 Song           seq      5 P9   ││   9/2    Verse      2, position 4 —      —      —      70%        ██ 1.00 0.75 0.45 position 2             │
+ │  10 Chase          chase    4 P10  ││ ▶ 9/3    Pre        1/3           —      —      8      100%, 30%  ██ Amber          —                      │
+ │   …                                ││   9/4    Chorus     0.5/2         —      —      —      100%, 100% ██ 1.00 1.00 1.00 —             rainbow  │
+ │  20 Fast pulse     seq      1 P20  ││   9/5    Outro      6             —      4      —      20%        —                 —                      │
+ │                                    ││                                                                                                            │
+ │ [+ list…]                          ││ [GO] [BACK] [record cue 9] [cuelist 9 chase bpm x 1]                                                       │
+ └────────────────────────────────────┘│ list 9 Song [tracking off] [chase…] [rename…] [number…] [delete]                                           │
                                        │ edit cue 9/3 Pre [time…] [delay…] [curve…] [go…] [follow…] [wait…] [rename…] [number…] [copy…] [release…]  │
-                                       │                  [record at…] [load] [merge] [replace] [remove] [delete]                                   │
+                                       │                  [block] [record at…] [load] [merge] [replace] [remove] [delete]                           │
+                                       └────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+                                       ┌─ TRACK 9/3 · Pre ──────────────────────────────────────────────────────────────────────────────────────────┐
+                                       │ #     intensity      colour                   position                                                     │
+                                       │ 101   70% ← 9/2      ██ 1.00 0.75 0.45 ← 9/2  Audience ← 9/2                                               │
+                                       │ 102   70% ← 9/2      ██ 1.00 0.75 0.45 ← 9/2  Audience ← 9/2                                               │
+                                       │ 201   30%            ██ Blue ← 9/1            ·                                                            │
+                                       │ 202   30%            ██ Blue ← 9/1            ·                                                            │
+                                       │ 203   30%            ██ Blue ← 9/1            ·                                                            │
+                                       │ 204   30%            ██ Blue ← 9/1            ·                                                            │
+                                       │ 301   100%           ██ Amber                 ·                                                            │
                                        └────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -773,6 +784,28 @@ below 150, neither the curve nor `also`.
   name as busk stored them) or back to a sequence (`cuelist 10 sequence`). On a show with
   several speed masters, busk refuses `bpm x 1` for a list that was never a chase: `[chase…]`
   names the master.
+
+**TRACK**, under CUELIST, shows what the chosen cue puts on stage when the list plays by GO from
+its first cue: the values the cue stores and those it tracks from the cues before it. It answers
+"why is this blue here". There is a row per fixture the cue gives a value or takes one away
+from, and a column per family the list's cues use, the same for every cue of the list. A cell
+is:
+
+- a value the cue stores, bright, and one it tracks from a cue before it, dim, with that cue
+  after it: `██ Blue ← 9/1`;
+- a preset by its name, a colour with its swatch and components, a number in its unit (`70%`,
+  `-30°`);
+- each attribute by its name where the family has several (`pan -30° tilt 40°`), once where one
+  preset gives them all (`Audience`);
+- `mixed` where the fixture's elements differ (a pixel bar's cells);
+- `✕` where the cue releases the attribute, `✕ released` where it releases the family, and `·`
+  where it has nothing.
+
+With the mouse on a cell, the hint row says it in words: `201 color Blue, tracked from 9/1`,
+`101 intensity 70%, stored in this cue`. A line over the table says when the cue is a block cue,
+which tracks nothing from the cues before it, and when the list does not track, so each value is
+the cue's own. F4 reads the tracked states while it shows the list: when it opens on it, and
+after each change to the show. When narrow, the last families go first.
 
 **The `list` row** acts on the list shown:
 
@@ -822,6 +855,10 @@ digit the cue holds, though the table rounds them to two. Then:
 
 - `[release…]` asks for targets, as busk reads them (`group 1`, `101 thru 104`), starting at the
   selection, and attributes, none for all of them: `cue 9/3 release group 1 only pan tilt`.
+- `[block]`, lit on a block cue, sends `cue 9/3 block on`, or `off` on a block cue. A block cue
+  tracks nothing from the cues before it: it is a whole state, and the cues after it track from
+  it. It asks nothing: `undo` takes it back. On a list without tracking busk takes it, and says
+  that it changes nothing until tracking is on.
 - `[copy…]` asks for a list, the one shown to start with, and a number, and copies the cue there:
   `cue 9/3 copy 7` in its own list, `cue 9/3 copy 10/7` in another. The copy holds what the cue
   holds, its effects too. A list the show lacks, or a number the list has, is refused in the

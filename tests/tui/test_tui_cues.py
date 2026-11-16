@@ -440,7 +440,8 @@ def test_the_edits_act_on_the_chosen_cue() -> None:
         edits = app.query_one("#cue-edits", ButtonStrip)
         assert words(edits) == (
             "[time…] [delay…] [curve…] [go…] [follow…] [wait…] [rename…] [number…]"
-            " [copy…] [release…] [record at…] [load] [merge] [replace] [remove] [delete]"
+            " [copy…] [release…] [block] [record at…] [load] [merge] [replace] [remove]"
+            " [delete]"
         )
         await click_label(pilot, edits, "go…")  # a whole line: Enter runs it
         assert app.prompt.value == "cue 9/2 go"
@@ -639,7 +640,7 @@ def test_the_pane_cursor_goes_to_cues_then_buttons_edits_and_lists() -> None:
             "delete cuelist 9 cascade",
             "[time…]", "[delay…]", "[curve…]", "cue 9/2 go",
             "[follow…]", "[wait…]", "[rename…]", "[number…]", "[copy…]", "[release…]",
-            "[load]", "[delete]",
+            "cue 9/2 block on", "[load]", "[delete]",
             "cuelist 9 Song", "cuelist 10 Chase", "cuelist 11 Loop", "cuelist 21 Spare",
             "[+ list…]",
         ]  # fmt: skip
@@ -647,7 +648,7 @@ def test_the_pane_cursor_goes_to_cues_then_buttons_edits_and_lists() -> None:
         assert app.cursor.active
         assert [s.line for s in bridge.sent] == ["goto 9 3"]
         assert plain(app.query_one("#cue-edit-label")) == "edit cue 9/3 Pre"
-        await pilot.press(*["down"] * 24, "enter")  # list 10: chosen, the cursor stays
+        await pilot.press(*["down"] * 25, "enter")  # list 10: chosen, the cursor stays
         await settle(pilot, app)
         assert app.cursor.active
         assert app.query_one(CueListTable).chosen == 1

@@ -26,6 +26,7 @@ from busk_tui.model import (
     RouteView,
     ShowModel,
     SurfaceView,
+    TrackSheet,
 )
 from busk_tui.nav import Item, Stop
 
@@ -36,6 +37,7 @@ type Part = Literal[
     "effects",
     "output",
     "dmx",
+    "tracking",
     "beats",
     "playback",
     "routes",
@@ -50,6 +52,7 @@ ALL_PARTS: Final[frozenset[Part]] = frozenset(
         "effects",
         "output",
         "dmx",
+        "tracking",
         "beats",
         "playback",
         "routes",
@@ -69,6 +72,7 @@ class View:
     effects: EffectsModel | None = None
     output: OutputModel | None = None
     dmx: DmxModel | None = None
+    tracking: TrackSheet | None = None  # the tracked states of the list F4 shows
     routes: tuple[RouteView, ...] = ()
     surfaces: tuple[SurfaceView, ...] = ()
     beats: tuple[float, ...] = ()  # each speed master's beat count, as LiveState.speed
@@ -108,8 +112,9 @@ class Page(VerticalScroll):
         """Redraw what the ``changed`` parts of ``view`` show."""
 
     class WatchesChanged(Message):
-        """What the page watches (:meth:`watches`) has changed: F6's edit
-        mode. The app tells the bridge if the page is the one shown."""
+        """What the page watches (:meth:`watches`, :meth:`tracks`) has
+        changed: F6's edit mode, F4's list. The app tells the bridge
+        if the page is the one shown."""
 
         def __init__(self, page: Page) -> None:
             super().__init__()
@@ -119,6 +124,11 @@ class Page(VerticalScroll):
         """Whether the page shows the output and the running effects, as
         ``view`` has it (F1's depend on its layout, F6's on its edit mode)."""
         return self.WATCH_OUTPUT, self.WATCH_EFFECTS
+
+    def tracks(self) -> int | None:
+        """The cue list whose tracked states the page shows (F4's TRACK
+        panel), which the bridge reads only then; ``None``: none."""
+        return None
 
     def stops(self) -> list[Stop]:
         """Where the pane cursor stops, in order."""

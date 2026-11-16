@@ -8,8 +8,9 @@
   on the TupperDMX show records a colour from its picker and a beam preset
   from its option chips and bars; F1 greys a goto its new list lacks; F4
   goes to a cue, builds and deletes cues and lists from its controls,
-  edits a cue's timing, trigger and name in its dialogs, and toggles a
-  list back to the chase busk stored, and
+  edits a cue's timing, trigger and name in its dialogs, toggles a
+  list back to the chase busk stored, and shows what a cue tracks and
+  blocks it, and
   F5 adds, stops and removes an effect and builds a template; F3 and F1's
   layouts A and C show the output, and select from it; F3's FIXTURE panel
   renames, renumbers and deletes a fixture, sets a profile's category, a
@@ -114,6 +115,7 @@ from busk_tui.widgets.prompt import HintRow
 from busk_tui.widgets.route_dialog import RouteDialog
 from busk_tui.widgets.template_panel import NewTemplateDialog, TemplatePanel
 from busk_tui.widgets.tiles import PresetTile
+from busk_tui.widgets.trackpanel import TrackTable
 from sacn_receiver import Receiver
 
 WAIT_S = 15.0
@@ -2339,6 +2341,57 @@ def test_f4_loads_a_cue_edits_it_and_records_it_back_on_the_real_engine(
 
         await pilot.press(*"undo", "enter")
         await until(pilot, lambda: verse().values == stored)
+        assert [text for kind, text in log if kind == "error"] == []
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_f4_tracks_the_chosen_cue_and_blocks_it_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """TRACK on Song's Pre: the heads' Audience comes from the Verse, and the
+    washes' Blue from the Intro. ``[block]`` on Pre sends ``cue 9/3 block
+    on`` with no question: TRACK says so, and Pre drops the heads and Blue,
+    so the Chorus has no position. ``undo`` brings the states back."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=4), standalone=True)
+    tracked = ["101", "102", "201", "202", "203", "204", "301"]
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.live is not None and app.view.show is not None)
+        app._select_playback(9)
+        page = app.query_one(CuesPage)
+        table = app.query_one(TrackTable)
+        await until(pilot, lambda: column(app.query_one(CueTable), "cue")[:1] == ["9/1"])
+        await until(pilot, lambda: bridge._tracking == 9)  # the page asks by a message
+        page.choose_cue("3", go=False)
+        await until(pilot, lambda: column(table, "fixture") == tracked)
+        assert str(page.track_panel.border_title) == "TRACK 9/3 · Pre"
+        assert column(table, "position")[:2] == ["Audience ← 9/2", "Audience ← 9/2"]
+        assert column(table, "color")[2] == "██ Blue ← 9/1"
+        log = app.query_one(LogView).entries
+
+        await tap_button(pilot, page.edits, "block")
+        await until(pilot, lambda: column(table, "fixture") == tracked[2:])
+        assert not isinstance(app.screen, ConfirmDialog)
+        assert plain_of(page.track_note) == "a block cue: it tracks nothing from the cues before it"
+        assert column(table, "color")[0] == "·"
+        block = next(b.label for b in page.edits.buttons if b.label.plain == "[block]")
+        assert block.spans[0].style == f"bold {colors.BG} on {colors.AMBER}"
+        assert ("ui", "cue 9/3 block on") in log
+        page.choose_cue("4", go=False)
+        await until(pilot, lambda: str(page.track_panel.border_title) == "TRACK 9/4 · Chorus")
+        assert column(table, "position")[:2] == ["·", "·"]
+
+        await pilot.press(*"undo", "enter")
+        await until(pilot, lambda: column(table, "position")[:2] == ["Audience ← 9/2"] * 2)
+        await app.run_action("page(1)")
+        assert bridge._tracking is None
         assert [text for kind, text in log if kind == "error"] == []
 
     try:
