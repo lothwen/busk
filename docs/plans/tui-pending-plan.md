@@ -2246,6 +2246,107 @@ This phase is engine only; F4 is Phase 28. Code: `src/busk/compiler/tracking.py`
    an effect that tracks on; a list without tracking; a list with no cues; a chase (say what the
    compiler does with tracking there); `OfflineShow` and a running `LiveShow`; the read's cost on
    the reference rig, in `docs/dev/benchmarks.md`.
+
+   **Done** (2026-11-16). `tracked_cues` in the new `src/busk/session/tracked.py`, read by
+   `_Facade.tracking(cue_list)` in `src/busk/runner.py`, so both facades have it. Three public
+   names, `TrackedCue`, `TrackedValue` and `TrackedEffect` (44 in `busk.__all__`). The entry, its
+   Summary row and its **Done** are in engine-gaps.md. What it gives:
+   - **Each cue** of the list, in order: `number`, `name`, `block`, `values`, `released` and
+     `effects`. `None` for a list number the show lacks, `()` for a list with no cues.
+   - **A value** is a `ProgrammerValue`'s fields (fixture number, element from 1, attribute, the
+     value in the show's units, the preset's `(pool, number, name)` or `None`) and `trackedFrom`:
+     the number of the cue that stores it, `None` for the cue's own. By fixture number, element and
+     the registry's order of the attributes. On the club show, Verse's washes read `intensity 0.6`
+     and preset Blue, both tracked from `1`.
+   - **`released`**: the `(number, element, attribute)` slots the cue takes away. Those its
+     `releases` name that the cue before it held, as a value or through an effect instance it
+     tracks, and that it does not set itself. The Outro's are the heads' pan and tilt.
+   - **An effect**: its `id` and `trackedFrom`, as for a value. The Outro has `rainbow` from `4`.
+   - **How:** the compiler's states are lanes, which name no preset. So the read runs
+     `tracking.py`'s rule on show data, as `record.inherited` does, through `entry_sources` and
+     `released_slots`. `released_slots` was `record.py`'s `_released`; it moved beside
+     `entry_sources` and is shared, as Phase 25 shared `entry_sources`. The effects come from the
+     compiled cue: `CompiledEffect.cue` already names the cue that holds each instance.
+   - **A chase** tracks as a sequence does, in list order, whatever its direction: the compiler
+     works out the states once, and the engine plays them in the chase's order. With tracking on,
+     the club show's chase (list 10) reads the same states forward and in reverse.
+   - **Under `busk run`** the console process compiles every edit before it sends it to the engine
+     process, so it holds the compiled show; the read needs nothing from the engine.
+   - **Cost**, on the §19 reference rig with 4-cue tracking lists: see the Phase 27 checks below,
+     and `docs/dev/benchmarks.md`.
+
+   Calls the user may veto:
+   - **A method, not a property** (`tracking(L)`), since it takes the list, and **`None`** for a
+     list that is not there, as `confirmation` returns `None`, rather than an error.
+   - **`released` counts what the cue takes away,** not every slot its releases name: a release of
+     something nothing held is not listed. It counts a slot only an effect drove, so a track
+     sheet's `✕` shows where an effect stops too.
+   - **`TrackedEffect` has only the id and where it comes from.** As with an `EffectStatus`, a
+     display finds the instance, its template, targets and settings in the show. A release that
+     trims some of a tracked instance's slots shows only in `released`.
+   - **Made on each call, not cached**, since Phase 28 reads it when F4 shows a list and after a
+     show edit, not on every tick.
+2. **`list cue L/C`** prints the cue's state from GAP-46: a line per fixture with each value and
+   where it comes from (`101  intensity 100%  color Blue ← 9/1  pan 20 ← 9/2`), then what the cue
+   releases, then its effects. `list cues L` marks a block cue `block`. Tab offers `cue` after
+   `list`.
+
+   Verify: Song's five cues against GAP-46's read; a fixture whose elements differ; a released
+   attribute; a list without tracking.
+
+   **Done** (2026-11-16). The `cue` kind of `_cmd_list` in `src/busk/console/parser.py` reads the
+   cue with `self.cue()` and makes a `Query` with a new field, `cue`, the cue's number as the list
+   stores it; `Console._list_cue` prints it from GAP-46's read, with `_rows` and `_tracked_value`.
+   `cue` is in `LIST_KINDS`, so Tab offers it after `list`. The Outro:
+
+   ```
+   cue 9/5 'Outro'
+     101  intensity 20%  color 1 1 1 ← 9/4
+     ...
+     301  intensity 100% ← 9/3  color 1 1 1 ← 9/4
+     releases 101 pan tilt, 102 pan tilt
+     effect rainbow 'Rainbow' on group 3, 0.25 Hz, size 1 ← 9/4
+   ```
+
+   Calls the user may veto:
+   - **A first line names the cue,** `cue 9/3 'Pre'`, with `, a block cue` and `(cue list 12 does
+     not track)` where they apply, and a cue with nothing shows `  nothing`.
+   - **Names in single quotes** (`color 'Blue'`, `cue 9/2 'Verse'`), as `programmer` and `list
+     cuelists` print them, where the plan's example has `color Blue`: a preset named `50` would read
+     as a value, and the effect lines, which come from `programmer`'s printer, have them.
+   - **A 0-to-1 scalar in per cent** (`intensity 70%`, as the plan's example and `set` take it),
+     where `programmer` prints `0.7`; colours as `set` takes them (`1 0.75 0.45`).
+   - **A fixture's line** holds its values only when every element has the same; otherwise each
+     element has a line (`301.3`), also when only some have values. Labels are right-aligned to the
+     widest.
+   - **Releases on one line,** per fixture as values are (`releases 101 pan tilt, 102 pan tilt`),
+     and effects as `programmer` prints them, `← L/C` after a tracked one.
+3. **GAP-47: `cue L/C block on|off`** is one undo step, with a reply in words (`cue 9/3 tracks
+   nothing from the cues before it`, `cue 9/3 tracks again`). On a list without tracking it goes
+   through, and the reply says it does nothing until tracking is on. Tab offers `block`, then `on`
+   and `off`.
+
+   Verify: on, off and `undo`; the compiled states change (a block cue drops what it tracked, and
+   the cues after it track from it); `list cues`; the generic edit still works.
+
+   **Done** (2026-11-16). `Parser._block` in `src/busk/console/parser.py`, reached from the `cue`
+   head when `block` is followed by `on` or `off`, in any case; `block true`, `block false` and any
+   other value stay the generic edit, with its path. `on` sets `block`, `off` deletes it, each one
+   labelled undo step. Blocking Pre on the club show drops the heads and Blue from it, and Chorus
+   then has no pan or tilt, and tracks the bar's intensity from `3`. The entry, its Summary row and
+   its **Done** are in engine-gaps.md.
+
+   Calls the user may veto:
+   - **A line that changes nothing is refused** (`cue 9/3 is a block cue already`, `cue 9/3 is
+     not a block cue`), and spends no step, as call 11 does for a mode.
+   - **`off` deletes the key** rather than setting `false`, so the cue is as one recorded without
+     it.
+   - **On a list without tracking** the reply reads `cue 18/2 is a block cue; cue list 18 does not
+     track, so that changes nothing until tracking is on`, and the validator's warning of the same
+     still follows it, with its path (`warning cueLists[17].cues[1].block: block has no effect
+     without tracking`), as every new warning of an edit does.
+   - `block on` on a list's first cue goes through and changes nothing in the states, as the
+     compiler has it; the reply does not say so.
 2. **`list cue L/C`** prints the cue's state from GAP-46: a line per fixture with each value and
    where it comes from (`101  intensity 100%  color Blue ← 9/1  pan 20 ← 9/2`), then what the cue
    releases, then its effects. `list cues L` marks a block cue `block`. Tab offers `cue` after
@@ -2264,6 +2365,46 @@ This phase is engine only; F4 is Phase 28. Code: `src/busk/compiler/tracking.py`
 Add the entries and Summary rows for GAP-46 and GAP-47 to engine-gaps.md. Docs: `docs/console.md`
 (the List row, and "Tracking lists record changes only"), `docs/library.md` (the read), and
 `CHANGELOG.md`.
+
+**Done** (2026-11-16). engine-gaps.md: GAP-46 and GAP-47, with their Summary rows.
+`docs/console.md`: the Session row (`list cue 9/2`), the Timing row (`cue 9/3 block on|off`) and
+"Tracking lists record changes only". `docs/library.md`: the read, with a running example, its
+three reference rows, `tracking` in `OfflineShow`'s row, and "The 44 names" (it said 39, stale
+since GAP-27). `docs/dev/internals.md`: "The tracked states". `docs/dev/benchmarks.md`: the read's
+cost. `busk help` and the parser's module docs: the two grammar lines and a paragraph each.
+`CHANGELOG.md` under Added. §7's items.
+
+**Phase 27 checks** (2026-11-16), on top of `17d534a`. The whole suite: 6,701 passed and 1
+skipped, in 8:18 with `uv run pytest -n 6`. The run before failed twice: the docs test, which read
+`docs/library.md` while its reference rows were being written, and F6's real-engine preset test,
+flaky under `-n 6` as Phases 15, 22, 25 and 36 note; it passed three times alone. `ruff check`,
+`ruff format --check`, `mypy src` and `mypy --strict tests/api_consumer.py` clean. The public
+API's golden took `tracking` on both facades and the three new classes (`BUSK_REGOLDEN=1`). No
+TUI file changed, so the TUI rules, Textual 8.2.0 and the perf gate do not apply.
+
+Mutations of `tracked.py` (block ignored, a release that does not remove, the cue's own values
+not winning, a tracked effect's slots or a replaced instance's left out of `released`, values or
+effects never tracked), of `_block` (no refusal, `off` setting `false`, no word on a list without
+tracking) and of the printer (a fixture's line without counting its elements, no `block` mark,
+no `←` on an effect) each fail a test. The first rule for `released` let the cue's own effects
+keep a slot from its releases. A mutation survived it, and the compiler showed it wrong: a
+release drops a tracked value even where the cue's own effect drives the slot. What an own
+instance does is take the place of a tracked one with its id, which the release then does not
+trim. The rule and its test now say so.
+
+The read's cost, on the §19 reference rig with 4-cue tracking lists, is linear: about 2.7 ms per
+1,000 values over a list's cues. That is 8.2 ms for most of its 60 lists (3,000 values) and up to
+162 ms for the three whose cues cover whole universes (about 55,700). Giving each tracked value
+one object, shared by every cue it reaches, saved nothing there (163 to 162 ms), since those
+values are mostly each cue's own, so it was taken out again.
+
+A real `busk run club.show --state-dir …` (processes), the club script first, then lines piped
+in: `go 9`; `list cue 9/3` printed Pre, the heads tracked from 9/2 and Blue from 9/1; `cue 9/3
+block on` replied in words and `list cues 9` marked Pre `block`. `list cue 9/4` then lost the
+heads' pan and tilt, and `undo` brought them back (`pan 'Audience' ← 9/2`). `cue 9/3 block off`
+was refused (`cue 9/3 is not a block cue`). `cue 18/2 block on` said a list without tracking
+changes nothing, and `list cue 9/9` was refused in words. `tests/test_tracked_states.py` runs the
+same under `busk run` with processes and with `--threads`.
 
 ### Phase 28: F4's track sheet
 
@@ -2932,9 +3073,10 @@ sequences, executors and recipes. Each doubtful point was checked on `OfflineSho
   Odd"): **Phase 26**, Q9.
 - A track sheet. Nothing shows what a cue of a tracking list puts on stage: there is no `list cue
   L/C`, `list cues` gives only the timing, and F4 and `load cue` give what the cue stores.
-  **Phases 27 and 28**, Q10.
+  **Phases 27 and 28**, Q10. Phase 27 built the read (`tracking(L)`, GAP-46) and `list cue L/C`.
 - A cue's `block` is set only by the generic edit, which replies with a path, and `list cues` and
-  F4 never show it: **Phases 27 and 28**.
+  F4 never show it: **Phases 27 and 28**. Phase 27 built `cue L/C block on|off` (GAP-47), and
+  `list cues` marks a block cue.
 - Timing per fixture, and a stagger over a selection: only the generic edit reaches an entry's own
   timing, by rewriting the whole `entries` list. **Phases 29 and 30**, Q11.
 - A spread is recorded per target even on a group, so a fixture that joins the group gets nothing

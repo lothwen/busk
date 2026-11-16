@@ -62,13 +62,13 @@ session, as the web remote's commands do. `help` prints the grammar.
 | Pages | `page 2`, `page next\|prev`, `page add 2 ["Washes"]`, `page 2 slot 1 playback 14`, `page 2 slot 5 clear`, `record slot 2.1`, `playback 9 goto 4` |
 | Edit | `playback 3 exclusivity color`, `cue 3/1 timing.fadeIn 1`, `playback 1 buttons ["toggle", "flash", "release"]`, `show meta.title "Club Night"`, `rename group 1 "Heads"`, `cue 9/2 number 7`, `cue 9/2 copy [10/]3`, `delete cue 10/2`, `delete fixture 101 cascade`, `delete fixture 101 thru 104 cascade`, `delete universe 2 cascade`, `delete preset color 3 cascade`, `delete group 2 cascade`, `delete cuelist 9 cascade`, `delete playback 3 cascade`, `delete page 2 cascade`, `fixture 101 location {"x": 1, "y": 2, "z": 3, "rx": 0, "ry": 0, "rz": 0}`, `fixture 101 location none`, `fixture 101 thru 104 orientation.invertPan true`, `fixture 101 orientation.panOffset 30` |
 | Playbacks | `playback add 5 cuelist 10 [at [P.]S] ["name"]`, `playback 3 cuelist 10`, `playback 3 fader size`, `playback 3 flash.level 0.5`, `playback 3 exclusivity none` |
-| Timing, triggers | `cue 9/1 time 3 easeInOut`, `cue 9/3 time 1/3 delay 0/1`, `cue 9/2 time position 4 [delay 1] [easeOut]`, `cue 9/2 time position none`, `… bezier 0.4 0 0.2 1`, `cue 9/3 wait 8`, `cue 9/5 follow 4`, `cue 9/2 go`, `cue 9/5 release group 1 [only pan tilt]` |
+| Timing, triggers | `cue 9/1 time 3 easeInOut`, `cue 9/3 time 1/3 delay 0/1`, `cue 9/2 time position 4 [delay 1] [easeOut]`, `cue 9/2 time position none`, `… bezier 0.4 0 0.2 1`, `cue 9/3 wait 8`, `cue 9/5 follow 4`, `cue 9/2 go`, `cue 9/5 release group 1 [only pan tilt]`, `cue 9/3 block on\|off` |
 | Cue lists, tempo | `cuelist add 5 ["name"]`, `cuelist 9 tracking true`, `cuelist 10 chase bpm ["Speed 1"] [x 2] [forward\|reverse\|bounce\|random] [crossfade 0.25]`, `cuelist 10 chase hz 4`, `cuelist 10 sequence`, `master add speed "Speed 1" [bpm 120] [steps 0.5, 1, 2]` |
 | Effects, masters | `effect add "Circle" [id fx1] [hz 0.5 \| bpm ["Speed 1"] [x 0.5]] [size 15] [low 0 high 1] [phase 0 180] [groups N] [blocks N] [wings 2] [forward\|reverse\|bounce] [fadein 1] [sizemaster "FX"] [speedmaster "Speed 1"]`, `effect remove fx1`, `effect clear`, `effect stop fx1`, `effect run fx1`, `effect template add "Name" [{…layers…}]`, `effect template update "Name" [{…layers…}]`, `effect template rename "Name" "New"`, `effect template delete "Name"`, `cue 9/4 effect rainbow size 0.5`, `cue 9/4 effect rainbow remove`, `master add size "FX"`, `master add group "Wash level" group 2`, `master add fadetime "Fade"`, `rename master "FX" "Size"`, `delete master "FX" [cascade]` |
 | Perform | `go 9`, `back 9`, `goto 9 4`, `release 3 [2]`, `fader 3 75%`, `flash 3 on\|off`, `toggle 3`, `button 3 2 on\|off`, `gm 0.5`, `master "Speed 1" 0.75`, `tap ["Speed 1"]`, `bpm ["Speed 1"] 128`, `blackout on\|off` |
 | Safety, panic | `park fixture 204 intensity 0`, `park group 2 color 1 0 0`, `unpark fixture 204 [intensity]`, `unpark all`, `fixture 101 thru 102 limits tilt -90 10`, `fixture 301 limits intensity 50%`, `fixture 101 limits tilt none`, `fixture 101 limits none`, `safety strobe 3\|off`, `highlight on\|off`, `release all [2]`, `output on\|off` |
 | Profiles | `profile update "Generic Spot 16ch"` (to the library's other revision), `profile "Generic Spot 16ch" category wash\|none`, `profile import "fixtures/spot.gdtf"`, `list profiles` |
-| Session | `undo`, `redo`, `save [PATH]`, `list fixtures\|groups\|presets\|cuelists\|playbacks\|pages\|universes\|routes\|surfaces\|bindings\|masters\|profiles\|effects\|park`, `list cues 9`, `list dmx 1 [17 [thru 32]]`, `list dmx fixture 101`, `library`, `info`, `status`, `source FILE`, `quit` |
+| Session | `undo`, `redo`, `save [PATH]`, `list fixtures\|groups\|presets\|cuelists\|playbacks\|pages\|universes\|routes\|surfaces\|bindings\|masters\|profiles\|effects\|park`, `list cues 9`, `list cue 9/2`, `list dmx 1 [17 [thru 32]]`, `list dmx fixture 101`, `library`, `info`, `status`, `source FILE`, `quit` |
 
 ## Notes
 
@@ -138,6 +138,18 @@ session, as the web remote's commands do. `help` prints the grammar.
   (`recorded cue 9/2: 4 entries; 8 values tracked from cue 9/1`); a cue whose values all
   track is created without entries. `sel playback N` selects the targets of the
   playback's *current* cue (its tracked state), or of its first cue while it is idle.
+  `list cue L/C` prints a cue's tracked state, what it puts on stage when the list is played
+  by GO from its first cue: a line per fixture, or per element where a fixture's elements
+  differ, each value with `← L/C` after it when it is tracked from an earlier cue
+  (`201  intensity 60% ← 9/1  color 'Blue' ← 9/1`); a preset by its name, an intensity or
+  another 0 to 1 value in per cent. Then what the cue releases: what the cue before it held
+  there, as a value or through an effect, and the cue does not set itself. Then its effects.
+  Other playbacks, the masters, park and the programmer change nothing in it. `cue L/C block on`
+  makes a cue a whole state: it tracks nothing from the cues before it, and the cues after it
+  track from it (`cue 9/3 tracks nothing from the cues before it`); `off` makes it track again
+  (`cue 9/3 tracks again`). Each is an undo step, and a line that changes nothing is refused.
+  In a list without tracking it goes through, and the reply says it changes nothing until
+  tracking is on. `list cues L` marks a block cue `block`.
 * **Timing.** `cue L/C time <in>[/<out>]` sets the cue's fade in and out (out defaults to
   in), with an optional `delay` and curve (`linear`, `easeIn`, `easeOut`, `easeInOut`,
   `snapStart`, `snapEnd`, `bezier x1 y1 x2 y2`); with a family name it sets that family's

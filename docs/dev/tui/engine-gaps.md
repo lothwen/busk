@@ -30,8 +30,9 @@ The TUI runs a `busk.LiveShow` in its own process, or, since GAP-11, is run by `
   (the question to ask before a line), since GAP-15 `LiveShow.effect_templates`
   (`EffectTemplateInfo`), since GAP-20 `LiveShow.expected(line)` (`Expected`, what
   may come where the word being typed starts), since GAP-21 `LiveShow.health`
-  (`EngineHealth`) and since GAP-27 `LiveShow.fixture_profiles`
-  (`FixtureProfileInfo`). Since GAP-16 a profile in `LiveShow.show`
+  (`EngineHealth`), since GAP-27 `LiveShow.fixture_profiles`
+  (`FixtureProfileInfo`) and since GAP-46 `LiveShow.tracking(L)` (`TrackedCue`, a cue
+  list's tracked states). Since GAP-16 a profile in `LiveShow.show`
   may have a `category`, and since GAP-17 a playback in the snapshot has the `color` of
   its current cue. The `busk.*` loggers feed the TUI's log pane.
 - **Text is not parsed.** `docs/library.md` says message text (`Reply.text`, CLI output, log
@@ -102,6 +103,8 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-42](#gap-42-removing-a-familys-own-timing) Removing a family's own timing | action | nice-to-have | F4 | **done** 2026-11-11 |
 | [GAP-43](#gap-43-moving-and-copying-a-cue) Moving and copying a cue | action | nice-to-have | F4 | **done** 2026-11-11 |
 | [GAP-44](#gap-44-loading-a-cue-into-the-programmer) Loading a cue into the programmer | action | important | F4 | **done** 2026-11-11 |
+| [GAP-46](#gap-46-a-cue-lists-tracked-states) A cue list's tracked states | read, action | important | prompt, F4 | **done** 2026-11-16 |
+| [GAP-47](#gap-47-block-cues) Block cues | action | nice-to-have | prompt, F4 | **done** 2026-11-16 |
 | [GAP-52](#gap-52-a-dmx-readout) A DMX readout | action | nice-to-have | prompt, F8 | **done** 2026-11-12 |
 | [GAP-53](#gap-53-renaming-and-deleting-a-master) Renaming and deleting a master | action | nice-to-have | F7 | **done** 2026-11-12 |
 
@@ -2759,6 +2762,115 @@ modules' docs. What it settles:
   bindings, a running `LiveShow`), rows in `tests/test_console_parser.py` and
   `tests/test_console_prompt.py`, the cascade's binding in `tests/test_cascade.py`, and a load in
   `tests/test_eventlog.py`'s replayed run.
+
+## GAP-46: A cue list's tracked states
+
+**Status:** done 2026-11-16 (see **Done** at the end of this section).
+
+The user's word of 2026-11-12, after comparing busk with a grandMA3 show-programming howto; built in
+Phase 27 of `docs/plans/tui-pending-plan.md`. GAP-45 belongs to that plan's Phase 26, which comes
+later.
+
+**Needed by:** the prompt, and F4's track sheet (Phase 28 of the plan).
+
+**Today:** a tracking list stores each cue's changes, and on stage a cue shows them over what the
+cues before it left. Nothing shows that: `list cues L` gives each cue's timing and trigger, F4 shows
+what each cue stores, and `load cue` brings only the cue's own changes. The compiler works out each
+cue's state (`src/busk/compiler/tracking.py`), but on lanes, and no facade reads it.
+
+**Engine should provide:** `OfflineShow.tracking(L)` and `LiveShow.tracking(L)`, each cue of the
+list with every value it puts on stage, a preset by name, and the cue that stores it; what the
+cue releases; its effects, own or tracked. And `list cue L/C`, which prints one cue's.
+
+**Priority:** important: a track sheet is how an operator reads a tracking list.
+
+**TUI until then:** nothing. F4 shows what each cue stores.
+
+**Done** (2026-11-16). `tracked_cues` in the new `src/busk/session/tracked.py`, read by
+`_Facade.tracking` in `src/busk/runner.py`; three public names, `TrackedCue`, `TrackedValue` and
+`TrackedEffect`. The line is the `cue` kind of `_cmd_list` in `src/busk/console/parser.py`, a
+`Query` with a new `cue` field, printed by `Console._list_cue`. Documented in `docs/console.md`
+("Tracking lists record changes only"), `docs/library.md` (the read and its reference rows), `busk
+help` and the modules' docs. What it settles:
+
+- **Read from the compiled show** (§5, call 22 of the plan): what the list plays from its first
+  cue, by GO. Other playbacks, the masters, park and the programmer change nothing in it. The
+  facade reads one `ShowState`, a show with its compiled form, so a read from another thread sees
+  one moment. It is made on each call; `None` for a list the show lacks, `()` for one with no cues.
+- **Show data, the compiler's rule.** The compiler's states are lanes, which name no preset. The
+  read runs `tracking.py`'s rule on show data, as `record.inherited` does: each entry flattened by
+  `entry_sources` (a literal, a `perTarget` value and a spread give each target its literal; a
+  preset stays a reference), a cue's own value winning over its own release, and a block cue, the
+  first cue and a list without tracking holding only their own. `released_slots`, which was
+  `record.py`'s `_released`, moved beside `entry_sources` and is shared, as Phase 25 shared
+  `entry_sources`.
+- **A value** has the fixture's number, the element counted from 1, the attribute, the value in
+  the show's units, and the preset's `(pool, number, name)`, as `ProgrammerValue` has them, then
+  `trackedFrom`: the number of the cue that stores it, `None` for the cue's own. Values come by
+  fixture number, element and the registry's order of the attributes.
+- **What a cue releases** is what it takes away: each slot its `releases` name that the cue before
+  it held, as a value or through an effect instance it tracks, and that it does not set itself.
+  An instance the cue holds itself takes the place of a tracked one with its id, which is then not
+  trimmed, as the compiler has it.
+- **Effects** come from the compiled cue, which already carries the cue that holds each instance:
+  each by `id`, with `trackedFrom`. A release trims the slots of a tracked instance, and one left
+  with nothing to drive is not listed.
+- **A chase** tracks as a sequence does, in list order, whatever its direction: the compiler works
+  out the states once, and the engine plays them in the chase's order.
+- **Under `busk run`** the console process compiles every edit before it sends it to the engine
+  process, so it holds the compiled show, and the read needs nothing from the engine.
+- **`list cue L/C`** prints a first line naming the cue (`cue 9/3 'Pre'`), with `, a block cue`
+  and `(cue list 1 does not track)` where they apply. Then a line per fixture, or per element
+  (`301.3`) where the fixture's elements differ or not all of them have values, each value as
+  `<attribute> <value>` and `← L/C` after one it tracks: a preset by its name, a 0-to-1 scalar in
+  per cent (`70%`), anything else as `set` takes it. Then `releases 101 pan tilt, 102 pan tilt`,
+  and each effect as `programmer` prints it, with `← L/C` after a tracked one; `nothing` for a cue
+  with none of these. `list cues L` marks a block cue `block`.
+- **Its cost** on the §19 reference rig with 4-cue tracking lists (`docs/dev/benchmarks.md`): 8 ms
+  for a typical list of 3,000 values over its cues, 160 ms for the largest, 55,808.
+- Tests: `tests/test_tracked_states.py` (Song cue by cue, presets, a release, an effect that
+  tracks, a block cue, a list without tracking, an empty list, a chase, own values and instances
+  against releases, a trimmed effect, edits and undo, every cue of both shipped shows against the
+  compiled lanes, with and without tracking, `list cue`'s lines and refusals, a running `LiveShow`,
+  and `busk run` with processes and with threads), rows in `tests/test_console_parser.py` and
+  `tests/test_console_prompt.py`, and the public API's names, golden and typed consumer.
+
+## GAP-47: Block cues
+
+**Status:** done 2026-11-16 (see **Done** at the end of this section).
+
+The user's word of 2026-11-12; built in Phase 27 of `docs/plans/tui-pending-plan.md`, with GAP-46.
+
+**Needed by:** the prompt, and F4's `[block]` (Phase 28 of the plan).
+
+**Today:** a cue's `block` (a tracking stop: the cue is a whole state) is in the model, but only
+the generic edit sets it (`cue 9/3 block true`, which replies with a path), and neither `list cues`
+nor F4 shows it.
+
+**Engine should provide:** `cue L/C block on|off`, one undo step with a reply in words.
+
+**Priority:** nice-to-have.
+
+**TUI until then:** nothing.
+
+**Done** (2026-11-16). `Parser._block` in `src/busk/console/parser.py`, reached from the `cue` head
+when `block` is followed by `on` or `off`. Documented in `docs/console.md`, `busk help` and the
+parser's module docs. What it settles:
+
+- **`on`** sets `block` (`cue 9/3 tracks nothing from the cues before it`); **`off`** takes it out
+  of the cue, as a cue recorded without one has none (`cue 9/3 tracks again`). Each is one undo
+  step.
+- **A line that changes nothing is refused** in one line and spends no step (`cue 9/3 is a block
+  cue already`, `cue 9/3 is not a block cue`), as a mode that changes nothing is (§5, call 11 of
+  the plan).
+- **In a list without tracking** it goes through, and the reply says so: `cue 1/2 is a block cue;
+  cue list 1 does not track, so that changes nothing until tracking is on`. The validator's warning
+  of the same (`block has no effect without tracking`) still follows it, with its path.
+- **`cue L/C block true`** is the generic edit, as before, and replies with its path. Tab offers
+  `block` after a cue, then `on` and `off`.
+- Tests: in `tests/test_tracked_states.py` (on, off, undo, the refusals, a list without tracking,
+  the generic edit, the compiled states, `list cues`), rows in `tests/test_console_parser.py` and
+  `tests/test_console_prompt.py`.
 
 ## GAP-52: A DMX readout
 

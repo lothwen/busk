@@ -218,6 +218,24 @@ show holds its profile. It is the same tuple until a profile changes:
 
 ```
 
+`tracking(L)` gives each cue of cue list `L` as it plays when the list is played by GO from
+its first cue, which in a tracking list is more than the cue stores. Each cue has its
+`values`, as `programmer` has them, each with `trackedFrom`: the number of the earlier cue
+that stores it, or `None` for the cue's own. It also has what it `released` (`(number,
+element, attribute)`), its `effects` (each by `id`, with `trackedFrom` too), and `block`. It
+reads the compiled show, not the engine, so other playbacks, the masters, park and the
+programmer change nothing in it. It is made on each call, and is `None` for a list the show
+lacks:
+
+```python
+>>> intro, verse, pre, chorus, outro = offline.tracking(9)      # the song, a tracking list
+>>> [(v.attribute, v.value, v.preset, v.trackedFrom) for v in verse.values if v.number == 201]
+[('intensity', 0.6, None, '1'), ('color', {'r': 0.0, 'g': 0.0, 'b': 1.0}, ('color', 1, 'Blue'), '1')]
+>>> outro.released[:2], [(e.id, e.trackedFrom) for e in outro.effects]
+(((101, 1, 'pan'), (101, 1, 'tilt')), [('rainbow', '4')])
+
+```
+
 **Commands happen now.** Each `execute`, `submit` and script line has taken effect when
 the call returns, at the current engine time. Time moves only with `tick`, so a fade or
 a chase stays where it was until then. `ids=busk.CounterIds()` makes the ids of new
@@ -452,7 +470,7 @@ another thread edited was done 32–45 ms after it was due at the 99th percentil
 
 ## Reference
 
-The 39 names of `busk.__all__`. Each has a docstring with the details; path parameters
+The 44 names of `busk.__all__`. Each has a docstring with the details; path parameters
 take `str` or `os.PathLike`.
 
 | Name | What it is |
@@ -464,7 +482,7 @@ take `str` or `os.PathLike`.
 | `read_ofl` | `read_ofl(path, *, manufacturer=None) -> ImportReport`: convert an Open Fixture Library profile |
 | `read_gdtf` | `read_gdtf(path, *, manufacturer=None) -> ImportReport`: convert a GDTF file |
 | `ProfileLibrary` | The built-in profiles plus directories of profiles, for `fixture add`: `get(id)`, `find(id or name)`, iteration, `problems` |
-| `OfflineShow` | A show on a clock you drive: `submit`, `execute`, `confirmation`, `expected`, `run_script`, `save`, `tick`; `show`, `warnings`, `snapshot`, `output`, `effects`, `programmer`, `effect_templates`, `fixture_profiles`, `time` |
+| `OfflineShow` | A show on a clock you drive: `submit`, `execute`, `confirmation`, `expected`, `run_script`, `save`, `tick`, `tracking`; `show`, `warnings`, `snapshot`, `output`, `effects`, `programmer`, `effect_templates`, `fixture_profiles`, `time` |
 | `LiveShow` | A show in real time in your process: as `OfflineShow`, with `start`, `stop` and `with`, `frame` instead of `tick`, `routes`, `surfaces` and `health` |
 | `DmxFrame` | One engine output: `seq`, `time`, and `universes`, a mapping of universe number to 512 bytes |
 | `EngineHealth` | How a `LiveShow`'s engine is doing: `state` (`"starting"`, `"running"`, `"stalled"`, `"stopped"`; under `busk run` with processes also `"restarting"`, `"failed"`), `ticks`, `overruns`, `lastTickAge` (seconds since its newest tick, or `None`) |
@@ -489,6 +507,9 @@ take `str` or `os.PathLike`.
 | `Expected` | What `expected(line)` returns, about the word being typed at the end of the line: `words` (the keywords and names that may come there and that it starts), `values` (anything else, described), `runnable` (the line before it runs as it is), `error` (the mistake that stops it, or `None`), `start` (where that word starts) |
 | `ProgrammerStatus` | The programmer: `version`, `selection` (`(number, element)` pairs), `blind`, `highlight`, `fadeTime`, `values`, `effects` (as the show file holds them), `stopped` (the ids of the stopped effects) |
 | `ProgrammerValue` | One value in it: `number`, `element`, `attribute`, `value` (in the show's units), `preset` (`(pool, number, name)`, or `None`) |
+| `TrackedCue` | One cue of a list, from `tracking(L)`, as it plays when the list is played by GO from its first cue: `number`, `name`, `block`, `values`, `released` (`(number, element, attribute)` slots it takes away), `effects` |
+| `TrackedValue` | One value in it: as a `ProgrammerValue`, with `trackedFrom` (the number of the earlier cue that stores it, or `None` for the cue's own) |
+| `TrackedEffect` | One effect instance in it: `id`, `trackedFrom` (the number of the earlier cue that holds it, or `None`) |
 | `RouteStatus` | One output route of a `LiveShow`: `id`, `label`, `universe` (its number), `state` (`"ok"`, `"failed"`, `"disabled"`, `"ignored"`), `detail` (why), `packets`, `errors` |
 | `SurfaceStatus` | One control surface of a `LiveShow`: `id`, `name`, `kind`, `state` (`"ok"`, `"failed"`, `"ignored"`), `detail` (why), `urls` (a web remote's addresses) |
 | `IdFactory` | The protocol that makes new entity ids |

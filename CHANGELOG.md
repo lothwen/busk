@@ -10,6 +10,13 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- `list cue L/C` prints what a cue puts on stage when its list is played by GO from its first
+  cue: a line per fixture (per element where a fixture's elements differ) with each value, `←
+  9/1` after one tracked from an earlier cue, then what the cue releases and its effects.
+  `OfflineShow.tracking(L)` and `LiveShow.tracking(L)` give the same for every cue of a list, as
+  `TrackedCue`s with `TrackedValue`s and `TrackedEffect`s, read from the compiled show. `cue L/C
+  block on|off` makes a cue track nothing from the cues before it, or track again, in one undo
+  step with a reply in words, and `list cues L` marks a block cue `block`.
 - The web remote shows the stage in 3D: the **3D** button in its header opens a view of the
   show's rig above the strips (beside them on a phone held sideways), lit by what the engine
   outputs (intensity, colour, shutter and strobe, pan, tilt and zoom), with beams in haze and

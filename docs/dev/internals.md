@@ -579,6 +579,18 @@ so `version` counts changes of the content. What is dormant is left out, by the 
 `build_frame` uses: a gone target, a value without a slot, a preset value or its option,
 and an effect that no longer validates.
 
+**The tracked states** (`busk.session.tracked`; GAP-46 of
+[`tui/engine-gaps.md`](tui/engine-gaps.md)). `OfflineShow.tracking(L)` and
+`LiveShow.tracking(L)` give each cue of a list with what it plays from GO on the first cue,
+as `TrackedCue`s, on the reader's thread from one `ShowState`. The compiler's states
+(`busk.compiler.tracking`) are lanes, which name no preset, so `tracked_cues` runs the same
+rule on show data, as `record.inherited` does: `entry_sources` flattens each entry and
+`released_slots` expands each release, both in `busk.session.programmer`. It keeps, per
+slot, the cue that stores the value. The effects come from the compiled cue, whose
+`CompiledEffect.cue` already names the cue that holds each instance. A test holds every
+cue of both shipped shows equal to the compiled lanes. `list cue L/C` prints one cue of
+it.
+
 **The effect templates** (`busk.console.console`; GAP-15 of
 [`tui/engine-gaps.md`](tui/engine-gaps.md)). `effect add` finds its template with
 `find_template` (`busk.console.parser`): the show's copy if it has one (the library

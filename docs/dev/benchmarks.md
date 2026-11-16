@@ -71,6 +71,14 @@ without it, within run-to-run noise. The engine captures only while something re
 `effects` all the same, as it does for the output. Building the 20 `EffectStatus`es with
 their next cycle, on the reader's thread, takes 0.16 ms mean (0.23 ms p99).
 
+**The tracked states** (GAP-46, 2026-11-16; GC off, median of 5 per list). `tracking(L)`
+runs on the reader's thread, from the show and its compiled form, and the engine does
+nothing for it. On the reference rig with 4-cue tracking lists
+(`busking_benchmark_rig(cues=4, tracking=True)`), it takes about 2.7 ms per 1,000 values
+over the list's cues: 8.2 ms for the 37 lists of 3,000 values, 9.2 ms at 3,360, 19 ms at
+6,960, 32 ms at 13,152, and 155 to 162 ms for the three lists of about 55,700, whose cues
+cover whole universes. `list cue L/C` reads the whole list, so it costs the same.
+
 **A frontend on `busk run`** (GAP-11, 2026-10-23; `busk run --frontend` on the reference
 rig with its 20 effects, every playback up, three processes, 15 s per run). A frontend
 that polls `frame`, `output` and `effects` 20 times a second costs the engine process
