@@ -106,7 +106,7 @@ from busk.model.common import (
     parse_target_key,
     target_key,
 )
-from busk.model.cue import cue_number_key
+from busk.model.cue import CueRelease, cue_number_key
 from busk.model.effect import EffectInstance
 from busk.model.entry import LiteralSource, PresetSource, TargetSpec, ValueEntry, ValueSource
 from busk.model.validate import adjustment_problem, validate_effect
@@ -608,6 +608,21 @@ def entry_sources(state: ShowState, entries: Iterable[ValueEntry]) -> dict[SlotK
                 flat = LiteralSource(kind="literal", value=value)
             own[slot_key(target, attribute)] = flat
     return own
+
+
+def released_slots(state: ShowState, releases: Iterable[CueRelease]) -> dict[SlotKey, Slot]:
+    """The slots ``releases`` name, by key, as the compiler expands them
+    (:meth:`~busk.compiler.cues.CueCompiler.released`)."""
+    slots: dict[SlotKey, Slot] = {}
+    for release in releases:
+        attributes = release["attributes"]
+        names = list(ATTRIBUTES) if attributes == "all" else attributes
+        for target in state.values.expand(release["targets"]):
+            for attribute in names:
+                slot = state.compiled.slots.find(target, attribute)
+                if slot is not None:
+                    slots[slot_key(target, attribute)] = slot
+    return slots
 
 
 # ------------------------------------------------------------------ checks

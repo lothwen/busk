@@ -82,6 +82,7 @@ from busk.console.prompt import PROMPT, Editing, hints, split
 from busk.engine.loop import Frame
 from busk.engine.snapshot import EngineSnapshot
 from busk.io.osc import feedback_target
+from busk.model.attributes import ATTRIBUTES
 from busk.model.common import TargetRef
 from busk.model.effect import ColorLayer, EffectInstance, EffectLayer
 from busk.model.entry import TargetSpec
@@ -97,6 +98,7 @@ from busk.session.library import (
 )
 from busk.session.session import CommandResult, Session
 from busk.session.status import programmer_status
+from busk.session.tracked import TrackedValue, tracked_cues
 
 MAX_DEPTH: Final = 8
 """How deeply ``source`` may nest (a script sourcing itself stops here)."""
@@ -505,6 +507,8 @@ class Console:
             return self._dmx(query)
         if query.kind == "list" and query.arg == "cues" and query.number is not None:
             return self._list_cues(query.number)
+        if query.kind == "list" and query.arg == "cue" and query.number is not None:
+            return self._list_cue(query.number, cast(str, query.cue))
         if query.kind == "list":
             return self._list(query.arg)
         if query.kind == "library":
@@ -639,9 +643,46 @@ class Console:
             f"{cue['number']:>5}  {cue['name']:<20} {_timing(cue['timing'])}  "
             f"{_trigger(cue['trigger'])}"
             + (f"  {_count(len(cue['effects']), 'effect')}" if cue["effects"] else "")
+            + ("  block" if cue.get("block", False) else "")
             for cue in cue_list["cues"]
         ]
         return "\n".join(lines) or "no cues"
+
+    def _list_cue(self, number: int, cue_number: str) -> str:
+        """``list cue L/C`` (GAP-46): the cue's tracked state, a line per
+        fixture with each value, ``← L/C`` after one it tracks; a line per
+        element where the fixture's elements differ. Then what it releases,
+        then its effects, ``programmer``'s way."""
+        state = self.session.state  # one read: a show and its compiled form
+        show = state.show
+        cue_list = next((cl for cl in show["cueLists"] if cl["number"] == number), None)
+        tracked = () if cue_list is None else tracked_cues(state, cue_list)
+        found = next((cue for cue in tracked if cue.number == cue_number), None)
+        if cue_list is None or found is None:  # gone since the line was parsed (another thread)
+            return f"no cue {number}/{cue_number}"
+        head = f"cue {number}/{found.number} {found.name!r}"
+        if found.block:
+            head += ", a block cue"
+        if not cue_list["tracking"]:
+            head += f" (cue list {number} does not track)"
+        counts = {fixture["number"]: state.elements[fixture["id"]] for fixture in show["fixtures"]}
+        rows = _rows(
+            ((v.number, v.element, _tracked_value(v, number)) for v in found.values), counts
+        )
+        width = max((len(label) for label, _ in rows), default=0)
+        lines = [head, *(f"  {label:>{width}}  {'  '.join(texts)}" for label, texts in rows)]
+        if found.released:
+            gone = _rows(found.released, counts)
+            lines.append("  releases " + ", ".join(f"{label} {' '.join(t)}" for label, t in gone))
+        cues = {cue["number"]: cue for cue in cue_list["cues"]}
+        for effect in found.effects:
+            holder = cues[effect.trackedFrom or found.number]
+            instance = next(e for e in holder["effects"] if e["id"] == effect.id)
+            since = "" if effect.trackedFrom is None else f" ← {number}/{effect.trackedFrom}"
+            lines.append(f"  effect {self._effect(instance)}{since}")
+        if len(lines) == 1:
+            lines.append("  nothing")
+        return "\n".join(lines)
 
     def _list_masters(self, show: Show) -> list[str]:
         """Each master's kind and level, and a speed master's tempo: the
@@ -922,6 +963,40 @@ def _defaults(defaults: EffectDefaults) -> str:
     if "phase" in defaults:
         parts.append(f"phase {defaults['phase']['start']:g} {defaults['phase']['end']:g}")
     return f" ({', '.join(parts)})" if parts else ""
+
+
+def _tracked_value(value: TrackedValue, cue_list: int) -> str:
+    """A value of ``list cue``: the attribute, then a preset by its name
+    (``'Blue'``), a normalised scalar in per cent (``70%``) or anything else as
+    ``set`` takes it, then ``← L/C`` when it is tracked from that cue."""
+    definition = ATTRIBUTES[value.attribute]
+    if value.preset is not None:
+        given = repr(value.preset[2])
+    elif definition.kind == "scalar" and definition.unit == "normalized":
+        given = f"{cast(float, value.value) * 100:g}%"
+    else:
+        given = format_value(value.value)
+    since = "" if value.trackedFrom is None else f" ← {cue_list}/{value.trackedFrom}"
+    return f"{value.attribute} {given}{since}"
+
+
+def _rows(
+    items: Iterable[tuple[int, int, str]], elements: Mapping[int, int]
+) -> list[tuple[str, list[str]]]:
+    """``(fixture number, element, text)`` items as labelled rows: one row
+    for a fixture whose every element (``elements`` counts them by number)
+    has the same texts, else one row per element (``301.3``)."""
+    grouped: dict[int, dict[int, list[str]]] = {}
+    for number, element, text in items:
+        grouped.setdefault(number, {}).setdefault(element, []).append(text)
+    rows: list[tuple[str, list[str]]] = []
+    for number, by_element in grouped.items():
+        texts = list(by_element.values())
+        if len(texts) == elements[number] and all(text == texts[0] for text in texts):
+            rows.append((str(number), texts[0]))
+        else:
+            rows += [(f"{number}.{element}", text) for element, text in by_element.items()]
+    return rows
 
 
 def _join(*parts: str, ok: bool) -> Reply:

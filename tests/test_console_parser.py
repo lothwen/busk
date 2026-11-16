@@ -787,8 +787,8 @@ def test_queries_and_session_actions(line: str, action: object) -> None:
         (
             "list everything",
             "cannot list 'everything'; try one of fixtures, groups, presets, cuelists, "
-            "cues, playbacks, pages, masters, universes, dmx, routes, surfaces, bindings, "
-            "profiles, effects, park",
+            "cues, cue, playbacks, pages, masters, universes, dmx, routes, surfaces, "
+            "bindings, profiles, effects, park",
         ),
     ],
 )
@@ -940,6 +940,7 @@ def test_tempo_errors(line: str, names: tuple[str, ...], error: str) -> None:
 
 CHORUS = ["cueLists", {"id": "cl-song"}, "cues", {"id": "c-chorus"}]
 SONG = ["cueLists", {"id": "cl-song"}]
+BLUE_CUE = ["cueLists", {"id": "cl-blue"}, "cues", {"id": "c-blue"}]
 HZ_2 = {"rate": {"kind": "hz", "value": 2}, "direction": "forward", "crossfade": 0}
 
 
@@ -1064,6 +1065,17 @@ PHASE4_COMMANDS: list[tuple[str, dict[str, Any]]] = [
                  {"type": "SET", "path": [*SONG, "chase"], "value": HZ_2}),
     ),
     ("cue 1/2 block true", {"type": "SET", "path": [*CHORUS, "block"], "value": True}),
+    # GAP-47: block cues
+    ("cue 1/2 block on",
+     labelled("cue 1/2 tracks nothing from the cues before it",
+              {"type": "SET", "path": [*CHORUS, "block"], "value": True})),
+    ("cue 1/2 BLOCK ON",
+     labelled("cue 1/2 tracks nothing from the cues before it",
+              {"type": "SET", "path": [*CHORUS, "block"], "value": True})),
+    ("cue 10/1 block on",
+     labelled("cue 10/1 is a block cue; cue list 10 does not track, so that changes nothing "
+              "until tracking is on",
+              {"type": "SET", "path": [*BLUE_CUE, "block"], "value": True})),
 ]  # fmt: skip
 
 
@@ -1233,6 +1245,8 @@ def test_bind_tap_and_named_masters(line: str, action: dict[str, Any]) -> None:
 
 def test_list_cues_and_masters() -> None:
     assert parse("list cues 1", context()) == Query("list", "cues", 1)
+    assert parse("list cue 1/2", context()) == Query("list", "cue", 1, cue="2")  # GAP-46
+    assert parse("list cue 01/02", context()) == Query("list", "cue", 1, cue="2")
     assert parse("list masters", context()) == Query("list", "masters")
 
 
@@ -1299,6 +1313,12 @@ def test_chase_bpm_needs_a_speed_master(line: str, names: tuple[str, ...], error
         ("cuelist 1 sequence now", "unexpected 'now'"),
         ("list cues", "expected a cue list number"),
         ("list cues 7", "no cue list 7"),
+        ("list cue", "expected a cue list number, as L or L/C"),
+        ("list cue 1", "expected a cue as L/C, e.g. 10/1"),
+        ("list cue 1/9", "no cue 1/9"),
+        ("list cue 1/1 now", "unexpected 'now'"),
+        ("cue 1/2 block off", "cue 1/2 is not a block cue"),
+        ("cue 1/2 block on now", "unexpected 'now'"),
         ('bind "nanoKONTROL2" cc 1 16 master "Nope"', "no master 'Nope'"),
     ],
 )

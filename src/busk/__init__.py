@@ -8,7 +8,7 @@ The public API
 ==============
 
 Every public name is importable from ``busk`` itself; ``__all__`` lists the
-41 of them. The library guide, ``docs/library.md``, has the examples and the
+44 of them. The library guide, ``docs/library.md``, has the examples and the
 reference.
 
 Show documents
@@ -27,7 +27,8 @@ Running a show
     effects (:attr:`~OfflineShow.effects`), their programmer
     (:attr:`~OfflineShow.programmer`), the effect templates ``effect add``
     takes (:attr:`~OfflineShow.effect_templates`) and the fixture profiles
-    ``fixture add`` takes (:attr:`~OfflineShow.fixture_profiles`), and say
+    ``fixture add`` takes (:attr:`~OfflineShow.fixture_profiles`), give a
+    cue list's tracked states (:meth:`~OfflineShow.tracking`), and say
     what may come next in a line being typed
     (:meth:`~OfflineShow.expected`); a
     :class:`LiveShow` also shows its output routes
@@ -45,7 +46,8 @@ Data types
     :class:`EffectSnapshot` with :class:`EffectStatus`;
     :class:`EffectTemplateInfo`; :class:`FixtureProfileInfo` with
     :class:`FixtureModeInfo`; :class:`Expected`; :class:`ProgrammerStatus`
-    with :class:`ProgrammerValue`; :class:`RouteStatus`;
+    with :class:`ProgrammerValue`; :class:`TrackedCue` with
+    :class:`TrackedValue` and :class:`TrackedEffect`; :class:`RouteStatus`;
     :class:`SurfaceStatus`; :class:`IdFactory` and :class:`CounterIds`.
 Errors
     :class:`BuskError` is the base of every error the API raises on purpose:
@@ -131,6 +133,9 @@ __all__ = [
     "ShowLoadError",
     "SpeedStatus",
     "SurfaceStatus",
+    "TrackedCue",
+    "TrackedEffect",
+    "TrackedValue",
     "UnsupportedFeature",
     "load_show",
     "new_show",
@@ -173,6 +178,9 @@ _EXPORTS: dict[str, str] = {
     "EffectStatus": "busk.engine.snapshot",
     "ProgrammerStatus": "busk.session.status",
     "ProgrammerValue": "busk.session.status",
+    "TrackedCue": "busk.session.tracked",
+    "TrackedValue": "busk.session.tracked",
+    "TrackedEffect": "busk.session.tracked",
     "RouteStatus": "busk.output.driver",
     "SurfaceStatus": "busk.io.surfaces",
     "UnsupportedFeature": "busk.compiler.compile",
@@ -227,6 +235,9 @@ if TYPE_CHECKING:  # what type checkers see: the same table, as explicit re-expo
     from busk.session.session import CommandResult as CommandResult
     from busk.session.status import ProgrammerStatus as ProgrammerStatus
     from busk.session.status import ProgrammerValue as ProgrammerValue
+    from busk.session.tracked import TrackedCue as TrackedCue
+    from busk.session.tracked import TrackedEffect as TrackedEffect
+    from busk.session.tracked import TrackedValue as TrackedValue
 
 
 def _lazy(name: str) -> object:

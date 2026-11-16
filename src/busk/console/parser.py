@@ -57,6 +57,7 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
     cue L/C go | cue L/C follow <d> | cue L/C wait <d>
     cue L/C release <targets> [only <attribute>…]
     cue L/C number M | cue L/C copy [L2/]M
+    cue L/C block on|off
     cuelist N chase hz <rate> [<direction>] [crossfade <f>]
     cuelist N chase bpm ["<master>"] [x <multiplier>] [<direction>] [crossfade <f>]
         <direction> = forward | reverse | bounce | random
@@ -106,7 +107,7 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
                    | chase.direction | chase.crossfade | chase.rate.value
                    | chase.rate.multiplier | notes | tags
         <optional> = chase | notes | tags
-    undo | redo | save [PATH] | list <kind> | list cues L | library | info
+    undo | redo | save [PATH] | list <kind> | list cues L | list cue L/C | library | info
     list dmx U [A [thru B]] | list dmx fixture N
     status | help | source FILE | quit
 
@@ -303,6 +304,19 @@ list brings its changes only. ``only`` reads families as ``record`` does.
 ``record cue L/C replace`` records it back; an entry's own timing does not
 come, so that drops it, as the reply says.
 
+Tracked states (GAP-46). ``list cue L/C`` prints what the cue puts on stage
+when its list is played by GO from its first cue: a line per fixture (per
+element where a fixture's elements differ), each value with ``← L/C`` after it
+when it is tracked from an earlier cue, then what the cue releases, then its
+effects. ``list cues L`` marks a block cue ``block``.
+
+Block cues (GAP-47). ``cue L/C block on`` makes the cue a whole state: it
+tracks nothing from the cues before it, and the cues after it track from it.
+``off`` makes it track again. Each is one undo step; a line that changes
+nothing is refused. In a list without tracking it goes through, and the reply
+says that it changes nothing until tracking is on. ``cue L/C block true`` is
+the generic edit, as before.
+
 The DMX readout (GAP-52). ``list dmx U`` prints universe ``U`` as the engine's
 last frame has it, which is what goes out after the masters, park, blackout and
 limits: 16 values to a line, after the address of the first. ``A`` prints one
@@ -421,7 +435,9 @@ class SubmitAll:
 @dataclass(frozen=True)
 class Query:
     """Print something: ``programmer``, ``list <kind>`` (``list cues L``:
-    ``number`` is ``L``), ``library``, ``info``, ``status`` or ``help``.
+    ``number`` is ``L``; ``list cue L/C``: ``number`` is ``L`` and ``cue``
+    the cue's number as the list stores it), ``library``, ``info``,
+    ``status`` or ``help``.
     ``list dmx`` is kind ``dmx``: arg ``universe``, ``number`` the
     universe and ``span`` its first and last channel, or arg ``fixture``
     and ``number`` the fixture."""
@@ -430,6 +446,7 @@ class Query:
     arg: str = ""
     number: int | None = None
     span: tuple[int, int] | None = None
+    cue: str | None = None
 
 
 @dataclass(frozen=True)
@@ -2245,6 +2262,13 @@ class _Parser:
             verb = self.keyword(*_CUE_VERBS)
             if verb is not None:
                 return self._cue_verb(path, cue, verb)
+            words = [token.lower for token in self.tokens[self.k : self.k + 2]]
+            if words in (["block", "on"], ["block", "off"]):  # else block true: the generic edit
+                self.k += 2
+                return self._block(path, cue, words[1] == "on")
+            if words == ["block"]:
+                self.offers += ("on", "off")
+            self.ending("block")
             moves = self.keyword("number", "copy")
             if moves == "number":
                 return self._renumber_cue(path, cue)
@@ -2605,6 +2629,29 @@ class _Parser:
         return self.submit(
             _labelled(said, {"type": "SET", "path": [*path, "trigger"], "value": trigger})
         )
+
+    def _block(self, path: EditPath, cue: Mapping[str, Any], on: bool) -> Action:
+        """``cue L/C block on|off`` (GAP-47): the cue tracks nothing from the
+        cues before it, or tracks again. ``off`` takes ``block`` out of the
+        cue, as a cue recorded without one has none."""
+        self.done()
+        who = self._who("cue", path)
+        if cue.get("block", False) == on:
+            raise ParseError(f"{who} is a block cue already" if on else f"{who} is not a block cue")
+        where = [*path, "block"]
+        if on:
+            said = f"{who} tracks nothing from the cues before it"
+            edit: dict[str, Any] = {"type": "SET", "path": where, "value": True}
+        else:
+            said = f"{who} tracks again"
+            edit = {"type": "DELETE", "path": where}
+        cue_list = _element(self.show["cueLists"], path[:2])
+        if not cue_list["tracking"]:
+            said = (
+                f"{who} is {'a' if on else 'not a'} block cue; cue list {cue_list['number']} "
+                "does not track, so that changes nothing until tracking is on"
+            )
+        return Submit(_labelled(said, edit))
 
     def _family_none(self, path: EditPath, cue: Mapping[str, Any], family: str) -> Action:
         """``cue L/C time <family> none`` (GAP-42): the family's own fade,
@@ -3351,6 +3398,11 @@ class _Parser:
             self.by_number("cueLists", number, "cue list")
             self.done()
             return Query("list", kind, number)
+        if kind == "cue":
+            path, cue = self.cue()
+            self.done()
+            cue_list = _element(self.show["cueLists"], path[:2])
+            return Query("list", kind, cue_list["number"], cue=cue["number"])
         if kind == "dmx":
             return self._list_dmx()
         self.done()
@@ -3410,7 +3462,7 @@ class _Parser:
 # ------------------------------------------------------------------ defaults
 
 LIST_KINDS: Final = (
-    "fixtures", "groups", "presets", "cuelists", "cues", "playbacks", "pages",
+    "fixtures", "groups", "presets", "cuelists", "cues", "cue", "playbacks", "pages",
     "masters", "universes", "dmx", "routes", "surfaces", "bindings", "profiles", "effects",
     "park",
 )  # fmt: skip

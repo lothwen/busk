@@ -146,6 +146,19 @@ def offline(directory: Path) -> bytes:
         assert show_.execute(f'effect add "{offered.name}"').ok
         assert (offered.id, offered.summary, offered.low, offered.high, embeds, phase) is not None
         assert size > 0
+    song: tuple[busk.TrackedCue, ...] | None = show_.tracking(9)
+    for state in song or ():
+        whole: bool = state.block
+        for shown in state.values:
+            tracked: busk.TrackedValue = shown
+            since: str | None = tracked.trackedFrom
+            named: tuple[str, int, str] | None = tracked.preset
+            assert (tracked.number, tracked.element, tracked.attribute, since, named) is not None
+        for each_effect in state.effects:
+            held_effect: busk.TrackedEffect = each_effect
+            assert (held_effect.id, held_effect.trackedFrom) is not None
+        gone: tuple[tuple[int, int, str], ...] = state.released
+        assert (state.number, state.name, whole, gone) is not None
     for choice in show_.fixture_profiles:
         listed_profile: busk.FixtureProfileInfo = choice
         embedded: bool = listed_profile.source == "show"

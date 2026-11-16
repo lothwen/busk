@@ -46,6 +46,9 @@ may come where the word being typed starts, as that prompt completes it on
 Tab (:class:`~busk.console.parser.Expected`, GAP-20). A :class:`LiveShow`'s
 ``health`` says how its engine is doing: running, stalled, restarting under
 ``busk run``, its tick and overrun counts (:class:`EngineHealth`, GAP-21).
+``tracking(L)`` gives each cue of list ``L`` with its tracked state, read
+from the compiled show: the values it stores and those it tracks, each with
+the cue that stores it (:class:`~busk.session.tracked.TrackedCue`, GAP-46).
 
 Errors (§5.8): constructing a facade raises
 :class:`~busk.persistence.show_file.ShowLoadError` for an invalid show and
@@ -123,6 +126,7 @@ from busk.session.ids import IdFactory
 from busk.session.library import ProfileLibrary
 from busk.session.session import CommandResult, InputSink, Report, Session, SessionSnapshot
 from busk.session.status import ProgrammerStatus, programmer_status
+from busk.session.tracked import TrackedCue, tracked_cues
 from busk.web.api import WebLink
 
 _output_log = logging.getLogger("busk.output")
@@ -311,6 +315,22 @@ class _Facade:
         """The compiler's warnings about :attr:`show` (cue values it drops,
         unpatched fixtures …), in document order."""
         return self._session.compiled.warnings
+
+    def tracking(self, cue_list: int) -> tuple[TrackedCue, ...] | None:
+        """Every cue of cue list number ``cue_list``, in list order, each
+        with its tracked state: what it puts on stage when the list is
+        played by GO from its first cue, and where each value comes from,
+        the cue itself or a cue before it (see
+        :class:`~busk.session.tracked.TrackedCue`, GAP-46). ``None`` when
+        the show has no such list.
+
+        It reads the compiled show, not the engine, so other playbacks, the
+        masters, park and the programmer change nothing in it. It is made on
+        each call, on the caller's thread: a frontend reads it when it shows
+        a list and after a show edit, not on every tick."""
+        state = self._session.state  # one read: a show and its compiled form
+        found = next((cl for cl in state.show["cueLists"] if cl["number"] == cue_list), None)
+        return None if found is None else tracked_cues(state, found)
 
     # ---------------------------------------------------------- commands
 

@@ -143,6 +143,7 @@ from busk.session.programmer import (
     ProgSource,
     SlotKey,
     entry_sources,
+    released_slots,
     slot_key,
     split_slot_key,
 )
@@ -695,7 +696,7 @@ def _inherited_effects(
     compiled = state.compiled.cueLists[cue_list["id"]]
     before = compiled.cues[compiled.byId[cue_list["cues"][position - 1]["id"]]]
     releases = () if cue is None else cue.get("releases", ())
-    released = frozenset(slot.index for slot in _released(state, releases).values())
+    released = frozenset(slot.index for slot in released_slots(state, releases).values())
     effects: dict[str, CompiledEffect] = {}
     for effect in before.effects:
         trimmed = effect.without(released, state.compiled.slots)
@@ -742,26 +743,11 @@ def inherited(
     for n, cue in enumerate(cue_list["cues"][:position]):
         own = entry_sources(state, cue["entries"])
         if n > 0 and not cue.get("block", False):
-            gone = _released(state, cue.get("releases", ()))
+            gone = released_slots(state, cue.get("releases", ()))
             own = {key: source for key, source in held.items() if key not in gone} | own
         held = own
-    gone = _released(state, releases)
+    gone = released_slots(state, releases)
     return {key: source for key, source in held.items() if key not in gone}
-
-
-def _released(state: ShowState, releases: Iterable[CueRelease]) -> dict[SlotKey, Slot]:
-    """The slots ``releases`` name, by key, as the compiler expands them
-    (:meth:`~busk.compiler.cues.CueCompiler.released`)."""
-    slots: dict[SlotKey, Slot] = {}
-    for release in releases:
-        attributes = release["attributes"]
-        names = list(ATTRIBUTES) if attributes == "all" else attributes
-        for target in state.values.expand(release["targets"]):
-            for attribute in names:
-                slot = state.compiled.slots.find(target, attribute)
-                if slot is not None:
-                    slots[slot_key(target, attribute)] = slot
-    return slots
 
 
 def _same(state: ShowState, value: _Value, inherit: Mapping[SlotKey, ProgSource]) -> bool:

@@ -308,6 +308,7 @@
       "stop": "(self) -> None",
       "submit": "(self, command: Command) -> CommandResult",
       "surfaces": "property: tuple[SurfaceStatus, ...] | None",
+      "tracking": "(self, cue_list: int) -> tuple[TrackedCue, ...] | None",
       "warnings": "property: tuple[Issue, ...]"
     },
     "module": "busk.runner"
@@ -331,6 +332,7 @@
       "submit": "(self, command: Command) -> CommandResult",
       "tick": "(self, t: float) -> DmxFrame",
       "time": "property: float",
+      "tracking": "(self, cue_list: int) -> tuple[TrackedCue, ...] | None",
       "warnings": "property: tuple[Issue, ...]"
     },
     "module": "busk.runner"
@@ -534,6 +536,47 @@
       "__init__": "(self, *, id: str, name: str, kind: Literal['midi', 'osc', 'hid', 'web', 'internal'], state: SurfaceState, detail: str, urls: tuple[str, ...]) -> None"
     },
     "module": "busk.io.surfaces"
+  },
+  "TrackedCue": {
+    "fields": [
+      "number: str",
+      "name: str",
+      "block: bool",
+      "values: tuple[TrackedValue, ...]",
+      "released: tuple[tuple[int, int, AttributeId], ...]",
+      "effects: tuple[TrackedEffect, ...]"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, *, number: str, name: str, block: bool, values: tuple[TrackedValue, ...], released: tuple[tuple[int, int, AttributeId], ...], effects: tuple[TrackedEffect, ...]) -> None"
+    },
+    "module": "busk.session.tracked"
+  },
+  "TrackedEffect": {
+    "fields": [
+      "id: str",
+      "trackedFrom: str | None"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, *, id: str, trackedFrom: str | None) -> None"
+    },
+    "module": "busk.session.tracked"
+  },
+  "TrackedValue": {
+    "fields": [
+      "number: int",
+      "element: int",
+      "attribute: AttributeId",
+      "value: AttributeValue",
+      "preset: tuple[PresetPool, int, str] | None",
+      "trackedFrom: str | None"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, *, number: int, element: int, attribute: AttributeId, value: AttributeValue, preset: tuple[PresetPool, int, str] | None, trackedFrom: str | None) -> None"
+    },
+    "module": "busk.session.tracked"
   },
   "UnsupportedFeature": {
     "bases": [
