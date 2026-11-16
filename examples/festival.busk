@@ -1782,21 +1782,23 @@ safety strobe 10
 surface add web "Tablet"
 
 # Play it from a Korg nanoKONTROL2 in its factory CC mode (set its LED mode to
-# "external" in the Korg Kontrol Editor, so the LEDs follow the show) and from
-# a phone on the same network: open the "Web s-…" address busk prints.
+# "external" in the Korg Kontrol Editor, so the LEDs follow the show).
 #
-#   faders 1–8          the playbacks of the current page
-#   S / M / R           toggle / flash (swop on page 2's washes) / release
-#   knob 1, ▶ ◀◀ ●      the song: level, GO, BACK, release
-#   knob 2, ▶▶          the chase: level, on and off
-#   cycle, knob 3       tap the tempo, "Speed 1"'s multiplier (×¼ … ×4)
-#   knobs 4–6           the size of the circle, the pulse and the bar wave
-#   track ◀ / ▶         the circle / the pulse on and off
-#   knob 7              the "FX" size master
+#   faders 1–8          the playbacks of slots 1–8 on the current page
+#   S / M / R           the playback's buttons: GO / BACK / release on
+#                       page 1 and page 7's cue lists, flash / toggle /
+#                       release on the strobes and blinders, else toggle /
+#                       flash / release
+#   knobs 1–6           the group masters "Spots", "Washes", "PARs",
+#                       "LED Bars", "Strobes" and "Smoke" (the fog level)
+#   knob 7, cycle       "Beat": its multiplier (×¼ … ×4), tap the tempo
 #   knob 8, ■           the grand master, blackout on and off
+#   ▶ / ●               HOUSE FULL / PANIC WORK LIGHT on and off (slots 9
+#                       and 10 of every page)
+#   ◀◀ / ▶▶             jump to page 1 (Songs) / page 7 (House & Audience)
 #   marker ◀ / ▶        previous / next page (the faders take over softly)
 #   marker SET          release every playback
-#
+#   track ◀ / ▶         not bound
 #
 # ------------------------------------------------- nanoKONTROL2 (CC mode)
 surface add midi "nanoKONTROL2"
@@ -1835,23 +1837,21 @@ bind "nanoKONTROL2" cc 1 71 button 8 3
 bind "nanoKONTROL2" cc 1 23 master gm
 bind "nanoKONTROL2" cc 1 42 blackout
 
-# ------------------------------------------------- nanoKONTROL2: song and chase
-bind "nanoKONTROL2" cc 1 16 fader 9            # knob 1: the song
-bind "nanoKONTROL2" cc 1 17 fader 10           # knob 2: the chase
-bind "nanoKONTROL2" cc 1 41 button 9 1         # ▶: GO
-bind "nanoKONTROL2" cc 1 43 button 9 2         # ◀◀: BACK
-bind "nanoKONTROL2" cc 1 45 button 9 3         # ●: release the song
-bind "nanoKONTROL2" cc 1 44 button 10 1        # ▶▶: chase on/off
-#bind "nanoKONTROL2" cc 1 46 tap                # cycle: tap tempo
-bind "nanoKONTROL2" cc 1 18 master "Beat"      # knob 3: the multiplier
+# ------------------------------------------------- nanoKONTROL2: group masters and tempo
+bind "nanoKONTROL2" cc 1 16 master "Spots"     # knob 1
+bind "nanoKONTROL2" cc 1 17 master "Washes"    # knob 2
+bind "nanoKONTROL2" cc 1 18 master "PARs"      # knob 3
+bind "nanoKONTROL2" cc 1 19 master "LED Bars"  # knob 4
+bind "nanoKONTROL2" cc 1 20 master "Strobes"   # knob 5
+bind "nanoKONTROL2" cc 1 21 master "Smoke"     # knob 6: the fog level
+bind "nanoKONTROL2" cc 1 22 master "Beat"      # knob 7: the multiplier
+bind "nanoKONTROL2" cc 1 46 tap "Beat"         # cycle: tap tempo (two speed masters: name one)
 
-# ------------------------------------------------ nanoKONTROL2: effects
-bind "nanoKONTROL2" cc 1 19 fader 11           # knob 4: circle size
-bind "nanoKONTROL2" cc 1 20 fader 12           # knob 5: pulse size
-bind "nanoKONTROL2" cc 1 21 fader 13           # knob 6: bar wave
-bind "nanoKONTROL2" cc 1 22 master "FX Size"   # knob 7: size master
-bind "nanoKONTROL2" cc 1 58 button 11 1        # track ◀: circle on/off
-bind "nanoKONTROL2" cc 1 59 button 12 1        # track ▶: pulse on/off
+# ------------------------------------------------- nanoKONTROL2: emergency and page jumps
+bind "nanoKONTROL2" cc 1 41 button 9 1         # ▶: HOUSE FULL on/off
+bind "nanoKONTROL2" cc 1 45 button 10 1        # ●: PANIC WORK LIGHT on/off
+bind "nanoKONTROL2" cc 1 43 page 1             # ◀◀: Songs
+bind "nanoKONTROL2" cc 1 44 page 7             # ▶▶: House & Audience
 
 # ======================================================== pages
 # After a page change a fader does nothing until it passes the playback's
@@ -1861,11 +1861,11 @@ surface "nanoKONTROL2" pickup soft
 # ------------------------------------------------ nanoKONTROL2: pages and LEDs (LED mode: external)
 bind "nanoKONTROL2" cc 1 61 page -1           # marker ◀
 bind "nanoKONTROL2" cc 1 62 page +1           # marker ▶
-feedback "nanoKONTROL2" cc 1 32 thru 39 led   # S: the slot's playback is active
-feedback "nanoKONTROL2" cc 1 48 thru 55 led   # M: flash or swop held
+feedback "nanoKONTROL2" cc 1 32 thru 39 led   # S: the slot's playback is active (a strobe: flash held)
+feedback "nanoKONTROL2" cc 1 48 thru 55 led   # M: flash held (BACK or a strobe's toggle: active)
 feedback "nanoKONTROL2" cc 1 64 thru 71 led   # R: active
-feedback "nanoKONTROL2" cc 1 41 thru 45 led   # play, stop (blackout), rewind, fast-forward, record
-#feedback "nanoKONTROL2" cc 1 46 led           # cycle: the beat
+feedback "nanoKONTROL2" cc 1 41 thru 45 led   # ▶ HOUSE FULL on, ■ blackout, ◀◀ / ▶▶ on that page, ● PANIC on
+feedback "nanoKONTROL2" cc 1 46 led           # cycle: the beat
 
 # ------------------------------------------------ panic on marker SET
 bind "nanoKONTROL2" cc 1 60 release all
