@@ -887,6 +887,12 @@ def show_model(
                 groups=template.groups,
                 blocks=template.blocks,
                 wings=template.wings,
+                hz=template.hz,
+                bpm=template.bpm,
+                direction=template.direction,
+                fadeIn=template.fadeIn,
+                sizeMaster=template.sizeMaster,
+                speedMaster=template.speedMaster,
                 id=template.id,
                 layers=layers.get(template.id, ()),  # none for what only the library has
                 used_by=tuple(template_cues.get(template.id, ())),

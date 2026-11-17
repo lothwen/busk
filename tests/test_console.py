@@ -481,9 +481,9 @@ def test_effects_are_listed(console: Console, live: Live) -> None:
     }
     assert live.session.submit({"type": "ADD_EFFECT", "effect": pulse}).ok  # type: ignore[typeddict-item]
     assert run(console, "list effects")[0].splitlines() == [
-        "Pulse                intensity multiply sine",
-        "Circle               pan add sine, tilt add sine +90°",
-        "Rainbow              color fade 3 colours",
+        "Pulse                intensity multiply sine (size 0.7)",
+        "Circle               pan add sine, tilt add sine +90° (size 20)",
+        "Rainbow              color fade 3 colours (phase 0 360)",
     ]
     assert run(console, "programmer")[0].splitlines()[4:] == [
         "  effect fx1 'Circle' on 101, 102, bpm 'Speed 1' ×0.5, size 15",
@@ -1209,6 +1209,25 @@ def test_an_update_a_cues_effect_cannot_take_is_refused(console: Console, live: 
     reply = console.execute(f'effect template update "Pulse" {json.dumps(multiply)}')
     assert not reply.ok
     assert "An effect with a multiply layer needs a size within 0..1" in reply.text
+    assert live.session.show == before
+
+
+@pytest.mark.parametrize(
+    ("line", "reply"),
+    [
+        ("cue 20/1 effect ei-1 groups 0", "groups should be 1 or more, got '0'"),
+        ("cue 20/1 effect ei-1 size -1", "the size must be a finite number of 0 or more, got -1"),
+        ("cue 20/1 effect ei-1 colour 3", None),
+    ],
+)
+def test_a_cue_effect_refused_says_why_in_one_line(
+    console: Console, live: Live, line: str, reply: str | None
+) -> None:
+    before = copy.deepcopy(live.session.show)
+    refused = console.execute(line)
+    assert not refused.ok
+    said = " has no property 'colour'" if reply is None else f": {reply}"
+    assert refused.text == f"error: effect ei-1 in cue 20/1{said}"
     assert live.session.show == before
 
 

@@ -636,6 +636,21 @@ Effects are split into a reusable **template** (the shape) and an **instance** (
 ```python
 class EffectTemplate(EntityBase[EffectId]):
     layers: list[EffectLayer]                 # e.g. circle = pan(cos) + tilt(sin)
+    defaults: NotRequired[EffectDefaults]     # what the console's effect add starts from (GAP-51)
+
+class EffectDefaults(TypedDict):              # an instance's settings, by its keys, all optional
+    rate: NotRequired[Rate]
+    direction: NotRequired[Literal["forward", "reverse", "bounce"]]
+    size: NotRequired[float]
+    low: NotRequired[float]
+    high: NotRequired[float]
+    phase: NotRequired[EffectPhase]
+    groups: NotRequired[int]                  # ≥1, as blocks and wings
+    blocks: NotRequired[int]
+    wings: NotRequired[int]
+    sizeFadeIn: NotRequired[float]
+    sizeMasterId: NotRequired[MasterId]       # a size master
+    speedMasterId: NotRequired[MasterId]      # a speed master, as a bpm rate's masterId
 
 class ScalarLayer(TypedDict):                 # scalar attributes
     attribute: AttributeId
@@ -705,6 +720,8 @@ class EffectInstance(TypedDict):
     sizeMasterId: NotRequired[MasterId]
     speedMasterId: NotRequired[MasterId]
 ```
+
+**A template's defaults** (GAP-51) never reach the engine: they are what the console's `effect add` gives a new instance of the template where its line says nothing. The validator holds them to an instance's rules: the masters they name exist and are of their kind, the rate is above 0, and the size is 0 or more, and at most 1 on a template with a `multiply` layer. A master they name counts as a use.
 
 **Absolute vs relative.** An `absolute` layer *is* the value (an intensity chase, a colour cycle) and takes part in normal merging. An `add` layer offsets whatever value the slot resolves to (a circle around the current position). A `multiply` layer scales it (an intensity pulse that dims whatever look is up). See §7.7.
 

@@ -2820,11 +2820,92 @@ waits on Q13. The engine step comes first. Code: `src/busk/model/effect.py` (`Ef
 
    Verify: `effect add` with and without defaults, and a line that overrides one; a library
    template embedded; a master named and then deleted; `undo`; a show file of today loads.
+
+   **Done** (2026-11-17), under Q13 (b), the recommended answer, at the user's standing word.
+   `EffectTemplate.defaults` and `EffectDefaults` in `src/busk/model/effect.py`, checked by the
+   validator's `_defaults`; the library's `EffectDefaults` is now the model's type. In
+   `src/busk/console/parser.py`: `template_defaults` (the rule below), `defaults_words` (the
+   words), `_template_defaults` (the line) and `_effect_options` (the option loop `effect add` and
+   the line share). `_list_effects` and `EffectTemplateInfo` in `src/busk/console/console.py`;
+   `_master_users` in `src/busk/console/cascade.py`. GAP-51's entry, its Summary row and its
+   **Done** are in engine-gaps.md, with notes in GAP-15 and GAP-53. What it gives:
+   - `effect template defaults "Circle" hz 2 size 30 phase 0 360 sizemaster "FX"` stores them in
+     an instance's key order and replies `set the defaults of effect template 'Circle': hz 2, size
+     30, phase 0 360, sizemaster "FX"`; `list effects` prints them the same way after the layers.
+     `effect add "Circle"` starts from them, and each word of its own line wins.
+   - **Embedding copies:** `effect add "Alternate"` puts `"defaults": {"phase": …, "groups": 2}`
+     in the show's copy. Three goldens (the Phase 5, 6 and 7 shows) took the four library copies'
+     defaults, and nothing else.
+   - **A master in the defaults blocks `delete master`**, with or without `cascade`: `master "FX"
+     is used by effects in cues 11/1, 12/1, the defaults of effect template "Circle" and the
+     programmer: change them first`.
+
+   Calls the user may veto:
+   - **A copy embedded before this phase takes the library's defaults**, as it did: Appendix A's
+     Pulse and every show made before hold copies with no `defaults`, and their `effect add`
+     would otherwise change (Pulse from 0.7 to 1). So the rule is: the template's own `defaults`,
+     else the library's for its id. `none` on such a copy stores `{}`, since removing the key
+     would bring the library's back; on any other template it removes the key.
+   - **`none` with nothing to take is refused** (`effect template 'Circle' has no defaults`), as
+     `fixture N location none` and `safety strobe off` are. A line that sets the defaults they
+     already are goes through, as a rename to the same name does.
+   - **A library's defaults name no master**, and a library item that puts `defaults` inside its
+     template is skipped: a library cannot know a show's masters, and one place for them is
+     clearer. A library's defaults are now checked against its layers too (a size of 2 on a
+     multiply layer is skipped and reported).
+   - **The values are refused in words, `effect add` too.** The line shares `effect add`'s option
+     reader, which now refuses a rate or a multiplier of 0, a size below 0 and 0 groups, blocks or
+     wings: `expected a number of groups from 1, got '0'`. Before, `effect add "Circle" groups 0`
+     was taken into the programmer (a cue would refuse the effect) and `blocks 0` gave `internal
+     error: ZeroDivisionError`, a bug found while building (§7); a rate of 0 and a size below 0
+     were refused with a path under the reply. A size above 1 on a template with a multiply layer
+     stays the session's refusal for `effect add` (a test holds its two-command reply), and is the
+     line's own for the defaults: `effect template 'Pulse' has a multiply layer: expected a size
+     within 0..1, got 2`.
+   - **`effect template delete` is not refused by the masters its defaults name:** the defaults go
+     with the template. The plan's "a use, for `effect template delete`" is read as: the master's
+     use, which `delete master` checks.
+   - **`EffectTemplateInfo`'s six new fields default to `None`**, so a caller that builds one
+     still works. `bpm` is the master's name and the multiplier, and the masters are named, as
+     `list effects` names them.
 2. **F5.** The TEMPLATE panel shows the template's defaults, with `[none]`. The EFFECT panel's
    `[keep as defaults]` sends the effect's settings as its template's defaults, in one line. A
    template click then adds the effect with those settings.
 
    Verify: both on the real engine; a template click after `[keep as defaults]`.
+
+   **Done** (2026-11-17). `TemplateInfo` takes the six new fields from the bridge.
+   `defaults_words` in `src/busk_tui/widgets/effects.py` words a template's defaults as `list
+   effects` does (a test holds the two equal), and TEMPLATES' defaults column uses it. The
+   TEMPLATE panel (`src/busk_tui/widgets/template_panel.py`) has a `defaults` row under
+   `[rename…] [delete]`: the words, or a dim `none`, and `[none]`, which sends `effect template
+   defaults "<name>" none` and is grey with none. The EFFECT panel
+   (`src/busk_tui/widgets/effect_panel.py`) has `[keep as defaults]` before `[done]`
+   (`keep_defaults`), with `base_effect`, `template_effect` and `kept_settings`. The builder is
+   `commands.effect_template_defaults`, in the contract test.
+
+   On the real engine (`test_f5_keeps_an_effects_settings_as_its_templates_defaults_on_the_real_engine`):
+   a template click adds a Circle at the library's size 20, and `[keep as defaults]` is grey; at
+   size 30 it is live, and sends `effect template defaults "Circle" size 30`; TEMPLATES then says
+   `size 30`, and the next click adds a Circle at 30. The TEMPLATE panel's `[none]` takes them
+   away, the next click adds busk's size 1, and two `undo`s bring `size 30` back.
+
+   Calls the user may veto:
+   - **`[keep as defaults]` sends only what `effect add` would not give anyway:** `forward`, size
+     1, phase 0 0, one group, block and wing, no levels, fade-in or masters, and the rate `effect
+     add` gives with none (×1 on the show's only speed master, else 1 Hz). So a Circle at `hz 2
+     size 30` keeps `hz 2 size 30`, not a line of every setting. An effect that is busk's own in
+     everything sends `none`.
+   - **It is grey while the template's defaults already make this effect**, compared the same way,
+     so a click never spends an undo step on nothing. It is live on a cue's effect, and on a
+     programmer effect the selection cannot restate: it changes the template, not the effect.
+   - **The defaults row comes under `[rename…] [delete]`,** before the layers, and wraps in the
+     panel. A library template's panel has no row: TEMPLATES' column shows its defaults.
+   - **No question before either button**: both are one undo step, and §1's rule asks only before
+     a cascade, a route's delete or `off`.
+   - **TEMPLATES' column writes a beat rate as busk does,** `bpm "Speed 1"` with no ` x 1`, and
+     names the master always; the EFFECT panel's own lines name it only when the show has
+     several, as before.
 
 Under (c), a preset holds effects as well as values. `record preset` records the programmer's
 effects without their targets, and `preset <pool> N` adds them on the selection; the cascades,
@@ -2832,6 +2913,56 @@ effects without their targets, and `preset <pool> N` adds them on the selection;
 the phase is dropped.
 
 Docs: `docs/console.md`, the guide's F5, and `CHANGELOG.md`.
+
+**Done** (2026-11-17). `docs/console.md`: the Effects row, `effect add`'s defaults and its
+refusals, a note "A template's defaults", and `delete master`'s uses, in its note and the cascade
+table. `busk help` and the parser's module docs: the grammar line and a paragraph on GAP-51. The
+spec (§5.10): `EffectTemplate.defaults`, `EffectDefaults` and what the validator holds them to.
+`docs/library.md`: `EffectTemplateInfo`'s six fields. The guide's F5: TEMPLATES' defaults, the
+TEMPLATE panel's `defaults` row and `[none]`, the EFFECT panel's `[keep as defaults]`, and the pane
+cursor. engine-gaps.md: GAP-51, with its **TUI since**, and notes in GAP-15 and GAP-53. The report:
+its opening, and the rows "Add to the programmer" and "A template's defaults". §7's items and Q13's
+answer. `CHANGELOG.md` under Added, and the `effect add` fix under Fixed.
+
+**Phase 33 checks** (2026-11-17), on top of `615dbd6`. The whole suite: 6,880 passed and 1
+skipped, in 9:32 with `uv run pytest -n 6`. `ruff check`, `ruff format --check`, `mypy src` and
+`mypy --strict tests/api_consumer.py` clean. The public API's golden took `EffectTemplateInfo`'s
+six fields (`BUSK_REGOLDEN=1`), and the Phase 5, 6 and 7 show goldens their library copies'
+defaults; no public name was added. On Textual 8.2.0, the floor, F5's tests, the template and
+effect panels', the contract and conversion tests and F5's four real-engine tests: 722 passed.
+New tests: `tests/test_template_defaults.py` (78), five rows in `tests/test_console_prompt.py`,
+11 in `tests/tui/test_tui_templates.py`, 16 in `tests/tui/test_tui_effects.py`, one in
+`tests/tui/test_tui_conversion.py`, two builders in the contract test, and the real-engine
+`test_f5_keeps_an_effects_settings_as_its_templates_defaults_on_the_real_engine`. Six tests
+changed for the new words: `list effects` with the defaults, the embed with them, `effect
+template`'s verbs, and two F5 pane-cursor lists that now end `keep as defaults`, `done`.
+
+Mutations, 37, run in a copy: 35 failed a test. Among them `find_template` ignoring a template's
+own defaults or the library's for an old copy, `none` removing the key from a library copy, the
+embed without the defaults, `effect add` ignoring the defaults' rate, direction or masters, the
+line keeping `id` or the order typed, each range check, the multiply check, `bpm … x 1` worded,
+`delete master` ignoring the defaults, each of the validator's and the library's checks, `list
+effects` and `EffectTemplateInfo` without them; in F5, `kept_settings` keeping busk's own,
+`[keep as defaults]` never grey or always a stop, a beat's master named with one speed master,
+the base rate wrong, a library template taken for the show's, `[none]` sending nothing or never
+grey, and the builder without `none`. Two survived: an `inert` guard in `keep_defaults`, dead
+since an inert button calls nothing and the pane cursor skips it, now removed; and the bridge
+dropping `bpm`, for which `test_a_template_carries_every_default_busk_lists` now fails, as it
+does for each of the six fields.
+
+The perf gate: 8 passed. F5 +0.203 with P11's Circle running; F1 B +0.224, A +0.220, C +0.222,
+F2 +0.189 and +0.230 with the Circle, F3 +0.202, F4 +0.196, F6 editing a position preset +0.227,
+F8 +0.200, and every standalone page at 97% of the bare rate or more.
+
+A real `busk run` (processes, `--state-dir` in a temporary directory) of the club show with its
+surfaces, bindings and routes taken out: `list effects` named the library copies' defaults
+(`Circle … (size 20)`); `effect template defaults "Circle" hz 2 size 30 phase 0 360 sizemaster
+"FX"`, and `effect add "Circle"` on the heads ran at 2 Hz, size 30; `delete master "FX"` was
+refused, naming the cues, the template's defaults and the programmer; `groups 0` and Pulse's size
+2 were refused in words; `none`, a Circle at busk's size 1, and two `undo`s back to the defaults;
+`effect add "Alternate"` embedded it with `(phase 0 360, groups 2)`, and `effect template defaults
+"Alternate" bpm "Speed 1" x 2 groups 3` gave the next one ×2. No overrun. No real-terminal (pty)
+walk was made.
 
 ### Phase 34: A DMX readout
 
@@ -3205,7 +3336,7 @@ Those marked **Not planned** are extras or matter less, and stay here.
 - F4's table shows only intensity and colour entries: **Phase 23**, Q7. Done there: the `also`
   column.
 - Options when adding an effect from a template click: **Not planned**. F5's EFFECT panel changes
-  them afterwards.
+  them afterwards. Since Phase 33, `[keep as defaults]` makes the next click add them.
 - Deleting several presets, cues or lists in one line: **Not planned**. Fixtures take `thru`.
 - `route add 1 artnet 200.0.0` still prints a path (net above 127, sub-net or universe above 15),
   like the sACN universe Phase 1 fixed. Phase 1 named only sACN. Found on 2026-11-08. **Phase
@@ -3320,6 +3451,32 @@ sequences, executors and recipes. Each doubtful point was checked on `OfflineSho
   path (`warning cueLists[20].cues[0].effects[0]: no target has pan or tilt: the effect does
   nothing`). Found on 2026-11-17, in Phase 32, and left as it is.
 - A phaser kept with its settings for reuse (grandMA3 stores one in a preset): **Phase 33**, Q13.
+  Built there, under Q13 (b): a template's defaults (GAP-51), set by F5's `[keep as defaults]`.
+- `effect add "Circle" groups 0` was taken into the programmer, where a cue would refuse such an
+  effect when recorded, and `blocks 0` or `wings 0` gave `internal error: ZeroDivisionError`. A
+  rate of 0 and a size below 0 were refused with a path under the reply. Found on 2026-11-17, in
+  Phase 33, whose line shares `effect add`'s option reader, and fixed there: each is refused in one
+  line, in words (`expected a number of groups from 1, got '0'`). The cue effect's line is safe but
+  refuses by path: `cue 11/1 effect fx1 groups 0` replies `set the groups of effect fx1 in cue
+  11/1 to 0: rejected, the show would not be valid` and `cueLists[10].cues[0].effects[0].groups:
+  Input should be greater than or equal to 1`, as `size -1` does. F5's dialogs refuse both first,
+  so only the prompt meets them. Fixed the same day, at the user's word ("Fix the refusal with
+  document path"): the line tries the new value on a copy of the instance first, by its schema
+  and `validate_effect`'s rules, the checks busk runs on it in a cue, and refuses the first error
+  in one line that names the property as the line does (`rate.value`), with no path: `effect fx1
+  in cue 11/1: groups should be 1 or more, got '0'`, `… blocks should be a whole number, got
+  '1.5'`, `… direction should be 'forward', 'reverse' or 'bounce', got 'sideways'`, `… rate.kind
+  should be 'hz' or 'bpm', got 'fast'`, `… the size must be a finite number of 0 or more, got
+  -1`, and `effect fx1 in cue 11/1 has no property 'colour'`. `_effect_edit` and
+  `_schema_words` in `src/busk/console/parser.py`; `_set` and `_value` take the check, and
+  `validate.py` names `loc_to_path` for it. Tests: 33 rows in `tests/test_console_parser.py`, 3
+  in `tests/test_console.py`; eight mutations of the check each fail one. Calls the user may
+  veto: a schema error's words are pydantic's after `should be` (`a valid number`), with busk's
+  own for the bounds, a whole number, a missing key and a wrong kind; a rule's words are the
+  validator's sentence, its first letter lowered; a master is named by its id, as the line takes
+  it; and the check runs for `expected()` too, so `?` after the value and a space shows the
+  refusal before Enter (`runnable` false, the line's error). With the fix, the whole suite: 6,917
+  passed and 1 skipped, in 8:55 with `uv run pytest -n 6`.
 - What busk sends on each DMX channel, to check a fixture's personality; overlaps at the prompt:
   **Phase 34**. Built there.
 - Masters are made only at the prompt, and no line renames or deletes one: **Phase 35**. Built
@@ -3504,3 +3661,6 @@ sequences, executors and recipes. Each doubtful point was checked on `OfflineSho
       `effect add`'s words.
     - (c) A preset holds effects, as grandMA3's phaser presets do. The model, `record preset`,
       `preset`, the cascades, `load cue` and F6 all change, so it is two phases.
+
+    ANSWER: (b), the recommended one (the user's standing word, "use recommended answers",
+    2026-11-17). Built in Phase 33.

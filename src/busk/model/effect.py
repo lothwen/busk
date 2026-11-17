@@ -12,6 +12,10 @@ A scalar layer's ``cycles`` (GAP-50) is how many of its waves it runs in one
 cycle of the effect: a figure eight is pan at 1 and tilt at 2. Its
 ``phaseOffset`` is in degrees of its own wave, and the instance's phase spread
 in degrees of the effect's cycle, so every member traces the same shape.
+
+A template's ``defaults`` (GAP-51) are what ``effect add`` gives a new
+instance of it where the line says nothing: an instance's settings, under its
+own keys, less its id, template and targets. They never reach the engine.
 """
 
 from __future__ import annotations
@@ -42,6 +46,27 @@ class EffectTemplate(EntityBase[EffectId]):
     """A named effect shape made of one or more layers."""
 
     layers: list[EffectLayer]
+    defaults: NotRequired[EffectDefaults]  # what effect add starts from (GAP-51)
+
+
+@with_config(STRICT)
+class EffectDefaults(TypedDict):
+    """What ``effect add`` gives a new instance of a template where its line
+    says nothing (GAP-51): the settings of :class:`EffectInstance`, by its
+    keys. A library template's (``busk.session.library``) name no master."""
+
+    rate: NotRequired[Rate]
+    direction: NotRequired[Literal["forward", "reverse", "bounce"]]
+    size: NotRequired[float]
+    low: NotRequired[float]
+    high: NotRequired[float]
+    phase: NotRequired[EffectPhase]
+    groups: NotRequired[PositiveInt]
+    blocks: NotRequired[PositiveInt]
+    wings: NotRequired[PositiveInt]
+    sizeFadeIn: NotRequired[Seconds]
+    sizeMasterId: NotRequired[MasterId]
+    speedMasterId: NotRequired[MasterId]
 
 
 MAX_CYCLES: Final = 100

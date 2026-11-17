@@ -30,7 +30,9 @@ loads a cue into the programmer (GAP-44), and F4's `[load]`, so a cue's values a
 look is and recorded back. Its Phase 27 added the read of a cue list's tracked states (GAP-46),
 `list cue L/C`, and `cue L/C block on|off` (GAP-47), and its Phase 28 F4's TRACK panel, which
 shows the chosen cue's, and `[block]`. Its Phase 32 gave a template's wave layer its `cycles`
-(GAP-50), the library five more templates, and F5's TEMPLATE panel `[cycles…]`. Its Phase 34
+(GAP-50), the library five more templates, and F5's TEMPLATE panel `[cycles…]`. Its Phase 33 gave
+a template defaults that `effect add` starts from (GAP-51), set by F5's `[keep as defaults]` and
+taken away by the TEMPLATE panel's `[none]`. Its Phase 34
 added the DMX readout (GAP-52): `list dmx` at the prompt, `list universes`'s counts, and F8's
 channel values, in its hint row and its CHANNELS panel. Its
 Phase 35 added the lines that rename and delete a master (GAP-53), and F7's MASTERS panel, which
@@ -188,7 +190,7 @@ recorded into cues, and the templates both are made from.
 | Operation | busk line | Engine | TUI |
 |---|---|---|---|
 | Show | typed `ProgrammerStatus.effects`, `LiveShow.show`, `LiveShow.effects`, `LiveShow.effect_templates` | yes | control: F5 table (cue and programmer effects, their settings, live wave, state) and TEMPLATES; F1 B EFFECTS |
-| Add to the programmer | `effect add "<template>" [options…]` | yes | control: a template click on F5 (`effect add "<name>"`, the library's defaults); prompt for options |
+| Add to the programmer | `effect add "<template>" [options…]` | yes | control: a template click on F5 (`effect add "<name>"`, the template's defaults); prompt for options |
 | Add to a cue | `record cue L/C` with effects in the programmer | yes | control: F4 `[record cue L]` |
 | Add a template | `effect template add "<name>" <JSON layers>` | yes | control: `[+ template…]` on F5, a name and what its first layer is; the panel then edits it |
 | Remove from the programmer | `effect remove <id>`, `effect clear` | yes | control: `✕` on F5; `[clear]`, after a question |
@@ -198,6 +200,7 @@ recorded into cues, and the templates both are made from.
 | Change settings (programmer) | `effect add "<template>" id <id> …` replaces them | partial: the line takes its targets from the selection (GAP-41) | control: F5's EFFECT panel, while the selection is the effect's fixtures |
 | Change settings (cue) | `cue L/C effect <id> <prop> <value>` | partial: no line takes an optional setting away (GAP-41) | control: F5's EFFECT panel |
 | Change or rename a template | `effect template update "<name>" <JSON layers>`, `effect template rename "<name>" "<new name>"` (GAP-31) | yes: the show's own templates | control: F5's TEMPLATE panel, a control per setting of each layer (its cycles too, GAP-50), and `[rename…]` |
+| A template's defaults | `effect template defaults "<name>" <effect add's options but id> \| none` (GAP-51) | yes: the show's own templates; a master they name is refused by `delete master` | control: F5's EFFECT panel, `[keep as defaults]` (the effect's settings, in one line); the TEMPLATE panel shows them, with `[none]` |
 
 ## Playbacks (buttons and faders)
 

@@ -92,6 +92,7 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
     effect remove <id> | effect clear | effect stop <id> | effect run <id>
     effect template add "<name>" <JSON layers>
     effect template update "<name>" <JSON layers>
+    effect template defaults "<name>" <effect add's options but id> | none
     effect template rename "<name>" "<new name>" | effect template delete "<name>"
     cue L/C effect <id> <prop[.sub…]> <value> | cue L/C effect <id> remove
     cuelist add N ["name"]
@@ -136,14 +137,17 @@ on the selection, in order, to the programmer. The template is the show's
 if it has one by that name (any case), else the built-in library's, which
 is then embedded into the show first: the line runs two commands, in order,
 stopping at the first failure (two undo steps). Options come in any order;
-defaults: the library's ``size``, ``low``/``high``, ``phase``, ``groups``,
-``blocks`` and ``wings`` for the template (else size 1, phase 0 0, 1 group,
-1 block, 1 wing), a BPM rate ×1 on the show's only speed master (else 1 Hz),
-``forward``, and the id
+defaults: the template's own (GAP-51, below), else size 1, phase 0 0, 1
+group, 1 block, 1 wing, a BPM rate ×1 on the show's only speed master (else
+1 Hz), ``forward``, and the id
 ``fx<n>`` with the lowest ``n`` that neither the programmer nor any cue
 uses. ``effect template add`` adds a template made of JSON layers.
 ``cue L/C effect <id> …`` sets a property of one of a cue's effect
-instances. ``record slot`` gives a new playback a ``size`` fader when its
+instances. The instance with its new value is checked first, by its schema
+and :func:`~busk.model.validate.validate_effect`'s rules, so a value it could
+not hold is refused in one line that names the property (``effect fx1 in cue
+11/1: groups should be 1 or more, got '0'``), not by its path in the show.
+``record slot`` gives a new playback a ``size`` fader when its
 cue will hold only effects. ``list effects`` lists the show's templates.
 The facades' ``effect_templates`` (GAP-15) lists every template ``effect
 add`` takes, the library's too, found by :func:`find_template`, the rule
@@ -285,6 +289,15 @@ refused while a cue, a binding or the programmer uses the template, and names
 them. ``rename`` refuses a name another template has, in any case. ``update``
 replaces the layers, read as ``add`` reads them.
 
+A template's defaults (GAP-51). ``effect template defaults "<name>"`` takes
+what ``effect add`` takes but the id, and sets them all at once: ``effect
+add`` then starts from them, and a line's own words win. ``none`` takes them
+away. Embedding a library template copies the library's defaults (its size,
+levels, phase, groups, blocks, wings), and a copy embedded before GAP-51,
+which holds none, still takes the library's: ``none`` on it leaves empty
+defaults. The defaults may name a master, which ``delete master`` then
+refuses; a library's name none.
+
 A cue's effect (GAP-32). ``cue L/C effect <id> remove`` removes one effect by
 its id, in one undo step; a cue left with nothing stays.
 
@@ -380,8 +393,11 @@ import json
 import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from functools import partial
 from pathlib import Path
 from typing import Any, Final, cast
+
+from pydantic import TypeAdapter, ValidationError
 
 from busk.commands.edits import cue_insert_index, short
 from busk.commands.patch import deep_copy
@@ -401,13 +417,13 @@ from busk.console.cascade import (
 from busk.model.attributes import ATTRIBUTES, AttributeDefinition
 from busk.model.common import MAX_DIGITS, TargetRef
 from busk.model.cue import CUE_NUMBER, cue_number_key
-from busk.model.effect import EffectTemplate
+from busk.model.effect import EffectDefaults, EffectInstance, EffectTemplate
 from busk.model.master import MAX_BPM
 from busk.model.profile import PROFILE_CATEGORIES, FixtureProfile, option_capabilities
 from busk.model.show import Show
-from busk.model.validate import COLOR_COMPONENTS
+from busk.model.validate import COLOR_COMPONENTS, loc_to_path, validate_effect
 from busk.session.ids import IdFactory, RandomIds
-from busk.session.library import EffectDefaults, EffectLibrary, ProfileLibrary, builtin_effects
+from busk.session.library import EffectLibrary, ProfileLibrary, builtin_effects
 from busk.session.programmer import EMPTY, Programmer, split_slot_key
 
 # ------------------------------------------------------------------ actions
@@ -582,8 +598,8 @@ def find_template(
     """The template ``effect add "<name>"`` uses, its console defaults and
     whether it must be embedded: the show's copy if it has one (the
     library's template id, or ``name`` as an id or a name, any case), else
-    the library's; ``None`` if neither has it. The defaults are the
-    library's for that template id, if any."""
+    the library's; ``None`` if neither has it. The defaults are
+    :func:`template_defaults`."""
     library = effects.find(name)
     folded = name.casefold()
     embedded = next(
@@ -593,11 +609,57 @@ def find_template(
         None,
     )  # fmt: skip
     if embedded is not None:
-        known = effects.get(embedded["id"])
-        return embedded, (known.defaults if known is not None else {}), False
+        return embedded, template_defaults(embedded, effects), False
     if library is None:
         return None
     return library.template, library.defaults, True
+
+
+def template_defaults(template: EffectTemplate, effects: EffectLibrary) -> EffectDefaults:
+    """What ``effect add`` starts a show template's instance from (GAP-51):
+    its own ``defaults``; without any, the library's for its id, as a copy
+    embedded before GAP-51 holds none; else nothing."""
+    if "defaults" in template:
+        return template["defaults"]
+    known = effects.get(template["id"])
+    return known.defaults if known is not None else {}
+
+
+def defaults_words(defaults: EffectDefaults, masters: Mapping[str, str] | None = None) -> str:
+    """Defaults as ``effect add`` takes them, in its order: ``hz 2, size 30,
+    phase 0 360, reverse``; a master by its name in ``masters`` (by id)."""
+
+    def master(ident: str) -> str:
+        return json.dumps((masters or {}).get(ident, ident), ensure_ascii=False)
+
+    parts = []
+    rate = defaults.get("rate")
+    if rate is not None and rate["kind"] == "hz":
+        parts.append(f"hz {rate['value']:g}")
+    elif rate is not None:
+        times = f" x {rate['multiplier']:g}" if rate["multiplier"] != 1 else ""
+        parts.append(f"bpm {master(rate['masterId'])}{times}")
+    if "size" in defaults:
+        parts.append(f"size {defaults['size']:g}")
+    bounds = [(k, v) for k, v in (("low", defaults.get("low")), ("high", defaults.get("high")))]
+    if any(v is not None for _, v in bounds):
+        parts.append(" ".join(f"{k} {v:g}" for k, v in bounds if v is not None))
+    if "phase" in defaults:
+        parts.append(f"phase {defaults['phase']['start']:g} {defaults['phase']['end']:g}")
+    spread = (
+        ("groups", defaults.get("groups")),
+        ("blocks", defaults.get("blocks")),
+        ("wings", defaults.get("wings")),
+    )
+    parts += [f"{key} {count}" for key, count in spread if count is not None]
+    if "direction" in defaults:
+        parts.append(defaults["direction"])
+    if "sizeFadeIn" in defaults:
+        parts.append(f"fadein {defaults['sizeFadeIn']:g}")
+    for key, word in (("sizeMasterId", "sizemaster"), ("speedMasterId", "speedmaster")):
+        if key in defaults:
+            parts.append(f"{word} {master(defaults[key])}")  # type: ignore[literal-required]
+    return ", ".join(parts)
 
 
 def find_profile(
@@ -707,6 +769,16 @@ _EFFECT_OPTIONS: Final = (
     "id", "hz", "bpm", "size", "low", "phase", "groups", "blocks", "wings",
     *_EFFECT_DIRECTIONS, "fadein", "sizemaster", "speedmaster",
 )  # fmt: skip
+_DEFAULT_OPTIONS: Final = _EFFECT_OPTIONS[1:]  # what a template's defaults take: all but the id
+_EFFECT_KEYS: Final = {
+    "fadein": "sizeFadeIn", "sizemaster": "sizeMasterId", "speedmaster": "speedMasterId",
+}  # fmt: skip
+_EFFECT_EXTRAS: Final = tuple(_EFFECT_KEYS.values())
+_DEFAULT_KEYS: Final = (
+    "rate", "direction", "size", "low", "high", "phase", "groups", "blocks", "wings",
+    *_EFFECT_EXTRAS,
+)  # fmt: skip
+"""A template's defaults, in an instance's order (GAP-51)."""
 _BOOLEAN: Final = ("true", "false")
 _SETTINGS: Final[Mapping[str, Mapping[str, tuple[str, ...]]]] = {
     "playback": {
@@ -1270,69 +1342,77 @@ class _Parser:
 
     def _effect_add(self) -> Action:
         """``effect add "<template>" [options]``: an instance of the template
-        on the selection, after embedding a library template (module docs)."""
+        on the selection, after embedding a library template (module docs).
+        Its settings are the line's, else the template's defaults (GAP-51)."""
         names = [t["name"] for t in self.show["effects"]]
         names += [effect.template["name"] for effect in self.ctx.effects]
         token = self.take('a template name in quotes, e.g. "Circle"', *_quoted(names))
         template, defaults, embed = self._template(token.text)
-        options: dict[str, Any] = {}
-        while (option := self.keyword(*_EFFECT_OPTIONS)) is not None:
-            if option in ("hz", "bpm"):
-                key = "rate"
-            elif option in _EFFECT_DIRECTIONS:
-                key = "direction"
-            else:
-                key = option
-            if key in options:  # given twice
-                raise ParseError(f"unexpected {option!r}")
-            options[key] = self._effect_option(option)
+        given = self._effect_options(_EFFECT_OPTIONS)
         self.done()
         selection = self.ctx.programmer.selection
         if not selection:
             raise ParseError("nothing selected")
+        settings = {**cast(Mapping[str, Any], deep_copy(defaults)), **given}
         instance: dict[str, Any] = {
-            "id": options.get("id") or self._effect_id(),
+            "id": settings.get("id") or self._effect_id(),
             "templateId": template["id"],
             "targets": {"kind": "targets", "refs": [dict(target) for target in selection]},
-            "rate": options.get("rate") or self._default_rate(),
-            "direction": options.get("direction", "forward"),
-            "size": options.get("size", defaults.get("size", 1)),
+            "rate": settings.get("rate") or self._default_rate(),
+            "direction": settings.get("direction", "forward"),
+            "size": settings.get("size", 1),
         }
-        low, high = options.get("low", (defaults.get("low"), defaults.get("high")))
-        if low is not None:
-            instance["low"] = low
-        if high is not None:
-            instance["high"] = high
-        instance["phase"] = options.get("phase") or dict(
-            defaults.get("phase", {"start": 0, "end": 0})
-        )
+        instance |= {key: settings[key] for key in ("low", "high") if key in settings}
+        instance["phase"] = settings.get("phase") or {"start": 0, "end": 0}
         for key in ("groups", "blocks", "wings"):
-            instance[key] = options.get(key, defaults.get(key, 1))
-        for key, field_name in (
-            ("fadein", "sizeFadeIn"),
-            ("sizemaster", "sizeMasterId"),
-            ("speedmaster", "speedMasterId"),
-        ):
-            if key in options:
-                instance[field_name] = options[key]
+            instance[key] = settings.get(key, 1)
+        instance |= {key: settings[key] for key in _EFFECT_EXTRAS if key in settings}
         add = cast(Command, {"type": "ADD_EFFECT", "effect": instance})
         if not embed:
             return Submit(add)
-        embedding = {"type": "ADD", "path": ["effects"], "value": deep_copy(template)}
+        copy = cast(dict[str, Any], deep_copy(template))
+        if defaults:  # the library's go with the copy (GAP-51)
+            copy["defaults"] = deep_copy(defaults)
+        embedding = {"type": "ADD", "path": ["effects"], "value": copy}
         return SubmitAll((cast(Command, embedding), add))
+
+    def _effect_options(self, allowed: Sequence[str]) -> dict[str, Any]:
+        """The options of an ``effect add`` line, in any order, each once,
+        under an instance's keys (``fadein`` is ``sizeFadeIn``)."""
+        settings: dict[str, Any] = {}
+        taken: set[str] = set()
+        while (option := self.keyword(*allowed)) is not None:
+            key = "rate" if option in ("hz", "bpm") else option
+            key = "direction" if option in _EFFECT_DIRECTIONS else key
+            if key in taken:  # given twice
+                raise ParseError(f"unexpected {option!r}")
+            taken.add(key)
+            value = self._effect_option(option)
+            if option == "low":
+                settings["low"], settings["high"] = value
+            else:
+                settings[_EFFECT_KEYS.get(key, key)] = value
+        return settings
 
     def _effect_option(self, option: str) -> Any:
         """The value of one ``effect add`` option (its keyword already taken)."""
         if option == "id":
             return self.take("an effect id").text
         if option == "hz":
-            return {"kind": "hz", "value": self.number("a rate in Hz")}
+            hz = self._ranged(self.number, "a rate in Hz", _above_0, "a rate above 0 Hz")
+            return {"kind": "hz", "value": hz}
         if option == "bpm":
             master = self.speed_master()
-            multiplier = self.number("a multiplier") if self.keyword("x") else 1
+            multiplier: float = 1
+            if self.keyword("x"):
+                multiplier = self._ranged(
+                    self.number, "a multiplier", _above_0, "a multiplier above 0"
+                )
             return {"kind": "bpm", "masterId": master, "multiplier": multiplier}
         if option == "size":
-            return self.number("a size")
+            return self._ranged(
+                self.number, "a size", lambda size: size >= 0, "a size of 0 or more"
+            )
         if option == "low":
             low = self.number("a low value")
             self.expect("high")
@@ -1341,12 +1421,25 @@ class _Parser:
             start = self.number("a start phase in degrees")
             return {"start": start, "end": self.number("an end phase in degrees")}
         if option in ("groups", "blocks", "wings"):
-            return self.integer(f"a number of {option}")
+            what = f"a number of {option}"
+            return self._ranged(self.integer, what, lambda count: count >= 1, f"{what} from 1")
         if option == "fadein":
             return self.seconds("a fade-in time in seconds")
         if option in ("sizemaster", "speedmaster"):
             return self.named_master(option.removesuffix("master"))
         return option  # a direction
+
+    def _ranged[T: float](
+        self, read: Callable[[str], T], what: str, ok: Callable[[T], bool], said: str
+    ) -> T:
+        """``read(what)``, refused in words (``expected <said>, got '0'``)
+        unless ``ok``, as busk would refuse it by path."""
+        token = self.peek()
+        value = read(what)
+        if not ok(value):
+            assert token is not None  # read took it
+            raise ParseError(f"expected {said}, got {token.text!r}")
+        return value
 
     def _template(self, name: str) -> tuple[Mapping[str, Any], EffectDefaults, bool]:
         """The template to use, its console defaults and whether it must be
@@ -1380,10 +1473,12 @@ class _Parser:
 
     def _effect_template(self) -> Action:
         """``effect template add|delete|rename|update …``."""
-        verb = self.expect("add", "delete", "rename", "update")
+        verb = self.expect("add", "defaults", "delete", "rename", "update")
         if verb == "add":
             return self._template_add()
         template = self._show_template()
+        if verb == "defaults":
+            return self._template_defaults(template)
         if verb == "delete":
             return self._template_delete(template)
         if verb == "rename":
@@ -1407,6 +1502,41 @@ class _Parser:
         value = {"id": self.new_id("ef", "effects"), "name": name, "layers": layers}
         return self.submit({"type": "ADD", "path": ["effects"], "value": value})
 
+    def _template_defaults(self, template: EffectTemplate) -> Action:
+        """``effect template defaults "<name>" <what effect add takes>|none``
+        (GAP-51): what ``effect add`` starts its instances from, all at once.
+        ``none`` takes them away; a copy of a library template then keeps
+        empty defaults, as without any it would take the library's."""
+        who = f"effect template {template['name']!r}"
+        path: EditPath = ["effects", {"id": template["id"]}, "defaults"]
+        if self.keyword("none"):
+            self.done()
+            if not template_defaults(template, self.ctx.effects):
+                raise ParseError(f"{who} has no defaults")
+            known = self.ctx.effects.get(template["id"])
+            edit: dict[str, Any] = (
+                {"type": "SET", "path": path, "value": {}}
+                if known is not None and known.defaults
+                else {"type": "DELETE", "path": path}
+            )
+            return Submit(_labelled(f"removed the defaults of {who}", edit))
+        given = self._effect_options(_DEFAULT_OPTIONS)
+        if not given:
+            token = self.peek()
+            got = f", got {token.text!r}" if token is not None else ""
+            raise self.fail(f"expected effect add's options but id, or none{got}")
+        self.done()
+        size = given.get("size", 0)
+        if size > 1 and any(layer["mode"] == "multiply" for layer in template["layers"]):
+            raise ParseError(
+                f"{who} has a multiply layer: expected a size within 0..1, got {size:g}"
+            )
+        defaults = {key: given[key] for key in _DEFAULT_KEYS if key in given}
+        masters: dict[str, str] = {master["id"]: master["name"] for master in self.show["masters"]}
+        words = defaults_words(cast(EffectDefaults, defaults), masters)
+        edit = {"type": "SET", "path": path, "value": defaults}
+        return Submit(_labelled(f"set the defaults of {who}: {words}", edit))
+
     def _template_delete(self, template: Mapping[str, Any]) -> Action:
         """``effect template delete "<name>"``: refused while it is used."""
         self.done()
@@ -1426,7 +1556,7 @@ class _Parser:
         edit = {"type": "SET", "path": ["effects", {"id": template["id"]}, "name"], "value": name}
         return Submit(_labelled(f"renamed effect template {template['name']!r} to {name!r}", edit))
 
-    def _show_template(self) -> Mapping[str, Any]:
+    def _show_template(self) -> EffectTemplate:
         """The template of the show that the next word names, as ``effect
         add`` finds it. Refused for one only the library has."""
         names = _quoted(t["name"] for t in self.show["effects"])
@@ -2488,30 +2618,44 @@ class _Parser:
             )
         )
 
-    def _set(self, path: EditPath, example: str, of: str | None = None) -> Action:
+    def _set(
+        self, path: EditPath, example: str, of: str | None = None, check: _Check | None = None
+    ) -> Action:
         """``<prop[.sub…]> <value>`` under ``path``: the value as JSON, else
         the raw text as a string. The reply names the property ``of`` what
         (``the size of effect fx1 in cue 9/4``); without it, the path, as the
-        generic edit's reply does, since the operator typed one."""
+        generic edit's reply does, since the operator typed one. ``check``
+        refuses a value busk would refuse, in words, before it is sent."""
         prop = self.take(f"a property, e.g. {example}")
         keys = prop.text.split(".")
         if not all(keys):
             raise ParseError(f"expected a property, got {prop.text!r}")
+        checked = None if check is None else partial(check, keys)
         if of is None:
-            return self._value([*path, *keys])
+            return self._value([*path, *keys], check=checked)
         return self._value(
-            [*path, *keys], lambda value: f"set the {prop.text} of {of} to {short(value)}"
+            [*path, *keys],
+            lambda value: f"set the {prop.text} of {of} to {short(value)}",
+            checked,
         )
 
-    def _value(self, path: EditPath, said: Callable[[Any], str] | None = None) -> Action:
+    def _value(
+        self,
+        path: EditPath,
+        said: Callable[[Any], str] | None = None,
+        check: Callable[[Any, str], None] | None = None,
+    ) -> Action:
         """The rest of the line as the value at ``path``: JSON, else the raw
         text as a string. ``said`` words the reply from the value; without
-        it, the reply names the path."""
+        it, the reply names the path. ``check`` sees the value and the text
+        typed, and may refuse them."""
         raw = self.rest()
         try:
             value = json.loads(raw)
         except ValueError:
             value = raw
+        if check is not None:
+            check(value, raw)
         command = {"type": "SET", "path": path, "value": value}
         return Submit(cast(Command, command) if said is None else _labelled(said(value), command))
 
@@ -2566,7 +2710,42 @@ class _Parser:
                     f"removed effect {ident} from cue {ref}", {"type": "DELETE", "path": effect}
                 )
             )
-        return self._set(effect, "size or rate.multiplier", f"effect {ident} in cue {ref}")
+        who = f"effect {ident} in cue {ref}"
+        instance = next(found for found in cue["effects"] if found["id"] == ident)
+        check = partial(self._effect_edit, who, instance)
+        return self._set(effect, "size or rate.multiplier", who, check)
+
+    def _effect_edit(
+        self,
+        who: str,
+        instance: Mapping[str, Any],
+        keys: Sequence[str],
+        value: Any,
+        typed: str,
+    ) -> None:
+        """Refuse, in words, a property of a cue's effect instance that busk
+        would refuse by path: the instance with the new value must pass its
+        schema and :func:`~busk.model.validate.validate_effect`'s rules."""
+        edited = cast(dict[str, Any], deep_copy(instance))
+        holder = edited
+        for key in keys[:-1]:
+            if not isinstance(holder.get(key), dict):
+                raise ParseError(f"{who} has no property {'.'.join(keys)!r}")
+            holder = holder[key]
+        holder[keys[-1]] = value
+        try:
+            checked = _EFFECT_INSTANCE.validate_json(json.dumps(edited), strict=True)
+        except ValidationError as exc:
+            error = exc.errors(include_url=False)[0]
+            where = loc_to_path(error["loc"], edited, error["type"])
+            got = repr(typed) if where == ".".join(keys) else short(error["input"])
+            raise ParseError(_schema_words(who, where, error, got)) from None
+        errors = [
+            issue for issue in validate_effect(self.show, checked) if issue.severity == "error"
+        ]
+        if errors:
+            message = errors[0].message
+            raise ParseError(f"{who}: {message[:1].lower()}{message[1:]}")
 
     def _cue_verb(self, path: EditPath, cue: Mapping[str, Any], verb: str) -> Action:
         """``cue L/C time|go|follow|wait|release …``: edits of the cue's timing,
@@ -3576,6 +3755,51 @@ def _adds_template(action: Mapping[str, Any], ident: str) -> bool:
         and command["type"] == "ADD_EFFECT"
         and bool(command["effect"]["templateId"] == ident)
     )
+
+
+def _above_0(value: float) -> bool:
+    return value > 0
+
+
+type _Check = Callable[[Sequence[str], Any, str], None]
+"""A check of ``_set``'s property (its keys), value and typed text."""
+
+_EFFECT_INSTANCE: Final = TypeAdapter[EffectInstance](EffectInstance)
+
+
+def _schema_words(who: str, where: str, error: Any, got: str) -> str:
+    """A schema error of an effect instance, in words: ``effect fx1 in cue
+    11/1: groups should be 1 or more, got '0'``. ``where`` is the property, as
+    the line names it (``rate.value``)."""
+    kind, ctx = error["type"], error.get("ctx", {})
+    if kind == "extra_forbidden":
+        parent, _, name = where.rpartition(".")
+        return f"{who}{f': {parent}' if parent else ''} has no property {name!r}"
+    if kind == "missing":
+        return f"{who}: {where} is missing"
+    if kind == "union_tag_invalid":  # a rate of another kind
+        tags = " or ".join(str(ctx["expected_tags"]).rsplit(", ", 1))
+        tag = str(ctx["discriminator"]).strip("'")
+        return f"{who}: {where}.{tag} should be {tags}, got {ctx['tag']!r}"
+    if kind == "union_tag_not_found":
+        return f"{who}: {where} needs a {str(ctx['discriminator']).strip(chr(39))}"
+    if kind in ("int_type", "int_from_float", "int_parsing"):
+        return f"{who}: {where} should be a whole number, got {got}"
+    bounds = {
+        "greater_than_equal": ("ge", "{} or more"),
+        "greater_than": ("gt", "above {}"),
+        "less_than_equal": ("le", "{} or less"),
+        "less_than": ("lt", "below {}"),
+    }
+    if kind in bounds:
+        key, form = bounds[kind]
+        said = form.format(f"{ctx[key]:g}")
+    else:
+        message = str(error["msg"])
+        said = message.removeprefix("Input should be ")
+        if said == message:
+            return f"{who}: {where}: {message}, got {got}"
+    return f"{who}: {where} should be {said}, got {got}"
 
 
 def _labelled(label: str, *commands: Mapping[str, Any]) -> Command:

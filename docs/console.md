@@ -64,7 +64,7 @@ session, as the web remote's commands do. `help` prints the grammar.
 | Playbacks | `playback add 5 cuelist 10 [at [P.]S] ["name"]`, `playback 3 cuelist 10`, `playback 3 fader size`, `playback 3 flash.level 0.5`, `playback 3 exclusivity none` |
 | Timing, triggers | `cue 9/1 time 3 easeInOut`, `cue 9/3 time 1/3 delay 0/1`, `cue 9/2 time position 4 [delay 1] [easeOut]`, `cue 9/2 time position none`, `… bezier 0.4 0 0.2 1`, `cue 9/3 wait 8`, `cue 9/5 follow 4`, `cue 9/2 go`, `cue 9/5 release group 1 [only pan tilt]`, `cue 9/3 block on\|off` |
 | Cue lists, tempo | `cuelist add 5 ["name"]`, `cuelist 9 tracking true`, `cuelist 10 chase bpm ["Speed 1"] [x 2] [forward\|reverse\|bounce\|random] [crossfade 0.25]`, `cuelist 10 chase hz 4`, `cuelist 10 sequence`, `master add speed "Speed 1" [bpm 120] [steps 0.5, 1, 2]` |
-| Effects, masters | `effect add "Circle" [id fx1] [hz 0.5 \| bpm ["Speed 1"] [x 0.5]] [size 15] [low 0 high 1] [phase 0 180] [groups N] [blocks N] [wings 2] [forward\|reverse\|bounce] [fadein 1] [sizemaster "FX"] [speedmaster "Speed 1"]`, `effect remove fx1`, `effect clear`, `effect stop fx1`, `effect run fx1`, `effect template add "Name" [{…layers…}]`, `effect template update "Name" [{…layers…}]`, `effect template rename "Name" "New"`, `effect template delete "Name"`, `cue 9/4 effect rainbow size 0.5`, `cue 9/4 effect rainbow remove`, `master add size "FX"`, `master add group "Wash level" group 2`, `master add fadetime "Fade"`, `rename master "FX" "Size"`, `delete master "FX" [cascade]` |
+| Effects, masters | `effect add "Circle" [id fx1] [hz 0.5 \| bpm ["Speed 1"] [x 0.5]] [size 15] [low 0 high 1] [phase 0 180] [groups N] [blocks N] [wings 2] [forward\|reverse\|bounce] [fadein 1] [sizemaster "FX"] [speedmaster "Speed 1"]`, `effect remove fx1`, `effect clear`, `effect stop fx1`, `effect run fx1`, `effect template add "Name" [{…layers…}]`, `effect template update "Name" [{…layers…}]`, `effect template defaults "Name" hz 2 size 30 \| none`, `effect template rename "Name" "New"`, `effect template delete "Name"`, `cue 9/4 effect rainbow size 0.5`, `cue 9/4 effect rainbow remove`, `master add size "FX"`, `master add group "Wash level" group 2`, `master add fadetime "Fade"`, `rename master "FX" "Size"`, `delete master "FX" [cascade]` |
 | Perform | `go 9`, `back 9`, `goto 9 4`, `release 3 [2]`, `fader 3 75%`, `flash 3 on\|off`, `toggle 3`, `button 3 2 on\|off`, `gm 0.5`, `master "Speed 1" 0.75`, `tap ["Speed 1"]`, `bpm ["Speed 1"] 128`, `blackout on\|off` |
 | Safety, panic | `park fixture 204 intensity 0`, `park group 2 color 1 0 0`, `unpark fixture 204 [intensity]`, `unpark all`, `fixture 101 thru 102 limits tilt -90 10`, `fixture 301 limits intensity 50%`, `fixture 101 limits tilt none`, `fixture 101 limits none`, `safety strobe 3\|off`, `highlight on\|off`, `release all [2]`, `output on\|off` |
 | Profiles | `profile update "Generic Spot 16ch"` (to the library's other revision), `profile "Generic Spot 16ch" category wash\|none`, `profile import "fixtures/spot.gdtf"`, `list profiles` |
@@ -178,14 +178,17 @@ session, as the web remote's commands do. `help` prints the grammar.
   or replaces it by id, `remove` drops it). The template is the show's of that name,
   else the built-in library's (Circle, Pulse, Wave, Chase, Saw, Sweep, Flicker, Rainbow,
   Figure eight, Tilt sweep, Wander, Square, Alternate, listed by `library`), embedded into
-  the show first. Defaults: the library's size, `low`/`high`, phase, groups, blocks and
-  wings for that template (Alternate's `groups 2` gives neighbours the other colour), ×1 on
-  the show's only speed master (else 1 Hz), and the id `fx<n>` that neither the programmer
-  nor any cue uses. A slot recorded
+  the show first. Defaults: the template's own (below; the library's size, `low`/`high`,
+  phase, groups, blocks and wings for a library template: Alternate's `groups 2` gives
+  neighbours the other colour), else size 1, phase 0 0, one group, block and wing, ×1 on the
+  show's only speed master (else 1 Hz), `forward`, and the id `fx<n>` that neither the
+  programmer nor any cue uses. A rate or a multiplier of 0, a size below 0, and 0 groups,
+  blocks or wings are refused in words (`expected a number of groups from 1, got '0'`). A slot recorded
   with only effects gets a `size` fader. `list effects` lists the show's templates,
   `list cues` counts each cue's effects, `cue L/C effect <id> <prop> <value>` edits a
-  recorded instance, and `cue L/C effect <id> remove` removes it: the cue stays, even with
-  nothing left in it. `effect stop fx1` stops a programmer effect and keeps it, with its
+  recorded instance (a value it could not hold is refused in one line, naming the property:
+  `effect fx1 in cue 11/1: groups should be 1 or more, got '0'`), and `cue L/C effect <id>
+  remove` removes it: the cue stays, even with nothing left in it. `effect stop fx1` stops a programmer effect and keeps it, with its
   settings, until `effect run fx1` runs it again: it fades out and in over the
   programmer's fade time, as `effect remove` and `effect add` would, and restarts its
   cycle once it has gone. `programmer` marks it `(stopped)`; `record cue` leaves it out
@@ -197,6 +200,16 @@ session, as the web remote's commands do. `help` prints the grammar.
   `phaseOffset` is in degrees of its own wave, and the effect's `phase` spread in degrees of
   the effect's cycle, so every fixture traces the same figure, a part of the cycle later.
   The strobe cap counts each wave of an intensity layer as a flash.
+* **A template's defaults.** `effect template defaults "Circle" hz 2 size 30 phase 0 360`
+  sets what `effect add "Circle"` starts from: everything `effect add` takes but the id, all
+  at once, so a line that leaves one out takes it away. A line's own words win (`effect add
+  "Circle" size 10`). `effect template defaults "Circle" none` takes them away. `list
+  effects` shows them (`Circle  pan add sine, tilt add sine +90° (hz 2, size 30, phase 0
+  360)`). Embedding a library template copies the library's defaults into the show's copy; a
+  copy embedded before this, with none of its own, still takes the library's, and `none` on
+  it leaves empty ones. A size above 1 on a template with a multiply layer is refused. The
+  defaults may name masters (`bpm "Speed 1" x 2`, `sizemaster "FX"`): `delete master` is
+  then refused, and names the template. Each line is one undo step.
 * **Editing a template.** `effect template update "Name" […]` replaces its layers, read
   as `effect template add` reads them. `effect template rename "Name" "New"` renames it,
   and refuses a name another template has, in any case. `effect template delete "Name"` is
@@ -206,8 +219,8 @@ session, as the web remote's commands do. `help` prints the grammar.
   with `effect add` first.
 * **Renaming and deleting a master.** `rename master "FX" "Size"` renames one, and refuses
   a name another master has, in any case. `delete master "FX"` deletes one, and is refused
-  while a cue's effect, a cue list's chase or an effect in the programmer names it, even with
-  `cascade`, since their rate or size would have no master:
+  while a cue's effect, a cue list's chase, a template's defaults or an effect in the
+  programmer names it, even with `cascade`, since their rate or size would have no master:
   `master "Speed 1" is used by the chase of cue list 10 and effects in cues 11/1, 12/1, 13/1:
   change them first`. A binding that drives the master, taps it or names it in a command needs
   `cascade`, and goes with it (see the table below). The grand master is neither renamed nor
@@ -332,7 +345,7 @@ session, as the web remote's commands do. `help` prints the grammar.
   | `delete cuelist N cascade` | the playbacks that run it, as the next row does each | |
   | `delete playback N cascade` | its page slots, which go empty, its `fader playback N` bindings and the bindings that name it | its cue list; bindings by slot |
   | `delete page N cascade` | the bindings that go to it by number or assign to it | its playbacks |
-  | `delete master "<name>" cascade` | the bindings that drive it, tap it or name it in a command | refused while an effect, a chase or the programmer names it |
+  | `delete master "<name>" cascade` | the bindings that drive it, tap it or name it in a command | refused while an effect, a chase, a template's defaults or the programmer names it |
 
   `delete fixture N thru M cascade` deletes every fixture the span holds in one undo step and
   always needs `cascade`.

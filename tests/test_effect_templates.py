@@ -103,7 +103,9 @@ def test_the_layers_and_defaults_are_what_library_and_list_effects_print() -> No
         if template.source == "library" or template.id == "ef-pulse":
             assert f"effect {template.name}: {template.summary}{defaults(template)}" in library
     assert offline.execute("list effects").text.splitlines() == [
-        f"{t.name:<20} {t.summary}" for t in offline.effect_templates if t.source == "show"
+        f"{t.name:<20} {t.summary}{defaults(t)}"
+        for t in offline.effect_templates
+        if t.source == "show"
     ]
 
 

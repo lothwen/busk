@@ -19,6 +19,13 @@ setting as it is: ``effect add "Circle" id fx5 hz 2 forward size 15 …``.
 ``effect add`` takes the two levels together, so a programmer effect has one
 ``[levels…]`` form; a cue's has ``[low…]`` and ``[high…]``, a line each.
 
+``[keep as defaults]`` makes the effect's settings its template's defaults
+(GAP-51), in one line: ``effect template defaults "Circle" hz 2 size 15``. A
+click on the template in TEMPLATES then adds the effect with them. It sends
+only what ``effect add`` would not give anyway (``forward``, ``groups 1``…),
+``none`` when that is nothing, and is grey while the template's defaults
+already give this effect.
+
 The numbers are sent with every digit they hold, so a restated one is the same
 number. A number given unchanged sends nothing.
 """
@@ -26,7 +33,7 @@ number. A number given unchanged sends nothing.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import partial
 from operator import attrgetter
 from typing import Final
@@ -39,7 +46,7 @@ from textual.widgets import Static
 from busk_tui import colors, commands
 from busk_tui.commands import Line, exact, quoted
 from busk_tui.formats import phase_text, selection_text, targets_text
-from busk_tui.model import ChaseRate, EffectInfo, MasterView, ShowModel, Value
+from busk_tui.model import ChaseRate, EffectInfo, MasterView, ShowModel, TemplateInfo, Value
 from busk_tui.nav import Item, Stop
 from busk_tui.widgets.chase_dialog import RateDialog
 from busk_tui.widgets.controls import ActionButton, ButtonStrip, RunLine
@@ -58,6 +65,8 @@ NONE: Final = "none"
 
 BEAT_FOLLOWS: Final = "a beat rate follows its own master, whatever this says"
 """What a speed master does for an effect on a master's beat: nothing."""
+
+KEEP_HINT: Final = "its template's defaults become these settings: a template click adds them"
 
 
 def check_size(text: str) -> str | None:
@@ -148,6 +157,54 @@ def effect_settings(info: EffectInfo) -> dict[str, str | None]:
     return settings
 
 
+def base_effect(speeds: int) -> EffectInfo:
+    """An instance as ``effect add`` makes it with no option and no defaults:
+    a beat ×1 on the show's only speed master (``speeds`` is how many the
+    show has), else 1 Hz."""
+    hz = None if speeds == 1 else 1.0
+    return EffectInfo(id="", template="", pace=ChaseRate(hz, None, 1.0, "forward"))
+
+
+def template_effect(template: TemplateInfo, speeds: int) -> EffectInfo:
+    """An instance as ``effect add`` makes it from ``template``'s defaults
+    alone; a speed master is named only when the show has several, as
+    :class:`EffectInfo`'s ``pace`` names it."""
+    base = base_effect(speeds)
+    pace = base.pace
+    if template.hz is not None:
+        pace = ChaseRate(template.hz, None, 1.0, "forward")
+    elif template.bpm is not None:
+        master, times = template.bpm
+        pace = ChaseRate(None, master if speeds > 1 else None, times, "forward")
+    return replace(
+        base,
+        template=template.name,
+        pace=pace,
+        direction=template.direction or base.direction,
+        size=base.size if template.size is None else template.size,
+        low=template.low,
+        high=template.high,
+        phase=template.phase or base.phase,
+        groups=template.groups or base.groups,
+        blocks=template.blocks or base.blocks,
+        wings=template.wings or base.wings,
+        fadeIn=template.fadeIn,
+        sizeMaster=template.sizeMaster,
+        speedMaster=template.speedMaster,
+    )
+
+
+def kept_settings(info: EffectInfo, speeds: int) -> dict[str, str]:
+    """The settings of ``info`` that ``effect add`` would not give anyway, in
+    its words: what ``[keep as defaults]`` sends."""
+    base = effect_settings(base_effect(speeds))
+    return {
+        key: words
+        for key, words in effect_settings(info).items()
+        if words is not None and words != base.get(key)
+    }
+
+
 def why_fixed(row: FxRow, selection: Selection) -> str | None:
     """Why this effect cannot change now, or ``None`` (see the module docs)."""
     info = row.info
@@ -214,6 +271,7 @@ class EffectPanel(Panel):
     EffectPanel .ep-chips > .ep-name {{ width: 13; color: {colors.MID}; }}
     EffectPanel .ep-chips > ButtonStrip {{ width: 1fr; }}
     EffectPanel #ep-note {{ color: {colors.DIM}; }}
+    EffectPanel #ep-keep {{ margin-top: 1; }}
     EffectPanel #ep-done {{ margin-top: 1; }}
     """
 
@@ -250,6 +308,9 @@ class EffectPanel(Panel):
             Static("speed master", classes="ep-name"), self.speed_masters, classes="ep-chips"
         )
         self.note = Static(BEAT_FOLLOWS, id="ep-note", classes="ep-text")
+        self.keep = ActionButton(
+            "keep as defaults", self.keep_defaults, hint=KEEP_HINT, id="ep-keep"
+        )
         self.done = ActionButton("done", leave, id="ep-done")
 
     def settings(self) -> list[tuple[str, Setting]]:
@@ -275,6 +336,7 @@ class EffectPanel(Panel):
         yield self.size_row
         yield self.speed_row
         yield self.note
+        yield self.keep
         yield self.done
 
     # ------------------------------------------------------------ drawing
@@ -316,6 +378,16 @@ class EffectPanel(Panel):
         self._draw_masters(self.size_row, self.size_masters, "size", info.sizeMaster)
         self._draw_masters(self.speed_row, self.speed_masters, "speed", info.speedMaster)
         self.note.display = info.pace.hz is None
+        template, speeds = self.template_of(info), len(self.masters("speed"))
+        same = template is None or kept_settings(info, speeds) == kept_settings(
+            template_effect(template, speeds), speeds
+        )
+        self.keep.change(inert=same)
+
+    def template_of(self, info: EffectInfo) -> TemplateInfo | None:
+        """The show's template of ``info``: the one whose defaults it keeps."""
+        found = () if self.show_model is None else self.show_model.templates
+        return next((t for t in found if t.source == "show" and t.name == info.template), None)
 
     def _draw_masters(
         self, row: Horizontal, strip: ButtonStrip, kind: str, chosen: str | None
@@ -454,6 +526,15 @@ class EffectPanel(Panel):
         fields = (("from", exact(phase[0])), ("to", exact(phase[1])))
         self.app.push_screen(FormDialog(title, fields, check_two, "in degrees"), given)
 
+    def keep_defaults(self) -> None:
+        """``[keep as defaults]``: the effect's settings become its template's
+        defaults, in one line (see the module docs)."""
+        row = self.row
+        if row is None:
+            return
+        kept = kept_settings(row.info, len(self.masters("speed")))
+        self._run(commands.effect_template_defaults(row.info.template, list(kept.values())))
+
     def select_its(self) -> None:
         """``[its fixtures]``: the effect's fixtures, in its order, selected."""
         row, show = self.row, self.show_model
@@ -477,5 +558,7 @@ class EffectPanel(Panel):
             stops += strip_stops(self.size_masters)
         if self.speed_row.display:
             stops += strip_stops(self.speed_masters)
+        if not self.keep.inert:
+            stops.append(Stop(Item(self.keep.label, action=self.keep_defaults), self.keep))
         stops.append(Stop(Item(self.done.label, action=self.done.action), self.done))
         return stops

@@ -2513,6 +2513,68 @@ def test_f5_adds_a_figure_eight_and_changes_its_cycles_on_the_real_engine(
         bridge.stop()
 
 
+def test_f5_keeps_an_effects_settings_as_its_templates_defaults_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """``[keep as defaults]`` on a Circle at size 30 makes that Circle's
+    defaults: TEMPLATES and the TEMPLATE panel say so, and a template click
+    then adds a Circle at size 30. ``[none]`` takes them away, so the next
+    click adds busk's size 1, and ``undo`` brings them back."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=5), standalone=True)
+
+    def sizes() -> list[float]:
+        return [effect.size for effect in app.programmer.effects] if app.programmer else []
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.live is not None and app.view.show is not None)
+        effects, templates = app.query_one(EffectTable), app.query_one(TemplateTable)
+        panel, template_panel = app.query_one(EffectPanel), app.query_one(TemplatePanel)
+        await pilot.press(*"sel group 1", "enter")
+        await until(pilot, lambda: bool(app.programmer and app.programmer.selection))
+        row = column(templates, "name").index("Circle")
+        assert column(templates, "defaults")[row] == "size 20"  # the library's, in the show's copy
+        await click_cell(pilot, templates, row, "name")
+        await until(pilot, lambda: sizes() == [20.0])
+        await click_cell(pilot, effects, len(effects.rows) - 1, "template")
+        await until(pilot, lambda: panel.display)
+        assert panel.keep.inert  # Circle's defaults make this effect already
+        await tap(pilot, next(b for b in panel.query(ActionButton) if b.label == "size…"))
+        await answer_field(pilot, app, "30")
+        await until(pilot, lambda: sizes() == [30.0] and not panel.keep.inert)
+        await tap(pilot, panel.keep)
+        await until(pilot, lambda: panel.keep.inert)
+        log = app.query_one(LogView).entries
+        assert ("ui", 'effect template defaults "Circle" size 30') in log
+        await tap(pilot, app.query_one("#ep-done"))
+        await until(pilot, lambda: column(templates, "defaults")[row] == "size 30")
+        await click_cell(pilot, templates, row, "name")
+        await until(pilot, lambda: sizes() == [30.0, 30.0])
+
+        await click_cell(pilot, templates, row, "edit")
+        await until(pilot, lambda: template_panel.display)
+        assert plain_of(template_panel.defaults) == "size 30"
+        await tap(pilot, template_panel.no_defaults)
+        await until(pilot, lambda: plain_of(template_panel.defaults) == "none")
+        assert template_panel.no_defaults.inert
+        await tap(pilot, app.query_one("#tp-done"))
+        await until(pilot, lambda: column(templates, "defaults")[row] == "")
+        await click_cell(pilot, templates, row, "name")
+        await until(pilot, lambda: sizes() == [30.0, 30.0, 1.0])
+        await pilot.press(*"undo", "enter")
+        await until(pilot, lambda: sizes() == [30.0, 30.0])
+        await pilot.press(*"undo", "enter")
+        await until(pilot, lambda: column(templates, "defaults")[row] == "size 30")
+        assert [kind for kind, _ in app.query_one(LogView).entries if kind == "error"] == []
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
 def running_effect(app: BuskApp, playback: int | None, ident: str) -> EffectView | None:
     effects = app.view.effects
     found = () if effects is None else effects.effects

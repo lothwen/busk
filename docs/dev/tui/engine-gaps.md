@@ -106,6 +106,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-46](#gap-46-a-cue-lists-tracked-states) A cue list's tracked states | read, action | important | prompt, F4 | **done** 2026-11-16 |
 | [GAP-47](#gap-47-block-cues) Block cues | action | nice-to-have | prompt, F4 | **done** 2026-11-16 |
 | [GAP-50](#gap-50-a-layers-cycles) A layer's cycles | action | nice-to-have | prompt, F5 | **done** 2026-11-17 |
+| [GAP-51](#gap-51-a-templates-defaults) A template's defaults | action, read | nice-to-have | prompt, F5 | **done** 2026-11-17 |
 | [GAP-52](#gap-52-a-dmx-readout) A DMX readout | action | nice-to-have | prompt, F8 | **done** 2026-11-12 |
 | [GAP-53](#gap-53-renaming-and-deleting-a-master) Renaming and deleting a master | action | nice-to-have | F7 | **done** 2026-11-12 |
 
@@ -1325,6 +1326,10 @@ becomes **S**, from `doc`.
 **Since** 2026-11-17 (Phase 32 of the pending plan): the library's defaults also take `groups`,
 `blocks` and `wings` (Alternate brings `groups 2`), and `EffectTemplateInfo` has them, `None`
 where the library has none, as `library` prints them (`(phase 0 360, groups 2)`).
+
+**Since** 2026-11-17 (Phase 33, GAP-51): a show template has defaults of its own, and
+`EffectTemplateInfo`'s defaults are those, else the library's for its id. It also has `hz`, `bpm`,
+`direction`, `fadeIn`, `sizeMaster` and `speedMaster`.
 
 ## GAP-16: Fixture category
 
@@ -2927,6 +2932,78 @@ name was added. What it settles:
   the words, the show file, `undo`, a running `LiveShow`). Mutations of the compiler, the engine,
   the strobe cap, the status and the words each fail one.
 
+## GAP-51: A template's defaults
+
+**Status:** done 2026-11-17 (see **Done** at the end of this section).
+
+The user's word of 2026-11-12, after comparing busk with a grandMA3 show-programming howto; built in
+Phase 33 of `docs/plans/tui-pending-plan.md`, under its Q13 (b).
+
+**Needed by:** F5: a template click that adds an effect as the operator settled it.
+
+**Today:** grandMA3 keeps a phaser with its speed, size and phase in a preset, and applies it to any
+selection. A busk template keeps only its layers. The library's templates bring defaults to `effect
+add` (Circle's size 20), but a template of the show's own starts from busk's. So a settled effect is
+typed in full each time, or set again on F5's EFFECT panel after each click.
+
+**Engine should provide:** a show template's `defaults`: what `effect add` takes but the id (the
+rate, direction, size, low and high, phase, groups, blocks, wings, fade-in and masters). `effect
+template defaults "Name" <what effect add takes>` sets them all at once, and `… none` takes them
+away. `effect add "Name"` starts from them, and the line's own words win. Embedding a library
+template copies its defaults. `list effects` and `effect_templates()` show them. A master the
+defaults name counts as a use for `delete master` (GAP-53).
+
+**Priority:** nice-to-have.
+
+**TUI until then:** nothing; the EFFECT panel changes an effect after a click.
+
+**TUI since** 2026-11-17: F5's EFFECT panel has `[keep as defaults]`, which sends the effect's
+settings as its template's defaults in one line, and the TEMPLATE panel shows them, with `[none]`
+(Phase 33 of the pending plan).
+
+**Done** (2026-11-17). `EffectTemplate.defaults` and `EffectDefaults` in `src/busk/model/effect.py`
+(the library's `EffectDefaults` is now this type), checked by the validator's `_defaults`;
+`template_defaults`, `defaults_words`, `_template_defaults` and `_effect_options` in
+`src/busk/console/parser.py`; `_list_effects` and `EffectTemplateInfo` in
+`src/busk/console/console.py`; `_master_users` in `src/busk/console/cascade.py`. Documented in
+`docs/console.md`, `busk help` and the spec (§5.10). What it settles:
+
+- **The keys are an instance's**, all optional: `rate`, `direction`, `size`, `low`, `high`,
+  `phase`, `groups`, `blocks`, `wings`, `sizeFadeIn`, `sizeMasterId`, `speedMasterId`. The field is
+  optional, so `schemaVersion` stays 1 and a show file of today loads. The line stores them in that
+  order, whatever order it gives them in, and replies in words (`set the defaults of effect
+  template 'Circle': hz 2, size 30, phase 0 360`).
+- **All at once:** a line that leaves a setting out takes it away. `none` takes them all away, and
+  is refused with none to take (`effect template 'Circle' has no defaults`). Nothing after the
+  name, or `id`, is refused (`expected effect add's options but id, or none, got 'id'`).
+- **A copy embedded before GAP-51 takes the library's.** Appendix A's Pulse and every show made
+  before have a copy with no `defaults`; `effect add` still gives it the library's (size 0.7), as
+  before. `none` on such a copy stores empty defaults, `{}`, since taking the key away would bring
+  the library's back. A copy embedded from now on holds the library's defaults itself.
+- **Checked as an instance's settings:** the validator refuses, by path, a master that does not
+  exist or is of another kind, a rate of 0, a size below 0, and a size above 1 on a template with a
+  `multiply` layer. The line refuses them first, in words: `effect add`'s option reader now refuses
+  a rate or multiplier of 0, a size below 0 and 0 groups, blocks or wings (`expected a number of
+  groups from 1, got '0'`), for `effect add` too, and the line refuses the multiply case
+  (`effect template 'Pulse' has a multiply layer: expected a size within 0..1, got 2`).
+- **A library's defaults name no master**, since a library cannot know the show's: such an item,
+  and one that puts `defaults` inside its template, is skipped and reported. Its defaults are
+  checked against its layers, as a show's are.
+- **Masters:** `delete master` is refused while a template's defaults name the master, as its rate's
+  master, its size master or its speed master, with or without `cascade`. `effect template delete`
+  of such a template goes through: the defaults go with it.
+- **`EffectTemplateInfo`** has `hz`, `bpm` (the master's name and the multiplier), `direction`,
+  `fadeIn`, `sizeMaster` and `speedMaster` beside the seven it had, each `None` by default. The
+  public API's golden took them.
+- Found while building, and fixed (an `effect add` bug, not a gap): `effect add "Circle" groups 0`
+  was taken into the programmer, which the schema would refuse in a cue, and `blocks 0` gave
+  `internal error: ZeroDivisionError`.
+- Tests: `tests/test_template_defaults.py` (78: the line, each setting into `effect add` and each
+  word that wins, `none` on a copy and on the show's own, the library's copy and an old copy, the
+  library's checks, `delete master`, the refusals in words, Tab, the show file and the validator, a
+  running `LiveShow`), and rows in `tests/test_console_prompt.py`. Mutations of the rule, the
+  line, `effect add`, the checks, the words and `delete master` each fail one.
+
 ## GAP-52: A DMX readout
 
 **Status:** done 2026-11-12 (see **Done** at the end of this section).
@@ -3041,8 +3118,9 @@ No public name was added. What it settles:
 - **On a running show** the engine drops the master's level, so what it held lets go at once: a
   group master's group comes back up, and a fade-time master's override ends. `undo` brings the
   master back at its initial level, not at the level it had.
-- A template's defaults (Phase 33 of the plan, GAP-51) do not exist yet. When that phase builds
-  them, a master named there counts as a use here, as its text says.
+- A template's defaults (Phase 33 of the plan, GAP-51) did not exist yet. Since 2026-11-17 they
+  do, and a master they name counts as a use here: `master "FX" is used by the defaults of effect
+  template "Circle": change them first`.
 - Tests: `tests/test_master_lines.py` (each kind renamed and deleted, the grand master, names in
   any case, each use that refuses, each binding that goes, the question and the reply, the club
   show's masters, a script, a running `LiveShow` with masters at a level), and rows in

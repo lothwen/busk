@@ -1384,7 +1384,11 @@ def test_effect_add_embeds_a_library_template_first() -> None:
     assert circle is not None
     assert action == SubmitAll(
         (
-            {"type": "ADD", "path": ["effects"], "value": dict(circle.template)},  # type: ignore[arg-type]
+            {
+                "type": "ADD",
+                "path": ["effects"],
+                "value": {**circle.template, "defaults": {"size": 20}},
+            },  # type: ignore[arg-type]
             {
                 "type": "ADD_EFFECT",
                 "effect": instance(templateId="ef-circle", size=20),  # type: ignore[typeddict-item]
@@ -1639,6 +1643,81 @@ def test_phase_5_errors(line: str, error: str) -> None:
     with pytest.raises(ParseError) as raised:
         parse(line, fx_context())
     assert raised.value.message == error
+
+
+IN_CUE = "effect ei-1 in cue 20/1"
+
+
+@pytest.mark.parametrize(
+    ("words", "error"),
+    [
+        ("groups 0", "groups should be 1 or more, got '0'"),
+        ("blocks 1.5", "blocks should be a whole number, got '1.5'"),
+        ("wings x", "wings should be a whole number, got 'x'"),
+        ("groups true", "groups should be a whole number, got 'true'"),
+        ("size -1", "the size must be a finite number of 0 or more, got -1"),
+        ("size big", "size should be a valid number, got 'big'"),
+        ("size 2", "an effect with a multiply layer needs a size within 0..1, got 2"),
+        ("sizeFadeIn -2", "sizeFadeIn should be 0 or more, got '-2'"),
+        (
+            "direction sideways",
+            "direction should be 'forward', 'reverse' or 'bounce', got 'sideways'",
+        ),
+        ("rate.multiplier 0", "the multiplier must be greater than 0, got 0"),
+        ('rate {"kind": "hz", "value": 0}', "a rate must be greater than 0 Hz, got 0"),
+        ('rate {"kind": "hz"}', "rate.value is missing"),
+        ('rate {"kind": "fast"}', "rate.kind should be 'hz' or 'bpm', got 'fast'"),
+        ('rate {"value": 2}', "rate needs a kind"),
+        ('sizeMasterId "m-speed"', "master 'm-speed' is a speed master; expected a size master"),
+        ('speedMasterId "m-nope"', "unknown master 'm-nope'"),
+        ('templateId "ef-nope"', "unknown effect template 'ef-nope'"),
+        ('targets {"kind": "group", "groupId": "g-x"}', "unknown group 'g-x'"),
+        ("phase.start x", "phase.start should be a valid number, got 'x'"),
+        ("low x", "low should be a number, a colour {r, g, b} or a discrete value {slot}, got 'x'"),
+    ],
+)
+def test_a_cue_effects_property_busk_would_refuse_is_refused_in_words(
+    words: str, error: str
+) -> None:
+    with pytest.raises(ParseError) as raised:
+        parse(f"cue 20/1 effect ei-1 {words}", fx_context())
+    assert raised.value.message == f"{IN_CUE}: {error}"
+
+
+@pytest.mark.parametrize(
+    ("words", "error"),
+    [
+        ("colour 3", f"{IN_CUE} has no property 'colour'"),
+        ("size.x 3", f"{IN_CUE} has no property 'size.x'"),
+        ("phase.middle 3", f"{IN_CUE}: phase has no property 'middle'"),
+        ("rate.value 2", f"{IN_CUE}: rate has no property 'value'"),  # its rate is a beat's
+    ],
+)
+def test_a_cue_effect_has_only_its_own_properties(words: str, error: str) -> None:
+    with pytest.raises(ParseError) as raised:
+        parse(f"cue 20/1 effect ei-1 {words}", fx_context())
+    assert raised.value.message == error
+
+
+@pytest.mark.parametrize(
+    "words",
+    [
+        "groups 2",
+        "size 0.5",
+        "rate.multiplier 2",
+        'rate {"kind": "hz", "value": 2}',
+        "phase.start 45",
+        "direction bounce",
+        "sizeFadeIn 0",
+        'speedMasterId "m-speed"',
+        "low 0.25",
+    ],
+)
+def test_a_cue_effects_property_busk_takes_goes_through(words: str) -> None:
+    action = parse(f"cue 20/1 effect ei-1 {words}", fx_context())
+    assert isinstance(action, Submit)
+    command = action.command["commands"][0]  # type: ignore[typeddict-item]
+    assert command["path"][-1] == words.split()[0].split(".")[-1]
 
 
 def test_effect_add_needs_a_selection_and_bpm_a_speed_master() -> None:
@@ -2636,7 +2715,10 @@ def test_a_rename_and_an_update_find_a_library_copy_by_the_librarys_name() -> No
             'expected the layers as a JSON list, e.g. [{"attribute": "pan", …}]: '
             "Expecting property name enclosed in double quotes: line 1 column 23 (char 22)",
         ),
-        ("effect template wobble", "expected add or delete or rename or update, got 'wobble'"),
+        (
+            "effect template wobble",
+            "expected add or defaults or delete or rename or update, got 'wobble'",
+        ),
     ],
 )
 def test_template_line_errors(line: str, error: str) -> None:

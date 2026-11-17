@@ -276,6 +276,13 @@ def effect_template_update(name: str, layers: Sequence[Mapping[str, Any]]) -> Li
     return Line(f"effect template update {quoted(name)} {json.dumps(list(layers))}")
 
 
+def effect_template_defaults(name: str, settings: Sequence[str]) -> Line:
+    """What ``effect add`` starts an instance of a show template from, all at
+    once, in its words: ``effect template defaults "Beat" hz 2 size 0.5``;
+    none of them: ``effect template defaults "Beat" none`` (GAP-51)."""
+    return Line(" ".join(["effect", "template", "defaults", quoted(name), *(settings or ["none"])]))
+
+
 def effect_template_rename(name: str, new_name: str) -> Line:
     return Line(f"effect template rename {quoted(name)} {quoted(new_name)}")
 

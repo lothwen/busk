@@ -930,11 +930,12 @@ stays. `[clear]`, under the table, removes every programmer effect after a quest
 clear`). It is grey while the programmer holds none.
 
 **TEMPLATES** lists every template `effect add` takes: the show's, then the effect library's
-the show has no copy of yet (`library`: adding one copies it into the show), with the
-defaults the library gives it (`size 20`, `low 0 high 1`, `phase 0 360`, `groups 2`). A click
-adds one to the selection the header names: `effect add "Circle"`, with those defaults; to
-choose others, type the line (`effect add "Circle" bpm x 2 size 30`), or change the effect in
-its panel. A template you add with `effect template add` shows here at once.
+the show has no copy of yet (`library`: adding one copies it into the show, with its
+defaults), with the defaults `effect add` gives it (`size 20`, `low 0 high 1`, `phase 0 360`,
+`groups 2`, `hz 2`). A click adds one to the selection the header names: `effect add
+"Circle"`, with those defaults; to choose others, type the line (`effect add "Circle" bpm x 2
+size 30`), or change the effect in its panel, and keep them with `[keep as defaults]` for the
+next click. A template you add with `effect template add` shows here at once.
 
 `[+ template…]`, under the table, makes a new one from controls: a name and whether its first
 layer is a wave or a colour. Once the show has it, its panel opens.
@@ -950,6 +951,11 @@ which a template has at most one. `[rename…]` renames it. `[delete]` deletes i
 and is grey while a cue, a binding or the programmer uses it, which the panel names. Each change is
 one line and one undo step, `effect template update "<name>" <JSON layers>`, and a value left as it
 was sends nothing.
+
+Under `[rename…]`, `defaults` names what a click in TEMPLATES gives a new effect of the template,
+as `list effects` words it (`hz 2, size 30, phase 0 360`), or `none` for busk's own. `[none]` takes
+them away (`effect template defaults "Circle" none`); it is grey while there are none. The EFFECT
+panel's `[keep as defaults]` sets them.
 
 - A **wave layer** has a chip for each attribute it can drive, its `mode` (`absolute`, `add`,
   `multiply`) and its waveform, then what that waveform takes (`duty`; `width`, `attack` and
@@ -993,9 +999,18 @@ selection. So while the selection is not the effect's fixtures, in their order, 
 controls are grey and it says so, and `[its fixtures]` selects them. A stopped effect stays
 stopped.
 
+`[keep as defaults]`, at the foot of the panel, makes the effect's settings its template's
+defaults, in one line and one undo step: `effect template defaults "Circle" hz 2 size 15`. A click
+on the template in TEMPLATES then adds an effect with those settings, on whatever is selected. It
+sends only what `effect add` would not give anyway, so `forward`, a size of 1 or one group is left
+out, and `none` when that is everything. It is grey while the template's defaults already give this
+effect. It works on a cue's effect too, and on one the selection cannot restate, since it changes
+the template, not the effect.
+
 The pane cursor stops on each row (Enter opens its panel), each state and `✕`, and `[clear]`,
 then each template and its `[edit]` or `[view]`, and `[+ template…]`, or a panel's controls while
-it is open. Below 132 columns the templates and the panels go under the effects.
+it is open: the TEMPLATE panel's `[none]` after `[delete]`, and the EFFECT panel's `[keep as
+defaults]` before `[done]`, each while it is not grey. Below 132 columns the templates and the panels go under the effects.
 
 ## F6 Presets
 

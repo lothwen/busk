@@ -73,10 +73,12 @@ from busk.console.parser import (
     Source,
     Submit,
     SubmitAll,
+    defaults_words,
     expected,
     find_profile,
     find_template,
     parse,
+    template_defaults,
 )
 from busk.console.prompt import PROMPT, Editing, hints, split
 from busk.engine.loop import Frame
@@ -84,13 +86,12 @@ from busk.engine.snapshot import EngineSnapshot
 from busk.io.osc import feedback_target
 from busk.model.attributes import ATTRIBUTES
 from busk.model.common import TargetRef
-from busk.model.effect import ColorLayer, EffectInstance, EffectLayer
+from busk.model.effect import ColorLayer, EffectDefaults, EffectInstance, EffectLayer
 from busk.model.entry import TargetSpec
 from busk.model.fixture import Fixture
 from busk.model.show import Show
 from busk.session.ids import RandomIds
 from busk.session.library import (
-    EffectDefaults,
     EffectLibrary,
     ProfileLibrary,
     builtin_effects,
@@ -137,13 +138,18 @@ class EffectTemplateInfo:
     one line, as ``list effects`` and ``library`` print them, text to show as
     it is.
 
-    ``size``, ``low``, ``high``, ``phase`` (start and end, in degrees),
-    ``groups``, ``blocks`` and ``wings`` are the library's defaults for an
-    instance, as ``library`` prints them, also once the show holds the
-    template. ``None`` where the library has none, as for a template the show
-    made itself (``effect template add``): then ``effect add`` gives size 1,
-    no low or high, phase 0 0, and 1 group, block and wing. An option on the
-    line overrides each.
+    The other fields are the defaults ``effect add`` starts an instance
+    from (GAP-51), as ``list effects`` and ``library`` print them: the
+    template's own (``effect template defaults``), else the library's for its
+    id, which a library template brings into the show. ``None`` where it has
+    none, as for a template the show made itself (``effect template add``):
+    then ``effect add`` gives a BPM rate ×1 on the show's only speed master
+    (else 1 Hz), ``forward``, size 1, no low or high, phase 0 0, 1 group,
+    block and wing, and no fade-in or masters. An option on the line
+    overrides each. ``hz`` is a rate in Hz, and ``bpm`` a speed master's
+    beat, by the master's name, with its multiplier; ``phase`` is its start
+    and end, in degrees; ``fadeIn`` is in seconds, and ``sizeMaster`` and
+    ``speedMaster`` are masters' names. A library's name no master.
     """
 
     name: str
@@ -157,6 +163,12 @@ class EffectTemplateInfo:
     groups: int | None
     blocks: int | None
     wings: int | None
+    hz: float | None = None
+    bpm: tuple[str, float] | None = None  # ("Speed 1", 0.5)
+    direction: Literal["forward", "reverse", "bounce"] | None = None
+    fadeIn: float | None = None
+    sizeMaster: str | None = None
+    speedMaster: str | None = None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -298,6 +310,7 @@ class Console:
         name finds is left out (a show template named like an earlier one,
         a library template whose name a show template has)."""
         names = [t["name"] for t in show["effects"]] + [e.template["name"] for e in self.effects]
+        masters: dict[str, str] = {master["id"]: master["name"] for master in show["masters"]}
         found: dict[str, EffectTemplateInfo] = {}
         for name in names:
             resolved = find_template(show, self.effects, name)
@@ -305,7 +318,7 @@ class Console:
             template, defaults, embed = resolved
             if template["id"] in found:
                 continue
-            phase = defaults.get("phase")
+            phase, rate = defaults.get("phase"), defaults.get("rate")
             found[template["id"]] = EffectTemplateInfo(
                 name=name,
                 id=template["id"],
@@ -318,6 +331,16 @@ class Console:
                 groups=defaults.get("groups"),
                 blocks=defaults.get("blocks"),
                 wings=defaults.get("wings"),
+                hz=rate["value"] if rate is not None and rate["kind"] == "hz" else None,
+                bpm=(
+                    (masters.get(rate["masterId"], rate["masterId"]), rate["multiplier"])
+                    if rate is not None and rate["kind"] == "bpm"
+                    else None
+                ),
+                direction=defaults.get("direction"),
+                fadeIn=defaults.get("sizeFadeIn"),
+                sizeMaster=_named(defaults.get("sizeMasterId"), masters),
+                speedMaster=_named(defaults.get("speedMasterId"), masters),
             )
         return tuple(found.values())
 
@@ -861,8 +884,14 @@ class Console:
         return lines
 
     def _list_effects(self, show: Show) -> list[str]:
-        """The show's effect templates and their layers."""
-        return [f"{t['name']:<20} {_layers(t['layers'])}" for t in show["effects"]]
+        """The show's effect templates, their layers and the defaults ``effect
+        add`` starts from (GAP-51)."""
+        masters: dict[str, str] = {master["id"]: master["name"] for master in show["masters"]}
+        return [
+            f"{t['name']:<20} {_layers(t['layers'])}"
+            + _defaults(template_defaults(t, self.effects), masters)
+            for t in show["effects"]
+        ]
 
     def _list_profiles(self, show: Show) -> list[str]:
         """Each embedded profile, its category, its revision (``→ <revision>
@@ -963,24 +992,16 @@ def _layers(layers: Iterable[EffectLayer]) -> str:
     return ", ".join(parts)
 
 
-def _defaults(defaults: EffectDefaults) -> str:
-    """A library template's console defaults: `` (size 20)``, `` (phase 0
-    360, groups 2)``, or nothing."""
-    parts = []
-    if "size" in defaults:
-        parts.append(f"size {defaults['size']:g}")
-    bounds = [(k, v) for k, v in (("low", defaults.get("low")), ("high", defaults.get("high")))]
-    if any(v is not None for _, v in bounds):
-        parts.append(" ".join(f"{k} {v:g}" for k, v in bounds if v is not None))
-    if "phase" in defaults:
-        parts.append(f"phase {defaults['phase']['start']:g} {defaults['phase']['end']:g}")
-    spread = (
-        ("groups", defaults.get("groups")),
-        ("blocks", defaults.get("blocks")),
-        ("wings", defaults.get("wings")),
-    )
-    parts += [f"{key} {count}" for key, count in spread if count is not None]
-    return f" ({', '.join(parts)})" if parts else ""
+def _named(ident: str | None, masters: Mapping[str, str]) -> str | None:
+    """A master's name, by its id; ``None`` for none."""
+    return None if ident is None else masters.get(ident, ident)
+
+
+def _defaults(defaults: EffectDefaults, masters: Mapping[str, str] | None = None) -> str:
+    """A template's console defaults: `` (size 20)``, `` (hz 2, phase 0 360,
+    groups 2)``, or nothing (:func:`~busk.console.parser.defaults_words`)."""
+    words = defaults_words(defaults, masters)
+    return f" ({words})" if words else ""
 
 
 def _tracked_value(value: TrackedValue, cue_list: int) -> str:

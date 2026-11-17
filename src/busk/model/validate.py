@@ -53,6 +53,7 @@ from busk.model.common import MasterId, TargetRef, parse_target_key, target_key
 from busk.model.cue import CUE_NUMBER, Cue, CueList, CueTiming, cue_number_key
 from busk.model.effect import (
     ColorLayer,
+    EffectDefaults,
     EffectInstance,
     EffectLayer,
     PresetRef,
@@ -450,6 +451,11 @@ def _loc_to_path(loc: tuple[int | str, ...], data: object, error_type: str, root
             if position == len(loc) - 1 and error_type == "missing":
                 path = _join(path, segment)
     return path
+
+
+loc_to_path = _loc_to_path
+"""Public name of the location reader, so the console names the property of a
+schema error as issues do (``rate.value``, not ``rate.hz.value``)."""
 
 
 # --------------------------------------------------------------- semantic
@@ -1255,6 +1261,23 @@ class _SemanticPass:
                     self._color_layer(cast(ColorLayer, layer), layer_path)
                 else:
                     self._scalar_layer(layer, layer_path)
+            if "defaults" in template:
+                self._defaults(template["defaults"], template["layers"], f"{path}.defaults")
+
+    def _defaults(self, defaults: EffectDefaults, layers: Sequence[EffectLayer], path: str) -> None:
+        """A template's defaults (GAP-51): the rules of an instance's
+        settings, so ``effect add`` can take them."""
+        if "rate" in defaults:
+            self._rate(defaults["rate"], f"{path}.rate")
+        if "speedMasterId" in defaults:
+            self._master(defaults["speedMasterId"], f"{path}.speedMasterId", "speed")
+        if "sizeMasterId" in defaults:
+            self._master(defaults["sizeMasterId"], f"{path}.sizeMasterId", "size")
+        if "size" in defaults:
+            self._size(defaults["size"], layers, f"{path}.size")
+        for bound, value in (("low", defaults.get("low")), ("high", defaults.get("high"))):
+            if value is not None and not math.isfinite(value):
+                self._error(f"{path}.{bound}", f"{bound} must be a number")
 
     def _scalar_layer(self, layer: ScalarLayer, path: str) -> None:
         attribute = layer["attribute"]

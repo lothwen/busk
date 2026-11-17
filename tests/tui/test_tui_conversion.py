@@ -843,6 +843,25 @@ def test_the_templates_effect_add_takes(club: busk.OfflineShow) -> None:
     assert show_model(club.show).templates == ()
 
 
+def test_a_template_carries_every_default_busk_lists(show: busk.OfflineShow) -> None:
+    for line in (
+        'effect template defaults "Circle" bpm "Speed 1" x 0.5 size 15 low -1 high 2 phase 0 90 '
+        'groups 2 blocks 3 wings 4 bounce fadein 1.5 sizemaster "FX" speedmaster "Speed 1"',
+        'effect template defaults "Pulse" hz 0.25',
+    ):
+        assert show.execute(line).ok, line
+    by_name = {t.name: t for t in show_model(show.show, show.effect_templates).templates}
+    for found in show.effect_templates:
+        template = by_name[found.name]
+        for name in busk.EffectTemplateInfo.__dataclass_fields__:
+            if name not in ("name", "id", "source", "summary"):
+                assert getattr(template, name) == getattr(found, name), (found.name, name)
+    circle, pulse = by_name["Circle"], by_name["Pulse"]
+    assert (circle.bpm, circle.direction, circle.fadeIn) == (("Speed 1", 0.5), "bounce", 1.5)
+    assert (circle.sizeMaster, circle.speedMaster, circle.hz) == ("FX", "Speed 1", None)
+    assert (pulse.hz, pulse.bpm, pulse.size) == (0.25, None, None)
+
+
 def test_a_template_carries_its_layers_and_what_uses_it(club: busk.OfflineShow) -> None:
     by_name = {t.name: t for t in show_model(club.show, club.effect_templates).templates}
     stored = {t["name"]: t for t in club.show["effects"]}

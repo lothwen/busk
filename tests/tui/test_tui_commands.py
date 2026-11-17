@@ -122,6 +122,16 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
         r'effect template rename "Beat" "Say \"hi\""',
         False,
     ),
+    "effect template defaults": (
+        commands.effect_template_defaults('Say "hi"', ["hz 2", "size 0.5"]),
+        r'effect template defaults "Say \"hi\"" hz 2 size 0.5',
+        False,
+    ),
+    "effect template defaults none": (
+        commands.effect_template_defaults('Say "hi"', []),
+        r'effect template defaults "Say \"hi\"" none',
+        False,
+    ),
     "effect template delete": (
         commands.effect_template_delete('Say "hi"'),
         r'effect template delete "Say \"hi\""',
@@ -1163,6 +1173,12 @@ def test_the_template_lines_do_what_they_say(show: busk.OfflineShow) -> None:
     assert template('Say "hi"')["layers"] == [NEW_WAVE]
     run(commands.effect_template_update('Say "hi"', [NEW_WAVE, NEW_COLOUR]))
     assert template('Say "hi"')["layers"] == [NEW_WAVE, NEW_COLOUR]
+    run(commands.effect_template_defaults('Say "hi"', ["hz 2", "bounce", "size 0.5"]))
+    assert template('Say "hi"')["defaults"] == {
+        "rate": {"kind": "hz", "value": 2}, "direction": "bounce", "size": 0.5,
+    }  # fmt: skip
+    run(commands.effect_template_defaults('Say "hi"', []))
+    assert "defaults" not in template('Say "hi"')
     run(commands.effect_template_rename('Say "hi"', "Fresh"))
     assert template("Fresh")["layers"] == [NEW_WAVE, NEW_COLOUR]
     run(commands.effect_template_delete("Fresh"))

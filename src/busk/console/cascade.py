@@ -36,9 +36,9 @@ stay. A binding or a command that names what goes, goes too, whichever of
 these it is.
 
 A master (GAP-53) takes only the bindings that drive it, tap it or name it in a
-command. A cue's effect, a cue list's chase or an effect in the programmer that
-names it stops the line: their rate or size cannot lose the master and still
-run, and a used master is not cascaded.
+command. A cue's effect, a cue list's chase, a template's defaults (GAP-51) or
+an effect in the programmer that names it stops the line: their rate or size
+cannot lose the master and still run, and a used master is not cascaded.
 """
 
 from __future__ import annotations
@@ -284,7 +284,8 @@ def page_cascade(show: Show, page: _Doc) -> Cascade:
 
 def master_cascade(show: Show, master: _Doc, programmer: Programmer) -> Cascade:
     """``master`` goes from ``show``, with the bindings that name it. A cue's
-    effect, a chase or an effect of ``programmer`` that names it blocks it."""
+    effect, a chase, a template's defaults or an effect of ``programmer`` that
+    names it blocks it."""
     ident = master["id"]
     bindings = [
         *_binding_edits(show, _master_command, ident),
@@ -608,11 +609,11 @@ def _page_command(number: int) -> _Change[str]:
 
 
 def _names_master(effect: _Doc, ident: str) -> bool:
-    """Whether an effect instance names master ``ident``: its rate's, its
-    speed master or its size master."""
-    rate = effect["rate"]
+    """Whether an effect instance, or a template's defaults, names master
+    ``ident``: its rate's, its speed master or its size master."""
+    rate = effect.get("rate", {})
     return (
-        (rate["kind"] == "bpm" and rate["masterId"] == ident)
+        (rate.get("kind") == "bpm" and rate["masterId"] == ident)
         or effect.get("speedMasterId") == ident
         or effect.get("sizeMasterId") == ident
     )
@@ -630,8 +631,9 @@ def _master_command(command: _Doc, ident: str) -> _Doc | None:
 
 def _master_users(show: Show, ident: str, programmer: Programmer, subject: str) -> str | None:
     """``master "Speed 1" is used by the chase of cue list 10, effects in cue
-    11/1 and the programmer: change them first``, or ``None`` when no chase
-    and no effect names it."""
+    11/1, the defaults of effect template "Beat" and the programmer: change
+    them first``, or ``None`` when no chase, no effect and no template's
+    defaults (GAP-51) name it."""
     chases = [
         cue_list["number"]
         for cue_list in show["cueLists"]
@@ -646,9 +648,15 @@ def _master_users(show: Show, ident: str, programmer: Programmer, subject: str) 
         if any(_names_master(cast(_Doc, effect), ident) for effect in cue["effects"])
     ]
     held = any(_names_master(cast(_Doc, effect), ident) for effect in programmer.effects)
+    templates = [
+        _quoted(template["name"])
+        for template in show["effects"]
+        if _names_master(cast(_Doc, template.get("defaults", {})), ident)
+    ]
     uses = [
         f"the chase{'s' * (len(chases) > 1)} of {_named('cue list', chases)}" if chases else "",
         f"effects in {_named('cue', cues)}" if cues else "",
+        f"the defaults of {_named('effect template', templates)}" if templates else "",
         "the programmer" if held else "",
     ]
     joined = _joined(uses, ", ")

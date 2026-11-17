@@ -1863,7 +1863,10 @@
           "phaseOffset": 90.0,
           "mode": "add"
         }
-      ]
+      ],
+      "defaults": {
+        "size": 20.0
+      }
     },
     {
       "id": "ef-pulse",
@@ -1877,7 +1880,10 @@
           "phaseOffset": 0.0,
           "mode": "multiply"
         }
-      ]
+      ],
+      "defaults": {
+        "size": 0.7
+      }
     },
     {
       "id": "ef-wave",
@@ -1891,7 +1897,11 @@
           "phaseOffset": 0.0,
           "mode": "absolute"
         }
-      ]
+      ],
+      "defaults": {
+        "low": 0.0,
+        "high": 1.0
+      }
     },
     {
       "id": "ef-rainbow",
@@ -1919,7 +1929,13 @@
           "blend": "fade",
           "mode": "absolute"
         }
-      ]
+      ],
+      "defaults": {
+        "phase": {
+          "start": 0.0,
+          "end": 360.0
+        }
+      }
     }
   ],
   "cueLists": [

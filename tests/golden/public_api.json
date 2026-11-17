@@ -127,11 +127,17 @@
       "phase: tuple[float, float] | None",
       "groups: int | None",
       "blocks: int | None",
-      "wings: int | None"
+      "wings: int | None",
+      "hz: float | None",
+      "bpm: tuple[str, float] | None",
+      "direction: Literal['forward', 'reverse', 'bounce'] | None",
+      "fadeIn: float | None",
+      "sizeMaster: str | None",
+      "speedMaster: str | None"
     ],
     "kind": "frozen dataclass",
     "members": {
-      "__init__": "(self, *, name: str, id: str, source: Literal['show', 'library'], summary: str, size: float | None, low: float | None, high: float | None, phase: tuple[float, float] | None, groups: int | None, blocks: int | None, wings: int | None) -> None"
+      "__init__": "(self, *, name: str, id: str, source: Literal['show', 'library'], summary: str, size: float | None, low: float | None, high: float | None, phase: tuple[float, float] | None, groups: int | None, blocks: int | None, wings: int | None, hz: float | None = None, bpm: tuple[str, float] | None = None, direction: Literal['forward', 'reverse', 'bounce'] | None = None, fadeIn: float | None = None, sizeMaster: str | None = None, speedMaster: str | None = None) -> None"
     },
     "module": "busk.console.console"
   },

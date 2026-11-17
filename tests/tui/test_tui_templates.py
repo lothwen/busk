@@ -58,7 +58,7 @@ from busk_tui.shell import BuskApp
 from busk_tui.widgets.controls import ActionButton, ButtonStrip
 from busk_tui.widgets.dialogs import ConfirmDialog, FormDialog, TextDialog
 from busk_tui.widgets.effect_panel import EffectPanel
-from busk_tui.widgets.effects import EffectTable, TemplateTable
+from busk_tui.widgets.effects import EffectTable, TemplateTable, defaults_words
 from busk_tui.widgets.log import LogView
 from busk_tui.widgets.route_dialog import PickRow
 from busk_tui.widgets.template_panel import (
@@ -1213,6 +1213,158 @@ def test_a_new_template_named_as_a_library_one_waits_for_the_shows() -> None:
         assert panel.editing.display
 
     drive(app, body)
+
+
+# ------------------------------------------------------------- defaults
+
+KEPT = replace(
+    BEAT,
+    hz=2.0,
+    size=0.5,
+    low=0.0,
+    high=1.0,
+    phase=(0.0, 360.0),
+    groups=2,
+    blocks=3,
+    wings=4,
+    direction="bounce",
+    fadeIn=1.5,
+    sizeMaster="FX",
+    speedMaster='Say "hi"',
+)
+
+
+def test_the_defaults_are_worded_in_busks_order() -> None:
+    assert defaults_words(KEPT) == [
+        "hz 2", "size 0.5", "low 0 high 1", "phase 0 360", "groups 2", "blocks 3", "wings 4",
+        "bounce", "fadein 1.5", 'sizemaster "FX"', r'speedmaster "Say \"hi\""',
+    ]  # fmt: skip
+    assert defaults_words(replace(BEAT, bpm=("Speed 1", 0.5))) == ['bpm "Speed 1" x 0.5']
+    assert defaults_words(replace(BEAT, bpm=("Speed 1", 1.0))) == ['bpm "Speed 1"']
+    assert defaults_words(replace(BEAT, low=0.0)) == []  # a level alone: effect add takes both
+    assert defaults_words(BEAT) == []
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        'effect template defaults "Pulse" hz 2 size 0.5 low 0 high 1 phase 0 360 groups 2 '
+        'blocks 3 wings 4 bounce fadein 1.5 sizemaster "FX" speedmaster "Speed 1"',
+        'effect template defaults "Pulse" bpm x 0.25 reverse',
+        'effect template defaults "Pulse" bpm forward',
+    ],
+)
+def test_the_defaults_read_as_list_effects_prints_them(line: str) -> None:
+    show = busk.OfflineShow(busk.new_show("Words"))
+    for setup in (
+        'master add speed "Speed 1"',
+        'master add size "FX"',
+        'effect template add "Pulse" [{"attribute": "intensity", "waveform": {"kind": "sine"}, '
+        '"phaseOffset": 0, "mode": "multiply"}]',
+        line,
+    ):
+        assert show.execute(setup).ok, setup
+    found = show.effect_templates[0]
+    template = TemplateInfo(
+        found.name,
+        found.source,
+        found.summary,
+        **{key: getattr(found, key) for key in DEFAULT_FIELDS},
+    )
+    printed = show.execute("list effects").text.removeprefix(f"{'Pulse':<20} {found.summary} ")
+    assert f"({', '.join(defaults_words(template))})" == printed
+
+
+DEFAULT_FIELDS = (
+    "size", "low", "high", "phase", "groups", "blocks", "wings",
+    "hz", "bpm", "direction", "fadeIn", "sizeMaster", "speedMaster",
+)  # fmt: skip
+
+
+def test_the_tuis_template_takes_every_default_busk_lists() -> None:
+    fields = set(busk.EffectTemplateInfo.__dataclass_fields__)
+    assert fields - {"name", "id", "source", "summary"} == set(DEFAULT_FIELDS)
+    assert set(DEFAULT_FIELDS) <= set(TemplateInfo.__dataclass_fields__)
+
+
+def test_the_panel_shows_the_defaults_and_none_takes_them_away() -> None:
+    bridge = FakeBridge()
+    app = on_f5(bridge, KEPT, SOLO)
+
+    async def body(pilot: Pilot[int]) -> None:
+        panel = await open_template(pilot, app)
+        assert plain(panel.defaults) == ", ".join(defaults_words(KEPT))
+        assert not panel.no_defaults.inert
+        await press_button(pilot, panel, "none")
+        assert bridge.lines() == ['effect template defaults "Beat" none']
+
+    drive(app, body)
+
+
+def test_without_defaults_none_is_grey() -> None:
+    bridge = FakeBridge()
+    app = on_f5(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        panel = await open_template(pilot, app)
+        assert plain(panel.defaults) == "none"
+        assert panel.no_defaults.inert
+        await press_button(pilot, panel, "none")
+        assert bridge.lines() == []
+        assert "defaults none" not in [stop.item.label for stop in panel.stops()]
+
+    drive(app, body)
+
+
+def test_the_defaults_follow_the_show() -> None:
+    bridge = FakeBridge()
+    app = on_f5(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        panel = await open_template(pilot, app)
+        bridge.events.append(ShowChanged(template_show(replace(BEAT, size=0.25), SOLO, BOUGHT)))
+        await settle(pilot, app)
+        assert plain(panel.defaults) == "size 0.25"
+        assert not panel.no_defaults.inert
+
+    drive(app, body)
+
+
+def test_a_library_template_shows_no_defaults_row() -> None:
+    bridge = FakeBridge()
+    app = on_f5(bridge, BEAT, SOLO, replace(BOUGHT, phase=(0.0, 360.0)))
+
+    async def body(pilot: Pilot[int]) -> None:
+        panel = await open_template(pilot, app, row=2)
+        assert not panel.editing.display  # the row is part of what a show template edits
+        assert column(app.query_one(TemplateTable), "defaults")[2] == "phase 0 360"
+
+    drive(app, body)
+
+
+def test_the_pane_cursor_stops_on_none_after_delete() -> None:
+    bridge = FakeBridge()
+    app = on_f5(bridge, KEPT, SOLO)
+
+    async def body(pilot: Pilot[int]) -> None:
+        panel = await open_template(pilot, app)
+        labels = [stop.item.label for stop in panel.stops()]
+        assert labels[:4] == ["rename…", "delete", "defaults none", "layer 1"]
+
+    drive(app, body)
+
+
+def test_at_99_columns_long_defaults_wrap_inside_the_panel() -> None:
+    bridge = FakeBridge()
+    app = on_f5(bridge, KEPT, SOLO)
+
+    async def body(pilot: Pilot[int]) -> None:
+        panel = await open_template(pilot, app)
+        assert panel.defaults.region.height > 1
+        assert panel.no_defaults.region.right <= panel.content_region.right
+        assert panel.defaults.region.right <= panel.no_defaults.region.x
+
+    drive(app, body, size=(99, 60))
 
 
 # ------------------------------------------------------- reaching the controls

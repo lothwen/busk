@@ -525,7 +525,8 @@ emitters) by not reading it into fields of its own."""
 class TemplateInfo:
     """An effect template ``effect add "<name>"`` takes (busk's
     ``EffectTemplateInfo``): the show's, or the library's that the show has
-    no copy of, with the defaults the library gives an instance."""
+    no copy of, with the defaults ``effect add`` gives an instance of it
+    (GAP-51; ``None``: busk's own)."""
 
     name: str
     source: str  # show, library
@@ -537,6 +538,12 @@ class TemplateInfo:
     groups: int | None = None
     blocks: int | None = None
     wings: int | None = None
+    hz: float | None = None  # a rate in Hz
+    bpm: tuple[str, float] | None = None  # a speed master's beat: its name, the multiplier
+    direction: str | None = None  # forward, reverse, bounce
+    fadeIn: float | None = None  # the seconds its size takes to come in
+    sizeMaster: str | None = None  # a size master's name
+    speedMaster: str | None = None  # a speed master's name
     id: str = ""  # stays through a rename
     layers: tuple[Layer, ...] = field(default=(), hash=False)  # the show's only
     used_by: tuple[tuple[int, str], ...] = ()  # the cues that hold an effect of it: (list, cue)

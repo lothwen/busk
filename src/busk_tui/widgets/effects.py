@@ -387,25 +387,49 @@ class TemplateTable(RowTable):
     )
 
 
-def template_cells(template: TemplateInfo) -> Cells:
-    """A template: its name, its layers, the defaults the library gives an
-    instance (``size 20``, ``low 0 high 1``, ``phase 0 360``, ``groups 2``),
-    where it is from (``show``, or ``library``: the show has no copy of it
-    yet), and what opens its panel: ``[edit]``, or ``[view]`` for one only the
-    library has."""
-    defaults = []
+def defaults_words(template: TemplateInfo) -> list[str]:
+    """The defaults ``effect add`` gives an instance of ``template`` (GAP-51),
+    as it takes them and as ``list effects`` words them: ``hz 2``, ``bpm
+    "Speed 1" x 0.5``, ``size 20``, ``low 0 high 1``, ``phase 0 360``,
+    ``groups 2``, ``bounce``, ``fadein 2``, ``sizemaster "FX"``; none for
+    busk's own."""
+    words = []
+    if template.hz is not None:
+        words.append(commands.effect_rate(commands.exact(template.hz), None, "1"))
+    elif template.bpm is not None:
+        master, times = template.bpm
+        words.append(
+            f"bpm {commands.quoted(master)}" + (f" x {commands.exact(times)}" * (times != 1))
+        )
     if template.size is not None:
-        defaults.append(f"size {template.size:g}")
+        words.append(f"size {commands.exact(template.size)}")
     if template.low is not None and template.high is not None:
-        defaults.append(f"low {template.low:g} high {template.high:g}")
+        words.append(f"low {commands.exact(template.low)} high {commands.exact(template.high)}")
     if template.phase is not None:
-        defaults.append(f"phase {template.phase[0]:g} {template.phase[1]:g}")
+        words.append(
+            f"phase {commands.exact(template.phase[0])} {commands.exact(template.phase[1])}"
+        )
     spread = (("groups", template.groups), ("blocks", template.blocks), ("wings", template.wings))
-    defaults += [f"{key} {count}" for key, count in spread if count is not None]
+    words += [f"{key} {count}" for key, count in spread if count is not None]
+    if template.direction is not None:
+        words.append(template.direction)
+    if template.fadeIn is not None:
+        words.append(f"fadein {commands.exact(template.fadeIn)}")
+    masters = (("sizemaster", template.sizeMaster), ("speedmaster", template.speedMaster))
+    words += [f"{key} {commands.quoted(name)}" for key, name in masters if name is not None]
+    return words
+
+
+def template_cells(template: TemplateInfo) -> Cells:
+    """A template: its name, its layers, the defaults ``effect add`` gives an
+    instance (``size 20``, ``low 0 high 1``, ``phase 0 360 groups 2``:
+    :func:`defaults_words`), where it is from (``show``, or ``library``: the
+    show has no copy of it yet), and what opens its panel: ``[edit]``, or
+    ``[view]`` for one only the library has."""
     return {
         "name": cell(template.name, colors.GREEN),
         "summary": cell(template.summary, colors.MID),
-        "defaults": cell(" ".join(defaults), colors.DIM),
+        "defaults": cell(" ".join(defaults_words(template)), colors.DIM),
         "source": cell(template.source, colors.MID if template.source == "show" else colors.DIM),
         "edit": cell("[edit]" if template.source == "show" else "[view]", colors.MID),
     }

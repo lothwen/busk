@@ -2,7 +2,10 @@
 of the template chosen in TEMPLATES.
 
 A template of the show: ``[rename…]``, ``[delete]``, grey while a cue, a binding
-or the programmer uses it, which the panel names, and a row per layer. A click
+or the programmer uses it, which the panel names, its defaults (what ``effect
+add`` gives a new instance of it, GAP-51) with ``[none]``, which sends ``effect
+template defaults "<name>" none``, and a row per layer. F5's EFFECT panel sets
+the defaults (``[keep as defaults]``). A click
 on a row chooses that layer for the controls under the table, and ``✕`` takes
 it out. ``[+ wave]`` and ``[+ colour]`` add one; a template has at most one
 colour layer, since a colour layer is always absolute. A template keeps at
@@ -57,6 +60,7 @@ from busk_tui.widgets.controls import (
     button_label,
 )
 from busk_tui.widgets.dialogs import FormDialog, TextDialog, dialog_css, read_number, read_whole
+from busk_tui.widgets.effects import defaults_words
 from busk_tui.widgets.fixture_panel import Setting, chips, put
 from busk_tui.widgets.panel import Panel
 from busk_tui.widgets.preset_panel import PANEL_WIDTH
@@ -343,6 +347,9 @@ class TemplatePanel(Panel):
     TemplatePanel Setting > .fp-name {{ width: 13; }}
     TemplatePanel Setting > .fp-value {{ width: 18; }}
     TemplatePanel #tp-done {{ margin-top: 1; }}
+    TemplatePanel #tp-defaults {{ width: 1fr; height: auto; }}
+    TemplatePanel #tp-defaults-row {{ margin-top: 1; }}
+    TemplatePanel #tp-defaults-row > ActionButton {{ margin-left: 1; }}
     """
 
     def __init__(self, leave: Callable[[], None]) -> None:
@@ -360,6 +367,15 @@ class TemplatePanel(Panel):
         self.rename = ActionButton("rename…", self.ask_rename)
         self.delete = ActionButton("delete", self.ask_delete, "danger")
         self.head = Horizontal(self.rename, self.delete, classes="tp-buttons")
+        self.defaults = Static("", id="tp-defaults")
+        self.no_defaults = ActionButton("none", self.drop_defaults)
+        self.defaults_row = Horizontal(
+            Static("defaults", classes="tp-name"),
+            self.defaults,
+            self.no_defaults,
+            id="tp-defaults-row",
+            classes="tp-chips",
+        )
         self.layer_table = LayerTable(id="tp-layers")
         self.add_wave = ActionButton("+ wave", partial(self.add_layer, NEW_WAVE), "go")
         self.add_colour = ActionButton("+ colour", partial(self.add_layer, NEW_COLOUR), "go")
@@ -401,7 +417,9 @@ class TemplatePanel(Panel):
             self.presets_row,
             classes="tp-part",
         )
-        self.editing = Vertical(self.head, self.layer_table, self.adds, self.scalar, self.colour)
+        self.editing = Vertical(
+            self.head, self.defaults_row, self.layer_table, self.adds, self.scalar, self.colour
+        )
         self.editing.styles.height = "auto"
         self.done = ActionButton("done", leave, id="tp-done")
 
@@ -446,6 +464,9 @@ class TemplatePanel(Panel):
             return
         put(self.used, users_text(template, self.show_model, programmer))
         self.delete.change(inert=programmer or bool(template.used_by or template.bindings))
+        words = defaults_words(template)
+        put(self.defaults, cell(", ".join(words), colors.FG) if words else cell("none", colors.DIM))
+        self.no_defaults.change(inert=not words)
         layers = template.layers
         if self.new_layer is not None and self.new_layer < len(layers):
             self.layer_index, self.new_layer = self.new_layer, None
@@ -630,6 +651,11 @@ class TemplatePanel(Panel):
             line = commands.effect_template_delete(template.name)
             self.post_message(RunLine(line, ask=f'Delete effect template "{template.name}"?'))
 
+    def drop_defaults(self) -> None:
+        """``[none]``: ``effect add`` gives busk's own settings again."""
+        if self.template is not None:
+            self._run(commands.effect_template_defaults(self.template.name, []))
+
     def ask_wave_number(self, name: str) -> None:
         """``[duty…]``, ``[seed…]`` and the like: one number of the waveform."""
         layer = self.chosen_layer()
@@ -776,6 +802,8 @@ class TemplatePanel(Panel):
         stops: list[Stop] = [Stop(Item(self.rename.label, action=self.rename.action), self.rename)]
         if not self.delete.inert:
             stops.append(Stop(Item(self.delete.label, action=self.delete.action), self.delete))
+        if not self.no_defaults.inert:
+            stops.append(Stop(Item("defaults none", action=self.drop_defaults), self.no_defaults))
         stops += self._table_stops(
             self.layer_table, "layer", self.choose_layer, self.remove_layer, len(template.layers)
         )

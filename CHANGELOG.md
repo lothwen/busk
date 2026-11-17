@@ -10,6 +10,14 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- An effect template keeps defaults: `effect template defaults "Circle" hz 2 size 30 phase 0 360`
+  sets what `effect add "Circle"` starts from (everything it takes but the id, masters too), and
+  `… none` takes them away; a line's own words still win. `list effects` and `EffectTemplateInfo`
+  show them (`EffectTemplateInfo` gains `hz`, `bpm`, `direction`, `fadeIn`, `sizeMaster` and
+  `speedMaster`). Adding a library template copies its defaults into the show, and `delete
+  master` is refused while a template's defaults name the master. F5's EFFECT panel has `[keep as
+  defaults]`, which makes the effect's settings its template's defaults, so a click in TEMPLATES
+  adds it as you settled it; the TEMPLATE panel shows them, with `[none]`.
 - A template's wave layer runs several waves in one cycle of its effect: `"cycles": 2` in its
   JSON, a whole number from 1 to 100, so tilt can move at twice pan's rate. `list effects` and
   `library` word it (`tilt add sine ×2 +90°`); the layer's phase offset is in degrees of its own
@@ -203,6 +211,16 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Fixed
 
+- `cue L/C effect <id> <property> <value>` refused a value the effect could not hold with the show
+  document's path (`cueLists[10].cues[0].effects[0].groups: Input should be greater than or equal
+  to 1`) under its reply. It now refuses it in one line that names the property: `effect fx1 in
+  cue 11/1: groups should be 1 or more, got '0'`, `effect fx1 in cue 11/1: the size must be a
+  finite number of 0 or more, got -1`, `effect fx1 in cue 11/1 has no property 'colour'`.
+- `effect add "Circle" groups 0` was taken into the programmer, though a cue cannot hold such an
+  effect, and `blocks 0` or `wings 0` gave `internal error: ZeroDivisionError`. A rate or a
+  multiplier of 0, a size below 0, and 0 groups, blocks or wings are now refused in one line, in
+  words (`expected a number of groups from 1, got '0'`), where a rate and a size were refused with
+  a path under the reply.
 - `safety strobe 50%` set a strobe cap of 0.5 Hz and `safety strobe +4` one of 4 Hz, and `safety
   strobe 0` or `-1` was refused with a document path (`safety.strobeMaxHz: …`). A cap is now a
   plain number of Hz above 0, with no sign and no `%`, as a tempo is; anything else is refused in

@@ -50,16 +50,20 @@ from busk_tui.shell import BuskApp
 from busk_tui.widgets.controls import ActionButton, ButtonStrip
 from busk_tui.widgets.dialogs import ConfirmDialog, TextDialog
 from busk_tui.widgets.effect_panel import (
+    KEEP_HINT,
     EffectPanel,
     EffectRateDialog,
+    base_effect,
     check_count,
     check_level,
     check_seconds,
     check_size,
     check_two,
     effect_settings,
+    kept_settings,
     levels_text,
     number_text,
+    template_effect,
     why_fixed,
 )
 from busk_tui.widgets.effects import (
@@ -1260,7 +1264,10 @@ def test_with_another_selection_a_programmer_effect_stays_put() -> None:
         assert all(button.note for button in panel.size_masters.buttons)
         await click_chip(pilot, panel.direction, "reverse")
         assert bridge.lines() == []
-        assert [stop.item.label for stop in panel.stops()] == ["its fixtures", "done"]
+        # [keep as defaults] restates nothing, so the selection does not matter to it
+        assert [stop.item.label for stop in panel.stops()] == [
+            "its fixtures", "keep as defaults", "done",
+        ]  # fmt: skip
         await press_button(pilot, panel, "its fixtures")
         assert bridge.lines() == ["sel fixture 101 thru 102"]
 
@@ -1313,7 +1320,7 @@ def test_a_group_effect_cannot_be_restated_and_has_no_fixtures_to_select() -> No
         panel = await open_row(pilot, app)
         assert plain(panel.why) == "no line can restate this effect"
         assert not panel.its.display
-        assert [stop.item.label for stop in panel.stops()] == ["done"]
+        assert [stop.item.label for stop in panel.stops()] == ["keep as defaults", "done"]
 
     drive(app, body)
 
@@ -1545,5 +1552,176 @@ def test_beside_the_effects_every_control_fits_in_the_panel() -> None:
         for button in panel.query(ActionButton):
             if button.display:
                 assert button.region.right <= inner, button.label
+
+    drive(app, body)
+
+
+# ------------------------------------------------------- keep as defaults
+
+
+def test_busks_own_settings_are_the_base_of_what_is_kept() -> None:
+    assert effect_settings(base_effect(1))["rate"] == "bpm x 1"  # the only speed master's beat
+    for speeds in (0, 2):
+        assert effect_settings(base_effect(speeds))["rate"] == "hz 1"
+    for speeds in (0, 1, 2):
+        assert kept_settings(base_effect(speeds), speeds) == {}
+
+
+def test_only_what_effect_add_would_not_give_is_kept() -> None:
+    assert kept_settings(PLAIN_FX, 1) == {"rate": "hz 0.25", "size": "size 15"}
+    assert kept_settings(replace(PLAIN_FX, pace=ChaseRate(1.0, None, 1.0, "forward")), 1) == {
+        "rate": "hz 1",
+        "size": "size 15",
+    }
+    assert kept_settings(replace(PLAIN_FX, pace=ChaseRate(1.0, None, 1.0, "forward")), 0) == {
+        "size": "size 15"
+    }
+    rich = kept_settings(RICH, 1)
+    assert " ".join(rich.values()) == RICH_LINE.removeprefix('effect add "Circle" id fx5 ')
+
+
+@pytest.mark.parametrize("speeds", [0, 1, 2])
+def test_a_templates_defaults_make_the_effect_effect_add_makes(speeds: int) -> None:
+    master = "Speed 1" if speeds > 1 else None
+    kept = TemplateInfo(
+        "Circle",
+        "show",
+        "",
+        size=20.5,
+        low=-1.25,
+        high=0.00001,
+        phase=(-90.0, 90.5),
+        groups=2,
+        blocks=3,
+        wings=4,
+        bpm=("Speed 1", 2.0),
+        direction="bounce",
+        fadeIn=1.5,
+        sizeMaster="FX",
+        speedMaster="Speed 1",
+    )
+    effect = replace(RICH, pace=ChaseRate(None, master, 2.0, "bounce"))
+    assert kept_settings(template_effect(kept, speeds), speeds) == kept_settings(effect, speeds)
+    plain = TemplateInfo("Circle", "show", "", hz=0.25, size=15.0)
+    assert kept_settings(template_effect(plain, speeds), speeds) == kept_settings(PLAIN_FX, speeds)
+    assert kept_settings(template_effect(TemplateInfo("Mine", "show", ""), speeds), speeds) == {}
+
+
+def test_keep_as_defaults_sends_the_effects_settings_in_one_line() -> None:
+    bridge = on_prog()
+    app = make_app(bridge, page=5)
+
+    async def body(pilot: Pilot[int]) -> None:
+        panel = await open_row(pilot, app)
+        assert not panel.keep.inert
+        assert panel.keep.hint == KEEP_HINT
+        await press_button(pilot, panel, "keep as defaults")
+        assert bridge.lines() == ['effect template defaults "Circle" hz 0.25 size 15']
+
+    drive(app, body)
+
+
+def test_keep_as_defaults_keeps_every_setting_of_a_rich_effect() -> None:
+    bridge = on_prog(RICH)
+    app = make_app(bridge, page=5)
+
+    async def body(pilot: Pilot[int]) -> None:
+        panel = await open_row(pilot, app)
+        await press_button(pilot, panel, "keep as defaults")
+        assert bridge.lines() == [
+            RICH_LINE.replace('effect add "Circle" id fx5', 'effect template defaults "Circle"')
+        ]
+
+    drive(app, body)
+
+
+def test_a_cue_effect_keeps_its_settings_as_defaults_too() -> None:
+    rainbow = TemplateInfo("Rainbow", "show", "color fade 3 colours")
+    bridge = on_cue()
+    bridge.events.append(
+        ShowChanged(fx_show(cueLists=(ON_CUE,), masters=FX, templates=(*TEMPLATES, rainbow)))
+    )
+    app = make_app(bridge, page=5)
+
+    async def body(pilot: Pilot[int]) -> None:
+        panel = await open_row(pilot, app)
+        await press_button(pilot, panel, "keep as defaults")
+        assert bridge.lines() == [
+            'effect template defaults "Rainbow" hz 0.25 low 0 high 1 phase 0 360'
+        ]
+
+    drive(app, body)
+
+
+def test_an_effect_of_busks_own_settings_takes_the_defaults_away() -> None:
+    plain = replace(PLAIN_FX, size=1.0, pace=ChaseRate(None, None, 1.0, "forward"))
+    bridge = on_prog(plain)
+    app = make_app(bridge, page=5)
+
+    async def body(pilot: Pilot[int]) -> None:
+        panel = await open_row(pilot, app)  # Circle's defaults: size 20
+        await press_button(pilot, panel, "keep as defaults")
+        assert bridge.lines() == ['effect template defaults "Circle" none']
+
+    drive(app, body)
+
+
+@pytest.mark.parametrize(
+    "template",
+    [
+        TemplateInfo("Circle", "show", "", hz=0.25, size=15.0),
+        TemplateInfo("Circle", "show", "", hz=0.25, size=15.0, direction="forward", groups=1),
+    ],
+)
+def test_keep_is_grey_while_the_defaults_give_this_effect(template: TemplateInfo) -> None:
+    bridge = on_prog()
+    bridge.events.append(ShowChanged(fx_show(cueLists=(), masters=FX, templates=(template,))))
+    app = make_app(bridge, page=5)
+
+    async def body(pilot: Pilot[int]) -> None:
+        panel = await open_row(pilot, app)
+        assert panel.keep.inert
+        await press_button(pilot, panel, "keep as defaults")
+        assert bridge.lines() == []
+        assert "keep as defaults" not in [stop.item.label for stop in panel.stops()]
+
+    drive(app, body)
+
+
+def test_keep_turns_grey_once_the_show_has_the_defaults() -> None:
+    bridge = on_prog()
+    app = make_app(bridge, page=5)
+
+    async def body(pilot: Pilot[int]) -> None:
+        panel = await open_row(pilot, app)
+        assert not panel.keep.inert
+        kept = TemplateInfo("Circle", "show", "", hz=0.25, size=15.0)
+        bridge.events.append(ShowChanged(fx_show(cueLists=(), masters=FX, templates=(kept,))))
+        await settle(pilot, app)
+        assert panel.keep.inert
+
+    drive(app, body)
+
+
+def test_with_several_speed_masters_the_kept_beat_names_its_master() -> None:
+    effect = replace(PLAIN_FX, pace=ChaseRate(None, "Speed 2", 0.5, "forward"))
+    bridge = on_prog(effect, masters=TWO_SPEEDS)
+    app = make_app(bridge, page=5)
+
+    async def body(pilot: Pilot[int]) -> None:
+        panel = await open_row(pilot, app)
+        await press_button(pilot, panel, "keep as defaults")
+        assert bridge.lines() == ['effect template defaults "Circle" bpm "Speed 2" x 0.5 size 15']
+
+    drive(app, body)
+
+
+def test_an_effect_whose_template_the_show_lacks_keeps_nothing() -> None:
+    bridge = on_prog(replace(PLAIN_FX, template="Chase"))  # the library's, in TEMPLATES
+    app = make_app(bridge, page=5)
+
+    async def body(pilot: Pilot[int]) -> None:
+        panel = await open_row(pilot, app)
+        assert panel.keep.inert
 
     drive(app, body)

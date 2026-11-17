@@ -26,11 +26,12 @@ built-in ``effects.json`` of :mod:`busk.library`: one JSON list whose items
 are ``{"template": EffectTemplate, "defaults": EffectDefaults}``. A template
 is validated as a template embedded in a show; its ``defaults`` are the
 console's defaults for a new instance of it (``size``, ``low``/``high``,
-``phase``, ``groups``, ``blocks``, ``wings``). An item that fails, or repeats
-an id or a name already loaded, is skipped and reported in
+``phase``, ``groups``, ``blocks``, ``wings``, and any other setting of an
+instance but a master, which a library cannot know). An item that fails, or
+repeats an id or a name already loaded, is skipped and reported in
 :attr:`EffectLibrary.problems`. ``effect add`` embeds a library template
-into the show the first time the show uses it; after that the show's copy is
-used, so a show stays portable.
+into the show the first time the show uses it, with its defaults (GAP-51);
+after that the show's copy is used, so a show stays portable.
 """
 
 from __future__ import annotations
@@ -42,15 +43,14 @@ from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
-from typing import Any, NotRequired, TypedDict
+from typing import Any
 
-from pydantic import TypeAdapter, ValidationError, with_config
+from pydantic import TypeAdapter, ValidationError
 
 from busk.importers import ImportFailed, ImportReport
 from busk.importers.gdtf import read_gdtf
 from busk.importers.ofl import import_ofl, is_ofl, manufacturer_of
-from busk.model.common import STRICT, PositiveInt
-from busk.model.effect import EffectPhase, EffectTemplate
+from busk.model.effect import EffectDefaults, EffectTemplate
 from busk.model.profile import FixtureProfile
 from busk.model.validate import has_errors, validate_show
 
@@ -148,19 +148,6 @@ def validate_profile(data: Any) -> tuple[FixtureProfile | None, str]:
 # ------------------------------------------------------------------ effects
 
 
-@with_config(STRICT)
-class EffectDefaults(TypedDict):
-    """The console's defaults for a new instance of a library template."""
-
-    size: NotRequired[float]
-    low: NotRequired[float]
-    high: NotRequired[float]
-    phase: NotRequired[EffectPhase]
-    groups: NotRequired[PositiveInt]
-    blocks: NotRequired[PositiveInt]
-    wings: NotRequired[PositiveInt]
-
-
 @dataclass(frozen=True)
 class LibraryEffect:
     """A library template and the console defaults for its instances."""
@@ -236,6 +223,8 @@ def validate_library_effect(item: Any) -> tuple[LibraryEffect | None, str]:
     ``None`` and the first error (with its path inside the item)."""
     if not isinstance(item, dict) or set(item) != {"template", "defaults"}:
         return None, 'expected {"template": {…}, "defaults": {…}}'
+    if isinstance(item["template"], dict) and "defaults" in item["template"]:
+        return None, "template.defaults: a library template's defaults go beside it"
     show, problem = _validate_probe(
         _probe_show(effects=[item["template"]]), "effects[0]", "template"
     )
@@ -247,6 +236,15 @@ def validate_library_effect(item: Any) -> tuple[LibraryEffect | None, str]:
         error = exc.errors()[0]
         where = ".".join(str(part) for part in error["loc"])
         return None, f"defaults{'.' + where if where else ''}: {error['msg']}"
+    rate: Mapping[str, Any] = defaults.get("rate", {})
+    if "sizeMasterId" in defaults or "speedMasterId" in defaults or rate.get("kind") == "bpm":
+        return None, "defaults: a library template's defaults name no master"
+    with_defaults = {**item["template"], "defaults": item["defaults"]}  # size against the layers
+    checked, problem = _validate_probe(
+        _probe_show(effects=[with_defaults]), "effects[0].defaults", "defaults"
+    )
+    if checked is None:
+        return None, problem
     return LibraryEffect(show["effects"][0], defaults), ""
 
 
