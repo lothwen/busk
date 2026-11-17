@@ -121,12 +121,13 @@ def _next_cycle(
 ) -> tuple[tuple[float, ...], tuple[tuple[float, float, float], ...]]:
     """The next cycle of ``effect`` from clock position ``position``: the
     wave of its first layer with one and the colours of its first colour
-    layer, for each layer's first member, at :data:`WAVE_SAMPLES` steps."""
+    layer, for each layer's first member, at :data:`WAVE_SAMPLES` steps. A
+    layer of several ``cycles`` runs that many waves in it."""
     bases = np.array([base_phase(effect.direction, position + step) for step in _STEPS])
     wave: tuple[float, ...] = ()
     colors: tuple[tuple[float, float, float], ...] = ()
     for layer in effect.layers:
-        phase = bases + layer.phase[0]
+        phase = bases * layer.cycles + layer.phase[0]
         if layer.wave is not None and not wave:
             member = np.full(WAVE_SAMPLES, layer.member[0], dtype=np.intp)
             wave = tuple(evaluate(layer.wave, phase, member, np.empty(WAVE_SAMPLES)).tolist())

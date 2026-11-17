@@ -87,8 +87,9 @@ time without a jump.
 Outputs (decisions 6 and 12)
 ----------------------------
 Each tick :meth:`EffectRuntime.update` evaluates every layer of every
-version at its members' phases ``φ = b + phase``, where ``b`` is the
-clock's position mapped by the effect's direction (:func:`base_phase`). The
+version at its members' phases ``φ = cycles·b + phase``, where ``b`` is the
+clock's position mapped by the effect's direction (:func:`base_phase`) and
+``cycles`` the layer's waves per effect cycle (GAP-50). The
 *dynamics* ``d`` are the size master's level × the owner's ``size`` fader
 (:class:`EffectScalars`).
 
@@ -121,7 +122,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from busk.compiler.cues import CompiledCue, SlotTiming
-from busk.compiler.effects import CompiledEffect, CompiledLayer, EffectDirection
+from busk.compiler.effects import CompiledEffect, CompiledLayer, CompiledWave, EffectDirection
 from busk.engine.chase import beat_factor, grid_position, rate_factor
 from busk.engine.contributions import Origin, Relative, Source
 from busk.engine.curves import curve_of
@@ -152,16 +153,23 @@ class StrobeCap:
 
 
 def flashes_per_cycle(layer: CompiledLayer) -> int:
-    """How often ``layer``'s wave flashes in one cycle (decision 13).
+    """How often ``layer``'s wave flashes in one cycle of the effect
+    (decision 13): its flashes per wave times its ``cycles`` (GAP-50).
 
-    Every waveform flashes once, except ``step``, which counts its rises
-    (cyclically: a last step below the first rises at the cycle boundary),
-    and ``curve``, which counts its peaks (plateaus count once). A wave that
-    never changes flashes 0 times. A layer without a wave (colour) has 0.
+    Every waveform flashes once a wave, except ``step``, which counts its
+    rises (cyclically: a last step below the first rises at the cycle
+    boundary), and ``curve``, which counts its peaks (plateaus count once). A
+    wave that never changes flashes 0 times. A layer without a wave (colour)
+    has 0.
     """
     wave = layer.wave
     if wave is None:
         return 0
+    return _flashes_per_wave(wave) * layer.cycles
+
+
+def _flashes_per_wave(wave: CompiledWave) -> int:
+    """How often one wave of ``wave`` flashes (see :func:`flashes_per_cycle`)."""
     if wave.kind == "step":
         steps = wave.steps
         return int(np.count_nonzero(steps > np.roll(steps, 1)))
@@ -447,7 +455,7 @@ class _Part:
         values for an absolute layer, amounts (``size`` = size × d) for a
         relative one."""
         layer, out = self.layer, self.out
-        np.add(layer.phase, base, out=self.phase)
+        np.add(layer.phase, base * layer.cycles, out=self.phase)
         if layer.palette is not None:
             palette_colours(layer.palette, self.phase, layer.blend == "snap", out.reshape(-1, 3))
             return

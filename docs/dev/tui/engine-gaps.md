@@ -105,6 +105,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-44](#gap-44-loading-a-cue-into-the-programmer) Loading a cue into the programmer | action | important | F4 | **done** 2026-11-11 |
 | [GAP-46](#gap-46-a-cue-lists-tracked-states) A cue list's tracked states | read, action | important | prompt, F4 | **done** 2026-11-16 |
 | [GAP-47](#gap-47-block-cues) Block cues | action | nice-to-have | prompt, F4 | **done** 2026-11-16 |
+| [GAP-50](#gap-50-a-layers-cycles) A layer's cycles | action | nice-to-have | prompt, F5 | **done** 2026-11-17 |
 | [GAP-52](#gap-52-a-dmx-readout) A DMX readout | action | nice-to-have | prompt, F8 | **done** 2026-11-12 |
 | [GAP-53](#gap-53-renaming-and-deleting-a-master) Renaming and deleting a master | action | nice-to-have | F7 | **done** 2026-11-12 |
 
@@ -1320,6 +1321,10 @@ the first `effect add` embeds them. A click sends `effect add "<name>"` from
 `commands.py`, so the library's defaults apply. The "type `library`" line goes, and F5
 needs no `library` text. In the implementation plan's §2.6 the built-in library row
 becomes **S**, from `doc`.
+
+**Since** 2026-11-17 (Phase 32 of the pending plan): the library's defaults also take `groups`,
+`blocks` and `wings` (Alternate brings `groups 2`), and `EffectTemplateInfo` has them, `None`
+where the library has none, as `library` prints them (`(phase 0 360, groups 2)`).
 
 ## GAP-16: Fixture category
 
@@ -2871,6 +2876,56 @@ parser's module docs. What it settles:
 - Tests: in `tests/test_tracked_states.py` (on, off, undo, the refusals, a list without tracking,
   the generic edit, the compiled states, `list cues`), rows in `tests/test_console_parser.py` and
   `tests/test_console_prompt.py`.
+
+## GAP-50: A layer's cycles
+
+**Status:** done 2026-11-17 (see **Done** at the end of this section).
+
+The user's word of 2026-11-12, after comparing busk with a grandMA3 show-programming howto; built in
+Phase 32 of `docs/plans/tui-pending-plan.md`, with five more library templates.
+
+**Needed by:** the effect library's Figure eight, and F5's TEMPLATE panel.
+
+**Today:** a layer runs one wave per cycle of its effect, so tilt cannot move at twice pan's rate.
+A figure eight can only be faked with a `curve` wave of two cycles, which has corners.
+
+**Engine should provide:** a scalar layer's `cycles`, a whole number from 1: how many of its waves
+the layer runs in one cycle of the effect. The default, 1, is left out of the show file, so
+`schemaVersion` stays 1. `list effects` and `library` word it (`tilt add sine ×2`).
+
+**Priority:** nice-to-have.
+
+**TUI until then:** nothing; F5's TEMPLATE panel edits the other settings of a layer.
+
+**TUI since** 2026-11-17: F5's TEMPLATE panel has a `cycles` row with `[cycles…]` on a wave
+layer, and its layer rows and TEMPLATES word it as busk does (Phase 32 of the pending plan).
+
+**Done** (2026-11-17). `ScalarLayer.cycles` in `src/busk/model/effect.py`, `CompiledLayer.cycles`
+in `src/busk/compiler/effects.py`, read by the engine's `_Part.evaluate`, `flashes_per_cycle`
+and the effect status. Documented in `docs/console.md` and the spec (§5.10 and §10.3). No public
+name was added. What it settles:
+
+- **A whole number from 1 to 100** (`MAX_CYCLES`), by the schema: 0, 101, `1.5`, `2.0`, `"2"` and
+  `true` are refused, by path, as every other field of a JSON layer is
+  (`effects[4].layers[0].cycles: Input should be greater than or equal to 1`). Left out, it is 1, and a show file of today plays as
+  before. 100 is far past what a light shows at any usable rate; the bound keeps a huge number from
+  overflowing the engine's phase arithmetic. Only a wave layer has it: a colour layer's palette
+  repeats its colours to cycle faster.
+- **A row's phase is `cycles · (b + spread) + phaseOffset / 360`**, `b` being the effect's base
+  phase. So the layer's `phaseOffset` is in degrees of its own wave (90° on a ×2 layer is an eighth
+  of the effect's cycle), and the instance's phase spread is in degrees of the effect's cycle: every
+  member traces the same shape, a part of the cycle later. The layers of an effect share its clock,
+  so a change of rate, `reverse` and `bounce` keep them in step: `bounce` runs each of a layer's
+  waves back on the way down.
+- **The strobe cap counts every wave:** a layer's flashes per effect cycle are its flashes per wave
+  times its cycles, so an intensity square ×3 at 10 Hz runs at a third of the cap.
+- **The effect status's `wave`** is the next cycle of the effect, so a ×2 layer shows two waves.
+- **Words:** `list effects`, `library` and `EffectTemplateInfo.summary` put `×N` after the
+  waveform and before the offset (`tilt add sine ×2 +90°`), and leave out ×1.
+- Tests: `tests/test_effect_cycles.py` (33: the waveform at 1, 2 and 3, the offset, every member's
+  shape, `reverse` and `bounce`, a change of rate, the strobe cap, the effect status, the bounds,
+  the words, the show file, `undo`, a running `LiveShow`). Mutations of the compiler, the engine,
+  the strobe cap, the status and the words each fail one.
 
 ## GAP-52: A DMX readout
 

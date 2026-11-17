@@ -62,7 +62,14 @@ from busk_tui.widgets.effect_panel import (
     number_text,
     why_fixed,
 )
-from busk_tui.widgets.effects import EffectTable, FxRow, TemplateTable, effect_rows, fx_cells
+from busk_tui.widgets.effects import (
+    EffectTable,
+    FxRow,
+    TemplateTable,
+    effect_rows,
+    fx_cells,
+    template_cells,
+)
 from busk_tui.widgets.options import LIT
 
 HEADS = Targets(group=GroupInfo(1, "Heads"))
@@ -264,6 +271,15 @@ def test_the_rows_follow_what_runs() -> None:
         assert column(table, "owner") == ["9/4", "11/1", "21/1"]
 
     drive(app, body)
+
+
+def test_a_templates_defaults_say_its_groups_blocks_and_wings() -> None:
+    alternate = TemplateInfo(
+        "Alternate", "library", "color snap 2 colours", phase=(0.0, 360.0), groups=2
+    )
+    assert template_cells(alternate)["defaults"].plain == "phase 0 360 groups 2"
+    spread = TemplateInfo("Mine", "show", "intensity add sine", blocks=3, wings=2)
+    assert template_cells(spread)["defaults"].plain == "blocks 3 wings 2"
 
 
 def test_the_templates_and_what_they_add_to() -> None:

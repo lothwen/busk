@@ -2653,6 +2653,33 @@ add` can build each. The engine steps come first. Code: `src/busk/model/effect.p
 
    Verify: the waveform at 2 and 3; a phase offset; `bounce` and `reverse`; a rate change keeps the
    layers in step; 0 and 1.5 are refused.
+
+   **Done** (2026-11-17). `ScalarLayer.cycles` in `src/busk/model/effect.py` (`Cycles`,
+   `MAX_CYCLES`), `CompiledLayer.cycles` in `src/busk/compiler/effects.py`, read by
+   `_Part.evaluate` and `flashes_per_cycle` in `src/busk/engine/effects.py` and by the effect
+   status's `_next_cycle`; `_layers` in `src/busk/console/console.py` words it. The entry, its
+   Summary row and its **Done** are in engine-gaps.md. What it gives:
+   - **A row's phase is `cycles · (b + spread) + phaseOffset / 360`**, `b` the effect's base
+     phase. Checked: the `phaseOffset` stays in degrees of the layer's own wave (90° on a ×2 layer
+     is an eighth of the effect's cycle), and the instance's phase spread is in degrees of the
+     effect's cycle, so every member traces the same shape a part of the cycle later (a test
+     follows four heads through an eight). The layers share the effect's clock, so a change of
+     rate keeps them in step, and `reverse` and `bounce` run each wave back.
+   - **The strobe cap counts every wave:** an intensity square ×3 at 10 Hz under a cap of 1.5
+     runs at 0.5 Hz.
+   - **The effect status's `wave`** is the effect's next cycle, so a ×2 layer shows two waves.
+   - **Words:** `tilt add sine ×2 +90°`, in `list effects`, `library` and
+     `EffectTemplateInfo.summary`.
+
+   Calls the user may veto:
+   - **At most 100** (`MAX_CYCLES`), where the plan gave no top: a huge number would overflow
+     the engine's phase arithmetic, and 100 is far past what a light can show. 0, 101, `1.5`,
+     `2.0`, `"2"` and `true` are refused by the schema, by path (`effects[4].layers[0].cycles:
+     Input should be greater than or equal to 1`), as every other field of a JSON layer is; F5's
+     panel strips the path, and its dialog refuses them first.
+   - **Only a wave layer has cycles.** A colour layer cycles faster by listing its colours twice.
+   - **`×N` comes after the waveform and before the offset**, and ×1 is never written. A
+     `"cycles": 1` typed in a JSON layer is kept as typed; F5 sends none.
 2. **The library gains five templates:**
    - `Figure eight`: pan sine, tilt sine ×2;
    - `Tilt sweep`: tilt triangle;
@@ -2664,13 +2691,108 @@ add` can build each. The engine steps come first. Code: `src/busk/model/effect.p
    lists the new templates at once.
 
    Verify: each one added to the club show's heads and washes, and what `programmer` and F5 say.
+
+   **Done** (2026-11-17). In `src/busk/library/effects.json`, after Rainbow:
+
+   | Template | id | Layers | Defaults |
+   |---|---|---|---|
+   | Figure eight | `ef-eight` | pan add sine, tilt add sine ×2 +90° | size 20 |
+   | Tilt sweep | `ef-tilt-sweep` | tilt add triangle | size 20 |
+   | Wander | `ef-wander` | pan add random (smooth, seed 2), tilt add random (smooth, seed 3) | size 20 |
+   | Square | `ef-square` | intensity absolute square, duty 0.5 | phase 0 360 |
+   | Alternate | `ef-alternate` | color snap, red and blue | phase 0 360, groups 2 |
+
+   `EffectDefaults` takes `groups`, `blocks` and `wings`; `effect add` starts from them, and a
+   line's own wins (`effect add "Alternate" groups 3`). `library` prints them (`(phase 0 360,
+   groups 2)`), and `EffectTemplateInfo` has them, `None` where the library has none (the public
+   API's golden took the three fields). On the club show, each added to the heads (group 1) and
+   the washes (group 2): `programmer` names each as it names every effect, with its rate and size
+   (`effect fx5 'Figure eight' on 101, 102, 0.5 Hz, size 20`), and F5's TEMPLATES lists the five
+   at once, from the library, Alternate with `phase 0 360 groups 2`. The tests in
+   `tests/test_effect_library.py` read the output: the heads draw the eight (pan `-20 cos θ`, tilt
+   `20 sin 2θ` about their base), the tilt sweep moves tilt only, Wander stays within ±20 with
+   pan and tilt apart, Square lights two washes of four at a time, each half the cycle, and
+   Alternate gives each wash the other colour from its neighbour, swapping each half cycle. The
+   club show parks wash 204 dark and wash 203's colour red, and limits the heads' tilt to -90..10,
+   so those tests unpark and give the heads tilt -40.
+
+   Calls the user may veto:
+   - **Figure eight's tilt has +90°,** where the plan wrote `tilt sine ×2` alone: busk's sine as an
+     add layer is `-cos`, so with no offset tilt is `1 − 2·pan²`, an arc traced back and forth. At
+     +90° it is `sin 2θ`, the eight, and the same offset the Circle's tilt has.
+   - **Alternate's phase is 0 360,** where the plan wrote 0 180: busk spreads a phase over the
+     count of positions, not one less, so `groups 2` with 0 180 puts the two at 0° and 90°, the
+     same colour half the time. 0 360 puts them at 0° and 180°.
+   - **Square is an absolute layer** like Chase, with Chase's phase default.
+   - **Tilt sweep's size is 20**, the Circle's, where Sweep's pan has 30: a head's tilt range is
+     about half its pan range.
+   - **Wander's seeds are 2 and 3,** so neither runs in step with Flicker's 1 on the same fixture.
+   - **Movement on the washes:** the washes have no pan or tilt, and `effect add "Figure eight"` on
+     them is taken in silence and runs nothing, as Circle there is: a finding in §7, not changed
+     here.
 3. **F5's TEMPLATE panel** gets `[cycles…]` on a wave layer: a dialog for a whole number from 1,
    which sends one `effect template update` line.
 
    Verify: the dialog; the layer's words; a test on the real engine.
 
+   **Done** (2026-11-17). `src/busk_tui/widgets/template_panel.py`: a `cycles` row between
+   `smooth` and `phase offset`, with the layer's cycles (`1` where it has none) and `[cycles…]`, a
+   `TextDialog` checked by `check_cycles` (a whole number from 1 to `MAX_CYCLES`, which a test
+   holds to busk's). It sends one `effect template update` line with every layer as the show stores
+   it; 1 takes the key out of the layer, as busk leaves the default out, and a value left as it
+   was sends nothing. A colour layer has no row. The pane cursor stops on `cycles cycles…` before
+   `offset offset…`. `layer_text` words `×2` as busk does (a test holds it to busk's `_layers`), and
+   TEMPLATES' defaults column says `groups 2` (`TemplateInfo` takes `groups`, `blocks` and `wings`
+   from the bridge). The phase offset's dialog now says `in degrees of its own wave`.
+
+   On the real engine (`test_f5_adds_a_figure_eight_and_changes_its_cycles_on_the_real_engine`):
+   TEMPLATES lists the five, a click adds a Figure eight to the heads, its panel shows `tilt add
+   sine ×2 +90°` with cycles 2, `[cycles…]` 3 on its pan layer makes the running effect's wave three
+   crests a cycle, and `undo` brings back one.
+
+   Call the user may veto: **the row comes before the phase offset,** in the order busk words them
+   (`×2 +90°`), and shows the plain number.
+
 Add GAP-50's entry and Summary row to engine-gaps.md. Docs: `docs/console.md` (Effects, and the
 library's list), the guide's F5, and `CHANGELOG.md`.
+
+**Done** (2026-11-17). engine-gaps.md: GAP-50, its Summary row, and a note in GAP-15 on the new
+defaults. `docs/console.md`: the library's list, the defaults, and "A layer's cycles". The spec:
+`ScalarLayer.cycles` (§5.10) and the per-member formula (§10.3). `docs/library.md`:
+`EffectTemplateInfo`'s three fields. The guide's F5: TEMPLATES' `groups 2`, the layer row's
+words and `[cycles…]`. The report: the Phase 32 sentence in its opening and the template row.
+`CHANGELOG.md` under Added. §7's items.
+
+**Phase 32 checks** (2026-11-17), on top of `ff3a98e`. The whole suite: 6,770 passed and 1
+skipped, in 9:20 with `uv run pytest -n 6`. `ruff check`, `ruff format --check`, `mypy src` and
+`mypy --strict tests/api_consumer.py` clean. The public API's golden took `EffectTemplateInfo`'s
+three fields (`BUSK_REGOLDEN=1`); no public name was added. On Textual 8.2.0, the floor, F5's
+tests, the conversion tests and the real-engine F5 tests: 229 passed. New tests:
+`tests/test_effect_cycles.py` (33), seven on the club show in `tests/test_effect_library.py`, nine
+in `tests/tui/test_tui_templates.py` and one in `tests/tui/test_tui_effects.py`, and the
+real-engine `test_f5_adds_a_figure_eight_and_changes_its_cycles_on_the_real_engine`. The tests
+that pinned the library's eight templates now hold thirteen; one looked up `Square` as a name the
+library lacks, and now looks up `Zigzag`.
+
+Mutations, each failing a test: the compiler not scaling a row's spread by its cycles, or scaling
+its offset too; the engine, the strobe cap or the effect status ignoring cycles; the words leaving
+`×N` out or writing `×1`; the plan's Alternate (`phase 0 180`), a Figure eight with no offset on
+tilt, `effect add` ignoring the library's `groups`, and Wander's two seeds made equal (which a
+first test, comparing floats exactly, let through); in F5, `[cycles…]` keeping the key at 1,
+sending a value left as it was, taking 0 or 101, the row without a pane cursor stop, and
+`layer_text` without `×N`.
+
+The perf gate: 8 passed. F5 +0.201 with P11's Circle running; F1 B +0.186, A +0.206, C +0.213, F2
++0.173 and +0.226 with the Circle, F3 +0.192, F4 +0.199, F6 editing a position preset +0.219,
+F8 +0.212, and every standalone page at 98% of the bare rate or more.
+
+A real `busk run` (processes, `--state-dir` in a temporary directory) of the club show with its
+surfaces, bindings and routes taken out, so that it opened no MIDI device, web remote or network
+output: `library` listed the five with their defaults (`(phase 0 360, groups 2)`); a Figure eight
+on the heads; `effect template update` to pan ×3 and `list effects` worded it (`pan add sine ×3,
+tilt add sine ×2 +90°`), and `undo` took it back; `cycles` 0 was refused (`effects[4].layers[0].
+cycles: Input should be greater than or equal to 1`); Alternate on the washes, and `effect add
+"Square" id sq groups 3`. 838 ticks, no overrun. No real-terminal (pty) walk was made.
 
 ### Phase 33: Reusable effect settings
 
@@ -3190,7 +3312,13 @@ sequences, executors and recipes. Each doubtful point was checked on `OfflineSho
   from it, where entries, global and profile presets, and effects follow the group: **Phase 31**,
   Q12. Recipes themselves (regenerating presets and cues for another rig): **Not planned**.
 - A figure eight (a layer at twice the rate of another), and library templates for a tilt sweep,
-  random movement, a square dimmer and a two-colour alternation: **Phase 32**.
+  random movement, a square dimmer and a two-colour alternation: **Phase 32**. Built there.
+- `effect add` of a template whose layers no target has (Circle or Figure eight on the club
+  show's washes, which have no pan or tilt) is taken in silence: the reply counts the targets
+  (`added effect 'fx5' on 4 targets`) and `programmer` lists the effect, but it runs nothing.
+  The compiler's warning reaches only `record cue`'s reply, which records the effect, with its
+  path (`warning cueLists[20].cues[0].effects[0]: no target has pan or tilt: the effect does
+  nothing`). Found on 2026-11-17, in Phase 32, and left as it is.
 - A phaser kept with its settings for reuse (grandMA3 stores one in a preset): **Phase 33**, Q13.
 - What busk sends on each DMX channel, to check a fixture's personality; overlaps at the prompt:
   **Phase 34**. Built there.

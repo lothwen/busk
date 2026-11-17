@@ -24,7 +24,10 @@ from builders import APPENDIX_A, ROOT, load_doc, show_of
 from busk import CounterIds, EffectTemplateInfo, LiveShow, OfflineShow, load_show, new_show
 from busk.persistence.show_file import save_show
 
-LIBRARY = ["Circle", "Pulse", "Wave", "Chase", "Saw", "Sweep", "Flicker", "Rainbow"]
+LIBRARY = [
+    "Circle", "Pulse", "Wave", "Chase", "Saw", "Sweep", "Flicker", "Rainbow",
+    "Figure eight", "Tilt sweep", "Wander", "Square", "Alternate",
+]  # fmt: skip
 SINE = [
     {"attribute": "intensity", "waveform": {"kind": "sine"}, "phaseOffset": 0, "mode": "multiply"}
 ]
@@ -45,7 +48,9 @@ def appendix(*templates: dict[str, Any], rename: str | None = None, first: bool 
 def info(
     name: str, ident: str, source: Literal["show", "library"], summary: str, **defaults: Any
 ) -> EffectTemplateInfo:
-    fields: dict[str, Any] = {"size": None, "low": None, "high": None, "phase": None, **defaults}
+    fields: dict[str, Any] = (
+        dict.fromkeys(("size", "low", "high", "phase", "groups", "blocks", "wings")) | defaults
+    )
     return EffectTemplateInfo(name=name, id=ident, source=source, summary=summary, **fields)
 
 
@@ -57,7 +62,19 @@ SAW = info("Saw", "ef-saw", "library", "intensity absolute sawDown", phase=(0.0,
 SWEEP = info("Sweep", "ef-sweep", "library", "pan add triangle", size=30.0)
 FLICKER = info("Flicker", "ef-flicker", "library", "intensity multiply random", size=0.5)
 RAINBOW = info("Rainbow", "ef-rainbow", "library", "color fade 3 colours", phase=(0.0, 360.0))
-LISTED = (PULSE, CIRCLE, WAVE, CHASE, SAW, SWEEP, FLICKER, RAINBOW)
+EIGHT = info(
+    "Figure eight", "ef-eight", "library", "pan add sine, tilt add sine ×2 +90°", size=20.0
+)
+TILT_SWEEP = info("Tilt sweep", "ef-tilt-sweep", "library", "tilt add triangle", size=20.0)
+WANDER = info("Wander", "ef-wander", "library", "pan add random, tilt add random", size=20.0)
+SQUARE = info("Square", "ef-square", "library", "intensity absolute square", phase=(0.0, 360.0))
+ALTERNATE = info(
+    "Alternate", "ef-alternate", "library", "color snap 2 colours", phase=(0.0, 360.0), groups=2
+)
+LISTED = (
+    PULSE, CIRCLE, WAVE, CHASE, SAW, SWEEP, FLICKER, RAINBOW,
+    EIGHT, TILT_SWEEP, WANDER, SQUARE, ALTERNATE,
+)  # fmt: skip
 """Appendix A's: its Pulse first, then the rest of the library, in its order."""
 
 
@@ -72,7 +89,7 @@ def test_a_new_show_lists_the_library_in_its_order() -> None:
     templates = OfflineShow(new_show("Empty")).effect_templates
     assert names(templates) == [(name, "library") for name in LIBRARY]
     assert templates[0] == CIRCLE
-    assert templates[-1] == RAINBOW
+    assert templates[-1] == ALTERNATE
 
 
 def test_the_shows_templates_come_first_then_the_librarys_it_has_no_copy_of() -> None:
@@ -98,6 +115,8 @@ def defaults(template: EffectTemplateInfo) -> str:
         parts.append(" ".join(f"{k} {v:g}" for k, v in bounds if v is not None))
     if template.phase is not None:
         parts.append("phase {:g} {:g}".format(*template.phase))
+    spread = (("groups", template.groups), ("blocks", template.blocks), ("wings", template.wings))
+    parts += [f"{key} {count}" for key, count in spread if count is not None]
     return f" ({', '.join(parts)})" if parts else ""
 
 
@@ -107,6 +126,8 @@ def test_the_club_night_show_holds_the_four_it_uses(tmp_path: Path) -> None:
     assert names(show.effect_templates) == [
         ("Circle", "show"), ("Pulse", "show"), ("Wave", "show"), ("Rainbow", "show"),
         ("Chase", "library"), ("Saw", "library"), ("Sweep", "library"), ("Flicker", "library"),
+        ("Figure eight", "library"), ("Tilt sweep", "library"), ("Wander", "library"),
+        ("Square", "library"), ("Alternate", "library"),
     ]  # fmt: skip
 
 

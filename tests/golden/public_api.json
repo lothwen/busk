@@ -124,11 +124,14 @@
       "size: float | None",
       "low: float | None",
       "high: float | None",
-      "phase: tuple[float, float] | None"
+      "phase: tuple[float, float] | None",
+      "groups: int | None",
+      "blocks: int | None",
+      "wings: int | None"
     ],
     "kind": "frozen dataclass",
     "members": {
-      "__init__": "(self, *, name: str, id: str, source: Literal['show', 'library'], summary: str, size: float | None, low: float | None, high: float | None, phase: tuple[float, float] | None) -> None"
+      "__init__": "(self, *, name: str, id: str, source: Literal['show', 'library'], summary: str, size: float | None, low: float | None, high: float | None, phase: tuple[float, float] | None, groups: int | None, blocks: int | None, wings: int | None) -> None"
     },
     "module": "busk.console.console"
   },

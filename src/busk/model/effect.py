@@ -7,11 +7,16 @@ across the ordered targets.
 An ``absolute`` layer *is* the value and takes part in normal merging; an
 ``add`` layer offsets whatever the slot resolves to and a ``multiply`` layer
 scales it (§7.5).
+
+A scalar layer's ``cycles`` (GAP-50) is how many of its waves it runs in one
+cycle of the effect: a figure eight is pan at 1 and tilt at 2. Its
+``phaseOffset`` is in degrees of its own wave, and the instance's phase spread
+in degrees of the effect's cycle, so every member traces the same shape.
 """
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, NotRequired, TypedDict
+from typing import Annotated, Final, Literal, NotRequired, TypedDict
 
 from pydantic import Discriminator, Field, Tag, with_config
 
@@ -39,14 +44,21 @@ class EffectTemplate(EntityBase[EffectId]):
     layers: list[EffectLayer]
 
 
+MAX_CYCLES: Final = 100
+"""The most waves a layer runs in one effect cycle (GAP-50)."""
+
+Cycles = Annotated[int, Field(ge=1, le=MAX_CYCLES)]
+
+
 @with_config(STRICT)
 class ScalarLayer(TypedDict):
     """A waveform driving one scalar attribute."""
 
     attribute: AttributeId
     waveform: Waveform
-    phaseOffset: float  # degrees, within the template (tilt +90° for circles)
+    phaseOffset: float  # degrees of its own wave (tilt +90° for circles)
     mode: Literal["absolute", "add", "multiply"]
+    cycles: NotRequired[Cycles]  # its waves per effect cycle; 1 when left out (GAP-50)
 
 
 @with_config(STRICT)

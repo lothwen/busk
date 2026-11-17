@@ -534,6 +534,9 @@ class TemplateInfo:
     low: float | None = None
     high: float | None = None
     phase: tuple[float, float] | None = None
+    groups: int | None = None
+    blocks: int | None = None
+    wings: int | None = None
     id: str = ""  # stays through a rename
     layers: tuple[Layer, ...] = field(default=(), hash=False)  # the show's only
     used_by: tuple[tuple[int, str], ...] = ()  # the cues that hold an effect of it: (list, cue)

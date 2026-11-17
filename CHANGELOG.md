@@ -10,6 +10,14 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- A template's wave layer runs several waves in one cycle of its effect: `"cycles": 2` in its
+  JSON, a whole number from 1 to 100, so tilt can move at twice pan's rate. `list effects` and
+  `library` word it (`tilt add sine ×2 +90°`); the layer's phase offset is in degrees of its own
+  wave, and the strobe cap counts each wave. The effect library has five more templates: Figure
+  eight, Tilt sweep, Wander (pan and tilt at random), Square (an intensity square chase) and
+  Alternate (red and blue on every other fixture, `groups 2`). A library template's defaults may
+  now give groups, blocks and wings, and `EffectTemplateInfo` has them. F5's TEMPLATE panel has
+  `[cycles…]` on a wave layer.
 - F4 has a TRACK panel under the cue table: what the chosen cue puts on stage when its list plays
   by GO from its first cue, a row per fixture and a column per family. A value the cue stores is
   bright, one it tracks from an earlier cue dim, with that cue after it (`██ Blue ← 9/1`), and a

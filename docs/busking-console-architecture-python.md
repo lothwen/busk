@@ -640,8 +640,9 @@ class EffectTemplate(EntityBase[EffectId]):
 class ScalarLayer(TypedDict):                 # scalar attributes
     attribute: AttributeId
     waveform: Waveform
-    phaseOffset: float                        # degrees, within the template (tilt +90° for circles)
+    phaseOffset: float                        # degrees of its own wave (tilt +90° for circles)
     mode: Literal["absolute", "add", "multiply"]
+    cycles: NotRequired[int]                  # waves per effect cycle, 1..100 (GAP-50)
 
 class PresetRef(TypedDict):
     presetId: PresetId
@@ -1416,7 +1417,7 @@ Dividing by *M* (not *M − 1*) means a 0°→360° spread distributes members e
 | random | value per cycle from a seeded PRNG (per member); `smooth` interpolates |
 | curve | piecewise-linear (or Catmull-Rom) through `points` |
 
-Effect value per member: `w = waveform(frac(phase + offset_k/360 + layer.phaseOffset/360))`, reversed if `direction` is reverse; bounce alternates direction each cycle.
+Effect value per member: `w = waveform(frac(layer.cycles · (phase + offset_k/360) + layer.phaseOffset/360))`, reversed if `direction` is reverse; bounce alternates direction each cycle. A layer's `cycles` (GAP-50; 1 when left out) is how many of its waves it runs in one cycle of the effect: a figure eight is pan sine plus tilt sine ×2 +90°. Its `phaseOffset` is in degrees of its own wave, and the spread `offset_k` in degrees of the effect's cycle, so every member traces the same shape.
 
 ### 10.4 Applying the result
 

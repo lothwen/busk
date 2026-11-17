@@ -389,9 +389,10 @@ class TemplateTable(RowTable):
 
 def template_cells(template: TemplateInfo) -> Cells:
     """A template: its name, its layers, the defaults the library gives an
-    instance (``size 20``, ``low 0 high 1``, ``phase 0 360``), where it is
-    from (``show``, or ``library``: the show has no copy of it yet), and what
-    opens its panel: ``[edit]``, or ``[view]`` for one only the library has."""
+    instance (``size 20``, ``low 0 high 1``, ``phase 0 360``, ``groups 2``),
+    where it is from (``show``, or ``library``: the show has no copy of it
+    yet), and what opens its panel: ``[edit]``, or ``[view]`` for one only the
+    library has."""
     defaults = []
     if template.size is not None:
         defaults.append(f"size {template.size:g}")
@@ -399,6 +400,8 @@ def template_cells(template: TemplateInfo) -> Cells:
         defaults.append(f"low {template.low:g} high {template.high:g}")
     if template.phase is not None:
         defaults.append(f"phase {template.phase[0]:g} {template.phase[1]:g}")
+    spread = (("groups", template.groups), ("blocks", template.blocks), ("wings", template.wings))
+    defaults += [f"{key} {count}" for key, count in spread if count is not None]
     return {
         "name": cell(template.name, colors.GREEN),
         "summary": cell(template.summary, colors.MID),

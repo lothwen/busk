@@ -177,9 +177,11 @@ session, as the web remote's commands do. `help` prints the grammar.
   `record slot` records it (`only` filters it by its attributes' families, `merge` adds
   or replaces it by id, `remove` drops it). The template is the show's of that name,
   else the built-in library's (Circle, Pulse, Wave, Chase, Saw, Sweep, Flicker, Rainbow,
-  listed by `library`), embedded into the show first. Defaults: the library's size,
-  `low`/`high` and phase for that template, ×1 on the show's only speed master (else 1
-  Hz), and the id `fx<n>` that neither the programmer nor any cue uses. A slot recorded
+  Figure eight, Tilt sweep, Wander, Square, Alternate, listed by `library`), embedded into
+  the show first. Defaults: the library's size, `low`/`high`, phase, groups, blocks and
+  wings for that template (Alternate's `groups 2` gives neighbours the other colour), ×1 on
+  the show's only speed master (else 1 Hz), and the id `fx<n>` that neither the programmer
+  nor any cue uses. A slot recorded
   with only effects gets a `size` fader. `list effects` lists the show's templates,
   `list cues` counts each cue's effects, `cue L/C effect <id> <prop> <value>` edits a
   recorded instance, and `cue L/C effect <id> remove` removes it: the cue stays, even with
@@ -189,6 +191,12 @@ session, as the web remote's commands do. `help` prints the grammar.
   cycle once it has gone. `programmer` marks it `(stopped)`; `record cue` leaves it out
   and says so (`; 1 stopped effect not recorded`); `effect add` with its id replaces its
   settings and keeps it stopped. Stopping and running are undo steps.
+* **A layer's cycles.** A wave layer's `"cycles"`, a whole number from 1 to 100, is how many
+  of its waves it runs in one cycle of the effect; left out, it is 1. Figure eight's tilt
+  runs two, and `list effects` and `library` word it `tilt add sine ×2 +90°`. A layer's
+  `phaseOffset` is in degrees of its own wave, and the effect's `phase` spread in degrees of
+  the effect's cycle, so every fixture traces the same figure, a part of the cycle later.
+  The strobe cap counts each wave of an intensity layer as a flash.
 * **Editing a template.** `effect template update "Name" […]` replaces its layers, read
   as `effect template add` reads them. `effect template rename "Name" "New"` renames it,
   and refuses a name another template has, in any case. `effect template delete "Name"` is

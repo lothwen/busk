@@ -84,5 +84,62 @@
       ]
     },
     "defaults": {"phase": {"start": 0, "end": 360}}
+  },
+  {
+    "template": {
+      "id": "ef-eight",
+      "name": "Figure eight",
+      "layers": [
+        {"attribute": "pan", "waveform": {"kind": "sine"}, "phaseOffset": 0, "mode": "add"},
+        {"attribute": "tilt", "waveform": {"kind": "sine"}, "phaseOffset": 90, "mode": "add", "cycles": 2}
+      ]
+    },
+    "defaults": {"size": 20}
+  },
+  {
+    "template": {
+      "id": "ef-tilt-sweep",
+      "name": "Tilt sweep",
+      "layers": [
+        {"attribute": "tilt", "waveform": {"kind": "triangle"}, "phaseOffset": 0, "mode": "add"}
+      ]
+    },
+    "defaults": {"size": 20}
+  },
+  {
+    "template": {
+      "id": "ef-wander",
+      "name": "Wander",
+      "layers": [
+        {"attribute": "pan", "waveform": {"kind": "random", "smooth": true, "seed": 2}, "phaseOffset": 0, "mode": "add"},
+        {"attribute": "tilt", "waveform": {"kind": "random", "smooth": true, "seed": 3}, "phaseOffset": 0, "mode": "add"}
+      ]
+    },
+    "defaults": {"size": 20}
+  },
+  {
+    "template": {
+      "id": "ef-square",
+      "name": "Square",
+      "layers": [
+        {"attribute": "intensity", "waveform": {"kind": "square", "duty": 0.5}, "phaseOffset": 0, "mode": "absolute"}
+      ]
+    },
+    "defaults": {"phase": {"start": 0, "end": 360}}
+  },
+  {
+    "template": {
+      "id": "ef-alternate",
+      "name": "Alternate",
+      "layers": [
+        {
+          "attribute": "color",
+          "palette": [{"r": 1, "g": 0, "b": 0}, {"r": 0, "g": 0, "b": 1}],
+          "blend": "snap",
+          "mode": "absolute"
+        }
+      ]
+    },
+    "defaults": {"phase": {"start": 0, "end": 360}, "groups": 2}
   }
 ]

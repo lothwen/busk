@@ -220,8 +220,12 @@ class CompiledLayer:
       layer holds at ``NaN`` ("derive", decision 6).
 
     ``member`` is each row's index in the instance's targets (the random
-    wave hashes it) and ``phase`` its offset in cycles: the member's spread
-    offset plus the layer's ``phaseOffset``.
+    wave hashes it) and ``phase`` its offset in cycles of the layer's own
+    wave: the member's spread offset times ``cycles``, plus the layer's
+    ``phaseOffset``. ``cycles`` is how many waves the layer runs in one cycle
+    of the effect (GAP-50; 1 for a colour layer), so a row's phase at base
+    phase ``b`` is ``phase + cycles·b``: each member traces the same shape,
+    shifted by its spread offset in the effect's cycle.
 
     A scalar layer is driven by ``wave``; an absolute one sweeps from
     ``low`` (``w = 0``) to ``high`` (``w = 1``). A colour layer cycles
@@ -239,6 +243,7 @@ class CompiledLayer:
     lanes: NDArray[np.intp]
     member: NDArray[np.intp]
     phase: NDArray[np.float64]
+    cycles: int = 1
     wave: CompiledWave | None = None
     low: float = 0.0
     high: float = 1.0
@@ -511,13 +516,15 @@ def _scalar_layer(
     member = np.array([k for k, _ in found], dtype=np.intp)
     low, high = _bounds(instance, definition.range) if mode == "absolute" else (0.0, 1.0)
     ranged = definition.range
+    cycles = layer.get("cycles", 1)
     return CompiledLayer(
         attribute=attribute,
         mode=mode,
         htp=htp,
         lanes=_frozen(lanes),
         member=_frozen(member),
-        phase=_frozen(offsets[member] + layer["phaseOffset"] / 360.0),
+        phase=_frozen(cycles * offsets[member] + layer["phaseOffset"] / 360.0),
+        cycles=cycles,
         wave=compile_wave(layer["waveform"]),
         low=low,
         high=high,

@@ -136,9 +136,10 @@ on the selection, in order, to the programmer. The template is the show's
 if it has one by that name (any case), else the built-in library's, which
 is then embedded into the show first: the line runs two commands, in order,
 stopping at the first failure (two undo steps). Options come in any order;
-defaults: the library's ``size``, ``low``/``high`` and ``phase`` for the
-template (else size 1, phase 0 0), a BPM rate ×1 on the show's only speed
-master (else 1 Hz), 1 group, 1 block, 1 wing, ``forward``, and the id
+defaults: the library's ``size``, ``low``/``high``, ``phase``, ``groups``,
+``blocks`` and ``wings`` for the template (else size 1, phase 0 0, 1 group,
+1 block, 1 wing), a BPM rate ×1 on the show's only speed master (else 1 Hz),
+``forward``, and the id
 ``fx<n>`` with the lowest ``n`` that neither the programmer nor any cue
 uses. ``effect template add`` adds a template made of JSON layers.
 ``cue L/C effect <id> …`` sets a property of one of a cue's effect
@@ -1306,7 +1307,7 @@ class _Parser:
             defaults.get("phase", {"start": 0, "end": 0})
         )
         for key in ("groups", "blocks", "wings"):
-            instance[key] = options.get(key, 1)
+            instance[key] = options.get(key, defaults.get(key, 1))
         for key, field_name in (
             ("fadein", "sizeFadeIn"),
             ("sizemaster", "sizeMasterId"),

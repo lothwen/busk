@@ -833,6 +833,8 @@ def test_the_templates_effect_add_takes(club: busk.OfflineShow) -> None:
     assert [(t.name, t.source) for t in templates] == [
         ("Circle", "show"), ("Pulse", "show"), ("Wave", "show"), ("Rainbow", "show"),
         ("Chase", "library"), ("Saw", "library"), ("Sweep", "library"), ("Flicker", "library"),
+        ("Figure eight", "library"), ("Tilt sweep", "library"), ("Wander", "library"),
+        ("Square", "library"), ("Alternate", "library"),
     ]  # fmt: skip
     circle = replace(templates[0], id="", layers=(), used_by=())
     assert circle == TemplateInfo("Circle", "show", "pan add sine, tilt add sine +90°", size=20.0)

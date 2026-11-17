@@ -26,10 +26,11 @@ built-in ``effects.json`` of :mod:`busk.library`: one JSON list whose items
 are ``{"template": EffectTemplate, "defaults": EffectDefaults}``. A template
 is validated as a template embedded in a show; its ``defaults`` are the
 console's defaults for a new instance of it (``size``, ``low``/``high``,
-``phase``). An item that fails, or repeats an id or a name already loaded,
-is skipped and reported in :attr:`EffectLibrary.problems`. ``effect add``
-embeds a library template into the show the first time the show uses it;
-after that the show's copy is used, so a show stays portable.
+``phase``, ``groups``, ``blocks``, ``wings``). An item that fails, or repeats
+an id or a name already loaded, is skipped and reported in
+:attr:`EffectLibrary.problems`. ``effect add`` embeds a library template
+into the show the first time the show uses it; after that the show's copy is
+used, so a show stays portable.
 """
 
 from __future__ import annotations
@@ -48,7 +49,7 @@ from pydantic import TypeAdapter, ValidationError, with_config
 from busk.importers import ImportFailed, ImportReport
 from busk.importers.gdtf import read_gdtf
 from busk.importers.ofl import import_ofl, is_ofl, manufacturer_of
-from busk.model.common import STRICT
+from busk.model.common import STRICT, PositiveInt
 from busk.model.effect import EffectPhase, EffectTemplate
 from busk.model.profile import FixtureProfile
 from busk.model.validate import has_errors, validate_show
@@ -155,6 +156,9 @@ class EffectDefaults(TypedDict):
     low: NotRequired[float]
     high: NotRequired[float]
     phase: NotRequired[EffectPhase]
+    groups: NotRequired[PositiveInt]
+    blocks: NotRequired[PositiveInt]
+    wings: NotRequired[PositiveInt]
 
 
 @dataclass(frozen=True)

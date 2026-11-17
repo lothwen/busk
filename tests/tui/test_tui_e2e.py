@@ -2454,6 +2454,65 @@ def test_f5_builds_a_template_from_controls(club_path: Path, tmp_path: Path) -> 
     drive(app, body)
 
 
+def test_f5_adds_a_figure_eight_and_changes_its_cycles_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """F5 lists the library's new shapes with their defaults, adds a Figure
+    eight to the heads, shows its tilt layer at two cycles, and ``[cycles…]``
+    on its pan layer changes the running effect at once; ``undo`` puts it
+    back."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=5), standalone=True)
+
+    def waves() -> int:
+        """The crests in the programmer effect's next cycle (its pan layer)."""
+        effects = app.view.effects
+        found = [e for e in (effects.effects if effects else ()) if e.playback is None]
+        if not found:
+            return 0
+        wave = found[0].wave
+        n = len(wave)
+        return sum(1 for k in range(n) if wave[k] > wave[k - 1] and wave[k] >= wave[(k + 1) % n])
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.live is not None and app.view.show is not None)
+        panel = app.query_one(TemplatePanel)
+        table = app.query_one(TemplateTable)
+        names = column(table, "name")
+        assert names[-5:] == ["Figure eight", "Tilt sweep", "Wander", "Square", "Alternate"]
+        assert column(table, "defaults")[-1] == "phase 0 360 groups 2"
+        await pilot.press(*"sel group 1", "enter")
+        await until(pilot, lambda: bool(app.programmer and app.programmer.selection))
+        await click_cell(pilot, table, names.index("Figure eight"), "name")
+        await until(pilot, lambda: waves() == 1, timeout=2.0)
+        row = column(table, "name").index("Figure eight")
+        await until(pilot, lambda: column(table, "source")[row] == "show")
+        await click_cell(pilot, table, row, "edit")
+        await until(pilot, lambda: panel.display and "Figure eight" in str(panel.border_title))
+        assert column(panel.layer_table, "what") == ["pan add sine", "tilt add sine ×2 +90°"]
+        await click_cell(pilot, panel.layer_table, 1, "what")
+        await until(pilot, lambda: plain_of(panel.cycles_row.value) == "2")
+        await click_cell(pilot, panel.layer_table, 0, "what")
+        await until(pilot, lambda: plain_of(panel.cycles_row.value) == "1")
+        cycles = next(b for b in panel.query(ActionButton) if b.label == "cycles…")
+        await tap(pilot, cycles)
+        await answer_field(pilot, app, "3")
+        await until(pilot, lambda: column(panel.layer_table, "what")[0] == "pan add sine ×3")
+        await until(pilot, lambda: waves() == 3, timeout=2.0)
+        await pilot.press(*"undo", "enter")
+        await until(pilot, lambda: column(panel.layer_table, "what")[0] == "pan add sine")
+        await until(pilot, lambda: waves() == 1, timeout=2.0)
+        log = app.query_one(LogView).entries
+        assert [kind for kind, _ in log if kind == "error"] == []
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
 def running_effect(app: BuskApp, playback: int | None, ident: str) -> EffectView | None:
     effects = app.view.effects
     found = () if effects is None else effects.effects

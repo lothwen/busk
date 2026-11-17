@@ -137,22 +137,26 @@ class EffectTemplateInfo:
     one line, as ``list effects`` and ``library`` print them, text to show as
     it is.
 
-    ``size``, ``low``, ``high`` and ``phase`` (start and end, in degrees)
-    are the library's defaults for an instance, as ``library`` prints them,
-    also once the show holds the template. ``None`` where the library has
-    none, as for a template the show made itself (``effect template add``):
-    then ``effect add`` gives size 1, no low or high, and phase 0 0. An
-    option on the line overrides each.
+    ``size``, ``low``, ``high``, ``phase`` (start and end, in degrees),
+    ``groups``, ``blocks`` and ``wings`` are the library's defaults for an
+    instance, as ``library`` prints them, also once the show holds the
+    template. ``None`` where the library has none, as for a template the show
+    made itself (``effect template add``): then ``effect add`` gives size 1,
+    no low or high, phase 0 0, and 1 group, block and wing. An option on the
+    line overrides each.
     """
 
     name: str
     id: str
     source: Literal["show", "library"]
-    summary: str  # "pan add sine, tilt add sine +90°"
+    summary: str  # "pan add sine, tilt add sine ×2 +90°"
     size: float | None
     low: float | None
     high: float | None
     phase: tuple[float, float] | None
+    groups: int | None
+    blocks: int | None
+    wings: int | None
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -311,6 +315,9 @@ class Console:
                 low=defaults.get("low"),
                 high=defaults.get("high"),
                 phase=None if phase is None else (phase["start"], phase["end"]),
+                groups=defaults.get("groups"),
+                blocks=defaults.get("blocks"),
+                wings=defaults.get("wings"),
             )
         return tuple(found.values())
 
@@ -939,21 +946,26 @@ def format_value(value: Any) -> str:
 
 
 def _layers(layers: Iterable[EffectLayer]) -> str:
-    """Effect layers in one line: ``pan add sine, tilt add sine +90°``."""
+    """Effect layers in one line: ``pan add sine, tilt add sine ×2 +90°``,
+    with a layer's ``cycles`` where it runs more than one wave."""
     parts = []
     for layer in layers:
         if "palette" in layer:
             colour = cast(ColorLayer, layer)
             parts.append(f"color {colour['blend']} {_count(len(colour['palette']), 'colour')}")
             continue
+        cycles = layer.get("cycles", 1)
+        times = f" ×{cycles}" if cycles != 1 else ""
         offset = layer["phaseOffset"]
         shift = f" {offset:+g}°" if offset else ""
-        parts.append(f"{layer['attribute']} {layer['mode']} {layer['waveform']['kind']}{shift}")
+        what = f"{layer['attribute']} {layer['mode']} {layer['waveform']['kind']}"
+        parts.append(f"{what}{times}{shift}")
     return ", ".join(parts)
 
 
 def _defaults(defaults: EffectDefaults) -> str:
-    """A library template's console defaults: `` (size 20)``, or nothing."""
+    """A library template's console defaults: `` (size 20)``, `` (phase 0
+    360, groups 2)``, or nothing."""
     parts = []
     if "size" in defaults:
         parts.append(f"size {defaults['size']:g}")
@@ -962,6 +974,12 @@ def _defaults(defaults: EffectDefaults) -> str:
         parts.append(" ".join(f"{k} {v:g}" for k, v in bounds if v is not None))
     if "phase" in defaults:
         parts.append(f"phase {defaults['phase']['start']:g} {defaults['phase']['end']:g}")
+    spread = (
+        ("groups", defaults.get("groups")),
+        ("blocks", defaults.get("blocks")),
+        ("wings", defaults.get("wings")),
+    )
+    parts += [f"{key} {count}" for key, count in spread if count is not None]
     return f" ({', '.join(parts)})" if parts else ""
 
 

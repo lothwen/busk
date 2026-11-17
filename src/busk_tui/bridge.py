@@ -884,6 +884,9 @@ def show_model(
                 low=template.low,
                 high=template.high,
                 phase=template.phase,
+                groups=template.groups,
+                blocks=template.blocks,
+                wings=template.wings,
                 id=template.id,
                 layers=layers.get(template.id, ()),  # none for what only the library has
                 used_by=tuple(template_cues.get(template.id, ())),

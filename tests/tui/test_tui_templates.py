@@ -4,6 +4,8 @@ what a refused line says in the panel and the log. Headless, with a fake bridge.
 
 from __future__ import annotations
 
+import json
+from dataclasses import replace
 from typing import Any, get_args, get_type_hints
 
 import pytest
@@ -23,7 +25,9 @@ from tui_fakes import (
 )
 
 import busk
+from busk.console.console import _layers as busk_layers
 from busk.model.attributes import ATTRIBUTES as BUSK_ATTRIBUTES
+from busk.model.effect import MAX_CYCLES as BUSK_MAX_CYCLES
 from busk.model.effect import (
     CurveWave,
     PulseWave,
@@ -59,11 +63,13 @@ from busk_tui.widgets.log import LogView
 from busk_tui.widgets.route_dialog import PickRow
 from busk_tui.widgets.template_panel import (
     ATTRIBUTES,
+    MAX_CYCLES,
     NEW_COLOUR,
     NEW_WAVE,
     WAVES,
     NewTemplateDialog,
     TemplatePanel,
+    check_cycles,
     check_degrees,
     check_points,
     check_rgb,
@@ -222,6 +228,17 @@ def test_a_layer_is_worded_as_busk_words_it() -> None:
     assert layer_text(wave_layer({"kind": "square", "duty": 0.5}, phaseOffset=-30.0)) == (
         "intensity add square -30°"
     )
+    assert layer_text(SINE | {"cycles": 2}) == "pan add sine ×2 +90°"
+    assert layer_text(SINE | {"cycles": 1}) == "pan add sine +90°"
+    for layer in (SINE, SINE | {"cycles": 3}, SINE | {"cycles": 1}, COLOUR):
+        assert layer_text(layer) == busk_layers([layer])  # type: ignore[list-item]
+
+
+def test_cycles_are_a_whole_number_from_1_to_busks_most() -> None:
+    assert MAX_CYCLES == BUSK_MAX_CYCLES
+    assert [check_cycles(text) for text in ("1", " 2 ", "100")] == [None, None, None]
+    for text in ("0", "101", "1.5", "-1", "x", "", "²"):
+        assert check_cycles(text) == "a whole number from 1 to 100"
 
 
 @pytest.mark.parametrize(
@@ -582,6 +599,81 @@ def test_the_phase_offset_is_one_line() -> None:
         await press_button(pilot, panel, "offset…")
         await type_in(pilot, app, "-45.5")
         assert [s.line for s in bridge.sent] == [update([SINE | {"phaseOffset": -45.5}, COLOUR])]
+
+    drive(app, body)
+
+
+def test_cycles_are_one_line() -> None:
+    bridge = FakeBridge()
+    app = on_f5(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        panel = await open_template(pilot, app)
+        assert plain(panel.cycles_row.value) == "1"
+        await press_button(pilot, panel, "cycles…")
+        await type_in(pilot, app, "2")
+        assert [s.line for s in bridge.sent] == [update([SINE | {"cycles": 2}, COLOUR])]
+
+    drive(app, body)
+
+
+def test_one_cycle_takes_the_key_out_as_busk_leaves_it_out() -> None:
+    bridge = FakeBridge()
+    twice = SINE | {"cycles": 3}
+    app = on_f5(bridge, replace(BEAT, layers=(twice, COLOUR)))
+
+    async def body(pilot: Pilot[int]) -> None:
+        panel = await open_template(pilot, app)
+        assert plain(panel.cycles_row.value) == "3"
+        await press_button(pilot, panel, "cycles…")
+        await type_in(pilot, app, "1")
+        assert [s.line for s in bridge.sent] == [update([SINE, COLOUR])]
+        assert "cycles" not in json.loads(bridge.sent[0].line.partition('Beat" ')[2])[0]
+
+    drive(app, body)
+
+
+@pytest.mark.parametrize("keys", [("enter",), ("escape",)])
+def test_cycles_left_as_they_were_send_nothing(keys: tuple[str, ...]) -> None:
+    bridge = FakeBridge()
+    app = on_f5(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        panel = await open_template(pilot, app)
+        await press_button(pilot, panel, "cycles…")
+        await pilot.press(*keys)
+        await settle(pilot, app)
+        assert not isinstance(app.screen, TextDialog)
+        assert bridge.sent == []
+
+    drive(app, body)
+
+
+@pytest.mark.parametrize("text", ["0", "101", "1.5"])
+def test_the_cycles_dialog_refuses_what_busk_would(text: str) -> None:
+    bridge = FakeBridge()
+    app = on_f5(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        panel = await open_template(pilot, app)
+        await press_button(pilot, panel, "cycles…")
+        await type_in(pilot, app, text)
+        assert isinstance(app.screen, TextDialog)
+        assert bridge.sent == []
+
+    drive(app, body)
+
+
+def test_a_colour_layer_has_no_cycles() -> None:
+    bridge = FakeBridge()
+    app = on_f5(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        panel = await open_template(pilot, app)
+        panel.choose_layer(1)
+        await settle(pilot, app)
+        assert not panel.scalar.display
+        assert "cycles cycles…" not in [stop.item.label for stop in panel.stops()]
 
     drive(app, body)
 
@@ -1138,7 +1230,7 @@ def test_the_pane_cursor_reaches_the_controls_of_a_wave_layer() -> None:
         ]  # fmt: skip
         assert "+ colour" not in labels  # grey: the template has its colour layer
         assert update([SINE | {"attribute": "tilt"}, COLOUR]) in labels
-        assert labels[-2:] == ["offset offset…", "done"]
+        assert labels[-3:] == ["cycles cycles…", "offset offset…", "done"]
 
     drive(app, body)
 

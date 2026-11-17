@@ -11,7 +11,8 @@ drawn.
 
 * A wave layer has a chip per attribute, mode and waveform, and what its
   waveform takes: ``duty``, ``width``, ``attack``, ``decay``, ``steps``,
-  ``seed``, ``smooth`` or ``points``, and its phase offset.
+  ``seed``, ``smooth`` or ``points``, then its cycles (how many waves it runs
+  in one cycle of the effect, GAP-50) and its phase offset.
 * A colour layer has its blend, and its palette. A click on a colour opens its
   form, ``✕`` takes an entry out, ``[+ colour…]`` adds one and a chip per colour
   preset adds that preset.
@@ -106,6 +107,9 @@ NEW_COLOUR: Final[Layer] = {
 FIRST_LAYERS: Final[dict[str, Layer]] = {"wave": NEW_WAVE, "colour": NEW_COLOUR}
 """What a new template starts with, by the choice in its form."""
 
+MAX_CYCLES: Final = 100
+"""The most waves a layer runs in one effect cycle (a test holds it to busk's)."""
+
 GREY_WHILE_USED: Final = "delete is grey while something uses it"
 LIBRARY_NOTE: Final = "the library's: add it to a selection, and the show holds a copy to edit"
 
@@ -121,6 +125,13 @@ def check_degrees(text: str) -> str | None:
 
 def check_seed(text: str) -> str | None:
     return None if read_whole(text.strip()) is not None else "a whole number, 0 or more"
+
+
+def check_cycles(text: str) -> str | None:
+    cycles = read_whole(text.strip())
+    if cycles is not None and 1 <= cycles <= MAX_CYCLES:
+        return None
+    return f"a whole number from 1 to {MAX_CYCLES}"
 
 
 def check_rgb(values: tuple[str, ...]) -> str | None:
@@ -179,13 +190,15 @@ def check_template_name(
 
 
 def layer_text(layer: Layer) -> str:
-    """A layer as busk words it: ``pan add sine +90°``, ``color fade 3 colours``."""
+    """A layer as busk words it: ``tilt add sine ×2 +90°``, ``color fade 3 colours``."""
     if "palette" in layer:
         count = len(layer["palette"])
         return f"color {layer['blend']} {count} colour{'' if count == 1 else 's'}"
+    cycles = layer.get("cycles", 1)
+    times = f" ×{cycles}" if cycles != 1 else ""
     offset = layer["phaseOffset"]
     shift = f" {offset:+g}°" if offset else ""
-    return f"{layer['attribute']} {layer['mode']} {layer['waveform']['kind']}{shift}"
+    return f"{layer['attribute']} {layer['mode']} {layer['waveform']['kind']}{times}{shift}"
 
 
 def number_list(values: Sequence[float]) -> str:
@@ -362,6 +375,7 @@ class TemplatePanel(Panel):
         self.points = Setting("points", ActionButton("points…", self.ask_points))
         self.smooth = ActionButton("smooth off", self.toggle_smooth)
         self.smooth_row = Setting("smooth", self.smooth)
+        self.cycles_row = Setting("cycles", ActionButton("cycles…", self.ask_cycles))
         self.offset_row = Setting("phase offset", ActionButton("offset…", self.ask_offset))
         self.scalar = Vertical(
             self.chip_row("attribute", self.attribute),
@@ -371,6 +385,7 @@ class TemplatePanel(Panel):
             self.steps,
             self.points,
             self.smooth_row,
+            self.cycles_row,
             self.offset_row,
             classes="tp-part",
         )
@@ -477,6 +492,7 @@ class TemplatePanel(Panel):
         if "smooth" in wave:
             put(self.smooth_row.value, cell("on" if wave["smooth"] else "off", colors.FG))
             self.smooth.change(label="smooth off" if wave["smooth"] else "smooth on")
+        put(self.cycles_row.value, cell(str(layer.get("cycles", 1)), colors.FG))
         put(self.offset_row.value, cell(f"{layer['phaseOffset']:g}°", colors.FG))
 
     def _draw_colour(self, layer: Layer) -> None:
@@ -669,6 +685,30 @@ class TemplatePanel(Panel):
         if layer is not None and "smooth" in layer["waveform"]:
             self._run(self._wave_line(smooth=not layer["waveform"]["smooth"]))
 
+    def ask_cycles(self) -> None:
+        """``[cycles…]``: how many waves the layer runs in one cycle of the
+        effect. 1 takes the key out, as busk leaves the default out."""
+        layer = self.chosen_layer()
+        if layer is None or "waveform" not in layer:
+            return
+        before = layer.get("cycles", 1)
+
+        def given(text: str | None) -> None:
+            cycles = None if text is None else read_whole(text.strip())
+            if cycles is None or cycles == before:
+                return
+            changed = {key: value for key, value in layer.items() if key != "cycles"}
+            if cycles != 1:
+                changed["cycles"] = cycles
+            assert self.template is not None
+            layers = list(self.template.layers)
+            layers[self.layer_index] = changed
+            self._run(self._update_line(layers))
+
+        title = f"CYCLES · layer {self.layer_index + 1}"
+        note = "its waves in each cycle of the effect"
+        self.app.push_screen(TextDialog(title, str(before), check_cycles, note), given)
+
     def ask_offset(self) -> None:
         """``[offset…]``: where the layer sits in the cycle, in degrees."""
         layer = self.chosen_layer()
@@ -681,7 +721,8 @@ class TemplatePanel(Panel):
                 self._run(self._layer_line(phaseOffset=float(text)))
 
         title = f"PHASE OFFSET · layer {self.layer_index + 1}"
-        self.app.push_screen(TextDialog(title, exact(before), check_degrees, "in degrees"), given)
+        note = "in degrees of its own wave"
+        self.app.push_screen(TextDialog(title, exact(before), check_degrees, note), given)
 
     def ask_colour(self, index: int | None) -> None:
         """``[+ colour…]`` (``index`` ``None``) or a click on a colour of the
@@ -751,6 +792,7 @@ class TemplatePanel(Panel):
                 ("steps", self.steps),
                 ("points", self.points),
                 ("smooth", self.smooth_row),
+                ("cycles", self.cycles_row),
                 ("offset", self.offset_row),
             ]:
                 stops += setting.stops(name)
