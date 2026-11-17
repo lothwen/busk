@@ -723,6 +723,44 @@ def no_family_time(cue_list: int, cue: str, family: str) -> Line:
     return Line(f"cue {cue_list}/{cue} time {family} none")
 
 
+def entry_time(
+    cue_list: int,
+    cue: str,
+    targets: str,
+    family: str,
+    fade: str,
+    *,
+    fade_to: str | None = None,
+    delay: str | None = None,
+    delay_to: str | None = None,
+    fan: str | None = None,
+    curve: str | None = None,
+) -> Line:
+    """The own timing of the cue's entries of ``family`` on exactly
+    ``targets`` (``group 1``, ``fixture 101 thru 104``), set whole: ``cue 9/1
+    time group 2 intensity 2 to 4 delay 0 to 1.5 center easeIn``. A ``to``
+    makes a fan over the targets, which ``fan`` (``center``, ``edges``)
+    mirrors; times as typed."""
+    words = [f"cue {cue_list}/{cue} time {targets} {family} {fade}"]
+    if fade_to is not None:
+        words.append(f"to {fade_to}")
+    if delay is not None or delay_to is not None:
+        words.append(f"delay {delay or 0}")
+    if delay_to is not None:
+        words.append(f"to {delay_to}")
+    if fan is not None:
+        words.append(fan)
+    if curve is not None:
+        words.append(curve)
+    return Line(" ".join(words))
+
+
+def no_entry_time(cue_list: int, cue: str, targets: str, family: str) -> Line:
+    """``cue 9/1 time group 2 intensity none``: the own timing of the cue's
+    entries of ``family`` on ``targets`` goes."""
+    return Line(f"cue {cue_list}/{cue} time {targets} {family} none")
+
+
 def cue_trigger(cue_list: int, cue: str, kind: str, delay: str) -> Line:
     """``cue 9/3 follow 4`` (a GO 4 s after the cue before has finished) or
     ``cue 9/3 wait 8`` (8 s after it has started)."""

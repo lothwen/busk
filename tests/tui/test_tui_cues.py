@@ -32,13 +32,14 @@ from tui_fakes import (
 import busk
 from busk_tui import bridge as busk_bridge
 from busk_tui import colors
-from busk_tui.formats import delay_text, stored_text, time_text
+from busk_tui.formats import delay_text, own_timings, stored_text, time_text
 from busk_tui.model import (
     ChaseRate,
     CommandDone,
     CueInfo,
     CueListInfo,
     EffectInfo,
+    EntryTiming,
     FamilyTiming,
     FixtureInfo,
     GroupInfo,
@@ -57,7 +58,16 @@ from busk_tui.pages.cues import CuesPage, meta_text, mode_line
 from busk_tui.shell import BuskApp
 from busk_tui.widgets.chase_dialog import ChaseDialog
 from busk_tui.widgets.controls import ButtonStrip
-from busk_tui.widgets.cue_dialogs import BEZIER, POINTS, SECONDS, CurveDialog, TimeDialog
+from busk_tui.widgets.cue_dialogs import (
+    BEZIER,
+    FAN_NEEDS_TO,
+    POINTS,
+    SECONDS,
+    TO,
+    CurveDialog,
+    TimeDialog,
+    entry_targets,
+)
 from busk_tui.widgets.cuetable import CueListTable, CueTable, cue_cells
 from busk_tui.widgets.dialogs import ConfirmDialog, FormDialog, TextDialog
 from busk_tui.widgets.log import LogView
@@ -270,6 +280,27 @@ def test_times_triggers_and_values_as_stored() -> None:
     assert stored_text(StoredValue("gobo", HEADS, "literal", value="breakup")) == "breakup"
     colour_spread = StoredValue("color", HEADS, "spread", value=(("r", 1.0),), to=(("r", 0.0),))
     assert stored_text(colour_spread) == "spread"
+
+
+def test_the_time_cell_counts_the_targets_with_timing_of_their_own() -> None:
+    """``+1 own`` after the cue's times, before the families', which fill
+    the 13-cell column first; entries on the same targets count once."""
+    fan = EntryTiming(2.0, 0.0, delayTo=1.5)
+    pan = StoredValue("pan", HEADS, "preset", preset="Audience", timing=fan)
+    tilt = StoredValue("tilt", HEADS, "preset", preset="Audience", timing=fan)
+    dim = StoredValue("intensity", HEADS, "literal", value=0.5, timing=EntryTiming(1.0))
+    washes = StoredValue("intensity", WASHES, "literal", value=0.5)  # none of its own
+    some = StoredValue("intensity", Targets(elements=((102, 1), (101, 1))), "literal", value=0.5)
+    again = replace(some, targets=Targets(elements=((101, 1), (102, 1))), timing=fan)
+    assert own_timings(CueInfo("1", "", (), values=(washes,))) == 0
+    assert own_timings(CueInfo("1", "", (), values=(pan, tilt))) == 1  # one line set both
+    assert own_timings(CueInfo("1", "", (), values=(pan, tilt, dim, washes))) == 2
+    assert own_timings(CueInfo("1", "", (), values=(replace(some, timing=fan), again))) == 1
+    verse = replace(SONG.cues[1], values=(pan, tilt, dim))
+    assert time_text(verse) == "2, +2 own, position 4"
+    intro = replace(SONG.cues[0], values=(washes, dim))
+    assert time_text(intro) == "3, +1 own"
+    assert cue_cells(SONG, intro, False, "256")["time"].plain == "3, +1 own"
 
 
 def test_also_counts_the_entries_of_the_families_the_other_columns_leave_out() -> None:
@@ -1316,6 +1347,339 @@ def test_the_time_forms_none_takes_a_familys_own_away_by_click_or_key() -> None:
         assert bridge.lines() == ["cue 9/1 time position none", "cue 9/1 time beam none"]
 
     drive(app, body)
+
+
+FAN = EntryTiming(2.0, 0.0, delayTo=1.5, fan="center", curve="easeIn")
+"""A fan of delays on the heads' position, with a curve of its own."""
+
+TARGETED = CueInfo(
+    "1",
+    "Intro",
+    (),
+    fadeIn=3.0,
+    fadeOut=1.0,
+    delayIn=0.5,
+    families=(FamilyTiming("position", 4.0, 1.0),),
+    values=(
+        StoredValue("intensity", WASHES, "literal", value=0.6),
+        StoredValue("pan", HEADS, "preset", preset="Audience", timing=FAN),
+        StoredValue("tilt", HEADS, "preset", preset="Audience", timing=FAN),
+        StoredValue("intensity", Targets(elements=((102, 1), (101, 1))), "literal", value=0.3),
+        StoredValue("intensity", HEADS, "literal", value=0.8, timing=EntryTiming(1.0, 0.0)),
+    ),
+)
+"""Intensity on the washes, on 102 and 101, and on the heads (its own
+timing), and position on the heads (a fan): the targets TIME offers."""
+
+
+async def time_on(pilot: Pilot[int], app: BuskApp, family: str, on: str | None) -> TimeDialog:
+    """TIME opened on ``family``, and on the targets labelled ``on``."""
+    dialog = await open_edit(pilot, app, "time…")
+    assert isinstance(dialog, TimeDialog)
+    dialog.target.pick(family)
+    await pilot.pause()
+    if on is not None:
+        pick = dialog.on[family]
+        pick.pick(next(key for key, label in pick.labels.items() if label == on))
+        await pilot.pause()
+    return dialog
+
+
+def test_the_time_forms_on_row_offers_the_targets_of_the_familys_entries() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events += [one_cue(TARGETED), LiveChanged(live())]
+        await settle(pilot, app)
+        dialog = await open_edit(pilot, app, "time…")
+        assert isinstance(dialog, TimeDialog)
+        assert not any(found.display for found in dialog.on_rows.values())  # the cue's
+        assert set(dialog.on) == {"intensity", "position"}  # the families with entries
+        assert dict(dialog.on["intensity"].labels) == {
+            "all": "all",
+            "group 2": "Washes",
+            "fixture 102, fixture 101": "102, 101",
+            "group 1": "Heads",
+        }
+        assert dict(dialog.on["position"].labels) == {"all": "all", "group 1": "Heads"}
+        for family, shown in (
+            ("intensity", "intensity"),
+            ("color", None),
+            ("position", "position"),
+        ):
+            dialog.target.pick(family)
+            await pilot.pause()
+            assert [name for name, row in dialog.on_rows.items() if row.display] == (
+                [] if shown is None else [shown]
+            ), family
+            assert dialog.on[shown].chosen == "all" if shown else True
+            assert not any(part.display for part in dialog.to_parts)  # all: as before
+            assert not dialog.fan_row.display
+        assert words(dialog.on["position"]) == "[all] [Heads]"
+        dialog.target.focus()
+        await pilot.press("tab")
+        assert dialog.focused is dialog.on["position"]
+        await pilot.press("right")
+        await pilot.pause()
+        assert dialog.on["position"].chosen == "group 1"
+        assert all(part.display for part in dialog.to_parts)
+        assert dialog.fan_row.display
+        await pilot.press("tab")
+        assert dialog.focused is dialog.fade
+        await pilot.press("tab")
+        assert dialog.focused is dialog.fade_to
+        await pilot.press("tab", "tab")
+        assert dialog.focused is dialog.delay_to
+        await pilot.press("tab")
+        assert dialog.focused is dialog.fan
+        await pilot.press("escape")
+        await pilot.pause()
+        assert bridge.sent == []
+
+    drive(app, body)
+
+
+def test_the_time_form_on_targets_starts_at_their_fan_and_sends_it_whole() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events += [one_cue(TARGETED), LiveChanged(live())]
+        await settle(pilot, app)
+        dialog = await time_on(pilot, app, "position", "Heads")
+        assert (dialog.fade.value, dialog.fade_to.value) == ("2", "")
+        assert (dialog.delay.value, dialog.delay_to.value) == ("0", "1.5")
+        assert dialog.fan.chosen == "center"
+        assert words(dialog.fan) == "[linear] [centre] [edges]"
+        assert note_of(dialog) == (
+            "on Heads, position's own, in place of position's own\n"
+            "to: a fan from the first target to the last\n"
+            "its curve, easeIn, stays"
+        )
+        assert dialog.none_row.display
+        assert plain(dialog.none_note) == (
+            "Ctrl+N · on Heads, position fades with position's own again"
+        )
+        await ok(pilot)  # unchanged
+        assert app.screen is not dialog
+        assert bridge.sent == []
+
+        dialog = await time_on(pilot, app, "position", "Heads")
+        dialog.fade_to.value = "4"
+        dialog.fan.pick("edges")  # a chip keeps what was typed
+        await pilot.pause()
+        assert (dialog.fade.value, dialog.fade_to.value, dialog.delay_to.value) == ("2", "4", "1.5")
+        await ok(pilot)
+        assert bridge.lines() == [
+            "cue 9/1 time group 1 position 2 to 4 delay 0 to 1.5 edges easeIn"
+        ]
+
+        dialog = await time_on(pilot, app, "position", "Heads")
+        dialog.delay_to.value = ""
+        dialog.fan.pick("linear")
+        dialog.delay.value = " 0.5 "
+        await ok(pilot)  # no fan: the curve stays
+        assert bridge.lines()[-1] == "cue 9/1 time group 1 position 2 delay 0.5 easeIn"
+
+        dialog = await time_on(pilot, app, "intensity", "Heads")  # its own, no fan
+        assert (dialog.fade.value, dialog.fade_to.value, dialog.delay.value) == ("1", "", "0")
+        assert dialog.fan.chosen == "linear"
+        dialog.delay_to.value = "2"
+        await ok(pilot)
+        assert bridge.lines()[-1] == "cue 9/1 time group 1 intensity 1 delay 0 to 2"
+
+        dialog = await time_on(pilot, app, "intensity", "Washes")  # none of their own
+        assert (dialog.fade.value, dialog.delay.value) == ("3", "0.5")  # the cue's in
+        assert (dialog.fade_to.value, dialog.delay_to.value) == ("", "")
+        assert not dialog.none_row.display
+        assert note_of(dialog).split("\n")[0] == "on Washes, intensity takes the cue's in now"
+        await ok(pilot)  # new: sent as it is
+        assert bridge.lines()[-1] == "cue 9/1 time group 2 intensity 3 delay 0.5"
+
+        dialog = await time_on(pilot, app, "intensity", "102, 101")
+        dialog.fade_to.value = "5"
+        await ok(pilot)
+        assert (
+            bridge.lines()[-1] == "cue 9/1 time fixture 102, fixture 101 intensity 3 to 5 delay 0.5"
+        )
+        assert len(bridge.sent) == 5
+
+    drive(app, body)
+
+
+def test_the_time_form_on_targets_starts_at_their_familys_own() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+    cue = replace(TARGETED, values=TARGETED.values[1:2])  # pan alone, no timing of its own
+    cue = replace(cue, values=(replace(cue.values[0], timing=None),))
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events += [one_cue(cue), LiveChanged(live())]
+        await settle(pilot, app)
+        dialog = await time_on(pilot, app, "position", "Heads")
+        assert (dialog.fade.value, dialog.delay.value) == ("4", "1")  # position's own
+        assert note_of(dialog).split("\n")[0] == "on Heads, position takes position's own now"
+        assert not dialog.none_row.display
+        await pilot.press("ctrl+n")  # hidden: nothing
+        await pilot.pause()
+        assert app.screen is dialog
+        dialog.on["position"].pick("all")
+        await pilot.pause()
+        assert dialog.none_row.display  # the family's own
+        assert not any(part.display for part in dialog.to_parts)
+        await pilot.press("escape")
+        await pilot.pause()
+        assert bridge.sent == []
+
+    drive(app, body)
+
+
+def test_entries_on_the_same_targets_are_one_chip_with_the_first_timing() -> None:
+    """Pan with a fan, tilt with none (only the generic edit parts them), a
+    list in another order: one chip each, which starts at the pan's fan."""
+    pan, tilt = TARGETED.values[1], replace(TARGETED.values[2], timing=None)
+    later = replace(tilt, attribute="pan", timing=EntryTiming(9.0))
+    cue = replace(TARGETED, values=(tilt, pan, later))
+    found = entry_targets(cue, "position", ())
+    assert list(found) == ["group 1"]
+    assert found["group 1"].timing == FAN
+    some = StoredValue("intensity", Targets(elements=((102, 1), (101, 1))), "literal", value=0.3)
+    again = replace(some, targets=Targets(elements=((101, 1), (102, 1))), timing=FAN)
+    found = entry_targets(replace(cue, values=(some, again)), "intensity", ())
+    assert [(key, on.label, on.timing) for key, on in found.items()] == [
+        ("fixture 102, fixture 101", "102, 101", FAN)
+    ]
+
+
+def test_the_time_form_reads_a_shape_without_a_to_as_linear() -> None:
+    """A show file may keep ``center`` with no ``to``: it shapes nothing, so
+    TIME shows ``[linear]`` and counts it as unchanged."""
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+    shaped = replace(TARGETED.values[0], timing=EntryTiming(2.0, 0.0, fan="center"))
+    cue = replace(TARGETED, values=(shaped,))
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events += [one_cue(cue), LiveChanged(live())]
+        await settle(pilot, app)
+        dialog = await time_on(pilot, app, "intensity", "Washes")
+        assert dialog.fan.chosen == "linear"
+        await ok(pilot)
+        assert app.screen is not dialog
+        assert bridge.sent == []
+
+    drive(app, body)
+
+
+def test_the_time_form_on_targets_refuses_a_to_or_a_shape_it_cannot_send() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events += [one_cue(TARGETED), LiveChanged(live())]
+        await settle(pilot, app)
+        dialog = await time_on(pilot, app, "intensity", "Washes")
+        for fade, fade_to, delay_to, shape, problem in (
+            ("x", "", "", "linear", SECONDS),
+            ("1", "-1", "", "linear", TO),
+            ("1", "", "50%", "linear", TO),
+            ("1", "", "", "center", FAN_NEEDS_TO.format("centre")),
+            ("1", " ", " ", "edges", FAN_NEEDS_TO.format("edges")),
+        ):
+            dialog.fade.value, dialog.fade_to.value, dialog.delay_to.value = fade, fade_to, delay_to
+            dialog.fan.pick(shape)
+            await pilot.pause()
+            await ok(pilot)
+            assert app.screen is dialog, (fade, fade_to, delay_to, shape)
+            assert str(dialog.error.render()) == problem
+        dialog.on["intensity"].pick("all")  # the fan's chips and the tos go: all is as before
+        await pilot.pause()
+        dialog.fade.value = "2"
+        await ok(pilot)
+        assert bridge.lines() == ["cue 9/1 time intensity 2 delay 0.5"]
+
+    drive(app, body)
+
+
+def test_the_time_forms_none_takes_targets_own_timing_away_by_click_or_key() -> None:
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events += [one_cue(TARGETED), LiveChanged(live())]
+        await settle(pilot, app)
+        dialog = await time_on(pilot, app, "position", "Heads")
+        dialog.fade.value = "9"  # [none] does not send the fields
+        await pilot.click(dialog.none)
+        await pilot.pause()
+        assert app.screen is not dialog
+        assert bridge.lines() == ["cue 9/1 time group 1 position none"]
+        dialog = await time_on(pilot, app, "intensity", "Heads")
+        dialog.fade.focus()
+        await pilot.press("ctrl+n")
+        await pilot.pause()
+        assert app.screen is not dialog
+        assert bridge.lines()[-1] == "cue 9/1 time group 1 intensity none"
+
+    drive(app, body)
+
+
+def test_the_time_form_names_targets_by_the_shows_fixtures_at_99_columns() -> None:
+    """A fixture whose cells are all there is its number; the chips wrap
+    between two, never inside one."""
+    bridge = FakeBridge()
+    app = on_f4(bridge)
+    bar = tuple((301, cell) for cell in range(1, 13))
+    cue = CueInfo(
+        "1",
+        "Bar",
+        (),
+        values=(
+            StoredValue("intensity", Targets(elements=bar), "literal", value=0.5),
+            StoredValue("intensity", Targets(elements=bar[1:4]), "literal", value=0.5),
+            StoredValue(
+                "intensity",
+                Targets(group=GroupInfo(7, "Every light in the room")),
+                "literal",
+                value=1.0,
+            ),
+            StoredValue(
+                "intensity",
+                Targets(group=GroupInfo(8, "Front of house left")),
+                "literal",
+                value=1.0,
+            ),
+        ),
+    )
+    fixtures = (FixtureInfo(101, 1), FixtureInfo(102, 1), FixtureInfo(301, 12))
+
+    async def body(pilot: Pilot[int]) -> None:
+        song = CueListInfo(9, "Song", "sequence", None, (cue,))
+        show = cues_show(cueLists=(song, CHASE, LOOP, SPARE), fixtures=fixtures)
+        bridge.events += [ShowChanged(show), LiveChanged(live())]
+        await settle(pilot, app)
+        dialog = await time_on(pilot, app, "intensity", "301")
+        assert list(dialog.on["intensity"].labels) == [
+            "all", "fixture 301", "fixture 301.2 thru 301.4", "group 7", "group 8",
+        ]  # fmt: skip
+        lines = [
+            line.plain for line in dialog.on["intensity"].lines(dialog.on["intensity"].size.width)
+        ]
+        assert lines == [
+            "[all] [301] [301.2 thru 301.4]",
+            "[Every light in the room]",
+            "[Front of house left]",
+        ]
+        await ok(pilot)
+        assert bridge.lines() == ["cue 9/1 time fixture 301 intensity 0"]
+        dialog = await time_on(pilot, app, "intensity", "Every light in the room")
+        box = dialog.query_one("CueDialog > Vertical")
+        assert dialog.note.size.width == box.size.width  # a long name wraps, never cut
+        assert note_of(dialog).startswith("on Every light in the room, intensity takes")
+        assert dialog.note.size.height == 3
+
+    drive(app, body, size=(99, 40))
 
 
 def test_the_curve_form_names_a_curve_or_a_beziers_points() -> None:

@@ -2649,6 +2649,39 @@ Needs Phase 29, built under Q11's answer. Code: `src/busk_tui/widgets/cue_dialog
    today. On a target, the fields are the fade and its `to`, the delay and its `to`, and `[centre]`
    `[edges]`, filled in with what the entry holds. The dialog sends `cue 9/1 time group 1 position
    4 delay 0 to 2`, and `[none]` (Ctrl+N) takes the timing away.
+
+   **Done** (2026-11-17), under Q11 (a). `StoredValue` gains `timing`, an `EntryTiming` (`fade`,
+   `delay`, `fadeTo`, `delayTo`, `fan`, `curve`), which the bridge's `entry_timing` reads, so the
+   dialog knows what each entry holds. After a family the cue has entries of, TIME has an `on` row
+   (`entry_targets` in `src/busk_tui/widgets/cue_dialogs.py`, a `PickRow` per family): `[all]`,
+   the family's own as before, then a chip per target, a group by its name and fixed elements as
+   F3 writes a selection (`[301]`, `[301.2 thru 301.4]`, `[102, 101]`). Entries on the same
+   targets (pan and tilt, or a list in another order) are one chip, as busk's `same_targets` takes
+   them. The line names them `group 1`, or `fixture 101 thru 102, fixture 301.2`, the set busk
+   compares. A contract test sends every chip of the club show's cues through busk (50, with cues
+   recorded on fixtures out of order, on bar cells and on the whole bar with `freeze`). On a
+   target the form has `fade` and `to`, `delay` and `to`, and `fan` (`[linear]` `[centre]`
+   `[edges]`). It sends `commands.entry_time` (`cue 9/1 time group 2 intensity 3 delay 0 to 1.5`),
+   and `[none]` sends `commands.no_entry_time`. The fields start at the targets' own timing, else
+   the family's own, else the cue's in. They fill in again only when the family or the targets
+   change (`TimeDialog.where`), so a click on a fan chip keeps what was typed.
+
+   Calls the user may veto:
+   - **The fan's chips are three, `[linear]` `[centre]` `[edges]`,** one always chosen, as the
+     form's other chips are, rather than F6's two toggles. The labels are F6's (`centre`), the
+     line busk's (`center`).
+   - **A shape without a `to` is refused in the form** (`centre shapes a fan: give the fade or the
+     delay a to`), as busk refuses it. An empty `to` is no fan; a wrong one says `to: a time in
+     seconds, such as 2; empty: no fan`.
+   - **Targets with timing of their own are sent only when something changed;** targets without
+     are always sent, as a family without is.
+   - **The `on` row shows only on a family the cue has entries of.**
+   - **The targets' own curve is kept** in the line, as a family's is. The form has no chips for
+     it; `[curve…]` sets the cue's.
+   - **Entries on the same targets that differ** (only the generic edit can do that) start the
+     form at the first with timing of its own, and the line sets them all alike.
+   - **A stored shape without a `to` reads as `[linear]`:** it does nothing, so the form counts it
+     as unchanged and sends nothing for it.
 2. **The time cell** shows that a cue has timing per target, after the families (`2, position 4,
    +1 own`), and the dialog shows which targets. The step may word this another way if it fits
    better, and says why.
@@ -2656,7 +2689,47 @@ Needs Phase 29, built under Q11's answer. Code: `src/busk_tui/widgets/cue_dialog
    Verify: the dialog on the real engine; the cell; Esc sends nothing; 99 columns; the perf gate on
    F4.
 
+   **Done** (2026-11-17), reworded: the count comes **before** the families, `2, +1 own, position
+   4`, and `3, +1 own` on a cue without them. The time column is 13 cells and never grows (only
+   the name takes the room left), and `2, position 4` fills it on the club's Verse already, so a
+   mark after the families would be cut on every cue that has a family's timing. Before them, it
+   shows on any cue whose times are short, and the dialog's `on` chips name the targets.
+   `formats.own_timings` counts targets with timing of their own, each family apart, and entries
+   on the same targets once: a fan on the heads' position is `+1`.
+
 Docs: the guide's F4, the report's Cues rows, and `CHANGELOG.md`.
+
+**Done** (2026-11-17). The guide's F4: the cue row's time cell, and a paragraph on the `on` chips
+under `[time…]`. The report: the Phase 29 and 30 sentence in its opening, the count in the Show
+row, and a Cues row "Timing per target, a fan". `CHANGELOG.md`: a sentence under Phase 29's Added
+item. §7's item. The guide's drawing stays: the club show has no timing per target.
+
+**Phase 30 checks** (2026-11-17), on top of `a4781fb`. The whole suite: 6,991 passed and 1 skipped, in 10:05 with `uv run pytest -n 6`. `ruff check`,
+`ruff format --check`, `mypy src` and `mypy --strict tests/api_consumer.py` clean. On Textual
+8.2.0, the floor, the four files the phase touched (`test_tui_cues.py`, `test_tui_commands.py`,
+`test_tui_conversion.py`, `test_tui_e2e.py`): 636 passed. New tests: in `test_tui_cues.py`, the
+time cell's count, the `on` row and its Tab order, the fields' start and the lines sent, a start
+at the family's own, the form's refusals, `[none]` by click and Ctrl+N, a shape without a `to`,
+entries on the same targets as one chip, and target names at 99 columns (a long name's note
+wraps; it was cut at first, 60 cells in a 54-cell dialog, and the notes now wrap at the
+dialog's width). In `test_tui_commands.py`, three contract rows, the lines doing what they say,
+the seconds agreement for the `to`s, and every chip the club show's cues give, sent through
+busk. In `test_tui_conversion.py`, two reads of an entry's timing. On the real engine,
+`test_f4_fans_a_groups_timing_in_the_time_dialog_on_the_real_engine`. Ten mutations of the new
+code: eight caught at first. One survivor was equivalent (the delay sent when only its `to` is
+given), and that code now has the simpler form. The other (a later entry without timing
+replacing an earlier one's) is caught by a new test.
+
+The perf gate: 8 passed, F4 +0.178 with no overruns; F6 +0.234, F1 C +0.221, the rest from
++0.168 to +0.206, and every standalone page at 98% of the bare rate or more.
+
+A real terminal (`busk-tui` on the club show with `--state-dir`, which runs `busk run`, in a pty,
+at 150 and 99 columns): TIME on 9/1, `intensity`, `[Washes]`, a delay `to` 1.5 sent `cue 9/1
+time group 2 intensity 3 delay 0 to 1.5`; busk replied `… delay 0 s to 1.5 s`, and the cell
+showed `3, +1 own`. TIME opened again at the fan, Esc sent nothing, `[none]` took it away (`3`),
+and `undo` brought it back. On 9/2, `position` and `[Heads]` started at position's own 4 s. At 99
+columns the dialog fits, and the `[none]` note wraps to a second line. Below 100 columns CUELISTS
+is under the screen, so the walk chose Song with → on the empty prompt.
 
 ### Phase 31: A recorded spread follows its group
 
@@ -3500,7 +3573,8 @@ sequences, executors and recipes. Each doubtful point was checked on `OfflineSho
   `list cues` marks a block cue; Phase 28 F4's `[block]`, and TRACK says when a cue is one.
 - Timing per fixture, and a stagger over a selection: only the generic edit reaches an entry's own
   timing, by rewriting the whole `entries` list. **Phases 29 and 30**, Q11. Phase 29 built
-  `cue L/C time <targets> <family> …` with a fan (GAP-48), under Q11 (a).
+  `cue L/C time <targets> <family> …` with a fan (GAP-48), under Q11 (a), and Phase 30 F4's TIME
+  `on` chips, which send it.
 - A spread is recorded per target even on a group, so a fixture that joins the group gets nothing
   from it, where entries, global and profile presets, and effects follow the group: **Phase 31**,
   Q12. Recipes themselves (regenerating presets and cues for another rig): **Not planned**.
@@ -3709,7 +3783,7 @@ sequences, executors and recipes. Each doubtful point was checked on `OfflineSho
     - (c) Leave it out, and drop Phases 29 and 30.
 
     ANSWER: (a), the recommended one (the user's standing word, "use recommended answers",
-    2026-11-17). Built in Phase 29.
+    2026-11-17). Built in Phases 29 and 30.
 12. **How a recorded spread follows its group** (Phase 31).
     - (a) Recording finds the fan: values on a group that form a spread over its members are
       recorded as a spread. **Recommended:** the programmer does not change, and the cue plays the

@@ -34,6 +34,7 @@ from busk_tui.model import (
     ChaseRate,
     EffectInfo,
     ElementOutput,
+    EntryTiming,
     FamilyTiming,
     FixtureInfo,
     GroupInfo,
@@ -677,6 +678,33 @@ def test_a_familys_own_curve_is_read_with_its_timing(show: busk.OfflineShow) -> 
         FamilyTiming("position", 4.0, 0.0),
         FamilyTiming("beam", 2.0, 0.5, "bezier 0.25 0.1 0.25 1"),
     )
+
+
+def test_an_entrys_own_timing_is_read_with_its_fan_and_curve(show: busk.OfflineShow) -> None:
+    """F4's TIME form starts at it, and sends the curve back, since busk sets
+    an entry's timing whole (GAP-48)."""
+    for line in (
+        "cue 9/2 time group 1 position 2 to 4 delay 0.5 to 1 edges bezier 0.25 0.1 0.25 1",
+        "cue 9/1 time group 2 intensity 3",
+    ):
+        assert show.execute(line).ok, line
+    intro, verse = show_model(show.show).cue_list(9).cues[:2]  # type: ignore[union-attr]
+    fan = EntryTiming(2.0, 0.5, 4.0, 1.0, "edges", "bezier 0.25 0.1 0.25 1")
+    assert [value.timing for value in verse.values] == [None, fan, fan, None]  # pan and tilt
+    assert [value.timing for value in intro.values] == [EntryTiming(3.0, 0.0), None]
+
+
+def test_an_entrys_timing_reads_what_a_show_file_leaves_out(show: busk.OfflineShow) -> None:
+    """A show file may give an entry a delay alone, or a shape without a ``to``."""
+    document = copy.deepcopy(show.show)
+    entries = document["cueLists"][8]["cues"][0]["entries"]
+    entries[0]["timing"] = {"delay": 1}
+    entries[1]["timing"] = {"fade": 2, "fan": "center"}
+    intro = show_model(document).cue_list(9).cues[0]  # type: ignore[union-attr]
+    assert [value.timing for value in intro.values] == [
+        EntryTiming(None, 1.0),
+        EntryTiming(2.0, fan="center"),
+    ]
 
 
 def test_cues_with_their_timing_triggers_and_entries_as_stored(club: busk.OfflineShow) -> None:

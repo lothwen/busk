@@ -64,6 +64,7 @@ from busk_tui.model import (
     CueListInfo,
     EffectInfo,
     EffectView,
+    EntryTiming,
     FamilyTiming,
     FixtureInfo,
     Orientation,
@@ -2155,6 +2156,79 @@ def test_f4_takes_a_familys_own_timing_away_in_the_time_dialog_on_the_real_engin
 
         await pilot.press(*"undo", "enter")
         await until(pilot, lambda: column(cues, "time")[1] == "2, position 4")
+        errors = [text for kind, text in log if kind == "error"]
+        assert errors == []
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_f4_fans_a_groups_timing_in_the_time_dialog_on_the_real_engine(
+    club_path: Path, tmp_path: Path
+) -> None:
+    """Cue 9/1 brings the washes up over 3 s: TIME on ``intensity``, on
+    ``Washes``, with a delay ``to`` 1.5 fans their delays (GAP-48); the time
+    cell says ``3, +1 own``, and TIME starts at the fan next time. Esc sends
+    nothing; ``[none]`` takes it away, and ``undo`` brings it back."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=4), standalone=True)
+
+    def intro() -> CueInfo:
+        song = None if app.view.show is None else app.view.show.cue_list(9)
+        assert song is not None
+        return song.cues[0]
+
+    async def on_washes(pilot: Pilot[int], cues: CueTable) -> TimeDialog:
+        await click_cell(pilot, cues, 0, "time")
+        await until(pilot, lambda: isinstance(app.screen, TimeDialog))
+        dialog = app.screen
+        assert isinstance(dialog, TimeDialog)
+        dialog.target.pick("intensity")
+        await pilot.pause()
+        assert dict(dialog.on["intensity"].labels) == {"all": "all", "group 2": "Washes"}
+        dialog.on["intensity"].pick("group 2")
+        await pilot.pause()
+        return dialog
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.live is not None and app.view.show is not None)
+        app._select_playback(9)
+        cues = app.query_one(CueTable)
+        await until(pilot, lambda: column(cues, "time")[0] == "3")
+        log = app.query_one(LogView).entries
+
+        dialog = await on_washes(pilot, cues)
+        assert (dialog.fade.value, dialog.delay.value, dialog.delay_to.value) == ("3", "0", "")
+        dialog.delay_to.value = "1.5"
+        await pilot.press("enter")
+        await until(pilot, lambda: column(cues, "time")[0] == "3, +1 own")
+        fan = EntryTiming(3.0, 0.0, delayTo=1.5)
+        assert [value.timing for value in intro().values] == [fan, None]
+        assert [line for kind, line in log if kind == "ui"] == [
+            "cue 9/1 time group 2 intensity 3 delay 0 to 1.5"
+        ]
+        said = "cue 9/1 fades intensity on group 2 over 3 s, delay 0 s to 1.5 s"
+        assert said in [text for _, text in log]
+
+        dialog = await on_washes(pilot, cues)
+        assert (dialog.fade.value, dialog.delay.value, dialog.delay_to.value) == ("3", "0", "1.5")
+        await pilot.press("escape")
+        await until(pilot, lambda: not isinstance(app.screen, TimeDialog))
+        dialog = await on_washes(pilot, cues)
+        await pilot.click(dialog.none)
+        await until(pilot, lambda: column(cues, "time")[0] == "3")
+        assert [value.timing for value in intro().values] == [None, None]
+
+        await pilot.press(*"undo", "enter")
+        await until(pilot, lambda: column(cues, "time")[0] == "3, +1 own")
+        assert [line for kind, line in log if kind == "ui"] == [
+            "cue 9/1 time group 2 intensity 3 delay 0 to 1.5",
+            "cue 9/1 time group 2 intensity none",
+        ]
         errors = [text for kind, text in log if kind == "error"]
         assert errors == []
 

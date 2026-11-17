@@ -4,8 +4,9 @@ CUELISTS has a row per cue list: number, name, kind (``seq`` or ``chase``),
 how many cues, and the playback that runs it (``P9``; ``—``: none).
 
 The cue table has a row per cue, as the show stores it: ``▶`` on the cue
-the list's playback is on, ``L/C``, the name, the fade times (``1/3``, and
-a family's own: ``2, position 4``), the delays, the curve, the trigger's
+the list's playback is on, ``L/C``, the name, the fade times (``1/3``; how
+many targets have their own, ``+1 own``; a family's own: ``2, +1 own,
+position 4``), the delays, the curve, the trigger's
 delay under ``follow`` or ``wait`` (``—`` for a GO), the intensity and
 colour entries (a value, a preset's name, ``spread``, ``per target``; a
 colour with its swatch), under ``also`` how many entries it holds of each

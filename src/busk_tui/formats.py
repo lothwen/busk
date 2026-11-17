@@ -70,13 +70,32 @@ def pair_text(first: float, second: float) -> str:
 
 
 def time_text(cue: CueInfo) -> str:
-    """A cue's fade times, and its families' own: ``2, position 4``."""
+    """A cue's fade times, how many of its targets have timing of their own
+    (``+1 own``, per family: :func:`own_timings`), and its families' own:
+    ``2, +1 own, position 4``. The count comes before the families, which
+    fill F4's time cell first."""
     parts = [pair_text(cue.fadeIn, cue.fadeOut)]
+    if count := own_timings(cue):
+        parts.append(f"+{count} own")
     parts += [
         f"{own.family} {seconds(own.fade)}" + (f" delay {seconds(own.delay)}" if own.delay else "")
         for own in cue.families
     ]
     return ", ".join(parts)
+
+
+def own_timings(cue: CueInfo) -> int:
+    """How many targets of the cue's entries have timing of their own, each
+    family's counted apart (``cue 9/1 time group 2 intensity 2`` is one):
+    entries on the same targets, such as pan and tilt, count once."""
+    owned: set[tuple[str | None, object]] = set()
+    for value in cue.values:
+        if value.timing is not None:
+            targets = value.targets
+            group = targets.group
+            key = ("group", group.number) if group is not None else frozenset(targets.elements)
+            owned.add((attributes.family_of(value.attribute), key))
+    return len(owned)
 
 
 def delay_text(cue: CueInfo) -> str:

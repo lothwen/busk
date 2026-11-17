@@ -29,7 +29,9 @@ document path per element in the log; that side finding is gone. Its Phase 25 ad
 loads a cue into the programmer (GAP-44), and F4's `[load]`, so a cue's values are edited as any
 look is and recorded back. Its Phase 27 added the read of a cue list's tracked states (GAP-46),
 `list cue L/C`, and `cue L/C block on|off` (GAP-47), and its Phase 28 F4's TRACK panel, which
-shows the chosen cue's, and `[block]`. Its Phase 32 gave a template's wave layer its `cycles`
+shows the chosen cue's, and `[block]`. Its Phase 29 added timing per target with a fan (GAP-48),
+`cue L/C time <targets> <family> …`, and its Phase 30 F4's TIME dialog the targets to set it on.
+Its Phase 32 gave a template's wave layer its `cycles`
 (GAP-50), the library five more templates, and F5's TEMPLATE panel `[cycles…]`. Its Phase 33 gave
 a template defaults that `effect add` starts from (GAP-51), set by F5's `[keep as defaults]` and
 taken away by the TEMPLATE panel's `[none]`. Its Phase 34
@@ -146,12 +148,13 @@ In short:
 
 | Operation | busk line | Engine | TUI |
 |---|---|---|---|
-| Show | typed `LiveShow.show`; `list cues L` | yes | control: F4 cue table (current cue, number, name, fades with family timings, delays, curve, trigger, intensity and colour entries, effect ids). The other families' entries are counted under `also` (`position 2, beam 1`), not shown one by one |
+| Show | typed `LiveShow.show`; `list cues L` | yes | control: F4 cue table (current cue, number, name, fades with how many targets have their own (`+1 own`) and family timings, delays, curve, trigger, intensity and colour entries, effect ids). The other families' entries are counted under `also` (`position 2, beam 1`), not shown one by one |
 | Add at the end | `record cue L` | yes | control: F4 `[record cue L]` |
 | Add at a number, insert | `record cue L/C [only …] [freeze] ["name"]` (`9/2.5` goes between 2 and 3) | yes | control: F4 `[record at…]`, a form that refuses a cue that exists; `only` and `freeze`: prompt |
 | Delete | `delete cue L/C` | yes | control: F4 `[delete]`, after the TUI's question, which says when a playback is on the cue |
 | Change its values | `load cue L/C [only …]` (GAP-44), then `record cue L/C merge\|replace\|remove [only …]` | yes: `load cue` puts what the cue stores into the programmer, a value per fixture and its effects, and selects them | control: F4 `[load]` (after the TUI's question while the programmer holds something), then the look edited on F2, F3, F6 or at the prompt, then `[merge]`, `[replace]`, `[remove]`, the last two after the TUI's question; `only`: prompt |
 | Timing | `cue L/C time …`, `cue L/C time <family> …`, `cue L/C time <family> none` | yes | control: F4 `[time…]` (the fade times, or a family's own, and `[none]` on a family with its own), `[delay…]`, `[curve…]`, and a click on those cells: dialogs filled in with the cue |
+| Timing per target, a fan | `cue L/C time <targets> <family> <fade> [to <fade>] [delay <d> [to <d>]] [center\|edges] [<curve>]`, `… <family> none` (GAP-48) | yes: the own timing of the cue's entries of a family on exactly those targets; a `to` fans it over them in their order, and a fan on a group follows the group | control: F4 `[time…]`, after a family the `on` chips (`[all]`, then a chip per target: `[Heads]`, `[301]`), on a target the fade and the delay with a `to` each, `[linear]` `[centre]` `[edges]`, and `[none]`; the time cell counts them (`3, +1 own`) |
 | Trigger | `cue L/C go`, `… follow <d>`, `… wait <d>` | yes | control: F4 `[follow…]`, `[wait…]` and a click on those cells, dialogs; `go`: pre-fill, a whole line |
 | Rename | `rename cue L/C "…"` | yes | control: F4 `[rename…]`, a name dialog |
 | Release targets | `cue L/C release <targets> [only …]` | yes | control: F4 `[release…]`, a form that starts at the selection |

@@ -760,8 +760,8 @@ playback runs only shows. The meta line says the list's mode (`sequence`, `· tr
 groups and fixtures its cues set.
 
 **A cue row** is the cue as the show stores it: `▶` on the cue the playback is on, `L/C`,
-the name, the fade times (`1/3`: in 1 s, out 3 s; a family's own after a comma, `2,
-position 4`), the delays, the curve, the delay of an automatic GO under `follow` (after the
+the name, the fade times (`1/3`: in 1 s, out 3 s; then how many of its targets have timing of
+their own, `3, +1 own`; and a family's own after a comma, `2, position 4`), the delays, the curve, the delay of an automatic GO under `follow` (after the
 cue before has finished) or `wait` (after it has started), and the cue's intensity and colour
 entries: a value, a preset's name, `spread`, or `per target` (a value per fixture, as `record
 cue` stores a spread), with the colour's swatch. Under `also`, how many entries the cue holds of
@@ -836,6 +836,19 @@ left as it was:
   family with timing of its own, `[none]` (or Ctrl+N) takes it away whole, fade, delay and curve,
   so the family fades with the cue again: `cue 9/3 time position none`. It asks nothing: `undo`
   brings the timing back.
+
+  After a family, the `on` chips choose where its timing goes: `[all]`, the family's own as
+  above, or the targets the cue's entries of that family are on, a group by its name (`[Heads]`)
+  and fixtures by number (`[301]`, `[101 thru 104]`). On targets the form has the fade and the
+  delay, each with a `to`, and a fan's shape: `[linear]`, `[centre]` or `[edges]`. A `to` fans
+  the time over the targets in their order, from the first to the last, as a spread fans a
+  value: `cue 9/1 time group 2 intensity 3 delay 0 to 1.5` brings the four washes up half a
+  second apart. `[centre]` puts the `to` in the middle and `[edges]` at both ends; they need a
+  `to`. A fan on a group follows the group: a fixture that joins it takes its place. The form
+  starts at what the targets take now (their own, else the family's own, else the cue's in), and
+  busk sets their timing whole, so the line carries their own curve. `[none]` takes it away:
+  `cue 9/1 time group 2 intensity none`. The time cell counts the targets with timing of their
+  own, `3, +1 own`, before the families' timing, which fills the cell first.
 - `[delay…]` has the delays in and out: `cue 9/3 time 1/3 delay 0/1`, the fade times kept.
 - `[curve…]` has the curve as chips (`linear`, `easeIn`, `easeOut`, `easeInOut`, `snapStart`,
   `snapEnd`, `bezier`), and with `bezier` its four points, each from 0 to 1: `cue 9/3 time 1/3

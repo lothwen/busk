@@ -425,10 +425,26 @@ class PlaybackInfo:
 
 
 @dataclass(frozen=True, slots=True)
+class EntryTiming:
+    """A value entry's own timing (busk's ``TimingOverride``, GAP-48), which
+    ``cue L/C time group 1 position 4 to 6 delay 0 to 2 center`` sets whole:
+    a ``fadeTo`` or a ``delayTo`` makes a fan over the entry's targets, in
+    their order, shaped by ``fan``. ``None``: the entry leaves it to its
+    family's own timing, else the cue's."""
+
+    fade: float | None
+    delay: float | None = None
+    fadeTo: float | None = None
+    delayTo: float | None = None
+    fan: str = "linear"  # linear, center, edges
+    curve: str | None = None  # in busk's words
+
+
+@dataclass(frozen=True, slots=True)
 class StoredValue:
     """One value entry of a cue, as the show stores it: a ``literal`` value,
     a ``preset`` reference, a ``spread`` from one value to another, or a
-    value ``perTarget``."""
+    value ``perTarget``; and its own ``timing``, if it has one."""
 
     attribute: str
     targets: Targets
@@ -437,6 +453,7 @@ class StoredValue:
     to: Value | None = None  # a spread's last
     preset: str | None = None  # a preset reference's name
     color: Rgb | None = None  # the colour it gives: a literal's, or a preset's single one
+    timing: EntryTiming | None = None
 
 
 @dataclass(frozen=True, slots=True)

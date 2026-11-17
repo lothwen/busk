@@ -89,6 +89,7 @@ from busk_tui.model import (
     EngineStarting,
     EngineState,
     EngineStopped,
+    EntryTiming,
     FamilyTiming,
     FixtureInfo,
     GroupInfo,
@@ -1166,17 +1167,23 @@ def track_sheet(cue_list: int, cues: Sequence[TrackedCue]) -> TrackSheet:
 
 def stored_value(entry: Mapping[str, Any], names: _Names) -> StoredValue:
     """A value entry as stored: a literal (with its colour), a preset by name
-    (with the one colour it gives), a spread's two ends, or per target."""
+    (with the one colour it gives), a spread's two ends, or per target; with
+    its own timing."""
     attribute, source = entry["attribute"], entry["value"]
     targets = _targets(entry["targets"], names)
+    timing = entry_timing(entry["timing"]) if "timing" in entry else None
     match source["kind"]:
         case "literal":
             value = _value(source["value"])
             color = attributes.rgb(value) if isinstance(value, tuple) else None
-            return StoredValue(attribute, targets, "literal", value=value, color=color)
+            return StoredValue(
+                attribute, targets, "literal", value=value, color=color, timing=timing
+            )
         case "preset":
             name, color = names.presets.get(source["presetId"], (source["presetId"], None))
-            return StoredValue(attribute, targets, "preset", preset=name, color=color)
+            return StoredValue(
+                attribute, targets, "preset", preset=name, color=color, timing=timing
+            )
         case "spread":
             return StoredValue(
                 attribute,
@@ -1184,9 +1191,27 @@ def stored_value(entry: Mapping[str, Any], names: _Names) -> StoredValue:
                 "spread",
                 value=_value(source["from"]),
                 to=_value(source["to"]),
+                timing=timing,
             )
         case kind:
-            return StoredValue(attribute, targets, kind)
+            return StoredValue(attribute, targets, kind, timing=timing)
+
+
+def entry_timing(timing: Mapping[str, Any]) -> EntryTiming:
+    """An entry's own timing (GAP-48), each time in seconds, the curve in
+    busk's words."""
+
+    def seconds(key: str) -> float | None:
+        return float(timing[key]) if key in timing else None
+
+    return EntryTiming(
+        fade=seconds("fade"),
+        delay=seconds("delay"),
+        fadeTo=seconds("fadeTo"),
+        delayTo=seconds("delayTo"),
+        fan=str(timing.get("fan", "linear")),
+        curve=_curve_text(timing["curve"]) if "curve" in timing else None,
+    )
 
 
 def live_state(snapshot: EngineSnapshot, masters: dict[str, MasterView]) -> LiveState:

@@ -28,7 +28,8 @@ chosen cue: the chosen row (bg 235), else the cue the playback is on, else
 the first.
 
 **A cue's edits.** ``[time…]`` and ``[curve…]`` open the forms of
-:mod:`busk_tui.widgets.cue_dialogs`; ``[delay…]`` the in and out delays
+:mod:`busk_tui.widgets.cue_dialogs` (TIME also times a family's targets on
+their own, with a fan: pending plan Phase 30); ``[delay…]`` the in and out delays
 (``cue 9/3 time 1/3 delay 0/1``, the fade times kept), ``[follow…]`` and
 ``[wait…]`` the seconds of an automatic GO (``cue 9/3 follow 4``), and
 ``[rename…]`` the name. Each is filled in with what the cue holds and sends
@@ -688,11 +689,13 @@ class CuesPage(Page):
             self.post_message(RunLine(line))
 
     def ask_time(self) -> None:
-        """``[time…]``: ``cue 9/3 time 1/3``, or a family's own, ``cue 9/3
-        time position 4``."""
-        found = self.picked()
+        """``[time…]``: ``cue 9/3 time 1/3``, a family's own, ``cue 9/3
+        time position 4``, or its targets', ``cue 9/3 time group 1 position 4
+        delay 0 to 2``."""
+        found, show = self.picked(), self._view.show
         if found is not None:
-            self.app.push_screen(TimeDialog(*found), self._run)
+            fixtures = () if show is None else show.fixtures
+            self.app.push_screen(TimeDialog(*found, fixtures), self._run)
 
     def ask_curve(self) -> None:
         """``[curve…]``: ``cue 9/3 time 1/3 easeIn``, the fade times kept."""

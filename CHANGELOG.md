@@ -17,6 +17,10 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   timing away. A fan on a group follows the group as it grows. In the show file, an entry's
   `timing` gains `fadeTo`, `delayTo` and `fan`. `list cues` shows each entry's own timing after
   its families', as the line takes it (`time 3 easeInOut, group 2 intensity 2 delay 0 to 1.5`).
+  F4's TIME dialog sets it: after a family, its `on` chips are `[all]` (the family's own timing)
+  and the targets the cue's entries of that family are on (`[Heads]`, `[301]`); on targets, the
+  fade and the delay each have a `to`, then `[linear]` `[centre]` `[edges]`, and `[none]` takes
+  their timing away. The time cell counts the targets with timing of their own (`3, +1 own`).
 - An effect template keeps defaults: `effect template defaults "Circle" hz 2 size 30 phase 0 360`
   sets what `effect add "Circle"` starts from (everything it takes but the id, masters too), and
   `… none` takes them away; a line's own words still win. `list effects` and `EffectTemplateInfo`

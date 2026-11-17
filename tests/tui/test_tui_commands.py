@@ -28,7 +28,13 @@ from busk_tui.widgets.chase_dialog import (
     check_multiplier,
     check_rate,
 )
-from busk_tui.widgets.cue_dialogs import CURVES, bezier_points, check_seconds, pair_words
+from busk_tui.widgets.cue_dialogs import (
+    CURVES,
+    bezier_points,
+    check_seconds,
+    entry_targets,
+    pair_words,
+)
 from busk_tui.widgets.dialogs import check_cue, check_number, next_cue
 from busk_tui.widgets.fixture_panel import CATEGORIES
 from busk_tui.widgets.playback_panel import FADERS, FUNCTIONS, LTP_MODES, TOGGLES, TYPED
@@ -255,6 +261,32 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
     "cue time, a family none": (
         commands.no_family_time(9, "1", "position"),
         "cue 9/1 time position none",
+        False,
+    ),
+    "cue time, a group's fan": (
+        commands.entry_time(
+            9,
+            "1",
+            "group 2",
+            "intensity",
+            "2",
+            fade_to="4",
+            delay="0",
+            delay_to="1.5",
+            fan="center",
+            curve="easeIn",
+        ),
+        "cue 9/1 time group 2 intensity 2 to 4 delay 0 to 1.5 center easeIn",
+        False,
+    ),
+    "cue time, a group's none": (
+        commands.no_entry_time(9, "1", "group 2", "intensity"),
+        "cue 9/1 time group 2 intensity none",
+        False,
+    ),
+    "cue time, fixtures": (
+        commands.entry_time(10, "1", "fixture 201", "color", "1", delay="0.5"),
+        "cue 10/1 time fixture 201 color 1 delay 0.5",
         False,
     ),
     "cue follow": (commands.cue_trigger(9, "2", "follow", "4"), "cue 9/2 follow 4", False),
@@ -1097,11 +1129,14 @@ def order(word: str) -> int:
 )
 def test_a_time_form_and_busk_agree_on_seconds(show: busk.OfflineShow, text: str) -> None:
     """The forms take what busk takes for each time of a cue: its own, a
-    family's fade and delay, and a trigger's delay."""
+    family's fade and delay, its targets' and their ``to``s, and a trigger's
+    delay."""
     ok = check_seconds(text) is None
     assert show.execute(f"cue 9/1 time {text}").ok is ok, text
     assert show.execute(f"cue 9/1 time {text}/{text} delay {text}/{text}").ok is ok, text
     assert show.execute(f"cue 9/1 time position {text} delay {text}").ok is ok, text
+    for times in (f"{text} delay 0", f"1 to {text} delay {text} to 1", f"1 delay 0 to {text}"):
+        assert show.execute(f"cue 9/1 time group 2 intensity {times}").ok is ok, (text, times)
     assert show.execute(f"cue 9/1 follow {text}").ok is ok, text
     assert show.execute(f"cue 9/1 wait {text}").ok is ok, text
 
@@ -1155,10 +1190,49 @@ def test_the_cue_timing_lines_do_what_they_say(show: busk.OfflineShow) -> None:
     assert timing()["perFamily"]["position"] == {"fade": 2, "delay": 1, "curve": "snapEnd"}
     run(commands.cue_time(9, "1", "3", family="position"))  # set whole: the curve goes
     assert timing()["perFamily"]["position"] == {"fade": 3, "delay": 0}
+    run(commands.entry_time(9, "1", "group 2", "intensity", "2", delay="0", delay_to="1.5"))
+    entries = show.show["cueLists"][8]["cues"][0]["entries"]
+    assert [entry.get("timing") for entry in entries] == [
+        {"fade": 2, "delay": 0, "delayTo": 1.5},
+        None,  # the colour's
+    ]
+    run(commands.entry_time(9, "1", "group 2", "intensity", "1", fade_to="3", fan="edges"))
+    assert show.show["cueLists"][8]["cues"][0]["entries"][0]["timing"] == {
+        "fade": 1, "fadeTo": 3, "delay": 0, "fan": "edges",
+    }  # fmt: skip
+    run(commands.no_entry_time(9, "1", "group 2", "intensity"))
+    assert "timing" not in show.show["cueLists"][8]["cues"][0]["entries"][0]
     run(commands.cue_trigger(9, "1", "wait", "8"))
     assert show.show["cueLists"][8]["cues"][0]["trigger"] == {"kind": "wait", "delay": 8}
     run(commands.rename_cue(9, "1", "Fresh"))
     assert show.show["cueLists"][8]["cues"][0]["name"] == "Fresh"
+
+
+def test_every_target_the_time_form_offers_is_one_busk_finds(show: busk.OfflineShow) -> None:
+    """TIME's chips name the targets of a cue's entries as busk compares them
+    (GAP-48: the same group, or the same elements in any order): on every cue
+    of the club show, and on cues recorded on fixtures out of order, on some
+    of the bar's cells, and on the whole bar as cells (``freeze``)."""
+    for line in (
+        "sel fixture 203, 201, 202", "set intensity 50%", "record cue 30", "clear",
+        "sel fixture 301.4, 301.2, 301.3", "set intensity 40%", "record cue 30", "clear",
+        "sel fixture 301", "set intensity 40%", "record cue 30 freeze",
+    ):  # fmt: skip
+        assert show.execute(line).ok, line
+    model = show_model(show.show)
+    offered = []
+    for cue_list in model.cueLists:
+        for cue in cue_list.cues:
+            for family in attributes.TIMING_FAMILIES:
+                for on in entry_targets(cue, family, model.fixtures).values():
+                    offered.append(on.label)
+                    line = commands.entry_time(cue_list.number, cue.number, on.words, family, "1")
+                    reply = show.execute(line.text)
+                    assert reply.ok, (line.text, reply.text)
+                    line = commands.no_entry_time(cue_list.number, cue.number, on.words, family)
+                    assert show.execute(line.text).ok, line.text
+    assert len(offered) == 50
+    assert offered[-3:] == ["203, 201 thru 202", "301.4, 301.2 thru 301.3", "301"]
 
 
 def test_the_template_lines_do_what_they_say(show: busk.OfflineShow) -> None:
