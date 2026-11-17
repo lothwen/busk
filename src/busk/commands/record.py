@@ -68,7 +68,12 @@ member that is gone.
    of the uncovered targets: ``literal`` and ``preset`` sources unchanged,
    ``perTarget`` filtered, and a ``spread`` flattened to ``perTarget``
    values computed with each target's index in the *original* expansion, so
-   those targets keep exactly the values they had.
+   those targets keep exactly the values they had. A restricted entry keeps
+   its own timing, so a fan in it spreads over the targets left.
+6. *replace* and *merge* give each new entry the own timing of the cue's
+   entry on the same targets and attribute, if it has one (GAP-48): the same
+   group, or the same targets in any order. So a cue loaded, edited and
+   recorded back keeps the timing of the entries it records again.
 
 **Tracking lists** (phase-4-plan decision 17, §5.12). A cue of a tracking
 list stores changes only. Before step 2, the collected values equal to what
@@ -133,7 +138,7 @@ from busk.model.attributes import ATTRIBUTES, AttributeValue
 from busk.model.common import AttributeId, TargetKey, TargetRef, target_key
 from busk.model.cue import Cue, CueList, CueRelease
 from busk.model.effect import EffectInstance
-from busk.model.entry import PresetSource, TargetSpec, ValueEntry, ValueSource
+from busk.model.entry import PresetSource, TargetSpec, ValueEntry, ValueSource, same_targets
 from busk.model.preset import PresetPool, PresetValue
 from busk.model.show import Show
 from busk.model.validate import Issue, validate_effect
@@ -561,6 +566,7 @@ def record_cue(
         count, held = len(entries), effects
     else:
         assert index is not None
+        entries = keep_timing(entries, existing["entries"])
         if merge == "replace":
             result, held = entries, effects
         else:
@@ -867,6 +873,22 @@ def _expander(groups: Sequence[Mapping[str, Any]]) -> Callable[[TargetSpec], lis
         return list(spec["refs"])
 
     return expand
+
+
+def keep_timing(entries: Sequence[ValueEntry], old: Sequence[ValueEntry]) -> list[ValueEntry]:
+    """``entries``, each with the own timing of the ``old`` entry on the same
+    targets and attribute (:func:`~busk.model.entry.same_targets`), the last
+    such one, as the last wins when a cue compiles (GAP-48)."""
+    kept: list[ValueEntry] = []
+    for entry in entries:
+        timing = None
+        for before in old:
+            if before["attribute"] == entry["attribute"] and same_targets(
+                before["targets"], entry["targets"]
+            ):
+                timing = before.get("timing")
+        kept.append(entry if timing is None else {**entry, "timing": timing})
+    return kept
 
 
 def restrict(

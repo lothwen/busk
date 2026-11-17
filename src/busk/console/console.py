@@ -78,6 +78,7 @@ from busk.console.parser import (
     find_profile,
     find_template,
     parse,
+    spec_words,
     template_defaults,
 )
 from busk.console.prompt import PROMPT, Editing, hints, split
@@ -664,14 +665,17 @@ class Console:
 
     def _list_cues(self, number: int) -> str:
         """``list cues L``: each cue's number, name, timing and trigger, in the
-        console's own syntax (``time 3/1 delay 0/2 easeIn, color 3  follow 0``)."""
-        lists = self.session.show["cueLists"]
+        console's own syntax (``time 3/1 delay 0/2 easeIn, color 3  follow 0``),
+        its entries' own timing after its families' (``, group 2 intensity 2
+        delay 0 to 1.5``, GAP-48)."""
+        show = self.session.show
+        lists = show["cueLists"]
         cue_list = next((cl for cl in lists if cl["number"] == number), None)
         if cue_list is None:  # deleted since the line was parsed, by a command of another thread
             return f"no cue list {number}"
         lines = [
-            f"{cue['number']:>5}  {cue['name']:<20} {_timing(cue['timing'])}  "
-            f"{_trigger(cue['trigger'])}"
+            f"{cue['number']:>5}  {cue['name']:<20} {_timing(cue['timing'])}"
+            f"{_entry_timings(show, cue['entries'])}  {_trigger(cue['trigger'])}"
             + (f"  {_count(len(cue['effects']), 'effect')}" if cue["effects"] else "")
             + ("  block" if cue.get("block", False) else "")
             for cue in cue_list["cues"]
@@ -1146,6 +1150,31 @@ def _timing(timing: Mapping[str, Any]) -> str:
         if "curve" in own:
             text += f" {_curve(own['curve'])}"
     return text
+
+
+def _entry_timings(show: Show, entries: Iterable[Mapping[str, Any]]) -> str:
+    """The entries' own timing (GAP-48), each after a comma as ``cue L/C time
+    <targets> <family>`` takes it: ``, group 2 intensity 2 delay 0 to 1.5
+    edges``. The entries of a family on the same targets with the same
+    timing, as that line sets them, come once."""
+    items: dict[str, None] = {}
+    for entry in entries:
+        timing = entry.get("timing")
+        if timing is None:
+            continue
+        words = [spec_words(show, entry["targets"]), ATTRIBUTES[entry["attribute"]].family]
+        if "fade" in timing:
+            to = f" to {timing['fadeTo']:g}" if "fadeTo" in timing else ""
+            words.append(f"{timing['fade']:g}{to}")
+        if timing.get("delay") or "delayTo" in timing:
+            to = f" to {timing['delayTo']:g}" if "delayTo" in timing else ""
+            words.append(f"delay {timing.get('delay', 0):g}{to}")
+        if timing.get("fan", "linear") != "linear":
+            words.append(timing["fan"])
+        if "curve" in timing:
+            words.append(_curve(timing["curve"]))
+        items[" ".join(words)] = None
+    return "".join(f", {item}" for item in items)
 
 
 def _pair(first: float, second: float) -> str:

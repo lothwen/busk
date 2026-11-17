@@ -256,7 +256,8 @@ class OwnCue:
 
     ``values`` are the encoded, clamped lanes per slot, the last entry
     winning. ``overrides`` holds the ``timing`` of the entry that set a slot
-    last, for the slots where that entry has one. ``targets`` are every
+    last, for the slots where that entry has one, a fan's at the slot's
+    target's place (:func:`fanned`). ``targets`` are every
     target the entries expand to, in entry order, deduplicated.
     ``released`` are the slots the cue's ``releases`` name. ``effects`` are
     the cue's compiled effect instances by ``id``, in cue order, without the
@@ -330,6 +331,26 @@ def spread_fraction(curve: str, k: int, n: int) -> float:
     if curve == "edges":
         return abs(2.0 * u - 1.0)
     return u
+
+
+def fanned(timing: TimingOverride, k: int, n: int) -> TimingOverride:
+    """An entry's own ``timing`` for member ``k`` of ``n`` (GAP-48): a fan's
+    ``fade`` to ``fadeTo`` and ``delay`` to ``delayTo`` at that member's
+    place, as :func:`spread_fraction` places a spread value; the timing
+    itself when it has no fan."""
+    if "fadeTo" not in timing and "delayTo" not in timing:
+        return timing
+    f = spread_fraction(timing.get("fan", "linear"), k, n)
+    own: TimingOverride = {}
+    if "fade" in timing:
+        start = timing["fade"]
+        own["fade"] = start + (timing.get("fadeTo", start) - start) * f
+    if "delay" in timing:
+        start = timing["delay"]
+        own["delay"] = start + (timing.get("delayTo", start) - start) * f
+    if "curve" in timing:
+        own["curve"] = timing["curve"]
+    return own
 
 
 def cue_from_values(
@@ -484,7 +505,7 @@ class CueCompiler:
                     continue
                 values[slot.index] = clamp_lanes(slot, lanes)  # a later entry wins …
                 if "timing" in entry:
-                    overrides[slot.index] = entry["timing"]
+                    overrides[slot.index] = fanned(entry["timing"], k, len(members))
                 else:
                     overrides.pop(slot.index, None)  # … with its timing, or none
         effects: dict[str, CompiledEffect] = {}

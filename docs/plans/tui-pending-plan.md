@@ -2575,8 +2575,69 @@ compiler applies an entry's timing, `src/busk/commands/record.py`,
    the refusal; `load` then `replace` keeps the timing; a show file of today loads; a running
    `LiveShow`.
 
+   **Done** (2026-11-17), under Q11 (a). `TimingOverride` in `src/busk/model/entry.py` gains
+   `fadeTo`, `delayTo` and `fan`, with `same_targets`, which the line and recording share;
+   `fanned` in `src/busk/compiler/cues.py` places each member in the fan, where `CueCompiler.own`
+   takes an entry's timing; the line is `_entry_time` (and `_spec_words`, for its refusal) in
+   `src/busk/console/parser.py`, reached from `_cue_verb` when `fixture` or `group` follows
+   `time`; `keep_timing` in `src/busk/commands/record.py`; the validator's `_entry_timing`. GAP-48
+   and its Summary row are in engine-gaps.md, with a **Since** under GAP-44. `busk help` and `?`
+   have two grammar lines; Tab offers `fixture` and `group` after `time`, then `to`, `delay`,
+   `center` and `edges` where they may come. `docs/console.md`'s Timing and `load cue` items, the
+   spec's model and §9.1, and `CHANGELOG.md` (Added, and Changed for recording).
+
+   On the club show, `cue 9/1 time group 2 intensity 2 delay 0 to 1.5` brings the four washes up
+   half a second apart, and on stage five heads with `delay 0 to 2` and no fade light one by one.
+
+   Calls the user may veto:
+   - **`fan`, not `curve`,** names the fan's shape in the model: an entry's `curve` is already its
+     fade curve. Absent, the fan is linear.
+   - **The line sets the timing whole,** as the family line does: the delay 0 unless given, and a
+     curve only if one follows (`[<curve>]` after the rest). The plan's grammar had no curve; the
+     line takes one so that it never drops a curve it could not set back.
+   - **Exactly those targets** is `group N` for an entry on that group, and fixtures for an entry
+     on a list of the same targets, in any order. A group and a list of its members differ, as
+     recording keeps them apart. Every entry of the family on them takes the timing (pan and
+     tilt both, for `position`).
+   - **The refusal comes as soon as the family is read,** so `?` says it before the times are
+     typed. It names the targets as a line takes them: `group 3`, `fixture 101 thru 103, 105` (a
+     run of three or more whole fixtures in number order), `fixture 301.1, 301.2` (elements).
+     The reply names the targets the same way, not as typed.
+   - **A fan counts a target without the attribute,** as a spread does: a par in a group of heads
+     keeps its place in a pan fan.
+   - **`center` or `edges` without a `to` is refused,** in words, rather than kept and doing
+     nothing. The validator warns of such a `fan` in a show file, and refuses a `fadeTo` without
+     a `fade` or a `delayTo` without a `delay`.
+   - **A `merge` that covers part of an entry** leaves the rest with its timing as it was, so a
+     fan there spreads over the targets left, and the covered targets' new entry has none. A
+     list that recording now covers with a group is not the same targets, and loses it.
+   - **`list cues` shows it** (added at the user's word, the same day, after the first build):
+     after the cue's and its families' timing, in the cue's entry order, each item as the line
+     takes it after `time` (`time 3 easeInOut, group 2 intensity 2 delay 0 to 1.5  go`), so it can
+     be typed back. Entries of a family on the same targets with the same timing come once.
+
 Under (b), step 1 is timing in the programmer, as grandMA3 has it: `set … delay 0 to 2`, held with
 each slot's value and recorded into the entries. The step then says what `load cue` brings back.
+
+**Phase 29 checks** (2026-11-17), on top of `76d302e`. The whole suite: 6,972 passed and 1 skipped, in 11:10 with `uv run
+pytest -n 6`. The first run failed one test, F4's `test_the_timing_forms_words_are_busks` in
+`tests/tui/test_tui_commands.py`, which held busk's words after `cue 9/1 time ` equal to F4's
+family chips: busk now offers `fixture` and `group` there too, and the test says so, the one TUI
+file this phase touched (420 passed on Textual 8.2.0 too). `ruff check`, `ruff format --check`,
+`mypy src` and `mypy --strict tests/api_consumer.py` clean. New tests: `tests/test_entry_timing.py`
+(50, three of them for `list cues`), nine completion rows in `tests/test_console_prompt.py` and its grammar test, and
+`tests/test_load_cue.py`'s note test, which now records back with the timing kept.
+
+A real `busk run` of the club show (processes, `--state-dir` in a temporary directory), lines
+piped in: the washes' fan in 9/1, the refusal on 9/3 (`cue 9/3 sets intensity on group 3 and
+group 2: name one of them`), a centre fan with `easeOut` on the heads' position in 9/2, `go 9`,
+`none` and `undo` on the running list, `load cue 9/1` (the note) and `record cue 9/1 replace`,
+then an `edges` fan and `save`. The saved file holds the fans, 9/1's through the round trip. No
+perf gate: no page changed.
+
+With `list cues`, the same day: the whole suite, 6,974 passed, 1 failed and 1 skipped, in 9:59.
+The failure was F6's real-engine preset test, flaky under `-n 6` since Phase 15; it passed three
+times alone. Lint and `mypy` clean.
 
 ### Phase 30: F4's timing per target
 
@@ -3438,7 +3499,8 @@ sequences, executors and recipes. Each doubtful point was checked on `OfflineSho
   F4 never show it: **Phases 27 and 28**. Phase 27 built `cue L/C block on|off` (GAP-47), and
   `list cues` marks a block cue; Phase 28 F4's `[block]`, and TRACK says when a cue is one.
 - Timing per fixture, and a stagger over a selection: only the generic edit reaches an entry's own
-  timing, by rewriting the whole `entries` list. **Phases 29 and 30**, Q11.
+  timing, by rewriting the whole `entries` list. **Phases 29 and 30**, Q11. Phase 29 built
+  `cue L/C time <targets> <family> …` with a fan (GAP-48), under Q11 (a).
 - A spread is recorded per target even on a group, so a fixture that joins the group gets nothing
   from it, where entries, global and profile presets, and effects follow the group: **Phase 31**,
   Q12. Recipes themselves (regenerating presets and cues for another rig): **Not planned**.
@@ -3645,6 +3707,9 @@ sequences, executors and recipes. Each doubtful point was checked on `OfflineSho
       entries. The programmer, `record` and `load cue` all change, and each slot carries a time
       beside its value.
     - (c) Leave it out, and drop Phases 29 and 30.
+
+    ANSWER: (a), the recommended one (the user's standing word, "use recommended answers",
+    2026-11-17). Built in Phase 29.
 12. **How a recorded spread follows its group** (Phase 31).
     - (a) Recording finds the fan: values on a group that form a spread over its members are
       recorded as a spread. **Recommended:** the programmer does not change, and the cue plays the

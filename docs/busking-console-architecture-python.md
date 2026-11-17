@@ -616,6 +616,9 @@ class TimingOverride(TypedDict, total=False):
     fade: float                                       # seconds
     delay: float
     curve: FadeCurve
+    fadeTo: float                                     # a fan over the targets: fade → fadeTo,
+    delayTo: float                                    # delay → delayTo, in their order (GAP-48)
+    fan: Literal["linear", "center", "edges"]         # its shape, as a spread's curve
 
 class BezierCurve(TypedDict):
     bezier: tuple[float, float, float, float]
@@ -1366,7 +1369,7 @@ On GO from cue *i* to cue *j*:
    - in both → keep the contribution, `fromValue = current value`, `toValue = j value`, weight stays 1.
    - only in *j* → new contribution, weight 0 → 1 (fades from whatever is underneath).
    - only in *i* → weight 1 → 0 (falls back to whatever is underneath).
-3. Timing per slot: intensity rising uses `fadeIn/delayIn`, intensity falling uses `fadeOut/delayOut`, other families use `perFamily` if set, else `fadeIn`. Per-entry `timing` overrides all.
+3. Timing per slot: intensity rising uses `fadeIn/delayIn`, intensity falling uses `fadeOut/delayOut`, other families use `perFamily` if set, else `fadeIn`. Per-entry `timing` overrides all; with a fan (`fadeTo`, `delayTo`) each target takes its place in it, as a spread value does.
 4. Assign a new `activationSeq` to the playback.
 
 A GO during a running transition starts a new transition from the current interpolated values (no jumps).

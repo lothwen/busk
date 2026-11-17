@@ -10,6 +10,13 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- Timing per target: `cue 9/1 time group 2 intensity 2 delay 0 to 1.5` sets the own timing of the
+  cue's intensity entries on group 2, and its `to` makes a fan, so the washes come up one after
+  the other; `to` on the fade fans the fade, and `center` or `edges` shape the fan as they shape a
+  spread. Fixtures are named as a list, in any order (`fixture 104, 105`), and `… none` takes the
+  timing away. A fan on a group follows the group as it grows. In the show file, an entry's
+  `timing` gains `fadeTo`, `delayTo` and `fan`. `list cues` shows each entry's own timing after
+  its families', as the line takes it (`time 3 easeInOut, group 2 intensity 2 delay 0 to 1.5`).
 - An effect template keeps defaults: `effect template defaults "Circle" hz 2 size 30 phase 0 360`
   sets what `effect add "Circle"` starts from (everything it takes but the id, masters too), and
   `… none` takes them away; a line's own words still win. `list effects` and `EffectTemplateInfo`
@@ -199,6 +206,9 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Changed
 
+- `record cue … replace` and `merge` keep an entry's own timing when they record the same targets
+  and attribute again, where they dropped it, so a cue loaded, edited and recorded back keeps it.
+  `load cue`'s note says so.
 - Lines that work reply in words, where they named the show document's paths: every rename
   (`renamed group 1 "Heads" to "Movers"`), every `number M` (`group 1 is now group 9`), a plain
   `delete` (`deleted cue 9/2 "Verse"`), `cue L/C time`, `follow`, `wait`, `go` and `release`

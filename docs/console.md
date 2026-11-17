@@ -102,9 +102,9 @@ session, as the web remote's commands do. `help` prints the grammar.
   some families, as `record` reads them. Change the look, then `record cue 9/3 replace`
   records it back: the cue keeps its name, timing, trigger and releases, recording finds
   the groups again (unless `freeze`), and a spread comes back as per-target values. An
-  entry's own timing (`timing` inside an entry, set only by the generic edit) does not
-  come, so `replace` drops it, and the reply says so. Blind, highlight and the fade time
-  stay as they are.
+  entry's own timing (`cue L/C time <targets> …`, below) does not come, and the reply says
+  so; `replace` keeps it on each entry it records again on the same targets and attribute.
+  Blind, highlight and the fade time stay as they are.
 * **`record slot S`** on an empty slot of the current page (`record slot 2.1`: slot 1 of
   page 2) creates a cue list, its cue 1, a
   playback (Appendix A's Blue playback without its exclusivity: band 50, `master` fader,
@@ -155,7 +155,21 @@ session, as the web remote's commands do. `help` prints the grammar.
   `snapStart`, `snapEnd`, `bezier x1 y1 x2 y2`); with a family name it sets that family's
   own timing, whole, and `cue L/C time <family> none` removes it, fade, delay and curve, so
   the family fades with the cue again (`cue 9/2 fades position with the cue again`); a family
-  with no timing of its own is refused. Times are plain seconds, with no sign and no `%`, here and wherever busk
+  with no timing of its own is refused. With targets before the family, `cue L/C time
+  <targets> <family> <fade> [to <fade>] [delay <d> [to <d>]] [center|edges] [<curve>]` sets the
+  own timing of the cue's entries of that family on exactly those targets, whole as a family's
+  (`group 2`; fixtures in any order, `fixture 104, 105`), and the cue's other entries keep
+  theirs; the entry's timing wins over its family's. A `to` makes a fan: the entry's targets, in
+  their order, take the times from the first to the second, as a spread takes values, `center`
+  and `edges` shaping it as they shape a spread, so `cue 9/1 time group 2 intensity 2 delay 0 to
+  1.5` brings the washes up one after the other (`cue 9/1 fades intensity on group 2 over 2 s,
+  delay 0 s to 1.5 s`). An entry on a group fans over the group as it is, so a fixture that
+  joins it takes its place. `cue L/C time <targets> <family> none` removes it. Targets that no
+  entry of the family has are refused, naming the ones it has (`cue 9/3 sets intensity on group 3
+  and group 2: name one of them`). `list cues L` shows each entry's own timing after the
+  families', in the cue's entry order, as the line takes it (`time 3 easeInOut, group 2
+  intensity 2 delay 0 to 1.5  go`); entries of a family on the same targets with the same timing
+  come once. Times are plain seconds, with no sign and no `%`, here and wherever busk
   reads seconds (`follow`, `wait`, `fade`, `release`, an effect's `fadein`); each Bézier
   control value runs from 0 to 1. In a chase, cue timing and triggers are ignored except the curve: the
   crossfade sets the step fade. Speed masters have no numbers, so they are named in quotes;

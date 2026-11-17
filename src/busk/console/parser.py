@@ -54,6 +54,8 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
     cue L/C time <family> <fade> [delay <d>] [<curve>] | cue L/C time <family> none
         <curve> = linear | easeIn | easeOut | easeInOut | snapStart | snapEnd
                 | bezier x1 y1 x2 y2
+    cue L/C time <targets> <family> <fade> [to <fade>] [delay <d> [to <d>]] [center|edges] [<curve>]
+    cue L/C time <targets> <family> none
     cue L/C go | cue L/C follow <d> | cue L/C wait <d>
     cue L/C release <targets> [only <attribute>…]
     cue L/C number M | cue L/C copy [L2/]M
@@ -123,7 +125,12 @@ named in quotes (any case). ``cue L/C time`` sets the given timing fields in
 one batch, ``<out>`` defaulting to ``<in>``; with a family it sets that
 family's timing (delay 0 unless given), keeping the other families, and
 ``<family> none`` removes it whole, fade, delay and curve, so the family
-fades with the cue again (GAP-42).
+fades with the cue again (GAP-42). With targets first, it sets the own
+timing of the cue's entries of the family on exactly those targets (a
+group by its number, fixtures in any order), whole as a family's, and
+``none`` removes it (GAP-48). A ``to`` makes a fan: the entry's targets,
+in their order, take the times from the first to the second, as a spread
+takes values; ``center`` and ``edges`` shape it.
 ``release`` appends to the cue's releases (every attribute unless ``only``).
 ``chase hz|bpm`` sets the list's chase settings (defaults: ×1, ``forward``,
 crossfade 0) and chase mode in one batch; ``cuelist N chase {json}`` is the
@@ -418,6 +425,7 @@ from busk.model.attributes import ATTRIBUTES, AttributeDefinition
 from busk.model.common import MAX_DIGITS, TargetRef
 from busk.model.cue import CUE_NUMBER, cue_number_key
 from busk.model.effect import EffectDefaults, EffectInstance, EffectTemplate
+from busk.model.entry import TargetSpec, same_targets
 from busk.model.master import MAX_BPM
 from busk.model.profile import PROFILE_CATEGORIES, FixtureProfile, option_capabilities
 from busk.model.show import Show
@@ -1189,12 +1197,7 @@ class _Parser:
         return [{"fixtureId": fixture["id"], "element": element - 1}]
 
     def _element_count(self, fixture: Mapping[str, Any]) -> int:
-        for profile in self.show["profiles"]:
-            if profile["id"] == fixture["profileId"]:
-                for mode in profile["modes"]:
-                    if mode["id"] == fixture["modeId"]:
-                        return len(mode["elements"])
-        return 1
+        return _element_count(self.show, fixture)
 
     # values
 
@@ -2752,7 +2755,12 @@ class _Parser:
         trigger or releases."""
         who = self._who("cue", path)
         if verb == "time":
+            token = self.peek()
+            if token is not None and token.lower in ("fixture", "group"):
+                return self._entry_time(path, cue)
             family = self.keyword(*_FAMILIES)
+            if token is None:
+                self.offers += ("fixture", "group")
             if family is not None:
                 if self.keyword("none"):
                     return self._family_none(path, cue, family)
@@ -2849,6 +2857,63 @@ class _Parser:
             else {"type": "DELETE", "path": where}
         )
         return Submit(_labelled(f"{who} fades {family} with the cue again", edit))
+
+    def _entry_time(self, path: EditPath, cue: Mapping[str, Any]) -> Action:
+        """``cue L/C time <targets> <family> …`` (GAP-48): the own timing of
+        the cue's entries of ``family`` on exactly those targets, set whole
+        (the delay 0 unless given), as a family's is, with a fan where a
+        ``to`` comes; ``none`` takes it away. The cue's other entries keep
+        theirs. Entries have no ids, so the line sets the whole list."""
+        who = self._who("cue", path)
+        spec = self.targets()
+        on = spec_words(self.show, spec)
+        family = self.expect(*_FAMILIES)
+        entries = [dict(entry) for entry in cue["entries"]]
+        mine = [e for e in entries if ATTRIBUTES[e["attribute"]].family == family]
+        if not mine:
+            raise ParseError(f"{who} sets no {family}")
+        matched = [e for e in mine if same_targets(e["targets"], cast(TargetSpec, spec))]
+        if not matched:
+            named = list(dict.fromkeys(spec_words(self.show, entry["targets"]) for entry in mine))
+            listed = f"{'; '.join(named[:-1])} and {named[-1]}" if len(named) > 1 else named[0]
+            them = "name it" if len(named) == 1 else "name one of them"
+            raise ParseError(f"{who} sets {family} on {listed}: {them}")
+        if self.keyword("none"):
+            self.done()
+            if not any("timing" in entry for entry in matched):
+                raise ParseError(f"{who} has no {family} timing of its own on {on}")
+            for entry in matched:
+                entry.pop("timing", None)
+            said = f"{who} fades {family} on {on} with the cue again"
+        else:
+            timing: dict[str, Any] = {"fade": self.seconds("a fade time")}
+            words = [f"{who} fades {family} on {on} over {_s(timing['fade'])}"]
+            if self.keyword("to"):
+                timing["fadeTo"] = self.seconds("a fade time")
+                words[0] += f" to {_s(timing['fadeTo'])}"
+            timing["delay"] = 0
+            if self.keyword("delay"):
+                timing["delay"] = self.seconds("a delay")
+                if self.keyword("to"):
+                    timing["delayTo"] = self.seconds("a delay")
+            if timing["delay"] or "delayTo" in timing:
+                to = f" to {_s(timing['delayTo'])}" if "delayTo" in timing else ""
+                words.append(f"delay {_s(timing['delay'])}{to}")
+            if "fadeTo" in timing or "delayTo" in timing:
+                if (fan := self.keyword("center", "edges")) is not None:
+                    timing["fan"] = fan
+                    words.append(fan)
+            elif (token := self.peek()) is not None and token.lower in ("center", "edges"):
+                raise ParseError(f"{token.lower} shapes a fan: give the fade or the delay a 'to'")
+            if (curve := self.curve()) is not None:
+                timing["curve"] = curve
+                words.append(_curve_text(curve))
+            self.done()
+            for entry in matched:
+                entry["timing"] = dict(timing)
+            said = ", ".join(words)
+        edit = {"type": "SET", "path": [*path, "entries"], "value": entries}
+        return Submit(_labelled(said, edit))
 
     def _attributes(self) -> list[str] | str:
         """``[only <attribute>…]``: the attributes a release names, else ``"all"``."""
@@ -3800,6 +3865,48 @@ def _schema_words(who: str, where: str, error: Any, got: str) -> str:
         if said == message:
             return f"{who}: {where}: {message}, got {got}"
     return f"{who}: {where} should be {said}, got {got}"
+
+
+def spec_words(show: Show, spec: Mapping[str, Any]) -> str:
+    """A target spec as a line names it: ``group 1``, ``fixture 101 thru
+    104, 106``, ``fixture 301.2, 301.3``. A run of three whole fixtures or
+    more, next to each other in number order, is ``thru`` (GAP-48)."""
+    if spec["kind"] == "group":
+        return f"group {_by_id(show['groups'], spec['groupId'])['number']}"
+    fixtures: dict[str, Mapping[str, Any]] = {f["id"]: f for f in show["fixtures"]}
+    place = {n: k for k, n in enumerate(sorted(f["number"] for f in fixtures.values()))}
+    elements: dict[str, list[int]] = {}
+    for ref in spec["refs"]:
+        elements.setdefault(ref["fixtureId"], []).append(ref["element"])
+    words: list[str] = []
+    run: list[int] = []
+
+    def close() -> None:
+        words.extend([f"{run[0]} thru {run[-1]}"] if len(run) > 2 else map(str, run))
+        run.clear()
+
+    for ident, held in elements.items():
+        fixture = fixtures[ident]
+        number = fixture["number"]
+        if sorted(set(held)) != list(range(_element_count(show, fixture))):
+            close()
+            words += [f"{number}.{element + 1}" for element in held]
+        else:
+            if run and place[number] != place[run[-1]] + 1:
+                close()
+            run.append(number)
+    close()
+    return f"fixture {', '.join(words)}"
+
+
+def _element_count(show: Show, fixture: Mapping[str, Any]) -> int:
+    """How many elements ``fixture``'s mode has (1 if its profile is gone)."""
+    for profile in show["profiles"]:
+        if profile["id"] == fixture["profileId"]:
+            for mode in profile["modes"]:
+                if mode["id"] == fixture["modeId"]:
+                    return len(mode["elements"])
+    return 1
 
 
 def _labelled(label: str, *commands: Mapping[str, Any]) -> Command:

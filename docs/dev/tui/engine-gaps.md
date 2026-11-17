@@ -105,6 +105,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-44](#gap-44-loading-a-cue-into-the-programmer) Loading a cue into the programmer | action | important | F4 | **done** 2026-11-11 |
 | [GAP-46](#gap-46-a-cue-lists-tracked-states) A cue list's tracked states | read, action | important | prompt, F4 | **done** 2026-11-16 |
 | [GAP-47](#gap-47-block-cues) Block cues | action | nice-to-have | prompt, F4 | **done** 2026-11-16 |
+| [GAP-48](#gap-48-timing-per-target) Timing per target | action | nice-to-have | prompt, F4 | **done** 2026-11-17 |
 | [GAP-50](#gap-50-a-layers-cycles) A layer's cycles | action | nice-to-have | prompt, F5 | **done** 2026-11-17 |
 | [GAP-51](#gap-51-a-templates-defaults) A template's defaults | action, read | nice-to-have | prompt, F5 | **done** 2026-11-17 |
 | [GAP-52](#gap-52-a-dmx-readout) A DMX readout | action | nice-to-have | prompt, F8 | **done** 2026-11-12 |
@@ -2758,6 +2759,8 @@ modules' docs. What it settles:
   An entry's own timing (only the generic edit sets one) does not come, and the reply adds `; 1
   entry's own timing is not loaded, and replace drops it`. A cue with nothing to load is refused
   in one line, and spends no step: `cue 30/1 has no position values or effects to load`.
+  **Since** 2026-11-17 (GAP-48), `replace` keeps that timing on an entry it records again on the
+  same targets and attribute, and the reply says `… and replace keeps it on the same targets`.
 - **A binding may load a cue.** The validator checks its list (an error) and its cue number (a
   warning, as a `GOTO`'s); `delete cuelist N cascade` takes such a binding with the list. The event
   log keeps the command, and replay runs it again: it reads only the show.
@@ -2881,6 +2884,84 @@ parser's module docs. What it settles:
 - Tests: in `tests/test_tracked_states.py` (on, off, undo, the refusals, a list without tracking,
   the generic edit, the compiled states, `list cues`), rows in `tests/test_console_parser.py` and
   `tests/test_console_prompt.py`.
+
+## GAP-48: Timing per target
+
+**Status:** done 2026-11-17 (see **Done** at the end of this section).
+
+The user's word of 2026-11-12, after comparing busk with a grandMA3 show-programming howto; built in
+Phase 29 of `docs/plans/tui-pending-plan.md`, under its Q11 (a).
+
+**Needed by:** the prompt, and F4's TIME dialog (Phase 30 of the plan).
+
+**Today:** busk times a cue, and each family of a cue (`cue 9/2 time position 4`), but no line
+times one fixture, and none staggers eight spots, each starting a little after the one before. An
+entry has its own timing in the model (`TimingOverride`), but only the generic edit reaches it, by
+rewriting the cue's whole `entries` list as JSON, since an entry has no id a path can name.
+`load cue` leaves that timing out, and `record … replace` drops it.
+
+**Engine should provide:** a fan in an entry's timing (`fadeTo`, `delayTo`), spread over its
+targets as a spread value is; `cue L/C time <targets> <family> <fade> [to <fade>] [delay <d> [to
+<d>]] [center|edges]`, which sets the own timing of the cue's entries of that family on those
+targets, and `… none`, which removes it; each one undo step, with a reply in words. And
+`record cue … merge|replace` keeping an entry's timing when it records the same targets again.
+
+**Priority:** nice-to-have.
+
+**TUI until then:** F4 sets a cue's and a family's timing, not an entry's.
+
+**Done** (2026-11-17). The model in `src/busk/model/entry.py` (`TimingOverride`, `same_targets`),
+the fan in `fanned` of `src/busk/compiler/cues.py`, the line in `_entry_time` of
+`src/busk/console/parser.py`, and `keep_timing` in `src/busk/commands/record.py`. Documented in
+`docs/console.md`, `busk help`, the parser's, the record module's and the spec's model. What it
+settles:
+
+- **The fan.** `TimingOverride` gains `fadeTo`, `delayTo` and `fan` (`linear`, `center` or
+  `edges`; linear when absent). Member `k` of the entry's `n` targets fades over `fade + (fadeTo −
+  fade)·f`, and waits `delay + (delayTo − delay)·f`, where `f` is `spread_fraction(fan, k, n)`, the
+  spread's own. So the targets count as a spread's do: in the entry's order, an element as a
+  target, and a target without the attribute keeps its place. An entry on a group fans over the
+  group as it is, so a head that joins it takes its place. The fields are optional, so
+  `schemaVersion` stays 1, as it did for `safety`. The validator refuses a `fadeTo` without a
+  `fade` and a `delayTo` without a `delay`, and warns of a `fan` with neither `to`.
+- **The line.** `cue 9/1 time group 2 intensity 1 to 4 delay 0 to 1.5 edges` replies `cue 9/1
+  fades intensity on group 2 over 1 s to 4 s, delay 0 s to 1.5 s, edges`. It sets the timing of
+  every entry of the family on exactly those targets, whole, as the family line does: the delay 0
+  unless given, the curve only if given (a curve name after the rest, as the family line takes
+  it). The cue's other entries keep theirs. Entries have no ids, so the line is one `SET` of the
+  cue's `entries`, in one labelled step.
+- **Exactly those targets:** `group N` names an entry on group N; fixtures (`fixture 104, 105`,
+  `fixture 101 thru 105`, `fixture 301.1 thru 301.3`) name an entry on a list of the same
+  targets, in any order. A group and a list of its members are not the same. A family the cue
+  does not set is refused (`cue 9/1 sets no position`), and so are targets no entry has, naming
+  those it has as a line takes them: `cue 9/3 sets intensity on group 3 and group 2: name one of
+  them`, `fixture 101 thru 103, 105` for a run of three or more whole fixtures in number order,
+  `fixture 301.1, 301.2` for elements.
+- **`none`** takes the timing away from those entries, so they fade with the family or the cue
+  again (`cue 9/1 fades intensity on group 2 with the cue again`); refused when none has one.
+  `center` or `edges` without a `to` is refused: `center shapes a fan: give the fade or the delay
+  a 'to'`. A refused line spends no undo step.
+- **The entry's timing wins** over its family's, field by field, as before; a later entry on a
+  slot wins with its timing or with none, as before.
+- **Recording again.** `record cue … replace` and `merge` give each entry they record the timing
+  of the cue's entry on the same targets and attribute (the last such one), so `load cue` then
+  `replace` gives back a cue with its timing. A list that recording now covers with a group is
+  not the same targets, and loses it. A `merge` that covers part of an entry leaves the rest with
+  its timing as it was, so a fan in it spreads over the targets left, and the covered targets'
+  new entry has none. `load cue`'s note says `… and replace keeps it on the same targets`.
+- **On a running show** the line reaches the active cue, which stays active, as a family's does.
+- **`list cues L` shows it,** after the cue's and its families' timing, in the cue's entry order,
+  each item as `cue L/C time` takes it after `time`: `    1  Intro                time 3
+  easeInOut, group 2 intensity 2 delay 0 to 1.5  go`. Entries of a family on the same targets with
+  the same timing, as one line sets them, come once (pan and tilt for `position`). A timing only
+  the generic edit makes is worded the same way, as far as it goes (`group 1 intensity delay 1`).
+  The targets are named by `spec_words`, the refusal's, now a function of the parser module.
+- Tests: `tests/test_entry_timing.py` (fans up, down, center and edges, of fades and delays; the
+  stage staggering five heads; a group that grows; a target without the attribute; the line's
+  edit; which entries it sets; `none` and undo; `list cues`; the refusals and their naming;
+  recording again;
+  the shipped shows; the club show saved and loaded; the validator; a running `LiveShow`), rows in
+  `tests/test_console_prompt.py`, and `tests/test_load_cue.py`'s note.
 
 ## GAP-50: A layer's cycles
 

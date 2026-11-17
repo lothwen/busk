@@ -1082,7 +1082,8 @@ def test_the_strobe_cap_and_title_lines_do_what_they_say(show: busk.OfflineShow)
 
 
 def test_the_timing_forms_words_are_busks(show: busk.OfflineShow) -> None:
-    assert show.expected("cue 9/1 time ").words == attributes.TIMING_FAMILIES
+    words = show.expected("cue 9/1 time ").words  # then the targets of GAP-48's line
+    assert words == (*attributes.TIMING_FAMILIES, "fixture", "group")
     assert tuple(sorted(show.expected("cue 9/1 time 1 ").words, key=order)) == (*CURVES, "delay")
 
 

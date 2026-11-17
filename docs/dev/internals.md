@@ -216,7 +216,8 @@ programmer change) aims the set at a new state: a slot whose target is unchanged
 running fade, so a 0-s GO halfway through a 10-s pan fade does not make the pan jump; a
 changed slot fades from where it is, with the timing of the destination cue for its family
 (in for rising intensity and every LTP value, out for falling intensity, per family and
-per entry overrides, delays, curves). A slot's lanes change together. When every group has
+per entry overrides, delays, curves; a fan adds a timing group for each distinct time its
+targets take, GAP-48). A slot's lanes change together. When every group has
 finished, the set compacts to a static source.
 
 **Sequence numbers per slot.** "Latest" in LTP applies to what an action changes: an

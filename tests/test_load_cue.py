@@ -258,12 +258,14 @@ def test_a_refusal_changes_nothing_and_spends_no_step(
 
 
 def test_an_entrys_own_timing_does_not_come_and_the_reply_says_so(offline: OfflineShow) -> None:
+    """``replace`` keeps it on the entries it records again on the same
+    targets (GAP-48)."""
     entries = copy.deepcopy(cue_of(offline, 1, "2")["entries"])
     entries[0]["timing"] = {"fade": 4}
     set_entries(offline, 1, "2", entries)
     assert run(offline, "load cue 1/2") == [
         'loaded cue 1/2 "Chorus": 4 values on 2 fixtures; '
-        "1 entry's own timing is not loaded, and replace drops it"
+        "1 entry's own timing is not loaded, and replace keeps it on the same targets"
     ]
     assert run(offline, "load cue 1/2 only color") == [
         'loaded cue 1/2 "Chorus": 2 values on 2 fixtures'
@@ -271,10 +273,10 @@ def test_an_entrys_own_timing_does_not_come_and_the_reply_says_so(offline: Offli
     entries[1]["timing"] = {"delay": 1}
     set_entries(offline, 1, "2", entries)
     assert run(offline, "load cue 1/2")[0].endswith(
-        "; 2 entries' own timing is not loaded, and replace drops it"
+        "; 2 entries' own timing is not loaded, and replace keeps it on the same targets"
     )
     run(offline, "record cue 1/2 replace")
-    assert all("timing" not in entry for entry in cue_of(offline, 1, "2")["entries"])
+    assert cue_of(offline, 1, "2")["entries"] == entries
 
 
 # ----------------------------------------------------------- recording back

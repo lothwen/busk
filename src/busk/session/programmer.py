@@ -58,8 +58,10 @@ values (:func:`entry_sources`): a preset stays a reference, and a group's
 entry, a spread and per-target values come as each target's literal. The
 effects come as the cue has them, ids and targets included. ``filter``
 loads only some families, an effect when a layer of its template is in
-them. An entry's own timing does not come, and the reply says so; a cue
-with nothing to load is refused. The modes stay as they are.
+them. An entry's own timing does not come, and the reply says so:
+``record cue … replace`` keeps it on an entry it records again on the same
+targets and attribute (GAP-48). A cue with nothing to load is refused. The
+modes stay as they are.
 
 Three **modes** sit beside the content: ``blind``, from Phase 4 the
 ``fadeTime`` that live programmer changes fade over (phase-4-plan §5.10),
@@ -571,7 +573,7 @@ def _load_cue(state: ShowState, programmer: Programmer, command: LoadCueCmd) -> 
     timed = sum("timing" in entry for entry in entries)
     if timed:
         whose = "1 entry's" if timed == 1 else f"{timed} entries'"
-        message += f"; {whose} own timing is not loaded, and replace drops it"
+        message += f"; {whose} own timing is not loaded, and replace keeps it on the same targets"
     return Change(loaded, message, frozenset(values), frozenset(effect["id"] for effect in effects))
 
 

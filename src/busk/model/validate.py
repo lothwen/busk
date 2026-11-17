@@ -61,7 +61,7 @@ from busk.model.effect import (
     ScalarLayer,
     Waveform,
 )
-from busk.model.entry import FadeCurve, TargetSpec, ValueEntry, ValueSource
+from busk.model.entry import FadeCurve, TargetSpec, TimingOverride, ValueEntry, ValueSource
 from busk.model.fixture import Fixture, FixtureLimits
 from busk.model.master import MAX_BPM, SpeedMaster
 from busk.model.output import OutputRoute
@@ -613,6 +613,17 @@ class _SemanticPass:
                     f"{path}.bezier[{k}]",
                     f"Bézier control values must be within 0..1, got {point:g}",
                 )
+
+    def _entry_timing(self, timing: TimingOverride, path: str) -> None:
+        """An entry's own timing: its curve, and a fan's ends (GAP-48). A fan
+        runs from ``fade`` or ``delay``, so its ``to`` needs it."""
+        if "curve" in timing:
+            self._curve(timing["curve"], f"{path}.curve")
+        for start, end in (("fade", "fadeTo"), ("delay", "delayTo")):
+            if end in timing and start not in timing:
+                self._error(f"{path}.{end}", f"{end} needs a {start} to fan from")
+        if "fan" in timing and "fadeTo" not in timing and "delayTo" not in timing:
+            self._warning(f"{path}.fan", "fan has no effect without fadeTo or delayTo")
 
     def _timing(self, timing: CueTiming, path: str) -> None:
         self._curve(timing["curve"], f"{path}.curve")
@@ -1468,8 +1479,8 @@ class _SemanticPass:
         self._timing(cue["timing"], f"{path}.timing")
         for n, entry in enumerate(cue["entries"]):
             self._entry(entry, f"{path}.entries[{n}]", "cue entries")
-            if "curve" in entry.get("timing", {}):
-                self._curve(entry["timing"]["curve"], f"{path}.entries[{n}].timing.curve")
+            if "timing" in entry:
+                self._entry_timing(entry["timing"], f"{path}.entries[{n}].timing")
         if not tracking:
             # Releases and blocks shape tracked states only (§9.3).
             if cue.get("releases"):

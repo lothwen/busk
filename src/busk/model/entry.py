@@ -18,7 +18,16 @@ from typing import Annotated, Literal, NotRequired, TypedDict
 from pydantic import Field, with_config
 
 from busk.model.attributes import AttributeValue
-from busk.model.common import STRICT, AttributeId, GroupId, PresetId, Seconds, TargetKey, TargetRef
+from busk.model.common import (
+    STRICT,
+    AttributeId,
+    GroupId,
+    PresetId,
+    Seconds,
+    TargetKey,
+    TargetRef,
+    target_key,
+)
 
 # ------------------------------------------------------------------- targets
 
@@ -100,11 +109,20 @@ class ValueEntry(TypedDict):
 
 @with_config(STRICT)
 class TimingOverride(TypedDict, total=False):
-    """Per-entry timing; overrides the cue's timing for this entry."""
+    """Per-entry timing; overrides the cue's timing for this entry.
+
+    ``fadeTo`` and ``delayTo`` make a **fan** (GAP-48): the entry's targets,
+    in their order, take ``fade`` to ``fadeTo`` (and ``delay`` to
+    ``delayTo``) as a spread value does, shaped by ``fan`` (linear when
+    absent). An entry on a group fans over the group as it is.
+    """
 
     fade: Seconds
     delay: Seconds
     curve: FadeCurve
+    fadeTo: Seconds
+    delayTo: Seconds
+    fan: Literal["linear", "center", "edges"]
 
 
 @with_config(STRICT)
@@ -122,3 +140,12 @@ type FadeCurve = (
     ]
     | BezierCurve
 )  # fmt: skip
+
+
+def same_targets(a: TargetSpec, b: TargetSpec) -> bool:
+    """Whether two target specs name the same targets, as an entry's own
+    timing goes by them (GAP-48): the same group, or lists of the same
+    targets in any order. A group and a list of its members differ."""
+    if a["kind"] == "group" or b["kind"] == "group":
+        return a == b
+    return {target_key(t) for t in a["refs"]} == {target_key(t) for t in b["refs"]}

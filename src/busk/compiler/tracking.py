@@ -34,7 +34,8 @@ Per-slot timing (decision 6)
 Every slot of a state fades into the cue with timing from, in order:
 
 1. the ``timing`` of the cue's own entry that set the slot, field by field
-   (an entry's ``fade`` covers both rising and falling intensity);
+   (an entry's ``fade`` covers both rising and falling intensity; a fan's
+   fade and delay are the slot's target's, GAP-48);
 2. ``perFamily[family]`` of the cue, if it has the slot's family;
 3. the cue's ``fadeIn``/``delayIn``, or ``fadeOut``/``delayOut`` for an
    intensity that falls.

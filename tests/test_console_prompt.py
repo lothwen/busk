@@ -147,10 +147,20 @@ EXPECTED: list[tuple[str, tuple[str, ...], tuple[str, ...], bool]] = [
     ("cue 10/1 copy ", (), ("a cue number, or L/C for another list",), False),
     ("cue 10/1 copy 1/7 ", (), (), True),
     ("cue 10/1 time 3 ", ("delay", *CURVES), (), True),
-    ("cue 10/1 time ", ("intensity", "position", "color", "beam", "focus", "shutter"),
-     ("a fade time",), False),
+    ("cue 10/1 time ", ("intensity", "position", "color", "beam", "focus", "shutter", "fixture",
+     "group"), ("a fade time",), False),
     ("cue 10/1 time position ", ("none",), ("a fade time",), False),
     ("cue 10/1 time position 4 ", ("delay", *CURVES), (), True),
+    ("cue 10/1 time group ", (), ("a group number",), False),  # GAP-48
+    ("cue 10/1 time group 1 ", (",", "intensity", "position", "color", "beam", "focus",
+     "shutter"), (), False),
+    ("cue 10/1 time group 1 color ", ("none",), ("a fade time",), False),
+    ("cue 10/1 time group 1 color 4 ", ("to", "delay", *CURVES), (), True),
+    ("cue 10/1 time group 1 color 4 to ", (), ("a fade time",), False),
+    ("cue 10/1 time group 1 color 4 to 6 ", ("delay", "center", "edges", *CURVES), (), True),
+    ("cue 10/1 time group 1 color 4 delay 1 ", ("to", *CURVES), (), True),
+    ("cue 10/1 time group 1 color 4 delay 0 to 2 ", ("center", "edges", *CURVES), (), True),
+
     ("cuelist 10 ", ("sequence", *CUELIST_PROPERTIES), (), False),
     ("cuelist 10 chase ", ("hz", "bpm", "none"), ("a value",), False),
     ("cuelist 10 tracking ", ("true", "false"), (), False),
@@ -445,6 +455,10 @@ def test_grammar_shows_an_entitys_generic_edit_until_a_sub_command_fits() -> Non
         "    cue L/C time <family> <fade> [delay <d>] [<curve>] | cue L/C time <family> none",
         "        <curve> = linear | easeIn | easeOut | easeInOut | snapStart | snapEnd",
         "                | bezier x1 y1 x2 y2",
+        "    cue L/C time <targets> <family> <fade> [to <fade>] [delay <d> [to <d>]] [center|edges]"
+        " [<curve>]",  # GAP-48
+        "    cue L/C time <targets> <family> none",
+        "        <targets> = <t>[, <t>…];  <t> = fixture N[.E] [thru M[.F]] | group N",
     ]
     assert grammar("cue 10/1 number ") == ["    cue L/C number M"]
     assert grammar("cue 10/1 copy ") == ["    cue L/C copy [L2/]M"]
