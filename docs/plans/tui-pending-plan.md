@@ -219,7 +219,7 @@ Added on 2026-11-11, for Phase 25:
 18. **What the programmer cannot hold comes as a value per target.** It holds a value or a preset
     reference per slot, so a group's entry, a spread and per-target values come target by target.
     Recording back finds the groups again by the cover, unless `freeze`; a spread comes back as
-    per-target values.
+    per-target values (since Phase 31, a spread on a group comes back as the spread).
 
 Added on 2026-11-12, for Phases 26 to 36:
 
@@ -2070,7 +2070,8 @@ shape waits on Q8. The engine step comes first. Code: `src/busk/console/parser.p
    they hold group and target entries of literals and presets, and effects on groups, in the
    order recording writes them. What differs elsewhere, each in a test:
    - **a spread comes back as per-target values,** on the group (Appendix A's Verse: `pan` from
-     -20 to 20 becomes `{"fx-mh1:0": -20, "fx-mh2:0": 20}`);
+     -20 to 20 becomes `{"fx-mh1:0": -20, "fx-mh2:0": 20}`). **Since** Phase 31 (GAP-49) it comes
+     back as the spread, and the test says so;
    - **entries come in recording's order,** attributes in the registry's (Verse's pan moves before
      its colour);
    - **a list of targets that is a group's members comes back as the group,** the cover, unless
@@ -2766,9 +2767,79 @@ waits on Q12. This phase is engine only. Code: `src/busk/commands/record.py`,
    group (per target, as now); values that are not a fan; a colour spread; a tracking list (a
    spread equal to what the list inherits tracks); the round trip on both shipped shows.
 
+   **Done** (2026-11-17), under Q12 (a). `_spread` and `_ends` in `src/busk/commands/record.py`:
+   `_entry` calls them for a group's entry whose literals differ, after the group cover, so the
+   cover, presets and literals that agree do not change. Each value takes its place as the
+   compiler places a spread over the group (member `k` of `n`, a member without the attribute
+   keeping its place). The shapes are tried `linear`, `center`, `edges`; for each, the line through
+   the values at the lowest and the highest fraction gives the ends. A spread is recorded when it
+   gives **every value exactly**, the float the programmer holds, and when `set` would take both
+   ends. The ends are tried rounded to 9 decimals first, then as computed. GAP-49 and its Summary
+   row are in engine-gaps.md, with a **since** under GAP-44's round trip. `docs/console.md`
+   ("Recording keeps intent" and "Editing a cue's values"), the record and programmer modules'
+   docs, the spec's §15.3, `docs/dev/internals.md`, two sentences of `docs/tui/guide.md`'s F4
+   that said busk records a spread per fixture, and `CHANGELOG.md` (Changed).
+
+   On a running club show, `set intensity spread 20% to 90% center` on the washes, recorded, plays
+   20, 66.7, 66.7 and 20 %. With a fifth wash merged into group 2, the same cue plays 20, 55, 90, 55
+   and 20 %.
+
+   Calls the user may veto:
+   - **Exactly, not within a tolerance.** The cue then compiles to the same lanes, bit for bit,
+     until the group changes. A later cue of a tracking list that holds the same values still
+     tracks them, since tracking compares lanes exactly. A value off the fan by a rounding error
+     stays per target.
+   - **The ends are rounded to 9 decimals first.** Where no member sits on an end (`center` over
+     four heads has none at `to`), the line reaches it only within a rounding error: `-30 30
+     center` gives `30.000000000000004`, and a colour's red `0.2000000000000001`. Rounding gives
+     back the typed end, which then fits exactly, and an end at 0 is 0, not `-0` (`set pan
+     spread 0 -30 edges` reached it at `-1.8e-15`). Ends with more decimals are kept as computed.
+   - **`center` before `edges`.** `edges` from `a` to `b` is `center` from `b` to `a`, the same
+     fan, so `set pan spread -30 30 edges` over five heads is stored as `center` from 30 to -30.
+     It plays the same, and follows the group the same way. Over four heads only `edges` fits
+     exactly, as typed.
+   - **Both ends must be values `set` would take.** A line through the values can reach past an
+     attribute's range: 50, 100, 100 and 50 % over four heads is a centre fan to 125 %. Such values
+     stay per target, so no cue holds a spread no line could type. For a colour, an end outside
+     0..1 would not be a valid show.
+   - **Two members always fit,** as the step says: different values on a group of two are now a
+     spread. A third head that joins takes the middle and moves the second. busk cannot tell a
+     typed spread from values set one by one: that is Q12 (a)'s trade.
+   - **A spread over a group and more** leaves the group's values on a fan of their own: `set pan
+     spread -30 30` on group 1 and fixture 105 records group 1 from -30 to 15, and 105's 30 as its
+     own.
+   - **A member listed twice** (only the generic edit makes one) takes its last place, whose value
+     wins when the cue compiles.
+   - **In a tracking list**, the values equal to what the cue inherits are set aside before the
+     cover, as before. So a new fan that shares one member's value with the cue before (`-30 60`
+     after `-30 30`) loses that member to tracking, the group is not covered, and the other three
+     are stored per target, as they were before this phase. Not changed: it would mean covering
+     groups with tracked values too.
+
 Under (b), the programmer keeps a fan as a third form of value, beside a literal and a preset
 reference, until a later line sets one of its slots, and recording writes it. Under (c) the phase
 is dropped.
+
+**Phase 31 checks** (2026-11-17), on top of `cc99879`. The whole suite: 7,021 passed and 1
+skipped, in 9:09 with `uv run pytest -n 6`. `ruff check`, `ruff format --check`, `mypy src` and
+`mypy --strict tests/api_consumer.py` clean. New tests: `tests/test_record_spread.py` (28). Five
+tests changed where they held a spread on a group per target: two in `tests/test_record_cue.py`
+(one split into values that are not a fan, on a group of three, and a spread), two in
+`tests/test_load_cue.py` (an edit recorded back on two heads; Verse's spread coming back as the
+spread), and `tests/tui/test_tui_conversion.py`'s recorded spread, which held busk's recording,
+the one TUI file this phase touched (84 passed on Textual 8.2.0 too). One more in
+`tests/test_load_cue.py`: a centre fan on the club's washes, loaded and recorded back, is the cue
+it was. Eleven mutations of the new code, all caught: without the rounded ends, without the ends
+as computed, without the check of the ends, with a fit that is not exact, with a member's first
+place, with `edges` before `center`, without the curve, with a wrong `to`, with a spread on a list
+of targets, without the rounded colour (caught once the colour case had ends that need it), and
+with `-0`.
+
+A real `busk run` of the club show (processes, `--state-dir` in a temporary directory), lines
+piped in: the washes' centre fan recorded into list 30, `go 30`, a fifth wash added and merged
+into group 2 while the playback ran (`list cue 30/1`: 20, 55, 90, 55, 20 %), `load cue 30/1` and
+`record cue 30/1 replace`, then `save`. The saved file holds the spread on group 2, of five
+members. No perf gate: no page changed.
 
 ### Phase 32: Effect shapes
 
@@ -3577,7 +3648,15 @@ sequences, executors and recipes. Each doubtful point was checked on `OfflineSho
   `on` chips, which send it.
 - A spread is recorded per target even on a group, so a fixture that joins the group gets nothing
   from it, where entries, global and profile presets, and effects follow the group: **Phase 31**,
-  Q12. Recipes themselves (regenerating presets and cues for another rig): **Not planned**.
+  Q12. Built there, under Q12 (a): recording finds the spread (GAP-49). Recipes themselves
+  (regenerating presets and cues for another rig): **Not planned**.
+- `docs/tui/guide.md`'s "Editing a cue's values" still says that an entry's own timing is set only
+  by the generic edit, and that `[replace]` drops it. Since Phases 29 and 30, `cue L/C time
+  <targets> …` and F4's TIME `on` chips set it, and `replace` keeps it on the same targets, as
+  `load cue`'s reply says. Found on 2026-11-17, in Phase 31, which changed the sentence before it.
+  Fixed the same day, at the user's word ("Fix that error in the TUI guide"): the reply to
+  `[load]` names a timing of its own, as TIME's `on` chips set it, and `[replace]` keeps it on
+  each entry it records again on the same targets.
 - A figure eight (a layer at twice the rate of another), and library templates for a tilt sweep,
   random movement, a square dimmer and a two-colour alternation: **Phase 32**. Built there.
 - `effect add` of a template whose layers no target has (Circle or Figure eight on the club
@@ -3792,6 +3871,9 @@ sequences, executors and recipes. Each doubtful point was checked on `OfflineSho
       recording writes it. This changes phase-3-plan's decision 7, and a later `set` on one target
       has to break the fan.
     - (c) Leave spreads per target, and drop Phase 31.
+
+    ANSWER: (a), the recommended one (the user's standing word, "use recommended answers",
+    2026-11-17). Built in Phase 31.
 13. **How an effect's settings are kept for reuse** (Phase 33).
     - (a) As now. A playback holding one effect, on a busking page, already replays it with its
       settings, and F5's EFFECT panel changes it afterwards. Drop Phase 33.

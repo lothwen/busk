@@ -287,10 +287,10 @@ def test_an_edit_recorded_back_keeps_the_rest(offline: OfflineShow) -> None:
     run(offline, "record cue 1/2 replace")
     entries = cue_of(offline, 1, "2")["entries"]
     assert [(e["attribute"], e["targets"]["kind"], e["value"]["kind"]) for e in entries] == [
-        ("intensity", "group", "perTarget"),
+        ("intensity", "group", "spread"),  # two members always fit a spread (GAP-49)
         ("color", "group", "literal"),
     ]
-    assert entries[0]["value"]["values"] == {"fx-mh1:0": 1.0, "fx-mh2:0": 0.7}
+    assert entries[0]["value"] == {"kind": "spread", "from": 1.0, "to": 0.7}
     assert entries[1]["value"]["value"] == {"r": 1.0, "g": 1.0, "b": 1.0}
 
 
@@ -327,17 +327,30 @@ def compiled(show: Show, ident: str) -> str:
     return repr(compile_show(show).cueLists[ident].cues)
 
 
-def test_a_spread_comes_back_per_target_and_plays_the_same(offline: OfflineShow) -> None:
+def test_a_spread_comes_back_as_the_spread_and_plays_the_same(offline: OfflineShow) -> None:
+    """Loaded as each head's pan, Verse's spread is found again over the
+    heads when recorded back (GAP-49)."""
     before = compiled(offline.show, "cl-song")
     run(offline, "load cue 1/1", "record cue 1/1 replace")
     entries = cue_of(offline, 1, "1")["entries"]
     assert [e["attribute"] for e in entries] == ["intensity", "pan", "color"]  # recording's order
-    assert entries[1]["value"] == {
-        "kind": "perTarget",
-        "values": {"fx-mh1:0": -20.0, "fx-mh2:0": 20.0},
-    }
+    assert entries[1]["value"] == {"kind": "spread", "from": -20, "to": 20}
     assert entries[1]["targets"] == {"kind": "group", "groupId": "g-mh"}
     assert compiled(offline.show, "cl-song") == before
+
+
+def test_a_spread_on_the_club_show_comes_back_as_it_was(club_show: Show) -> None:
+    """A centre fan on the four washes, edited into a cue of the club's
+    tracking list, then loaded and recorded back: the same cue, the fan
+    included."""
+    show = OfflineShow(copy.deepcopy(club_show))
+    run(show, "load cue 9/1", "sel group 2", "set intensity spread 20% to 90% center")
+    run(show, "record cue 9/1 replace")
+    before = copy.deepcopy(cue_of(show, 9, "1"))
+    fan = {"kind": "spread", "from": 0.2, "to": 0.9, "curve": "center"}
+    assert [e["value"] for e in before["entries"] if e["attribute"] == "intensity"] == [fan]
+    run(show, "clear", "load cue 9/1", "record cue 9/1 replace")
+    assert cue_of(show, 9, "1") == before
 
 
 def test_targets_that_are_a_group_come_back_as_the_group(offline: OfflineShow) -> None:

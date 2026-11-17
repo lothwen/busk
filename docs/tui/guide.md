@@ -763,8 +763,8 @@ groups and fixtures its cues set.
 the name, the fade times (`1/3`: in 1 s, out 3 s; then how many of its targets have timing of
 their own, `3, +1 own`; and a family's own after a comma, `2, position 4`), the delays, the curve, the delay of an automatic GO under `follow` (after the
 cue before has finished) or `wait` (after it has started), and the cue's intensity and colour
-entries: a value, a preset's name, `spread`, or `per target` (a value per fixture, as `record
-cue` stores a spread), with the colour's swatch. Under `also`, how many entries the cue holds of
+entries: a value, a preset's name, `spread` (as `record cue` stores a spread on a group), or
+`per target` (a value per fixture), with the colour's swatch. Under `also`, how many entries the cue holds of
 each other family, so a cue that only moves the heads does not look empty: `position 2` (a pan
 and a tilt), `position 2, beam 1`. A colour wheel, a CTO or a colour macro is a colour entry the
 `colour` column does not show, so `also` counts it: `color 1`. Then the ids of its effects.
@@ -899,9 +899,10 @@ no effect. A list with no cues offers only `[record at…]`.
 **Editing a cue's values.** Choose the cue and `[load]` it. Change the look as any other, on F2,
 F3 and F6, or at the prompt: the cue's fixtures are selected. Then `[replace]` records it back
 (`record cue 9/3 replace`). The cue keeps its name, timing, trigger and releases. busk finds the
-groups again as it does for any record, and a spread comes back as a value per fixture, which
-plays the same. busk's reply to `[load]` says when an entry of the cue has a timing of its own,
-which only the generic edit sets: it does not come, and `[replace]` drops it.
+groups again as it does for any record, and a spread on a group comes back as the spread. busk's
+reply to `[load]` says when an entry of the cue has a timing of its own, as TIME's `on` chips set
+it (above): it does not come into the programmer, and `[replace]` keeps it on each entry it
+records again on the same targets.
 
 With the pane cursor (Tab on an empty prompt) the cues come first: Enter goes to one and
 chooses it. Then the buttons and the two rows, then the lists: Enter on a list shows it, and

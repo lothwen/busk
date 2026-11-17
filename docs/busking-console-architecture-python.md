@@ -1678,7 +1678,7 @@ type Command = (
 
 ### 15.3 Recording
 
-Recording copies **active** programmer values (and effects) into the destination, keeping preset references. `filter` implements "record colour only / position only / everything". `merge` decides whether existing content is replaced, merged (new values override, others kept) or removed (touched attributes deleted from the cue).
+Recording copies **active** programmer values (and effects) into the destination, keeping preset references. `filter` implements "record colour only / position only / everything". `merge` decides whether existing content is replaced, merged (new values override, others kept) or removed (touched attributes deleted from the cue). A cue entry names a group wherever one covers the targets; values on it that are exactly a spread over the group's members are stored as that `spread`, so the fan follows the group as it changes.
 
 ### 15.4 Undo
 

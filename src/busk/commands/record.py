@@ -56,7 +56,27 @@ member that is gone.
    covering the most targets (ties: fewest members, then lowest number).
    Whatever remains becomes one ``targets`` entry, in programmer order.
 4. Sources: ``preset`` for preset buckets; ``literal`` when every target of
-   the entry has the same value, ``perTarget`` otherwise.
+   the entry has the same value; on a group, a ``spread`` when the values
+   are one over the group's members (GAP-49, below); ``perTarget``
+   otherwise.
+
+   **A spread on a group.** The programmer holds a spread as each target's
+   value, so recording looks for it again. Each value takes its place as a
+   cue places a spread over the group: member ``k`` of the ``n`` members,
+   counting those without the attribute, and a member listed twice at its
+   last place. The shapes are tried in the order ``linear``, ``center``,
+   ``edges``; for each, the line through the values at the lowest and the
+   highest fraction gives ``from`` and ``to``, rounded to 9 decimals, then
+   as computed (rounding gives back typed ends that no member sits on, as
+   with ``center`` over four heads). The first pair whose spread gives
+   *every* value exactly, the float the programmer holds, and whose ends
+   ``set`` would take, is recorded, so the cue compiles to the same lanes
+   until the group changes; then a new member takes its place in the fan.
+   ``edges`` from ``a`` to ``b`` is ``center`` from ``b`` to ``a``, so a fan
+   that fits both is recorded as ``center``. Two members always fit a linear
+   spread. Colours fit component by component. Only a group's entry takes
+   one: a ``targets`` entry, and every entry under ``freeze``, stays
+   ``perTarget``.
 5. Write into cue ``cueNumber`` (default: the next whole number after the
    last cue, ``"3.5"`` → ``"4"``, or ``"1"``). *create* inserts a new cue in
    number order (named ``Cue <n>``, timing 0 s ``linear``, trigger ``go``);
@@ -134,11 +154,18 @@ from busk.commands.types import RecordCueCmd, RecordGroupCmd, RecordPresetCmd
 from busk.compiler.cues import CueCompiler, clamp_lanes, spread_fraction, spread_value
 from busk.compiler.effects import CompiledEffect
 from busk.compiler.slots import Slot
-from busk.model.attributes import ATTRIBUTES, AttributeValue
+from busk.model.attributes import ATTRIBUTES, AttributeDefinition, AttributeValue, ColorValue
 from busk.model.common import AttributeId, TargetKey, TargetRef, target_key
 from busk.model.cue import Cue, CueList, CueRelease
 from busk.model.effect import EffectInstance
-from busk.model.entry import PresetSource, TargetSpec, ValueEntry, ValueSource, same_targets
+from busk.model.entry import (
+    PresetSource,
+    SpreadSource,
+    TargetSpec,
+    ValueEntry,
+    ValueSource,
+    same_targets,
+)
 from busk.model.preset import PresetPool, PresetValue
 from busk.model.show import Show
 from busk.model.validate import Issue, validate_effect
@@ -147,6 +174,7 @@ from busk.session.programmer import (
     Programmer,
     ProgSource,
     SlotKey,
+    check_value,
     entry_sources,
     released_slots,
     slot_key,
@@ -809,7 +837,8 @@ def build_entries(
             chosen = [] if freeze else _group_cover(state, groups, attribute, remaining)
             for group, covered in chosen:
                 spec: TargetSpec = {"kind": "group", "groupId": group["id"]}
-                entries.append(_entry(spec, attribute, [by_key[k] for k in covered]))
+                members = group["members"]
+                entries.append(_entry(spec, attribute, [by_key[k] for k in covered], members))
                 remaining = [k for k in remaining if k not in covered]
             if remaining:
                 refs = [dict(by_key[k].target) for k in remaining]
@@ -846,8 +875,14 @@ def _group_cover(
         left -= set(keys)
 
 
-def _entry(spec: TargetSpec, attribute: AttributeId, values: Sequence[_Value]) -> ValueEntry:
-    """Step 4: one entry with a preset, literal or per-target source."""
+def _entry(
+    spec: TargetSpec,
+    attribute: AttributeId,
+    values: Sequence[_Value],
+    members: Sequence[TargetRef] | None = None,
+) -> ValueEntry:
+    """Step 4: one entry with a preset, literal, spread or per-target source;
+    a spread only over a group's ``members``."""
     first = values[0].source
     source: ValueSource
     if first["kind"] == "preset":
@@ -856,12 +891,90 @@ def _entry(spec: TargetSpec, attribute: AttributeId, values: Sequence[_Value]) -
         literals = [cast(AttributeValue, v.source["value"]) for v in values]  # type: ignore[typeddict-item]
         if _agree(literals):
             source = {"kind": "literal", "value": literals[0]}
+        elif members is not None and (fan := _spread(attribute, members, values)) is not None:
+            source = fan
         else:
             source = {
                 "kind": "perTarget",
                 "values": {v.key: lit for v, lit in zip(values, literals, strict=True)},
             }
     return {"targets": spec, "attribute": attribute, "value": source}
+
+
+_FANS: Final = ("linear", "center", "edges")
+
+
+def _spread(
+    attribute: AttributeId, members: Sequence[TargetRef], values: Sequence[_Value]
+) -> SpreadSource | None:
+    """Step 4, GAP-49: the spread over a group's ``members`` that gives each
+    of the literal ``values`` exactly its value as the cue compiles it, or
+    ``None`` (see module docs). Member ``k`` of ``n`` takes its place as the
+    compiler places it: a member without the attribute keeps its place, and
+    one listed twice takes its last, whose value wins."""
+    definition = ATTRIBUTES[attribute]
+    if definition.kind == "discrete":
+        return None
+    place = {target_key(member): k for k, member in enumerate(members)}
+    held = [(place[v.key], cast(AttributeValue, v.source["value"])) for v in values]  # type: ignore[typeddict-item]
+    for fan in _FANS:
+        points = [(spread_fraction(fan, k, len(members)), value) for k, value in held]
+        for start, end in _ends(points):
+            fits = all(spread_value(start, end, f) == value for f, value in points)
+            if fits and _takes(definition, start) and _takes(definition, end):
+                source: dict[str, Any] = {"kind": "spread", "from": start, "to": end}
+                if fan != "linear":
+                    source["curve"] = fan
+                return cast(SpreadSource, source)
+    return None
+
+
+def _ends(
+    points: Sequence[tuple[float, AttributeValue]],
+) -> list[tuple[AttributeValue, AttributeValue]]:
+    """The ``from`` and ``to`` of the line through the points at the lowest
+    and the highest fraction, rounded to 9 decimals and then as computed:
+    rounding gives back the typed ends a fan through no member's ``to`` (or
+    ``from``) only reaches within a rounding error. None when every point
+    has the same fraction; a colour by each component the two points share."""
+    low = min(points, key=lambda point: point[0])
+    high = max(points, key=lambda point: point[0])
+    span = high[0] - low[0]
+    if span == 0:
+        return []
+
+    def solve(a: float, b: float) -> tuple[float, float]:
+        slope = (b - a) / span
+        return a - slope * low[0], b + slope * (1.0 - high[0])
+
+    def tidy(x: float) -> float:
+        return round(x, 9) + 0.0  # + 0.0: an end of -1e-15 is 0, not -0
+
+    if isinstance(low[1], int | float) and isinstance(high[1], int | float):
+        start, end = solve(low[1], high[1])
+        return [(tidy(start), tidy(end)), (start, end)]
+    first, last = cast(dict[str, float], low[1]), cast(dict[str, float], high[1])
+    pairs = {c: solve(first[c], last[c]) for c in first if c in last}
+    starts = {c: start for c, (start, _) in pairs.items()}
+    ends = {c: end for c, (_, end) in pairs.items()}
+    rounded = (
+        {c: tidy(v) for c, v in starts.items()},
+        {c: tidy(v) for c, v in ends.items()},
+    )
+    return [
+        cast(tuple[AttributeValue, AttributeValue], rounded),
+        (cast(ColorValue, starts), cast(ColorValue, ends)),
+    ]
+
+
+def _takes(definition: AttributeDefinition, value: AttributeValue) -> bool:
+    """Whether ``set`` would take ``value`` for the attribute: a spread's ends
+    found by extending the line may fall outside its range."""
+    try:
+        check_value(definition, value)
+    except CommandError:
+        return False
+    return True
 
 
 def _expander(groups: Sequence[Mapping[str, Any]]) -> Callable[[TargetSpec], list[TargetRef]]:

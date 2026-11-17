@@ -756,9 +756,9 @@ def test_a_recorded_spread_a_bezier_and_a_spread_entry(show: busk.OfflineShow) -
         assert show.execute(line).ok, line
     cue = show_model(show.show).cue_list(30).cues[0]  # type: ignore[union-attr]
     assert cue.curve == "bezier 0.25 0.1 0.25 1"
-    assert [(value.attribute, value.kind) for value in cue.values] == [
-        ("intensity", "perTarget"),  # busk records a spread value per target
-        ("color", "preset"),
+    assert [(value.attribute, value.kind, value.value, value.to) for value in cue.values] == [
+        ("intensity", "spread", 0.0, 1.0),  # busk finds the spread over the group (GAP-49)
+        ("color", "preset", None, None),
     ]
     doc = copy.deepcopy(show.show)
     entry = {"targets": {"kind": "group", "groupId": doc["groups"][0]["id"]},

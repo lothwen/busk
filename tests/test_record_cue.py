@@ -135,7 +135,20 @@ def test_merging_into_the_blue_cue_splits_the_overridden_group(state: ShowState)
 # ------------------------------------------------------------------ entries
 
 
-def test_literals_that_differ_become_per_target(state: ShowState) -> None:
+def test_literals_that_differ_become_per_target(appendix: dict[str, Any]) -> None:
+    three = [{"fixtureId": f, "element": 0} for f in ("fx-mh1", "fx-par1", "fx-mh2")]
+    appendix["groups"].append({"id": "g-3", "number": 3, "name": "Three", "members": three})
+    state = state_of(appendix)
+    levels = {"kind": "perTarget", "values": {"fx-mh1:0": 0.2, "fx-par1:0": 0.9, "fx-mh2:0": 0.3}}
+    programmer = program(state, select_group("g-3"), set_source("intensity", levels))
+    cue = record(state, programmer, cmd())["cues"][0]
+    assert cue["entries"] == [
+        {"targets": group("g-3"), "attribute": "intensity", "value": levels},
+    ]
+
+
+def test_literals_that_are_a_spread_over_the_group_become_the_spread(state: ShowState) -> None:
+    """GAP-49: the cover found the group, and the values fan over its members."""
     programmer = program(
         state, select_group("g-mh"), set_source("pan", {"kind": "spread", "from": -10, "to": 10})
     )
@@ -144,7 +157,7 @@ def test_literals_that_differ_become_per_target(state: ShowState) -> None:
         {
             "targets": group("g-mh"),
             "attribute": "pan",
-            "value": {"kind": "perTarget", "values": {"fx-mh1:0": -10, "fx-mh2:0": 10}},
+            "value": {"kind": "spread", "from": -10, "to": 10},
         },
     ]
 
@@ -499,8 +512,9 @@ def test_a_released_slot_is_stored(appendix: dict[str, Any]) -> None:
     # After Chorus: the pan was released, so cue 3 does not inherit it.
     created = record_cue(state, state.show, programmer, cmd("cl-song"), ids())
     assert created.message == "recorded cue 1/3: 1 entry"
+    verse_pan = {"kind": "spread", "from": -20, "to": 20}  # found again over the heads (GAP-49)
     assert song_list(applied(state, created))["cues"][2]["entries"] == [
-        {"targets": group("g-mh"), "attribute": "pan", "value": SPREAD_PAN}
+        {"targets": group("g-mh"), "attribute": "pan", "value": verse_pan}
     ]
 
 

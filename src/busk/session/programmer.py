@@ -16,7 +16,8 @@ and only in two forms (decision 7):
 A spread or a per-target map is evaluated for each target when it is set and
 stored as that target's literal (one source per slot cannot hold a fan; see
 phase-3-plan §9). The spread rule is the compiler's: member ``k`` of the
-``n`` selected targets, curve ``linear`` / ``center`` / ``edges``.
+``n`` selected targets, curve ``linear`` / ``center`` / ``edges``. Recording
+finds a spread again on a group, from those values (GAP-49).
 
 A :class:`Programmer` is an immutable value: every handler returns a new one
 (copy-on-write values), which is what lets the undo timeline keep before and
@@ -60,8 +61,9 @@ effects come as the cue has them, ids and targets included. ``filter``
 loads only some families, an effect when a layer of its template is in
 them. An entry's own timing does not come, and the reply says so:
 ``record cue … replace`` keeps it on an entry it records again on the same
-targets and attribute (GAP-48). A cue with nothing to load is refused. The
-modes stay as they are.
+targets and attribute (GAP-48). Recording back finds a group's spread again
+from its targets' values (GAP-49). A cue with nothing to load is refused.
+The modes stay as they are.
 
 Three **modes** sit beside the content: ``blind``, from Phase 4 the
 ``fadeTime`` that live programmer changes fade over (phase-4-plan §5.10),

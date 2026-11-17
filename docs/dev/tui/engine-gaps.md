@@ -106,6 +106,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-46](#gap-46-a-cue-lists-tracked-states) A cue list's tracked states | read, action | important | prompt, F4 | **done** 2026-11-16 |
 | [GAP-47](#gap-47-block-cues) Block cues | action | nice-to-have | prompt, F4 | **done** 2026-11-16 |
 | [GAP-48](#gap-48-timing-per-target) Timing per target | action | nice-to-have | prompt, F4 | **done** 2026-11-17 |
+| [GAP-49](#gap-49-a-recorded-spread-follows-its-group) A recorded spread follows its group | action | nice-to-have | prompt, F4 | **done** 2026-11-17 |
 | [GAP-50](#gap-50-a-layers-cycles) A layer's cycles | action | nice-to-have | prompt, F5 | **done** 2026-11-17 |
 | [GAP-51](#gap-51-a-templates-defaults) A template's defaults | action, read | nice-to-have | prompt, F5 | **done** 2026-11-17 |
 | [GAP-52](#gap-52-a-dmx-readout) A DMX readout | action | nice-to-have | prompt, F8 | **done** 2026-11-12 |
@@ -2765,7 +2766,8 @@ modules' docs. What it settles:
   warning, as a `GOTO`'s); `delete cuelist N cascade` takes such a binding with the list. The event
   log keeps the command, and replay runs it again: it reads only the show.
 - **Recording back** with nothing changed gives back every cue of the club show and of the
-  TupperDMX show as it was. What differs elsewhere: a spread comes back as per-target values; a
+  TupperDMX show as it was. What differs elsewhere: a spread comes back as per-target values
+  (**since** 2026-11-17, GAP-49, a spread on a group comes back as the spread); a
   list of targets that is a group's members comes back as the group (the cover), unless `freeze`;
   entries come in recording's order (attributes in the registry's order); an own value equal to
   what a tracking list inherits goes, and tracks; an entry's own timing goes. The compiled cue is
@@ -2962,6 +2964,80 @@ settles:
   recording again;
   the shipped shows; the club show saved and loaded; the validator; a running `LiveShow`), rows in
   `tests/test_console_prompt.py`, and `tests/test_load_cue.py`'s note.
+
+## GAP-49: A recorded spread follows its group
+
+**Status:** done 2026-11-17 (see **Done** at the end of this section).
+
+The user's word of 2026-11-12, after comparing busk with a grandMA3 show-programming howto; built in
+Phase 31 of `docs/plans/tui-pending-plan.md`, under its Q12 (a).
+
+**Needed by:** the prompt, and F4, which shows what a cue stores.
+
+**Today:** a cue recorded on a group follows the group: its entries reach a head merged into the
+group later, a preset of `global` or `profile` scope gives it its value, and an effect spreads its
+phase over the group as it now is. A spread does not follow. The programmer holds each target's
+value (phase-3-plan decision 7), so `record cue` stores a spread as a value per target, even on
+a group, and a new head gets nothing from it.
+
+**Engine should provide:** recording that finds the fan: values on a group that are a spread
+over its members, in their order, recorded as `{"kind": "spread"}`. The programmer does not
+change.
+
+**Priority:** nice-to-have.
+
+**TUI until then:** none: F4 shows the entry as `per target`.
+
+**Done** (2026-11-17). `_spread` and `_ends` in `src/busk/commands/record.py`, which `_entry`
+calls for a group's entry of literals that differ. Documented in `docs/console.md` ("Recording
+keeps intent"), the record and programmer modules' docs, the spec's §15.3 and
+`docs/dev/internals.md`. What it settles:
+
+- **Where.** Only a group's entry, after the group cover, so `freeze` and a list of targets stay
+  per target, and the cover's rules do not change. A preset bucket stays a preset, and values
+  that agree stay a literal.
+- **The places.** Each value takes its place as the compiler places a spread over the group:
+  member `k` of the `n` members, a member without the attribute keeping its place (as `set …
+  spread` counts it), and a member listed twice (only the generic edit makes one) at its last
+  place, whose value wins when the cue compiles.
+- **The shapes,** tried in the order `linear`, `center`, `edges`. For each, the line through the
+  values at the lowest and the highest fraction gives `from` and `to`. `edges` from `a` to `b` is
+  `center` from `b` to `a`, the same fan, so a fan that fits both is recorded as `center`: `set
+  pan spread -30 30 edges` over five heads is stored as `center` from 30 to -30. Over four it
+  fits only `edges`, as typed, since the two do not give the same floats there.
+- **Exactly.** A spread is recorded only when it gives each target exactly the float the
+  programmer holds, not within a tolerance. So the cue compiles to the same lanes, bit for bit,
+  until the group changes, and a later cue of a tracking list that holds the same values still
+  tracks them, as tracking compares lanes exactly. A value off the fan by a rounding error
+  (`set intensity 33.33333333334%` on the second of four heads in a fan from 0 to 1) stays per
+  target.
+- **The ends** are tried rounded to 9 decimals first, then as computed. Where no member sits on
+  an end (`center` over four heads has none at `to`), the line reaches it within a rounding error
+  (`30.000000000000004` for `-30 30 center`, or a colour's red of `0.2000000000000001`), and
+  rounding gives back what was typed, which then gives every value exactly; an end the line
+  reaches at `-1.8e-15` is 0, not `-0`. Ends with more decimals come as computed. Both ends must be values `set` would take: 50 %, 100 %, 100 %, 50 %
+  over four heads is a centre fan to 125 %, so it stays per target.
+- **Colours** fit component by component, and every value must have the same components: a `w`
+  on one fixture only leaves the values per target.
+- **Two members always fit** a linear spread, from the first's value to the last's, which plays
+  the same: different values on a group of two are now a spread, and a third head that joins
+  takes the middle and moves the second.
+- **Values over more than the group.** A spread over a group and one more head leaves the
+  group's four values on a fan of their own, from the first to its fourth value: the group's
+  entry is that spread, and the other head keeps its own value.
+- **`load cue` then `replace`** gives back a group's spread, so Phase 25's round trip now keeps
+  it. `load cue` still brings each target's value.
+- **In a tracking list** the values equal to what the cue inherits are set aside before the
+  cover, as before. A spread equal to the one the list tracks is not stored, and a new one is
+  stored as a spread. A spread that shares one member's value with what the list tracks loses
+  that member to tracking, so the group is not covered, and the rest are stored per target as
+  before.
+- Tests: `tests/test_record_spread.py` (each shape over four and five heads, ends past 9
+  decimals, an end at 0, the compiled lanes against `freeze`'s, a head that joins, a member
+  without the attribute or listed twice, colours, two members, values over more than the group,
+  what stays per target, a tracking list); `tests/test_record_cue.py` and `tests/test_load_cue.py` updated
+  where they held a spread per target, with a round trip of a centre fan on the club show; and
+  one TUI conversion test that held busk's per-target recording.
 
 ## GAP-50: A layer's cycles
 

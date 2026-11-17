@@ -210,6 +210,12 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Changed
 
+- A spread recorded on a group follows the group: `record cue` finds values that are a spread
+  over a group's members (`set pan spread -30 30 center` on group 1) and stores the spread, where
+  it stored a value per fixture, so a head that joins the group later takes its place in the fan
+  and the others move. Only a spread that gives each fixture exactly the value it had is stored,
+  so the cue plays the same; other values, a list of fixtures and `freeze` stay per fixture.
+  Different values on a group of two are always a spread. `load cue` then `replace` keeps a spread.
 - `record cue … replace` and `merge` keep an entry's own timing when they record the same targets
   and attribute again, where they dropped it, so a cue loaded, edited and recorded back keeps it.
   `load cue`'s note says so.

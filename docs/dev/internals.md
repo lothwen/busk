@@ -628,7 +628,10 @@ programmer and page.
 **Recording** (`busk.commands.record`, §15.3). Recording turns programmer values into
 show data that keeps intent: a cue entry references a group whenever one covers the
 targets (a greedy cover over the groups whose members *with that attribute* fit), keeps
-preset references, and lists the rest explicitly; a preset cascades from the requested
+preset references, and lists the rest explicitly. Literals that differ on a group's entry
+are stored as a spread when one over the group's members gives each of them exactly
+(GAP-49: linear, center, then edges, ends rounded to 9 decimals and then as computed), so
+the fan follows the group; a preset cascades from the requested
 scope to profile and target values only where targets disagree. `merge` restricts the
 existing entries to the targets the programmer does not cover (a group entry that loses a
 member becomes an explicit list; a spread becomes per-target values computed from the

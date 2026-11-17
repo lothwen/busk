@@ -90,7 +90,13 @@ session, as the web remote's commands do. `help` prints the grammar.
   that have the attribute (the biggest first; ties go to the group with fewer members,
   then the lower number) and keeps preset references, so editing the group or the preset
   later updates the look; `freeze` records explicit targets instead. Differing literal
-  values are recorded per target. A preset cascades from the requested scope: one global
+  values are recorded per target, unless they are a spread over a group's members, in
+  their order: `set pan spread -30 30 center` on group 1 is recorded as that spread, so a
+  head merged into the group later takes its place in the fan and the others move. busk
+  tries `linear`, then `center`, then `edges`, and keeps the first that gives each target
+  exactly the value it had, so the cue plays the same; a group member without the
+  attribute keeps its place, as in `set … spread`. Different values on a group of two are
+  always a spread. A preset cascades from the requested scope: one global
   value if every target agrees, else per profile, else per target, and the reply says so
   (`pan: 4 target values (values differ)`). Without `merge`, `replace` or `remove` a record
   command only creates, so a typo never overwrites anything.
@@ -101,7 +107,7 @@ session, as the web remote's commands do. `help` prints the grammar.
   A cue of a tracking list brings its own changes only, not what it tracks. `only` loads
   some families, as `record` reads them. Change the look, then `record cue 9/3 replace`
   records it back: the cue keeps its name, timing, trigger and releases, recording finds
-  the groups again (unless `freeze`), and a spread comes back as per-target values. An
+  the groups again (unless `freeze`), and a spread on a group comes back as the spread. An
   entry's own timing (`cue L/C time <targets> …`, below) does not come, and the reply says
   so; `replace` keeps it on each entry it records again on the same targets and attribute.
   Blind, highlight and the fade time stay as they are.
