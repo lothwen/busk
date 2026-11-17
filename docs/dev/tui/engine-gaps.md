@@ -65,7 +65,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-03](#gap-03-session-state-undo-redo-unsaved-edits) Session state (undo, redo, unsaved edits) | read | important | prompt, quit | open |
 | [GAP-04](#gap-04-flash-and-playback-buttons-from-the-console) Flash and playback buttons from the console | action | important | F1 | **done** 2026-10-22 |
 | [GAP-05](#gap-05-relative-and-per-component-attribute-values) Relative and per-component attribute values | action | important | F2 | **done** 2026-10-22 |
-| [GAP-06](#gap-06-one-undo-step-for-a-gesture) One undo step for a gesture | action | important | F2 | open |
+| [GAP-06](#gap-06-one-undo-step-for-a-gesture) One undo step for a gesture | action | important | F2 | **done** 2026-11-17 |
 | [GAP-07](#gap-07-output-route-status) Output route status | read | important | status bar, F8 | **done** 2026-10-23 |
 | [GAP-08](#gap-08-surface-status) Surface status | read | important | F9 | **done** 2026-10-23 |
 | [GAP-09](#gap-09-effect-runtime-state) Effect runtime state | read | important | F1 B, F5 | **done** 2026-10-23 |
@@ -516,6 +516,8 @@ drag still sends one `set` on release until GAP-06.
 
 ## GAP-06: One undo step for a gesture
 
+**Status:** done 2026-11-17 (see **Done** at the end of this section).
+
 **Needed by:** dragging an F2 encoder. Spec §6.2: "One undo snapshot is taken at drag start."
 
 **Today:** every programmer command is one step on the undo timeline, and nothing groups steps.
@@ -536,6 +538,45 @@ after a timeout. `undo` inside a group closes it first.
 
 **TUI until then:** an encoder drag moves a local preview of the bar, clearly marked as pending,
 and sends one `set` on release. The light does not follow the drag live.
+
+**TUI since** 2026-11-17: F2's drag sends its `set` lines inside a group, so the light follows the
+drag and one `undo` takes it back (Phase 20 of `docs/plans/tui-pending-plan.md`). Ctrl+Z and
+Ctrl+Y send `undo` and `redo`.
+
+**Done** (2026-11-17), in Phase 20 of `docs/plans/tui-pending-plan.md`, under its Q6 (a). The group
+is the timeline's (`Timeline.open_group`, `close_group` and `push` in
+`src/busk/session/timeline.py`); the commands are `UNDO_GROUP` (with a `label`) and `UNDO_GROUP_END`,
+of the session class, and the lines are `undo group "<label>"` and `undo group end`. Documented in
+`docs/console.md`, `busk help`, and the modules' docs. Public names: `UndoGroupCmd` and
+`UndoGroupEndCmd` in `busk.commands.types`. What it settles, kept to what a drag needs:
+
+- **Programmer steps only.** While a group is open, each programmer step joins one step on the
+  timeline, labelled as the group, which holds the programmer as it was before the group's first
+  step and after its last: `undo` replies `undid: pan drag`, and `redo` brings the last back. A
+  show step is not grouped, unlike the shape above.
+- **What closes it:** `undo group end`, which says how many steps it took (`closed undo group "pan
+  drag": 30 steps, undone as one`); a show step, `undo`, `redo` or another `undo group`, each
+  first; and a programmer step more than 2 s after the group's last one (or its opening), which
+  then stands alone, as every step after it does. That needs no timer: a group never closed takes
+  nothing once 2 s have gone by. Where the shape above closed it on "the next command that is not
+  a programmer or show command", performance lines now neither close nor join it (GAP-12), and
+  neither do modes (`blind`, `fade`, `highlight`).
+- **A group that took no step leaves nothing** (`closed undo group "x", which took no step`).
+- **A refused line changes nothing, the group included:** a show edit busk refuses, or an `undo`
+  with nothing to undo, leaves it open.
+- **The group is the session's:** a programmer line from another thread, a surface or the web
+  remote joins it while it is open. The guide says so.
+- **The 2 s run on the engine's clock:** real time on `LiveShow` and under `busk run`, the fake
+  clock of an `OfflineShow` (`tick`), so a script or a test is deterministic.
+- **A group is one step of the timeline's 1000.**
+- **Refused:** `undo group end` with no group open (`no undo group is open`), a label that is empty
+  or only spaces (`an undo group needs a label`), and a bare word (`expected a label in quotes or
+  end, got 'drag'`). A long label is cut in the replies, as a name is.
+- **Tab** offers `group` after `undo`, then `end`, and describes the label.
+- Tests: `tests/test_undo_group.py` (the timeline, the lines on `OfflineShow`, `LiveShow` and from
+  several threads), the rows of `tests/test_console_parser.py`, completion in
+  `tests/test_console_prompt.py`, the command count and binding checks in `tests/test_schema.py`,
+  and the public API golden.
 
 ## GAP-07: Output route status
 

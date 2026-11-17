@@ -30,6 +30,8 @@ KEYS: tuple[tuple[str, str], ...] = (
     ("← →", "on an empty prompt: select a playback"),
     ("[ ]", "on an empty prompt: its fader 5 % down, up"),
     ("PgUp PgDn", "on an empty prompt: the previous, next page"),
+    ("ctrl+z", "undo"),
+    ("ctrl+y", "redo"),
     ("ctrl+c", "clear; twice: quit"),
 )
 

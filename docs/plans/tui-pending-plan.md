@@ -1595,6 +1595,33 @@ as many `undo`s. Its shape waits on Q6. The engine step comes first. Code:
    empty group; a group never closed; a line from another thread during the group joins it (the
    group is the session's, and the guide says so); `LiveShow` and `OfflineShow`; the timeline's
    limit.
+
+   **Done** (2026-11-17), under Q6 (a). The group lives in the timeline
+   (`src/busk/session/timeline.py`: `Group`, `open_group`, `close_group`, and `push`, which grows
+   the group's step in place), so the session only routes two new session-class commands,
+   `UNDO_GROUP` (`label`) and `UNDO_GROUP_END` (`UndoGroupCmd`, `UndoGroupEndCmd` in
+   `busk.commands.types`, so a binding may hold them too). The parser's `_cmd_undo` reads the
+   lines. GAP-06's entry and Summary row are in engine-gaps.md; `docs/console.md` (the Session row
+   and a note), `busk help`, the parser's, session's, timeline's and command types' docs, and
+   `CHANGELOG.md`. Replies: `undo group "pan drag" is open`, `closed undo group "pan drag": 30 steps,
+   undone as one`, `… 1 step`, `…, which took no step`; `undo` then says `undid: pan drag`.
+
+   Calls the user may veto:
+   - **The 2 s are measured on the engine's clock,** which the session now takes (`clock=`): real
+     time on `LiveShow` and under `busk run`, an `OfflineShow`'s fake time, which moves only with
+     `tick`. A script on `OfflineShow` never times a group out unless it ticks.
+   - **A step after the gap closes the group and stands alone,** and so does every step after it,
+     as the step says. The group is not reopened: the frontend does that (step 2).
+   - **A refused line changes nothing, the group included.** A refused show edit, or `undo` with
+     nothing to undo, leaves the group open; only a step that happens closes it.
+   - **`undo group end` with no group open is refused** (`no undo group is open`), as `undo` with
+     nothing to undo is. A frontend that sends it after busk's 2 s gets a refusal it can ignore.
+   - **A label is required, in quotes, and not blank.** busk does not make one up. A long one is
+     cut in the replies as a name is (`short`), so its closing quote goes with the cut.
+   - **Modes neither close nor join a group** (`blind`, `fade`, `highlight`), as they are not steps.
+     Nor does `save`.
+   - **A group's step may change nothing,** a drag that comes back where it started. It stays, and
+     `undo` says it undid it, as a step of the group's label.
 2. **F2's drag is one group.** It sends `undo group` at its start, its `set` lines as now, and
    `undo group end` on release, so the light follows the drag and `undo` takes it back whole. A
    click stays one `set`. Change `encoders.py`'s docstring and the guide's note on drags
@@ -1603,8 +1630,58 @@ as many `undo`s. Its shape waits on Q6. The engine step comes first. Code:
    Verify: a drag on the real engine is one `undo`; a click is one; a drag cut short by a page
    change still closes, by its end line or by busk's 2 s; the perf gate on F2.
 
+   **Done** (2026-11-17). `EncoderRow.on_encoder_bar_moved` in `src/busk_tui/widgets/encoders.py`
+   sends `undo group "<attribute> drag"` before a drag's first `set` and `undo group end` after the
+   release's, both unlogged (`internal`); a click, a release with no move before it, sends neither.
+   The lines are `commands.undo_group` and `undo_group_end`, in the contract test. Each goes on the
+   bridge's ordered worker with the `set` lines, and a newer keyed `set` that replaces an unsent
+   one goes after the lines before it, so the order holds. The guide's drag note and the module's
+   docstring say so.
+
+   **A bug found here, from Phase 2:** an F-key during a drag hid the bar, and Textual kept the
+   mouse with it but dropped every mouse event, the release too, since a hidden widget has no
+   region. So the drag never ended, and clicks on the new page did nothing until F2 came back.
+   With the group, it would also have kept busk's group open for 2 s, and a selection made on the
+   new page in that time would have joined the drag's step. Now `EncoderBar.on_hide` lets go of the
+   mouse, and `on_mouse_release` ends the drag as a release would, at its last level: the last
+   `set`, logged, then `undo group end`. A dialog (Ctrl+Q while dragging) takes the mouse, and ends
+   it the same way. Both apply to F6's spread rows too, which use the same bar.
+
+   At the user's word (this conversation), Ctrl+Z sends `undo` and Ctrl+Y `redo`, logged,
+   whatever the prompt holds (the prompt has no undo of its own), from `BuskApp.prompt_key`. The
+   help lists both, the key legend `ctrl+z undo`, and the guide's key table both. Ctrl+Shift+Z was
+   built first; the user chose Ctrl+Y instead, since a terminal without the kitty keyboard protocol
+   sends Ctrl+Shift+Z as Ctrl+Z, so it undid.
+
+   Calls the user may veto:
+   - **A drag that pauses for 1 s opens a new group when it moves on** (`GROUP_PAUSE_S`), so a
+     drag held still past busk's 2 s is two undo steps, not one per line after the pause. The
+     plan did not name this case.
+   - **The label is `<attribute> drag`** (`undid: pan drag`, `undid: color.r drag`).
+
 Under (b), step 1 is busk merging a `set` of one attribute on the same selection into the step
 before, within 1 s, and step 2 changes only the docstring and the guide.
+
+**Phase 20 checks** (2026-11-17), on top of `cd73e0e`. The whole suite: 7,066 passed and 1
+skipped, in 8:43 with `uv run pytest -n 6`. `ruff check`, `ruff format --check` and `mypy src`
+clean. New tests:
+`tests/test_undo_group.py` (27: the timeline, the lines on `OfflineShow` and `LiveShow`, the gap in
+real time, 40 lines from four threads), parser and completion rows, the command count and binding
+checks of `tests/test_schema.py`, the public API golden (`UndoGroupCmd`, `UndoGroupEndCmd`), the
+contract test's two builders, and in the TUI: F2's drag opens and closes a group, a click opens
+none, a pause opens another, a page change and a dialog end a drag, Ctrl+Z and Ctrl+Y, and
+`test_tui_hints.py`, where `undo` now has two forms. On the real engine
+(`test_an_f2_drag_is_one_undo_on_the_real_engine`): a drag of ten moves is one step, a click
+another, Ctrl+Z twice takes both back and Ctrl+Y brings the drag back. The touched TUI files
+pass on Textual 8.2.0 (537 and 53 tests, and the e2e drag). The perf gate: 8 passed (`busk run`
+F2 +0.173, F2 with P11's Circle +0.222). Sixteen mutations of the new code, all caught.
+Then Ctrl+Y replaced Ctrl+Shift+Z and `commands.flash` went, TUI files only: `tests/tui`, 1,764
+passed (8:42 with `-n 6`), and the touched files on Textual 8.2.0, 467 and the e2e drag.
+
+A real `busk run` of the club show (processes, `--state-dir` in a temporary directory), a script:
+`undo group "pan drag"`, 20 `set pan` lines, `undo group end` (`20 steps, undone as one`), then
+`undo` twice took a tilt and the whole drag, `redo` brought the drag back (101 and 102 at pan 20),
+and a second `undo group end` was refused (`no undo group is open`).
 
 ### Phase 21: A family's own timing removed
 
@@ -3532,8 +3609,9 @@ On 2026-11-11 the user put them into phases: the simple bugs in Phase 18, the re
 in Phase 19, and the items worth building in Phases 20 to 23. Each item below names its phase.
 Those marked **Not planned** are extras or matter less, and stay here.
 
-- GAP-06 (one undo step for a gesture): **Phase 20**. GAP-13 (control input monitor): **Not
-  planned**. `bind` lines can be typed.
+- GAP-06 (one undo step for a gesture): **Phase 20**. Done there: `undo group "<label>"`, `undo
+  group end`, and F2's drag as one step. GAP-13 (control input monitor): **Not planned**. `bind`
+  lines can be typed.
 - A cue's move, copy and renumber past its neighbours (the report's Cues table): **Phase 22**,
   steps 1 to 3. Done there: GAP-43, F4's `[number…]` and `[copy…]`.
 - Renumbering a cue list from F4 (the report's Cue lists table): **Phase 22**, step 3. Done
@@ -3593,7 +3671,14 @@ Those marked **Not planned** are extras or matter less, and stay here.
 - `commands.flash`, `undo` and `redo` have no caller. `flash` lost its own when Phase 9's strips
   began sending `button N B`; `undo` and `redo` never had one, since `undo` is typed. The contract
   test still runs all three. Found on 2026-11-11. **Not planned**: dead code, left until the user
-  says to remove it or to give `undo` and `redo` a key.
+  says to remove it or to give `undo` and `redo` a key. On 2026-11-17 (Phase 20) the user asked
+  for the keys: Ctrl+Z sends `undo` and Ctrl+Y `redo`. `flash` had no caller: F1's `[FL]` is the
+  playback's own flash button, a `HeldButton` that sends `button N B on|off`, and Q3 (a) leaves no
+  control a flash of its own. At the user's word the builder and its contract rows are removed;
+  busk's `flash N on|off` line stays, for the prompt and bindings.
+- F6's other drags still send a programmer step per line: the colour picker's field (`set color
+  …`) and a spread row's two bars (`set … spread …`), each about ten a second. `undo group` would
+  make each one step, as F2's encoder drag is since Phase 20. Found on 2026-11-17. Not in a phase.
 - Every rename, every `number M`, `fixture N location {…}`, a plain `delete` of something unused
   and `cuelist N sequence` reply with a path too: the report's side findings list them all. Found
   on 2026-11-11. **Phase 19**. Fixed there.
@@ -3812,6 +3897,9 @@ sequences, executors and recipes. Each doubtful point was checked on `OfflineSho
      the TUI says where a gesture starts and ends, and a typed line never merges by surprise.
    - (b) busk merges a `set` of one attribute on the same selection into the step before, within
      1 s. There are no new lines, but two quick lines typed at the prompt merge too.
+
+   ANSWER: (a), the recommended one (the user's standing word, "use recommended answers",
+   2026-11-17). Built in Phase 20.
 7. **What F4 shows of the other families** (Phase 23). The cue table has intensity and colour
    columns only, as the spec's §8.4 says, and narrow screens already drop columns.
    - (a) One more column, `also`, naming the other families and how many entries each has

@@ -54,6 +54,16 @@ def redo() -> Line:
     return Line("redo")
 
 
+def undo_group(label: str) -> Line:
+    """Open busk's undo group (GAP-06): the programmer steps after it are one
+    ``undo``, labelled ``label``, until :func:`undo_group_end`."""
+    return Line(f"undo group {quoted(label)}")
+
+
+def undo_group_end() -> Line:
+    return Line("undo group end")
+
+
 def save() -> Line:
     return Line("save")
 
@@ -97,10 +107,6 @@ def release_all() -> Line:
 
 def fader(playback: int, level: float) -> Line:
     return Line(f"fader {playback} {percent(level)}", performance=True)
-
-
-def flash(playback: int, on: bool) -> Line:
-    return Line(f"flash {playback} {'on' if on else 'off'}", performance=True)
 
 
 def button(playback: int, index: int, on: bool, *, programmer: bool = False) -> Line:

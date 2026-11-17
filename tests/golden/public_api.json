@@ -49,7 +49,9 @@
       "TapCmd",
       "TogglePlaybackCmd",
       "TriggerPlaybackCmd",
-      "UndoCmd"
+      "UndoCmd",
+      "UndoGroupCmd",
+      "UndoGroupEndCmd"
     ],
     "module": "busk.commands.types"
   },

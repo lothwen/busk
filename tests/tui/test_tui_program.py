@@ -391,12 +391,110 @@ def test_a_drag_sends_at_most_every_drag_s_and_logs_the_last(
         await pilot.hover(bar, offset=(width // 2, 0))
         await pilot.mouse_up(bar, offset=(width - 1, 0))
         lines = sent(bridge)
+        assert lines[0] == ('undo group "intensity drag"', "internal", None)  # GAP-06
+        assert lines[-1] == ("undo group end", "internal", None)
+        lines = lines[1:-1]
         assert {origin for _, origin, _ in lines[:-1]} == {"internal"}  # (the pilot moves first)
         assert len(lines) >= 3
         assert lines[0][0] == f"set intensity {round(5 / (width - 1) * 100)}%"
         assert lines[-1] == ("set intensity 100%", "ui", "set:intensity")
         logged = [text for kind, text in app.query_one(LogView).entries if kind == "ui"]
         assert logged == ["set intensity 100%"]
+
+    drive(app, body)
+
+
+def test_a_click_opens_no_undo_group() -> None:
+    bridge = FakeBridge()
+    app = program_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        bar = rows(app)["pan"].bar
+        await pilot.click(bar, offset=(0, 0))
+        await pilot.click(bar, offset=(0, 0))
+        assert [line for line, _, _ in sent(bridge)] == ["set pan -270", "set pan -270"]
+
+    drive(app, body)
+
+
+def test_a_drag_that_pauses_opens_a_new_undo_group_when_it_moves_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """busk closes a group 2 s after its last step, so the drag opens another
+    after :data:`~busk_tui.widgets.encoders.GROUP_PAUSE_S` without a line: an
+    undo step per pause, not one per line after it."""
+    bridge = FakeBridge()
+    app = program_app(bridge)
+    monkeypatch.setattr(encoders, "DRAG_S", 0.0)
+    monkeypatch.setattr(encoders, "GROUP_PAUSE_S", 0.5)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        bar = rows(app)["pan"].bar
+        await pilot.mouse_down(bar, offset=(0, 0))
+        await pilot.hover(bar, offset=(1, 0))
+        await pilot.hover(bar, offset=(2, 0))
+        await pilot.pause(0.6)
+        await pilot.hover(bar, offset=(3, 0))
+        await pilot.hover(bar, offset=(4, 0))
+        await pilot.pause(0.6)
+        await pilot.mouse_up(bar, offset=(4, 0))
+        lines = [line if line.startswith("undo") else "set" for line, _, _ in sent(bridge)]
+        group = 'undo group "pan drag"'
+        assert lines == [group, "set", "set", group, "set", "set", group, "set", "undo group end"]
+
+    drive(app, body)
+
+
+def test_a_page_change_ends_a_drag_and_frees_the_mouse(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Textual keeps the mouse with the hidden bar and drops its release:
+    the drag ends when the page goes, so its undo group closes and a click
+    on the new page lands."""
+    bridge = FakeBridge()
+    app = program_app(bridge)
+    monkeypatch.setattr(encoders, "DRAG_S", 0.0)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        bar = rows(app)["pan"].bar
+        await pilot.mouse_down(bar, offset=(0, 0))
+        await pilot.hover(bar, offset=(3, 0))
+        await pilot.press("f3")
+        await pilot.pause()
+        assert app.page == 3
+        assert (bar.dragging, app.mouse_captured) == (False, None)
+        lines = sent(bridge)
+        assert lines[0] == ('undo group "pan drag"', "internal", None)
+        assert lines[-2] == (lines[-3][0], "ui", "set:pan")
+        assert lines[-1] == ("undo group end", "internal", None)
+
+    drive(app, body)
+
+
+def test_a_drag_cut_short_ends_as_a_release_does() -> None:
+    """A dialog takes the mouse: the drag's last level is logged, and its
+    undo group closes."""
+    bridge = FakeBridge()
+    app = program_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        started(bridge)
+        await settle(pilot, app)
+        bar = rows(app)["intensity"].bar
+        await pilot.mouse_down(bar, offset=(0, 0))
+        for x in (3, 6):
+            await pilot.hover(bar, offset=(x, 0))
+        await pilot.press("ctrl+q")  # the quit dialog takes the mouse
+        await pilot.pause()
+        assert not bar.dragging
+        lines = sent(bridge)
+        assert lines[0] == ('undo group "intensity drag"', "internal", None)
+        assert lines[-2][1:] == ("ui", "set:intensity")
+        assert lines[-1] == ("undo group end", "internal", None)
 
     drive(app, body)
 

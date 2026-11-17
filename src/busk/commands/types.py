@@ -10,7 +10,8 @@ Commands are tagged by ``type``. They fall into four classes
   the session's one undo timeline, and autosaved (Phase 3).
 * **Show edit** (``RECORD_CUE`` … ``BATCH``): validated, applied to the show
   store as copy-on-write patches, undoable and persisted.
-* **Session** (``UNDO``, ``REDO``): walk the undo timeline.
+* **Session** (``UNDO``, ``REDO``, ``UNDO_GROUP``, ``UNDO_GROUP_END``):
+  walk the undo timeline, or group its steps.
 
 Phase 3 changes to §15.2 (phase-3-plan §5.1, §9):
 
@@ -51,6 +52,9 @@ again, keeping it in the programmer, for a frontend's RUN/off toggle.
 
 GAP-44 adds ``LOAD_CUE`` (programmer): a cue's own values and effects in
 place of what the programmer holds, to edit the cue and record it back.
+
+GAP-06 adds ``UNDO_GROUP`` and ``UNDO_GROUP_END`` (session): the programmer
+steps between them are one undo step, for an encoder's drag.
 
 Generic edits address the show with an :data:`EditPath`: a list whose
 string segments are object keys and whose :class:`IdSegment` segments pick
@@ -602,6 +606,24 @@ class RedoCmd(TypedDict):
     type: Literal["REDO"]
 
 
+@with_config(STRICT)
+class UndoGroupCmd(TypedDict):
+    """Open an undo group (GAP-06): the programmer steps after it are one
+    step, labelled ``label``, until ``UNDO_GROUP_END``, a show edit, ``UNDO``,
+    ``REDO``, another group, or a programmer step more than 2 s after the
+    group's last (:mod:`busk.session.timeline`)."""
+
+    type: Literal["UNDO_GROUP"]
+    label: str
+
+
+@with_config(STRICT)
+class UndoGroupEndCmd(TypedDict):
+    """Close the open undo group."""
+
+    type: Literal["UNDO_GROUP_END"]
+
+
 type Command = Annotated[
     TriggerPlaybackCmd | ReleasePlaybackCmd | TogglePlaybackCmd | FlashCmd
     | GoCmd | BackCmd | GotoCmd
@@ -612,7 +634,7 @@ type Command = Annotated[
     | RunEffectCmd | HighlightCmd | LoadCueCmd
     | RecordCueCmd | RecordPresetCmd | RecordGroupCmd | PatchFixtureCmd | AssignPlaybackCmd
     | AddCmd | SetCmd | DeleteCmd | BatchCmd
-    | UndoCmd | RedoCmd,
+    | UndoCmd | RedoCmd | UndoGroupCmd | UndoGroupEndCmd,
     Field(discriminator="type"),
 ]  # fmt: skip
 """Any command, tagged by ``type``."""

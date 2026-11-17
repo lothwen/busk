@@ -10,6 +10,11 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- Undo groups: after `undo group "pan drag"`, programmer changes are one undo step, labelled
+  `pan drag`, until `undo group end`; a show edit, `undo`, `redo`, another group or 2 s with no
+  change closes it too. Changes from surfaces and the web remote join it; performance lines do
+  not. The commands are `UNDO_GROUP` and `UNDO_GROUP_END` (`UndoGroupCmd`, `UndoGroupEndCmd`).
+  F2's encoder drag is now one undo step, and Ctrl+Z and Ctrl+Y undo and redo in the TUI.
 - Timing per target: `cue 9/1 time group 2 intensity 2 delay 0 to 1.5` sets the own timing of the
   cue's intensity entries on group 2, and its `to` makes a fan, so the washes come up one after
   the other; `to` on the fade fans the fade, and `center` or `edges` shape the fan as they shape a

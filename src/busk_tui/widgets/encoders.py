@@ -6,8 +6,12 @@ from the programmer, dim from the output, ``—`` with neither.
 
 * The bar sets the value: a click sends ``set pan -45``; a drag sends
   ``set`` lines while it moves, about ten a second, and logs the last one on
-  release (question Q7). Each is an undo step of its own until busk can
-  group them (GAP-06).
+  release (question Q7). The drag is one undo step: its first line comes
+  after ``undo group "pan drag"`` and its last before ``undo group end``
+  (busk's GAP-06), neither logged. busk closes a group 2 s after its last
+  step, so a drag that stops for :data:`GROUP_PAUSE_S` opens a new group
+  when it moves on: two undo steps. A drag cut short (a dialog takes the
+  mouse, another page hides the bar) ends as a release does.
 * ``[−]`` ``[+]`` (5 %, 15° for pan and tilt) and the wheel (2 %, 5°)
   send ``set <attribute> by <change>``, which acts only where the
   programmer holds the attribute (question Q11): elsewhere they are inert.
@@ -44,6 +48,10 @@ DRAG_S: Final = 0.1
 
 PENDING_S: Final = 1.0
 """A pending value shows at most this long once its line is done."""
+
+GROUP_PAUSE_S: Final = 1.0
+"""A drag that sends nothing this long opens a new undo group when it
+sends again: busk closes its group 2 s after the last step."""
 
 
 class EncoderBar(HBar):
@@ -113,6 +121,20 @@ class EncoderBar(HBar):
         self.refresh()
         self.post_message(self.Moved(self, self.level, final=True))
 
+    def on_mouse_release(self, event: events.MouseRelease) -> None:
+        """The mouse was taken during a drag (a dialog opened): it ends
+        where it was, as a release there would."""
+        if self.dragging:
+            self._cancel()
+            self.dragging = False
+            self.post_message(self.Moved(self, self.level, final=True))
+
+    def on_hide(self, event: events.Hide) -> None:
+        """Another page during a drag: Textual would keep the mouse with the
+        hidden bar and drop its release, so the drag ends here."""
+        if self.dragging:
+            self.release_mouse()  # then on_mouse_release ends it
+
     def on_mouse_scroll_up(self, event: events.MouseScrollUp) -> None:
         if self.steps:
             event.stop()
@@ -154,6 +176,7 @@ class EncoderRow(Horizontal):
         self.pending: float | None = None  # the value sent, not yet shown by the programmer
         self.pending_after: tuple[int | None, float] | None = None  # line done: version, when
         self._serial = 0
+        self._grouped: float | None = None  # when the drag's open undo group last took a line
         self.marked = False
         self.name_text = Static(self._label(), classes="enc-name")
         self.minus = CommandButton("−", Line(""), inert=True)
@@ -211,13 +234,30 @@ class EncoderRow(Horizontal):
             self.value.update(text, layout=False)  # a fixed cell: no layout (it moves at 20 Hz)
 
     def on_encoder_bar_moved(self, message: EncoderBar.Moved) -> None:
+        """A drag's move opens busk's undo group first, and its release closes
+        it after the last line; a click (a release with no move) has none."""
         message.stop()
-        if self.reading is None:
-            return
-        value = attributes.to_value(message.level, self.reading.span, self.encoder.unit)
-        self._send(
-            attributes.set_line(self.encoder, value), "ui" if message.final else "internal", value
-        )
+        if self.reading is not None:
+            if not message.final or self._grouped is not None:
+                self._group()
+            value = attributes.to_value(message.level, self.reading.span, self.encoder.unit)
+            self._send(
+                attributes.set_line(self.encoder, value),
+                "ui" if message.final else "internal",
+                value,
+            )
+        if message.final and self._grouped is not None:
+            self._grouped = None
+            self.post_message(RunLine(commands.undo_group_end(), "internal"))
+
+    def _group(self) -> None:
+        """Open the drag's undo group before its first line, and again after
+        a pause that busk may have closed it in."""
+        now = time.monotonic()
+        if self._grouped is None or now - self._grouped >= GROUP_PAUSE_S:
+            label = f"{self.encoder.attribute} drag"
+            self.post_message(RunLine(commands.undo_group(label), "internal"))
+        self._grouped = now
 
     def on_encoder_bar_stepped(self, message: EncoderBar.Stepped) -> None:
         message.stop()

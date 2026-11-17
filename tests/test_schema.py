@@ -264,8 +264,9 @@ def test_every_command_type_has_exactly_one_class() -> None:
     from busk.commands.classes import COMMAND_CLASSES
 
     types = _command_types()
-    # GAP-05: ADJUST_ATTRIBUTE, GAP-14: RUN_EFFECT, GAP-44: LOAD_CUE
-    assert len(types) == len(set(types)) == 40
+    # GAP-05: ADJUST_ATTRIBUTE, GAP-14: RUN_EFFECT, GAP-44: LOAD_CUE,
+    # GAP-06: UNDO_GROUP, UNDO_GROUP_END
+    assert len(types) == len(set(types)) == 42
     assert sorted(types) == sorted(COMMAND_CLASSES)
     assert {COMMAND_CLASSES[t] for t in types} == {"performance", "programmer", "show", "session"}
 
@@ -304,6 +305,8 @@ PHASE_3_COMMANDS: list[dict[str, Any]] = [
         {"type": "ASSIGN_PLAYBACK", "pageId": "page-1", "slot": 1, "playbackId": "pb-blue"}]},
     {"type": "UNDO"},
     {"type": "REDO"},
+    {"type": "UNDO_GROUP", "label": "pan drag"},  # GAP-06
+    {"type": "UNDO_GROUP_END"},
 ]  # fmt: skip
 
 

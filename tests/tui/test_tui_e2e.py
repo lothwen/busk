@@ -85,6 +85,7 @@ from busk_tui.pages.patch import (
 from busk_tui.pages.presets import PresetsPage
 from busk_tui.pages.program import EncoderPanel
 from busk_tui.shell import BuskApp
+from busk_tui.widgets import encoders
 from busk_tui.widgets.bars import HBar
 from busk_tui.widgets.chase_dialog import ChaseDialog
 from busk_tui.widgets.colorpicker import cell_color, rgb_of
@@ -218,6 +219,60 @@ def test_f2_and_f6_program_the_real_engine(club_path: Path, tmp_path: Path) -> N
         table = app.query_one(ProgrammerTable).content
         assert "Red" in str(table)
         assert ("ui", "preset color 2") in app.query_one(LogView).entries
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_an_f2_drag_is_one_undo_on_the_real_engine(
+    club_path: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """busk's GAP-06: a drag on the pan bar sends its lines in an undo
+    group, so Ctrl+Z takes it back whole and Ctrl+Y brings it back.
+    A click is one step too."""
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=2), standalone=True)
+    monkeypatch.setattr(encoders, "DRAG_S", 0.0)
+
+    def pans() -> list[object]:
+        programmer = app.programmer
+        values = () if programmer is None else programmer.values
+        return [value.value for value in values if value.attribute == "pan"]
+
+    def undo() -> int | None:
+        return None if app.session is None else app.session.undo
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.programmer is not None and bool(app.query(EncoderRow)))
+        await pilot.click("#program-groups", offset=(1, 0))  # [1 Heads]
+        await until(pilot, lambda: app.programmer.selection == ((101, 1), (102, 1)))  # type: ignore[union-attr]
+        await until(pilot, lambda: undo() is not None)
+        selected = undo()
+        bar = next(r for r in app.query(EncoderRow) if r.encoder.attribute == "pan").bar
+        await pilot.mouse_down(bar, offset=(0, 0))
+        for x in range(1, 11):
+            await pilot.hover(bar, offset=(x, 0))
+            await pilot.pause(0.02)
+        await pilot.mouse_up(bar, offset=(12, 0))
+        await until(pilot, lambda: undo() == selected + 1, timeout=2.0)  # type: ignore[operator]
+        dragged = pans()
+        assert len(dragged) == 2
+        await pilot.click(bar, offset=(20, 0))
+        await until(pilot, lambda: undo() == selected + 2, timeout=2.0)  # type: ignore[operator]
+        await pilot.press("ctrl+z")
+        await until(pilot, lambda: pans() == dragged, timeout=2.0)
+        await pilot.press("ctrl+z")
+        await until(pilot, lambda: pans() == [], timeout=2.0)
+        await pilot.press("ctrl+y")
+        await until(pilot, lambda: pans() == dragged, timeout=2.0)
+        entries = app.query_one(LogView).entries
+        assert ("result", "undid: pan drag") in entries
+        assert ("result", "redid: pan drag") in entries
+        assert not [text for kind, text in entries if kind == "error"]
 
     try:
         drive(app, body)

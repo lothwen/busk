@@ -256,6 +256,7 @@ class KeyLegend(Widget):
         ("↑ ↓", "history"),
         ("tab", "complete"),
         ("esc", "clear"),
+        ("ctrl+z", "undo"),
         ("ctrl+c ×2", "quit"),
     )
 

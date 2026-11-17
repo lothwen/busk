@@ -662,6 +662,10 @@ class BuskApp(App[int]):
                 self._escape()
             case "ctrl+c":
                 self._interrupt()
+            case "ctrl+z":
+                self._run(commands.undo())
+            case "ctrl+y":
+                self._run(commands.redo())
             case "question_mark" if not prompt.value:
                 self.action_toggle_help()
             case "enter" if self.cursor.active:

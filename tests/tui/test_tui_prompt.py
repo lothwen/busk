@@ -478,6 +478,27 @@ def test_ctrl_q_asks_too() -> None:
     drive(app, body)
 
 
+def test_ctrl_z_undoes_and_ctrl_y_redoes_whatever_is_typed() -> None:
+    bridge = FakeBridge()
+    app = make_app(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await pilot.press("ctrl+z")
+        await type_line(pilot, "gm 5")
+        await pilot.press("ctrl+y", "ctrl+z")
+        await pilot.pause()
+        assert app.query_one(Prompt).value == "gm 5"
+        assert [(s.line, s.origin) for s in bridge.sent] == [
+            ("undo", "ui"),
+            ("redo", "ui"),
+            ("undo", "ui"),
+        ]
+        logged = [text for kind, text in app.query_one(LogView).entries if kind == "ui"]
+        assert logged == ["undo", "redo", "undo"]
+
+    drive(app, body)
+
+
 def test_a_typed_help_opens_the_overlay_with_its_reply() -> None:
     bridge = FakeBridge(replies={"help": Reply(text="    go N | back N\n    gm <level>")})
     app = make_app(bridge)

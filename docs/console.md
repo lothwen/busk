@@ -68,7 +68,7 @@ session, as the web remote's commands do. `help` prints the grammar.
 | Perform | `go 9`, `back 9`, `goto 9 4`, `release 3 [2]`, `fader 3 75%`, `flash 3 on\|off`, `toggle 3`, `button 3 2 on\|off`, `gm 0.5`, `master "Speed 1" 0.75`, `tap ["Speed 1"]`, `bpm ["Speed 1"] 128`, `blackout on\|off` |
 | Safety, panic | `park fixture 204 intensity 0`, `park group 2 color 1 0 0`, `unpark fixture 204 [intensity]`, `unpark all`, `fixture 101 thru 102 limits tilt -90 10`, `fixture 301 limits intensity 50%`, `fixture 101 limits tilt none`, `fixture 101 limits none`, `safety strobe 3\|off`, `highlight on\|off`, `release all [2]`, `output on\|off` |
 | Profiles | `profile update "Generic Spot 16ch"` (to the library's other revision), `profile "Generic Spot 16ch" category wash\|none`, `profile import "fixtures/spot.gdtf"`, `list profiles` |
-| Session | `undo`, `redo`, `save [PATH]`, `list fixtures\|groups\|presets\|cuelists\|playbacks\|pages\|universes\|routes\|surfaces\|bindings\|masters\|profiles\|effects\|park`, `list cues 9`, `list cue 9/2`, `list dmx 1 [17 [thru 32]]`, `list dmx fixture 101`, `library`, `info`, `status`, `source FILE`, `quit` |
+| Session | `undo`, `redo`, `undo group "pan drag"`, `undo group end`, `save [PATH]`, `list fixtures\|groups\|presets\|cuelists\|playbacks\|pages\|universes\|routes\|surfaces\|bindings\|masters\|profiles\|effects\|park`, `list cues 9`, `list cue 9/2`, `list dmx 1 [17 [thru 32]]`, `list dmx fixture 101`, `library`, `info`, `status`, `source FILE`, `quit` |
 
 ## Notes
 
@@ -376,6 +376,14 @@ session, as the web remote's commands do. `help` prints the grammar.
 * **Undo** walks one timeline of show edits and programmer changes (1000 steps): the last
   action, whatever it was. Blind and the programmer's fade time are modes and are never
   undone. Saving is not a step.
+* **Undo groups** make a gesture one step, as a frontend's encoder drag does. After `undo
+  group "pan drag"`, the programmer changes are one step, labelled `pan drag`, until `undo
+  group end` (`closed undo group "pan drag": 30 steps, undone as one`); then `undo` takes
+  them back together (`undid: pan drag`). A show edit, `undo`, `redo` or another `undo
+  group` closes the group first, and so does a programmer change more than 2 s after the
+  group's last one, which then is a step of its own. A group with no change leaves nothing.
+  The group is the show's, not the prompt's: a change from a surface, the web remote or
+  another frontend joins it while it is open. Performance lines and modes never do.
 * **Replies** say what a line did, naming what it changed as the console does:
   `renamed group 1 "Heads" to "Movers"`, `group 1 is now group 9`, `deleted cue 9/2 "Verse"`,
   `cue 9/3 goes 8 s after the cue before starts`, `set the priority of playback 3 to 60`. A

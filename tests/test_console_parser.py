@@ -529,6 +529,10 @@ COMMANDS: list[tuple[str, dict[str, Any]]] = [
     ("blackout off", {"type": "BLACKOUT", "on": False}),
     ("undo", {"type": "UNDO"}),
     ("REDO", {"type": "REDO"}),
+    ('undo group "pan drag"', {"type": "UNDO_GROUP", "label": "pan drag"}),  # GAP-06
+    ('Undo Group "Pan"', {"type": "UNDO_GROUP", "label": "Pan"}),
+    ("undo group end", {"type": "UNDO_GROUP_END"}),
+    ("UNDO GROUP END", {"type": "UNDO_GROUP_END"}),
 ]
 
 

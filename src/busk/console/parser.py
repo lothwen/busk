@@ -111,6 +111,7 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
                    | chase.rate.multiplier | notes | tags
         <optional> = chase | notes | tags
     undo | redo | save [PATH] | list <kind> | list cues L | list cue L/C | library | info
+    undo group "<label>" | undo group end
     list dmx U [A [thru B]] | list dmx fixture N
     status | help | source FILE | quit
 
@@ -385,6 +386,17 @@ a file in the show, in one undo step. It tells the formats apart as a library
 directory does. The parser only names the file, and :class:`Console
 <busk.console.console.Console>` reads it, as it reads a ``source`` file. A profile
 the show holds by id or by name is refused.
+
+Undo groups (GAP-06). ``undo group "<label>"`` opens a group, and the
+programmer steps after it are one undo step, labelled ``<label>``, holding
+the programmer as it was before the first and after the last; ``undo group
+end`` closes it, and says how many steps it took. A show edit, ``undo``,
+``redo`` or another ``undo group`` closes it first, and so does a programmer
+step more than 2 s after the group's last one, which then stands alone. A
+group that took no step leaves nothing. The group is the session's: a step
+from another thread, a surface or the web remote joins it. Performance lines
+never do, nor modes (``blind``, ``fade``, ``highlight``). ``undo group end``
+with no group open is refused.
 
 Completion (Tab and ``?`` at the prompt, :mod:`busk.console.prompt`).
 :func:`expected` parses a line up to the word being typed. Where the line
@@ -3616,7 +3628,15 @@ class _Parser:
     # session
 
     def _cmd_undo(self) -> Action:
-        return self.submit({"type": "UNDO"})
+        """``undo``, ``undo group "<label>"`` and ``undo group end`` (GAP-06)."""
+        if not self.keyword("group"):
+            return self.submit({"type": "UNDO"})
+        if self.keyword("end"):
+            return self.submit({"type": "UNDO_GROUP_END"})
+        token = self.take('a label in quotes, e.g. "pan drag", or end')
+        if not token.quoted:
+            raise ParseError(f"expected a label in quotes or end, got {token.text!r}")
+        return self.submit({"type": "UNDO_GROUP", "label": token.text})
 
     def _cmd_redo(self) -> Action:
         return self.submit({"type": "REDO"})

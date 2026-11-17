@@ -71,6 +71,8 @@ COMMAND_CLASSES: Final[Mapping[str, CommandClass]] = MappingProxyType(
         # session
         "UNDO": "session",
         "REDO": "session",
+        "UNDO_GROUP": "session",  # GAP-06
+        "UNDO_GROUP_END": "session",  # GAP-06
     }
 )
 """The class of every command type."""

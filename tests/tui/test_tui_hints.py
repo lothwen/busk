@@ -23,7 +23,9 @@ def asked(show: busk.OfflineShow, line: str) -> Completion:
 def test_alternatives_are_indexed_by_their_first_word(index: HelpIndex) -> None:
     (form,) = index.syntax("blind")
     assert form.startswith("clear | blind on|off | highlight on|off")
-    assert index.syntax("redo") == index.syntax("undo")
+    (redo,) = index.syntax("redo")
+    assert index.syntax("undo") == [redo, 'undo group "<label>" | undo group end']  # GAP-06
+    assert index.syntax("undo group")[0] == 'undo group "<label>" | undo group end'
     assert index.syntax("goto 1 2")[0].startswith("go N | back N | goto N <cue>")
 
 

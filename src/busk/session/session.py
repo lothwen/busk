@@ -24,7 +24,12 @@ threads). The session routes it by class
   anywhere: **the session only ever holds a show that validates and
   compiles** (decision 4);
 * ``UNDO`` / ``REDO`` walk the one timeline; a show step goes through the
-  same validate → compile → install path.
+  same validate → compile → install path. ``UNDO_GROUP`` and
+  ``UNDO_GROUP_END`` open and close an undo group (GAP-06 of
+  ``docs/dev/tui/engine-gaps.md``): the programmer steps between them are
+  one step on the timeline (:mod:`busk.session.timeline`), whichever thread
+  or surface sent them. A line that is refused changes nothing, the group
+  included.
 
 **Ordering.** Installs and performance commands share the engine's FIFO
 queue, and installs are queued while the lock is held, so the engine sees
@@ -56,6 +61,7 @@ import logging
 import queue
 import secrets
 import threading
+import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -64,6 +70,7 @@ from typing import Final, cast
 from busk.commands import edits, record
 from busk.commands.bus import CommandBus, CommandRejected
 from busk.commands.classes import command_class
+from busk.commands.edits import short
 from busk.commands.errors import CommandError
 from busk.commands.patch import Op, apply
 from busk.commands.types import Command, CommandOrigin
@@ -86,7 +93,7 @@ from busk.session.programmer import (
     to_json,
 )
 from busk.session.state import ShowState
-from busk.session.timeline import ProgrammerStep, ShowStep, Timeline
+from busk.session.timeline import Group, ProgrammerStep, ShowStep, Timeline
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -147,6 +154,7 @@ class Session:
         stamp: Stamp | None = None,
         programmer: Programmer = EMPTY,
         causes: bool = False,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         """``show`` must be valid; ``compiled`` is its compiled form if the
         caller has it already. The bus's compiled show is replaced by this
@@ -166,7 +174,9 @@ class Session:
         ``programmer`` is the programmer the session starts with, installed
         nowhere (``busk replay``: the engine has its frame already).
         ``causes`` puts the event-log cause on every install (see the
-        module docs).
+        module docs). ``clock`` (seconds, monotonic) is what an undo group's
+        gap is measured on: the engine's clock, so an ``OfflineShow``'s
+        groups follow its fake time.
         """
         self._lock = threading.Lock()
         self._bus = bus
@@ -186,7 +196,7 @@ class Session:
         self._sessionId = secrets.token_hex(8)
         self._installs = 0  # shows installed: the n of the next stamp is one more
         self._stamp: Stamp = (self._sessionId, 0) if stamp is None else stamp
-        self.timeline = Timeline()
+        self.timeline = Timeline(clock=clock)
         bus.compiled = compiled
         self._worker: threading.Thread | None = None
         self._posted: queue.SimpleQueue[tuple[Command, CommandOrigin] | None] = queue.SimpleQueue()
@@ -242,7 +252,7 @@ class Session:
                     return self._programmer_command(command)
                 if kind == "show":
                     return self._show_command(command)
-                return self._undo() if command["type"] == "UNDO" else self._redo()
+                return self._session_command(command)
             except CommandError as exc:
                 return CommandResult(ok=False, message=exc.message, issues=exc.issues)
             except Exception as exc:  # a bug must not take the console down
@@ -512,6 +522,25 @@ class Session:
 
     # -------------------------------------------------------- undo, redo
 
+    def _session_command(self, command: Command) -> CommandResult:
+        if command["type"] == "UNDO":
+            return self._undo()
+        if command["type"] == "REDO":
+            return self._redo()
+        if command["type"] == "UNDO_GROUP":
+            label = command["label"]
+            if not label.strip():
+                raise CommandError("an undo group needs a label")
+            closed = self.timeline.open_group(label)
+            opened = f"undo group {short(label)} is open"
+            return CommandResult(
+                ok=True, message=opened if closed is None else f"{_closed(closed)}; {opened}"
+            )
+        closed = self.timeline.close_group()
+        if closed is None:
+            raise CommandError("no undo group is open")
+        return CommandResult(ok=True, message=_closed(closed))
+
     def _undo(self) -> CommandResult:
         step = self.timeline.next_undo()
         if step is None:
@@ -592,6 +621,16 @@ class Session:
             path=self._path,
             stamp=self._stamp,
         )
+
+
+def _closed(group: Group) -> str:
+    """``closed undo group "pan drag": 30 steps, undone as one``."""
+    said = f"closed undo group {short(group.label)}"
+    if group.steps == 0:
+        return f"{said}, which took no step"
+    if group.steps == 1:
+        return f"{said}: 1 step"
+    return f"{said}: {group.steps} steps, undone as one"
 
 
 def _warning_keys(state: ShowState, issues: Sequence[Issue]) -> set[tuple[str, str]]:

@@ -491,6 +491,7 @@ class OfflineShow(_Facade):
             path=_optional_path(path),
             ids=ids,
             engine_state=lambda: engine.snapshot,
+            clock=self._clock.now,
         )
         self._console = Console(
             self._session,
@@ -729,6 +730,7 @@ class LiveShow(_Facade):
             compiled=compiled,
             path=_optional_path(path),
             engine_state=lambda: engine.snapshot,
+            clock=clock.now,
         )
         self._setup(
             Console(
@@ -808,6 +810,7 @@ class LiveShow(_Facade):
             stamp=stamp,
             causes=causes,
             report=warn,
+            clock=clock.now,
         )
         live = cls.__new__(cls)
         live._setup(

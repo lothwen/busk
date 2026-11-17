@@ -134,6 +134,7 @@ on the prompt or, where noted, only when it is empty.
 | `[` `]` on an empty prompt | The selected playback's fader 5 % down or up (`fader N 55%`). |
 | PgUp PgDn on an empty prompt | `page prev`, `page next`. While help is open, they scroll it. |
 | Esc | Close help, else leave the page, else clear the line. |
+| Ctrl+Z, Ctrl+Y | `undo`, `redo`, whatever the prompt holds. |
 | Ctrl+C | Clear the line; on an empty prompt, twice in a row, quit. |
 | Ctrl+Q | Quit. |
 
@@ -448,9 +449,12 @@ and zoom, after the masters), `—` with neither.
   strobe rate span the first selected fixture's range (its profile's). What you set shows at
   once, before busk has run it.
 - Drag the bar for a live change: it sends a `set` about ten times a second and logs the last
-  one when you let go. **Each of those lines is an undo step of its own** until busk can
-  group a gesture into one (GAP-06 of the engine's gap list), so `undo` after a drag goes
-  back one step of it at a time. A click is one step.
+  one when you let go. **The drag is one undo step:** its lines go inside busk's `undo group
+  "pan drag"` … `undo group end` (not logged), so one `undo` (Ctrl+Z) takes the whole drag back
+  (`undid: pan drag`). A click is one step too. A drag that stays still for a second opens a
+  new group when it moves on, so it is two steps: busk closes a group 2 s after its last
+  change, so that one nobody closes stops taking changes. While you drag, a change from a
+  surface, the phone or another frontend joins the drag's step, since the group is the show's.
 - `[−]` `[+]` step the value by 5 % (15° for pan and tilt) with `set intensity by 5%`, and the
   mouse wheel by 2 % (5°), not logged. busk changes only what the programmer holds, so the
   steps act only while the programmer holds the attribute for a selected element; elsewhere

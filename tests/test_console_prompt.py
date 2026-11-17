@@ -129,6 +129,10 @@ EXPECTED: list[tuple[str, tuple[str, ...], tuple[str, ...], bool]] = [
      ("a name in quotes",), True),
     ("record cue 1/1 only ", ("intensity", "position", "color", "beam", "focus", "shutter"), (),
      False),
+    ("undo ", ("group",), (), True),  # GAP-06
+    ("undo group ", ("end",), ('a label in quotes, e.g. "pan drag", or end',), False),
+    ('undo group "pan drag" ', (), (), True),
+    ("undo group end ", (), (), True),
     ("load ", ("cue",), (), False),  # GAP-44
     ("load cue ", (), ("a cue list number, as L or L/C",), False),
     ("load cue 1/1 ", ("only",), (), True),
@@ -436,6 +440,7 @@ def test_grammar_keeps_the_forms_that_fit_with_the_definitions_they_use() -> Non
     ]
     assert grammar("release ") == ["    release N [<seconds>]", "    release all [<seconds>]"]
     assert grammar("load cue ") == ["    load cue L/C [only <family>…]"]  # GAP-44
+    assert grammar("undo group ") == ['    undo group "<label>" | undo group end']  # GAP-06
     assert grammar("cue 10/1 block ") == ["    cue L/C block on|off"]  # GAP-47
     assert grammar("fixture 101 mode ") == ["    fixture N mode <mode>"]
     assert grammar("fixture 101 profile ") == ['    fixture N profile "<profile>" mode <mode>']
