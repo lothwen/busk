@@ -338,10 +338,10 @@ planned and recorded in [the rig plan](../../plans/tui-rig-plan.md).
 |---|---|---|---|---|
 | SURFACES: name, kind, binding count | `surfaces[]` (midi, osc, web), `bindings[]` | S | `doc` | |
 | Status dot | `LiveShow.surfaces` (GAP-08): `state`, `detail`; an open web remote's `urls` | S | `surf` | |
-| MONITOR | not available | N | — | GAP-13 |
+| MONITOR | since 2026-11-18, `LiveShow.inputs` (GAP-13): the newest 64 inputs, each with its control as `bind` takes it, the number the device sent and what it drives; read at 10 Hz while F9 shows (pending plan Phase 37) | S | `inputs` | |
 | BINDINGS: surface, type, channel, number, target | `bindings[]`: input (cc, note, osc, clock), action, feedback | S | `doc` | |
-| `val` | the target's level (fader slot → the playback on the current page; master) instead of the raw MIDI value | P | `snap` | GAP-13 |
-| Learn mode | not available | N | — | GAP-13 |
+| `val` | the target's level (fader slot → the playback on the current page; master); since 2026-11-18 the number the control sent beside it, as `in` (GAP-13) | S | `snap`, `inputs` | |
+| Learn mode | since 2026-11-18, `[learn]` on the chosen surface: the next input from it pre-fills `bind "<surface>" <input> ` (pending plan Phase 37, Q14 (a)); not on a binding row, since `bind` adds beside a control's bindings | P | `inputs` | |
 
 ### 2.11 Spec §9, "Data the engine must expose"
 
@@ -354,7 +354,7 @@ planned and recorded in [the rig plan](../../plans/tui-rig-plan.md).
 | Effects | S | cue effects in `doc`, programmer effects in `prog`, what runs in `fx` (GAP-09) | |
 | Show structure | S | `doc`, profiles with their category (GAP-16), templates from `effect_templates` (GAP-15) | |
 | Events: command results | S | `Reply` of each line the TUI sends. Changes made by surfaces or the web remote are seen through polling, not as events | |
-| Events: MIDI input | N | n/a | GAP-13 |
+| Events: MIDI input | S | since 2026-11-18, `inputs` (GAP-13), polled: MIDI and OSC as the bindings get them | |
 | Events: route TX status | S | `route` (GAP-07) | |
 | Events: undo depth | P | `info` text | GAP-03 |
 
@@ -431,7 +431,8 @@ they answer one of the spec's open questions (§10 of the spec), that is noted.
 19. **No result line for performance commands.** busk replies with empty text, so the spec's
     sample results (`P1 → cue 2 "Peach"`) do not appear. The engine log and the panes show the
     effect.
-20. **Bindings `val` is the target's level in %**, not the raw MIDI value (GAP-13).
+20. **Bindings `val` is the target's level in %**, not the raw MIDI value (GAP-13). Since
+    GAP-13 (2026-11-18) the raw value is its own column, `in`, before `val`.
 
 ---
 

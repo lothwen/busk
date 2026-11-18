@@ -20,7 +20,9 @@ show's state back to LEDs, motor faders and labels. The console's
 MIDI needs the `midi` extra (`busk[midi]`, see the [README](../README.md#install)); without
 it each MIDI surface reports `MIDI s-…: unavailable: install busk[midi]` once and stays
 closed. On Linux MIDI uses the ALSA sequencer (`/dev/snd/seq`); `aseqdump -l` lists the
-input ports, and `aseqdump -p <port>` shows what a controller sends.
+input ports, and `aseqdump -p <port>` shows what a controller sends. Once the surface is open,
+the terminal UI's F9 shows it too, in `bind`'s words, and its learn mode starts the `bind`
+line for the control you move ([F9 Surfaces](tui/guide.md#f9-surfaces)).
 
 ```
 busk> surface add midi "nanoKONTROL2"

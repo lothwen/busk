@@ -51,6 +51,7 @@ from busk_tui.model import (
     EngineStarting,
     EngineStopped,
     HealthChanged,
+    InputsChanged,
     LiveChanged,
     LiveState,
     Origin,
@@ -171,6 +172,7 @@ class BuskApp(App[int]):
         self._interrupted = False  # a Ctrl+C on an empty prompt: the next one quits
         self._quitting: int | None = None  # the ticket of "save and quit"'s save
         self._context_text = ""
+        self._fill_note: tuple[str, str] | None = None  # a pre-fill and the hint row's note on it
         self._waiting: dict[int, Callable[[bool], None]] = {}  # ticket → what to call when done
         self._refusals: dict[int, Callable[[str], None]] = {}  # ticket → who says why it failed
         self._keyed: dict[str, int] = {}  # key → the newest ticket with such a callback
@@ -341,6 +343,9 @@ class BuskApp(App[int]):
             case SurfacesChanged(surfaces=surfaces):
                 self.view.surfaces = surfaces
                 self._changed.add("surfaces")
+            case InputsChanged(inputs=inputs):
+                self.view.inputs = inputs
+                self._changed.add("inputs")
             case HealthChanged(state=state, late=late):
                 self.status.engine, self.status.late = state, late
                 self.status.refresh()
@@ -471,6 +476,7 @@ class BuskApp(App[int]):
         message.stop()
         self._disarm()
         self._leave_cursor()
+        self._fill_note = None if message.note is None else (message.text, message.note)
         self.prompt.value = message.text
         self.prompt.cursor_position = len(message.text)
         self.prompt.focus()
@@ -504,6 +510,11 @@ class BuskApp(App[int]):
 
     def _show_hint(self) -> None:
         prompt = self.prompt
+        if self._fill_note is not None:  # a pre-fill's note, until the line changes
+            if prompt.value == self._fill_note[0]:
+                self.query_one(HintRow).show_text(self._fill_note[1])
+                return
+            self._fill_note = None
         before = prompt.value[: prompt.cursor_position]
         if self._help_index is None and self.bridge.help_lines:
             self._help_index = HelpIndex(self.bridge.help_lines)
@@ -560,7 +571,9 @@ class BuskApp(App[int]):
         """The page just shown: what the bridge reads for it, and all of it drawn."""
         page = self.current_page
         output, effects = page.watches(self.view)
-        self.bridge.watch(output=output, effects=effects, dmx=page.WATCH_DMX)
+        self.bridge.watch(
+            output=output, effects=effects, dmx=page.WATCH_DMX, inputs=page.WATCH_INPUTS
+        )
         self.bridge.track(page.tracks())
         self._changed |= ALL_PARTS
         self._redraw()
@@ -603,7 +616,10 @@ class BuskApp(App[int]):
         message.stop()
         if message.page is self.current_page:
             output, effects = message.page.watches(self.view)
-            self.bridge.watch(output=output, effects=effects, dmx=message.page.WATCH_DMX)
+            page = message.page
+            self.bridge.watch(
+                output=output, effects=effects, dmx=page.WATCH_DMX, inputs=page.WATCH_INPUTS
+            )
             self.bridge.track(message.page.tracks())
 
     def action_toggle_help(self) -> None:
@@ -718,9 +734,12 @@ class BuskApp(App[int]):
         self.run_line(line.text, "ui", key=f"fader:{number}", performance=line.performance)
 
     def _escape(self) -> None:
-        """Close help, else leave the pane cursor, else clear the prompt."""
+        """Close help, else the page's own (F9's learn mode), else leave the
+        pane cursor, else clear the prompt."""
         if self.help_overlay.is_open:
             self.close_help()
+        elif self.current_page.escape():
+            pass
         elif self.cursor.active:
             self._leave_cursor()
         else:

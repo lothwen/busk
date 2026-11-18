@@ -13,9 +13,9 @@ own (plan §4.1):
 * the **controls** worker runs the performance lines of the TUI's own
   controls, in order; they never wait for an ordered line (busk's GAP-12);
 * the **reader** looks at the show's published state 20 times a second (the
-  output, the running effects and the DMX frame, while a page shows them, 10
-  times; a cue list's tracked states, while F4 shows the list, once
-  and after each show edit) and
+  output, the running effects, the DMX frame and the inputs from the
+  surfaces, while a page shows them, 10 times; a cue list's tracked states,
+  while F4 shows the list, once and after each show edit) and
   sends an event only when something changed; when the selection changes,
   it asks busk's completion which options the selection offers (busk's
   ``expected`` only reads, so any thread may ask);
@@ -60,6 +60,7 @@ from busk import (
     RouteStatus,
     Show,
     ShowLoadError,
+    SurfaceInput,
     SurfaceStatus,
     TrackedCue,
     load_show,
@@ -95,6 +96,8 @@ from busk_tui.model import (
     GroupInfo,
     HealthChanged,
     HeldValue,
+    InputsChanged,
+    InputView,
     Layer,
     Limits,
     LiveChanged,
@@ -161,6 +164,10 @@ effect runs, and F5 draws every row that runs again."""
 DMX_S: Final = 0.1
 """How often the reader looks at the DMX frame while it is watched (10 Hz,
 as the output): F8's channel values."""
+
+INPUTS_S: Final = 0.1
+"""How often the reader looks at the inputs from the surfaces while they are
+watched (10 Hz): F9's MONITOR."""
 
 _debug = logging.getLogger("busk_tui")
 
@@ -250,6 +257,9 @@ class _Seen:
     output_at: float = 0.0  # when the output was last read (monotonic)
     dmx: tuple[tuple[int, bytes], ...] | None = None  # None: send the next read, whatever it is
     dmx_at: float = 0.0  # when the frame was last read for it (monotonic)
+    inputs: tuple[SurfaceInput, ...] | None = None  # None: send the next read, whatever it is
+    input_views: tuple[InputView, ...] = ()  # as sent: an input keeps its view while kept
+    inputs_at: float = 0.0  # when the inputs were last read (monotonic)
     tracked: tuple[Show | None, int | None] = (None, None)  # the last sheet's document and list
     sheet: TrackSheet | None = None  # None: send the next read, whatever it is
     routes: tuple[RouteStatus, ...] | Literal["unread"] | None = "unread"
@@ -297,7 +307,7 @@ class Bridge:
         self._busy: Busy | None = None
         self._help: tuple[str, ...] = ()
         self._session: SessionState | None = None
-        self._watching = (False, False, False)  # output, effects, DMX
+        self._watching = (False, False, False, False)  # output, effects, DMX, inputs
         self._tracking: int | None = None  # the cue list whose tracked states the reader reads
         self._seen = _Seen()
         self._news = _News(self._events.put)
@@ -450,11 +460,11 @@ class Bridge:
             start=answer.start,
         )
 
-    def watch(self, output: bool, effects: bool, dmx: bool = False) -> None:
-        """Which of the show's output, effects and DMX frame the reader
-        polls (each costs the reading process, so only while a page shows
-        it). Once watched again, the next read is sent even if it has not
-        changed."""
+    def watch(self, output: bool, effects: bool, dmx: bool = False, inputs: bool = False) -> None:
+        """Which of the show's output, effects, DMX frame and inputs from the
+        surfaces the reader polls (each costs the reading process, so only
+        while a page shows it). Once watched again, the next read is sent
+        even if it has not changed: the inputs whole, busk's newest 64."""
         if effects and not self._watching[1]:
             self._seen.effects = None
             self._seen.effects_at = 0.0
@@ -464,7 +474,10 @@ class Bridge:
         if dmx and not self._watching[2]:
             self._seen.dmx = None
             self._seen.dmx_at = 0.0
-        self._watching = (output, effects, dmx)
+        if inputs and not self._watching[3]:
+            self._seen.inputs = None
+            self._seen.inputs_at = 0.0
+        self._watching = (output, effects, dmx, inputs)
 
     def track(self, cue_list: int | None) -> None:
         """Which cue list's tracked states the reader reads (busk's GAP-46,
@@ -704,6 +717,13 @@ class Bridge:
             if universes != seen.dmx:
                 seen.dmx = universes
                 put(DmxChanged(DmxModel(frame.seq, universes)))
+        if self._watching[3] and time.monotonic() - seen.inputs_at >= INPUTS_S:
+            seen.inputs_at = time.monotonic()
+            inputs = show.inputs  # one read: replaced, never changed
+            if inputs is not seen.inputs:
+                heard = input_views(inputs, seen.input_views)
+                seen.inputs, seen.input_views = inputs, heard
+                put(InputsChanged(heard))
         self._look_at_health(show.health)
         tracking, (was_doc, was_list) = self._tracking, seen.tracked
         if tracking is not None and (doc is not was_doc or tracking != was_list):
@@ -1420,6 +1440,26 @@ def surface_views(doc: Show, status: tuple[SurfaceStatus, ...] | None) -> tuple[
             )
         )
     return tuple(views)
+
+
+def input_views(
+    inputs: Sequence[SurfaceInput], before: Sequence[InputView] = ()
+) -> tuple[InputView, ...]:
+    """busk's inputs from the surfaces as views; one already in ``before``
+    (by its sequence number) keeps its view."""
+    kept = {view.seq: view for view in before}
+    return tuple(
+        kept.get(given.seq)
+        or InputView(
+            seq=given.seq,
+            surface=given.surface,
+            input=given.input,
+            raw=given.raw,
+            value=given.value,
+            drives=given.drives,
+        )
+        for given in inputs
+    )
 
 
 def _device_words(kind: str, match: Mapping[str, Any]) -> str:

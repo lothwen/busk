@@ -30,8 +30,10 @@ instances that tick ran (:class:`~busk.engine.snapshot.EffectSnapshot`,
 GAP-09), and their ``programmer`` is the programmer with fixtures by number
 (:class:`~busk.session.status.ProgrammerStatus`, GAP-02). A :class:`LiveShow`'s
 ``routes`` are its output routes and what each does
-(:class:`~busk.output.driver.RouteStatus`, GAP-07), and its ``surfaces`` its
-control surfaces (:class:`~busk.io.surfaces.SurfaceStatus`, GAP-08).
+(:class:`~busk.output.driver.RouteStatus`, GAP-07), its ``surfaces`` its
+control surfaces (:class:`~busk.io.surfaces.SurfaceStatus`, GAP-08), and its
+``inputs`` the newest inputs that came in from them
+(:class:`~busk.console.inputs.SurfaceInput`, GAP-13).
 ``confirmation(line)`` is the question ``busk run``'s prompt asks before a
 dangerous line (GAP-10), for a frontend to ask too, and ``effect_templates``
 the templates ``effect add`` takes, the show's and the effect library's
@@ -101,6 +103,7 @@ from busk.console.console import (
     Reply,
     status_line,
 )
+from busk.console.inputs import InputLog, SurfaceInput
 from busk.console.parser import Expected
 from busk.engine.clock import SWITCH_INTERVAL, Clock, FakeClock, MonotonicClock
 from busk.engine.effect_status import EffectCapture, read_effects
@@ -859,6 +862,7 @@ class LiveShow(_Facade):
         self._started: float | None = None  # when start() started the engine, on its clock
         self._run: _LocalRun | None = None
         self._surfaces: SurfaceManager | None = None
+        self._inputs: InputLog | None = None
         self._feedback: FeedbackWorker | None = None
         self._stops = (threading.Event(), threading.Event())  # feedback, monitor
         self._threads: list[threading.Thread] = []
@@ -992,6 +996,22 @@ class LiveShow(_Facade):
         run``'s show has them too: its console process opens them."""
         manager = self._surfaces
         return None if manager is None else manager.status()
+
+    @property
+    def inputs(self) -> tuple[SurfaceInput, ...]:
+        """The newest 64 inputs that came in from the control surfaces,
+        oldest first, bound or not: each with its surface, its control as
+        ``bind`` takes it, the number the device sent, the value the
+        bindings got and what they drive (see
+        :class:`~busk.console.inputs.SurfaceInput`). Each has a sequence
+        number, so a frontend that polls reads only what is new; while
+        nothing came in, the same object comes back.
+
+        ``()`` before :meth:`start` and with ``surfaces=False``: no surface
+        is open. After :meth:`stop`, the inputs as they ended. ``busk
+        run``'s show has them too: its console process opens the surfaces."""
+        log = self._inputs
+        return () if log is None else log.inputs
 
     @property
     def health(self) -> EngineHealth | None:
@@ -1130,6 +1150,7 @@ class LiveShow(_Facade):
             link.watch(frames=True)
             return link.frame
 
+        inputs = InputLog(lambda: session.show)
         resolver = BindingResolver(
             session.show,
             compiled,
@@ -1138,6 +1159,7 @@ class LiveShow(_Facade):
             page=page,
             clock=clock.now,
             report=self._warn,
+            record=inputs.record,
         )
         web = WebLink(
             snapshot=lambda: link.snapshot,
@@ -1151,6 +1173,7 @@ class LiveShow(_Facade):
         surfaces = SurfaceManager(resolver.handle, web, say=self._say, warn=self._warn)
         surfaces.reconcile(compiled)
         self._surfaces = surfaces  # opened: :attr:`surfaces` lists them all at once
+        self._inputs = inputs
         self._feedback = FeedbackWorker(
             lambda: link.compiled,
             lambda: link.snapshot,

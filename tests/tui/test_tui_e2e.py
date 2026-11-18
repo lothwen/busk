@@ -23,6 +23,9 @@
   refusal of one in use and deletes one a binding drives; F2's option chips set
   a gobo, F7 caps the strobe and takes the cap away, and the status bar's
   title renames the show; a new show gets a rig from controls alone.
+* On a show with an OSC surface open (``--standalone``): F9's MONITOR shows
+  what comes in, a fader's moves on one line, BINDINGS the last number its
+  control sent, and learn mode binds a control that came in.
 * On a running show with its output open (``--standalone``): F8 adds a route to
   a new universe, a fixture patched in it reaches a real receiver, and the route
   goes off, on and away.
@@ -35,6 +38,7 @@ from __future__ import annotations
 
 import copy
 import json
+import socket
 import threading
 import time
 from collections.abc import Callable
@@ -84,6 +88,7 @@ from busk_tui.pages.patch import (
 )
 from busk_tui.pages.presets import PresetsPage
 from busk_tui.pages.program import EncoderPanel
+from busk_tui.pages.surfaces import BindingTable, MonitorTable, SurfacesPage, SurfaceTable
 from busk_tui.shell import BuskApp
 from busk_tui.widgets import encoders
 from busk_tui.widgets.bars import HBar
@@ -2945,6 +2950,92 @@ def test_f8_shows_what_busk_sends_on_each_channel_on_the_real_engine(
     try:
         drive(app, body)
     finally:
+        bridge.stop()
+
+
+def test_f9_monitors_an_osc_surface_and_learns_from_it_on_the_real_engine(
+    club_path: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """F9's MONITOR, BINDINGS' ``in`` and learn mode (the pending plan's
+    Phase 37, busk's GAP-13), with OSC sent to a surface on localhost."""
+    from busk.io import midi  # no MIDI port: the club's nanoKONTROL2 stays closed
+    from busk.io.osc import encode
+
+    monkeypatch.setattr(midi, "input_names", list)
+    monkeypatch.setattr(midi, "output_names", list)
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    show, _ = busk.load_show(path)
+    built = busk.OfflineShow(show, path=path)
+    phone = next(s["id"] for s in built.show["surfaces"] if s["kind"] == "web")
+    assert built.submit({"type": "DELETE", "path": ["surfaces", {"id": phone}]}).ok  # no :8080
+    for line in (f'surface add osc "Touch" port {port}', 'bind "Touch" osc "/fader/1" fader 1'):
+        assert built.execute(line).ok, line
+    assert built.save().ok
+    bridge = Bridge.standalone(path, output=False, surfaces=True, state_dir=tmp_path / "state")
+    app = BuskApp(bridge, config.Settings(page=9), standalone=True)
+    client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    def send(address: str, *values: float) -> None:
+        for value in values:
+            client.sendto(encode(address, value), ("127.0.0.1", port))
+            time.sleep(0.005)  # in order, and within the surface's rate limit
+
+    def lines() -> list[tuple[str, str, str]]:
+        table = app.query_one(MonitorTable)
+        cells = (column(table, "input"), column(table, "sent"), column(table, "drives"))
+        return list(zip(*cells, strict=True))
+
+    def sent_to(control: str) -> str:
+        table = app.query_one(BindingTable)
+        return dict(zip(column(table, "input"), column(table, "sent"), strict=True))[control]
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = app.query_one(SurfacesPage)
+        await until(
+            pilot, lambda: any(s.name == "Touch" and s.state == "ok" for s in app.view.surfaces)
+        )
+        assert sent_to('osc "/fader/1"') == "—"
+        send("/fader/1", 0.25, 0.5, 0.75)
+        send("/fader/2", 0.1, 0.3)
+        send("/fader/1", 0.6)
+        await until(pilot, lambda: len(lines()) == 3)
+        assert lines() == [
+            ('osc "/fader/1"', "0.75", "→ fader 1"),  # a sweep: one line that moved
+            ('osc "/fader/2"', "0.30", "→ —"),
+            ('osc "/fader/1"', "0.60", "→ fader 1"),
+        ]
+        assert sent_to('osc "/fader/1"') == "0.60"
+
+        touch = [s.name for s in app.view.surfaces].index("Touch")
+        await click_cell(pilot, app.query_one(SurfaceTable), touch, "name")
+        await tap_button(pilot, page.surface_edits, "learn")
+        await until(pilot, lambda: page.learning)
+        send("/fader/3", 1.0)
+        await until(pilot, lambda: app.prompt.value == 'bind "Touch" osc "/fader/3" ')
+        assert not page.learning
+        await pilot.press(*"fader 3", "enter")
+        await until(pilot, lambda: 'osc "/fader/3"' in column(app.query_one(BindingTable), "input"))
+        send("/fader/3", 0.4)
+        await until(pilot, lambda: lines()[-1] == ('osc "/fader/3"', "0.40", "→ fader 3"))
+        await until(pilot, lambda: sent_to('osc "/fader/3"') == "0.40")
+
+        await tap_button(pilot, page.surface_edits, "learn")
+        await until(pilot, lambda: page.learning)
+        send("/fader/1", 0.2)
+        await until(pilot, lambda: app.prompt.value == 'bind "Touch" osc "/fader/1" ')
+        note = 'osc "/fader/1" drives fader 1: unbind it to replace it'
+        await until(pilot, lambda: plain_of(app.query_one(HintRow)) == note)
+        await pilot.press("escape")
+        assert app.prompt.value == ""
+
+    try:
+        drive(app, body)
+    finally:
+        client.close()
         bridge.stop()
 
 

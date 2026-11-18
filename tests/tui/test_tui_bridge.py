@@ -33,6 +33,7 @@ from busk_tui.model import (
     EngineStarting,
     EngineStopped,
     HealthChanged,
+    InputsChanged,
     LiveChanged,
     OutputChanged,
     ProgrammerChanged,
@@ -415,6 +416,92 @@ def test_the_dmx_frame_only_while_watched_and_only_when_it_changes(
     assert len(events.of(DmxChanged)) == sent  # not watched any more
     bridge.watch(output=False, effects=False, dmx=True)
     events.until(lambda e: isinstance(e, DmxChanged) and e.dmx.seq == 4, "sent again")
+
+
+def came(
+    seq: int, raw: int | None = 64, drives: tuple[str, ...] = ("fader 1",)
+) -> busk.SurfaceInput:
+    return busk.SurfaceInput(
+        seq=seq, surfaceId="s-apc", surface="APC mini mk2", input="cc 1 48",
+        raw=raw, value=0.5, drives=drives,
+    )  # fmt: skip
+
+
+def test_the_inputs_only_while_watched_and_whole_when_watched_again(
+    running: tuple[Bridge, Events], stub: Stub
+) -> None:
+    """F9's MONITOR (the pending plan's Phase 37, busk's GAP-13)."""
+    bridge, events = running
+    stub.inputs = (came(1), came(2, raw=None, drives=()))
+    time.sleep(0.2)
+    assert events.of(InputsChanged) == []  # not watched
+    bridge.watch(output=False, effects=False, inputs=True)
+    first = events.until(lambda e: isinstance(e, InputsChanged), "the inputs")
+    assert isinstance(first, InputsChanged)
+    assert [(i.seq, i.surface, i.input, i.sent, i.drives) for i in first.inputs] == [
+        (1, "APC mini mk2", "cc 1 48", "64", ("fader 1",)),
+        (2, "APC mini mk2", "cc 1 48", "0.50", ()),
+    ]
+    time.sleep(0.2)  # the same tuple: nothing new
+    assert len(events.of(InputsChanged)) == 1
+    stub.inputs = (*stub.inputs[1:], came(3))
+    later = events.until(lambda e: isinstance(e, InputsChanged) and e.inputs[-1].seq == 3, "new")
+    assert isinstance(later, InputsChanged)
+    assert later.inputs[0] is first.inputs[1]  # an input keeps its view
+    assert [i.seq for i in later.inputs] == [2, 3]
+    bridge.watch(output=False, effects=False)
+    time.sleep(0.2)
+    sent = len(events.of(InputsChanged))
+    stub.inputs = (*stub.inputs, came(4))
+    time.sleep(0.2)
+    assert len(events.of(InputsChanged)) == sent  # not watched any more
+    bridge.watch(output=False, effects=False, inputs=True)
+    again = events.until(lambda e: isinstance(e, InputsChanged) and e.inputs[-1].seq == 4, "again")
+    assert isinstance(again, InputsChanged)
+    assert [i.seq for i in again.inputs] == [2, 3, 4]
+    bridge.watch(output=False, effects=False)
+    time.sleep(0.2)
+    sent = len(events.of(InputsChanged))
+    bridge.watch(output=False, effects=False, inputs=True)  # nothing new: sent all the same
+    deadline = time.monotonic() + WAIT_S
+    while len(events.of(InputsChanged)) == sent:
+        assert time.monotonic() < deadline, "not sent again"
+        time.sleep(0.01)
+
+
+class SweepingStub(Stub):
+    """A stub with a new input at every read."""
+
+    count = 0
+
+    @property  # type: ignore[override]
+    def inputs(self) -> Any:
+        self.count += 1
+        return (came(self.count),)
+
+    @inputs.setter
+    def inputs(self, value: Any) -> None:
+        pass
+
+
+def test_the_inputs_go_ten_times_a_second_at_most() -> None:
+    stub = SweepingStub()
+    bridge = Bridge(stub, None)  # type: ignore[arg-type]
+    bridge.start()
+    try:
+        events = Events(bridge)
+        events.until(lambda e: isinstance(e, EngineRunning))
+        bridge.watch(output=False, effects=False, inputs=True)
+        events.until(lambda e: isinstance(e, InputsChanged), "the inputs")
+        before = len(events.of(InputsChanged))
+        deadline = time.monotonic() + 1.0
+        while time.monotonic() < deadline:  # a drain keeps only the newest of each kind
+            events.of(InputsChanged)
+            time.sleep(0.02)
+        sent = len(events.of(InputsChanged)) - before
+        assert 7 <= sent <= 13, sent  # the reader looks 20 times a second
+    finally:
+        bridge.stop()
 
 
 class ChangingStub(Stub):

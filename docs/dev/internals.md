@@ -783,6 +783,17 @@ was. The surfaces run with the session, in `busk run`'s console process, so its 
 show has the status without a message from the root. The MIDI feedback ports, which the
 feedback worker owns, are not part of it.
 
+**The input monitor** (`busk.console.inputs`; GAP-13 of
+[`tui/engine-gaps.md`](tui/engine-gaps.md)). `LiveShow.inputs` is an `InputLog`'s tuple.
+The binding resolver hands it every event after the event's commands, with the bindings it
+found (`record=`), on the input's own thread. The log names the control and what each
+binding drives in the console's words (`_input` and `_action`, which `list bindings` uses),
+with the names of the show the session holds, read once per document. It appends under a
+lock to a deque of 64 and publishes a new tuple, so readers take no lock; a record costs
+the input thread about 2.4 µs. An event carries the number the device sent (`raw`) beside
+its value, which the MIDI backend fills in and bindings never read. Like the status, the
+log lives with the surfaces in `busk run`'s console process.
+
 **Import** (`busk.importers`). The OFL importer builds each mode from its channels'
 capabilities through a table (phase-7-plan §5.18): each capability becomes a range segment
 of a busk attribute, unmapped ones become `control` channels at their `defaultValue`, and

@@ -308,6 +308,7 @@
       "fixture_profiles": "property: tuple[FixtureProfileInfo, ...]",
       "frame": "property: DmxFrame | None",
       "health": "property: EngineHealth | None",
+      "inputs": "property: tuple[SurfaceInput, ...]",
       "output": "property: OutputSnapshot | None",
       "programmer": "property: ProgrammerStatus",
       "routes": "property: tuple[RouteStatus, ...] | None",
@@ -532,6 +533,22 @@
       "beats": "(self, t: float) -> float"
     },
     "module": "busk.engine.snapshot"
+  },
+  "SurfaceInput": {
+    "fields": [
+      "seq: int",
+      "surfaceId: str",
+      "surface: str",
+      "input: str",
+      "raw: int | None",
+      "value: float",
+      "drives: tuple[str, ...]"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, *, seq: int, surfaceId: str, surface: str, input: str, raw: int | None, value: float, drives: tuple[str, ...]) -> None"
+    },
+    "module": "busk.console.inputs"
   },
   "SurfaceStatus": {
     "fields": [

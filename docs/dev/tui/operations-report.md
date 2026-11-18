@@ -40,7 +40,8 @@ channel values, in its hint row and its CHANNELS panel. Its
 Phase 35 added the lines that rename and delete a master (GAP-53), and F7's MASTERS panel, which
 makes, renames and deletes them. Its Phase 36 gave the last setup lines a control: F2's option rows
 (`set gobo1 star`), the strobe cap on F7's PANIC (`safety strobe`) and the show's title on the
-status bar (`rename show`).
+status bar (`rename show`). Its Phase 37 published what comes in from the surfaces (GAP-13,
+`LiveShow.inputs`), and gave F9 its MONITOR, the number each control sent, and learn mode.
 
 ## How to read it
 
@@ -92,8 +93,9 @@ In short:
 - **busk lacks a little:** deleting several presets, cues or cue lists in one line, and the two
   limits of GAP-41 on an effect's settings (see
   [What busk is missing](#what-busk-is-missing)).
-- **Beyond this report,** the TUI sets up no surface or binding. F9 operates and shows them, and
-  puts `bind`, `unbind`, `feedback` and `pickup` lines in the prompt. Masters, safety and the show's
+- **Beyond this report,** the TUI sets up no surface or binding. F9 operates and shows them, with
+  what comes in from them, and puts `bind`, `unbind`, `feedback` and `pickup` lines in the
+  prompt; its learn mode puts the control that comes in after `bind`. Masters, safety and the show's
   title have controls: F7's MASTERS panel makes, renames and deletes masters (`master add`,
   `rename master`, `delete master … cascade`); park and limits are on F3's FIXTURE panel, and the
   strobe cap on F7's PANIC (`safety strobe 3|off`); a click on the status bar's title renames the

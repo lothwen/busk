@@ -4,7 +4,9 @@
 waits) or ``"tui"`` (the TUI, headless, on the run's show, typing a line now
 and then, on the F-key ``page``, F1 in ``layout``, F6 with the PRESET panel
 open on a new preset of the pool ``edit``), ``lines`` to run on the show
-first (in both modes), ``seconds`` to run, and ``report``, where it writes
+first (in both modes), ``osc``, a port on localhost to send a fader sweep
+to while it runs (100 messages a second, ``/fader/1`` and ``/fader/2`` by
+turns each half second: F9's MONITOR), ``seconds`` to run, and ``report``, where it writes
 the engine's ticks and overruns over the run, and the CPU time this process
 used and the wall time over the steady part of it: the TUI's imports and its
 start-up are left out, and ``seconds`` is how long that part really ran.
@@ -15,6 +17,8 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import socket
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -28,6 +32,9 @@ def main(show: Any) -> None:
         time.sleep(0.05)  # the engine process sends its counts once a second
     for line in plan.get("lines", ()):
         assert show.execute(line).ok, line
+    stop = threading.Event()
+    if (port := plan.get("osc")) is not None:
+        threading.Thread(target=_sweep, args=(port, stop), daemon=True).start()
     first = show.health
     if plan["mode"] == "tui":
         cpu, wall = _run_tui(
@@ -37,6 +44,7 @@ def main(show: Any) -> None:
         cpu, wall = time.process_time(), time.monotonic()
         time.sleep(seconds)
         cpu, wall = time.process_time() - cpu, time.monotonic() - wall
+    stop.set()
     last = show.health
     Path(plan["report"]).write_text(
         json.dumps(
@@ -48,6 +56,18 @@ def main(show: Any) -> None:
             }
         )
     )
+
+
+def _sweep(port: int, stop: threading.Event) -> None:
+    """A fader sweep to an OSC surface on localhost (see the module docs)."""
+    from busk.io.osc import encode
+
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
+        count = 0
+        while not stop.wait(0.01):
+            fader = 1 + count // 50 % 2
+            client.sendto(encode(f"/fader/{fader}", count % 50 / 49), ("127.0.0.1", port))
+            count += 1
 
 
 def _run_tui(

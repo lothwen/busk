@@ -208,6 +208,11 @@ def live(path: str, host: Callable[[busk.LiveShow], None]) -> busk.Show:
             dot: tuple[str, str, str] = (surface.name, surface.kind, surface.state)
             urls: tuple[str, ...] = surface.urls
             assert (surface.id, surface.detail, dot, urls) is not None
+        inputs: tuple[busk.SurfaceInput, ...] = live.inputs
+        for came in inputs:
+            heard: tuple[int, str, str, str] = (came.seq, came.surfaceId, came.surface, came.input)
+            sent: tuple[int | None, float, tuple[str, ...]] = (came.raw, came.value, came.drives)
+            assert (heard, sent) is not None
         health: busk.EngineHealth | None = live.health
         assert health is not None  # started
         chip: str | None = None if health.state == "running" else health.state.upper()

@@ -14,7 +14,7 @@ log, so what the UI does is what you could type.
 > rig, groups and park, presets, cues and cue lists, effects and their templates, playbacks and
 > pages, masters, the strobe cap and the show's title. A few things are still typed at the
 > prompt: renumbering a page, and the options of an effect as it is added. F9 puts the start of a
-> binding's line in the prompt.
+> binding's line in the prompt, and its learn mode the control you move.
 
 ## Install
 
@@ -1341,18 +1341,23 @@ arms a place. Below 100 columns ROUTES goes under UNIVERSES.
 
 ## F9 Surfaces
 
-The control surfaces (MIDI controllers, OSC apps, the web remote) and what each input is
-bound to.
+The control surfaces (MIDI controllers, OSC apps, the web remote), what comes in from them,
+and what each input is bound to.
 
 ```
- ┌─ SURFACES · 2 ─────────────────────────────────────────┐┌─ BINDINGS · 51 ──────────────────────────────────────────────────┐
- │   name          kind device         pickup binds state ││ surface         input        what                  feedback  val │
- │ ● nanoKONTROL2  midi "nanoKONTROL2" soft      51 failed││ nanoKONTROL2    cc 1 0       fader 1                         80% │
- │ ● Phone         web  port 8080      jump       0 open  ││ nanoKONTROL2    cc 1 32      button 1 1            led         — │
- │                                                        ││ nanoKONTROL2    cc 1 23      master gm                      100% │
- │ nanoKONTROL2  'nanoKONTROL2' not found; available: …   ││ nanoKONTROL2    cc 1 46      tap                   led         — │
- │ Phone  http://192.168.1.135:8080/?k=Ri2I1sMN           ││ nanoKONTROL2    cc 1 60      release all                       — │
- │ edit "nanoKONTROL2" [bind…] [pickup…]                  ││ edit cc 1 32 on "nanoKONTROL2" [unbind…] [feedback…]             │
+ ┌─ SURFACES · 2 ─────────────────────────────────────────┐┌─ BINDINGS · 52 ──────────────────────────────────────────────────────────────────────┐
+ │   name       kind device         pickup binds state    ││ surface               input               what                   feedback    in  val │
+ │ ● nanoKONTR… midi "nanoKONTROL2" soft      51 open     ││ nanoKONTROL2          cc 1 0              fader 1                           102  80% │
+ │ ● Touch      osc  port 8000      jump       1 open     ││ nanoKONTROL2          cc 1 32             button 1 1             led          —    — │
+ │                                                        ││ nanoKONTROL2          cc 1 23             master gm                           — 100% │
+ │ edit "Touch" [bind…] [pickup…] [learn]                 ││ nanoKONTROL2          cc 1 46             tap                    led          —    — │
+ └────────────────────────────────────────────────────────┘│ nanoKONTROL2          cc 1 60             release all                         —    — │
+ ┌─ MONITOR ──────────────────────────────────────────────┐│ Touch                 osc "/fader/1"      fader 1                          0.80  80% │
+ │ input             in drives            surface         ││ edit cc 1 32 on "nanoKONTROL2" [unbind…] [feedback…]                                 │
+ │ cc 1 0           102 → fader 1         nanoKONTROL2    │
+ │ osc "/fader/1"  0.80 → fader 1         Touch           │
+ │ osc "/fader/2"  0.30 → —               Touch           │
+ └────────────────────────────────────────────────────────┘
 ```
 
 **SURFACES**: each surface's light (green open, red failed, grey ignored or not open, as
@@ -1362,19 +1367,37 @@ and its state. Under the table, busk's reason for a failed or ignored surface, a
 remote's addresses, with their key, to open on a phone. A MIDI controller that is unplugged
 turns red, and green again once it is plugged in: busk opens it when it comes back.
 
+**MONITOR**: the last 14 inputs that came in from the surfaces, newest at the bottom, bound or
+not: the control as `bind` takes it, the number the device sent (`in`: a CC's value, a note's
+velocity, a pitch bend's pitch; for OSC, the value it sent), what it drives in busk's words
+(`→ fader 1`, or `→ —`, dim, when nothing does) and its surface. Inputs in a row from one
+control replace its line, so a fader moved from end to end is one line that moves; two faders
+moved by turns make a line each time. A pitch bend reads `bend 1`, though `bind` cannot take
+one. What busk cannot bind never shows (a program change, sysex), nor does the web remote,
+which sends commands. With no surface open the panel says so. F9 reads what comes in only
+while it shows, ten times a second; coming back to it, it takes the newest 64 busk kept.
+
 **BINDINGS**: each binding's surface, its input as `bind` takes it (`cc 1 48`, `note 1 36`,
 `osc "/1/fader1"`, `clock`), what it drives in `bind`'s words (`fader 1`, `button 9 2`,
 `master gm`, `master "FX"`, `tap`, `page +1`, `blackout momentary`, `release all`, `output
-off`), its feedback (`led`, `motor`, `display`, with its own address when not the input's)
-and `val`, the level of what it drives: the playback in its fader slot on the current page,
-its playback, its master. busk does not report the messages that come in, so F9 has no
-monitor of incoming MIDI, no learn mode and no raw MIDI value yet.
+off`), its feedback (`led`, `motor`, `display`, with its own address when not the input's),
+`in`, the last number its control sent (`—` before any), and `val`, the level of what it
+drives: the playback in its fader slot on the current page, its playback, its master. With
+soft pickup the two differ until the fader picks the level up.
 
 A click on a row chooses it, and the edits under each table act on it: `bind "Phone" ` and
 `surface "Phone" pickup ` for a surface; `unbind "nanoKONTROL2" cc 1 32` (a whole line: Enter
 runs it) and `feedback "nanoKONTROL2" cc 1 32 ` for a binding. The pane cursor stops on the
 surfaces, their edits, the bindings and their edits; Enter on a row chooses it. Below 132
-columns BINDINGS goes under SURFACES.
+columns MONITOR goes under SURFACES, and BINDINGS under it.
+
+**Learn mode.** `[learn]` among the chosen surface's edits arms it, lit amber. Move a control
+on that surface: its line goes in the prompt, `bind "Touch" osc "/fader/3" `, for you to finish
+with what it drives (`fader 3`) and send. Nothing is sent before you do. When the control has
+bindings already, the hint row says so (`cc 1 0 drives fader 1: unbind it to replace it`):
+`bind` adds a binding beside them, so to move one, `unbind` it first. A pitch bend, which
+`bind` cannot take, and the clock, which a device sends on its own, are passed over. Esc, a
+second click, choosing another surface or another page disarms it.
 
 ## Questions, dialogs and quitting
 

@@ -29,47 +29,55 @@ S = SurfaceId("s")
 
 
 @pytest.mark.parametrize(
-    ("message", "address", "value"),
+    ("message", "address", "value", "raw"),
     [
         (
             mido.Message("control_change", channel=0, control=7, value=127),
             {"kind": "midiCC", "channel": 1, "cc": 7},
             1.0,
+            127,
         ),
         (
             mido.Message("control_change", channel=15, control=0, value=0),
             {"kind": "midiCC", "channel": 16, "cc": 0},
             0.0,
+            0,
         ),
         (
             mido.Message("note_on", channel=1, note=32, velocity=1),
             {"kind": "midiNote", "channel": 2, "note": 32},
             1.0,
+            1,
         ),
         (
             mido.Message("note_on", channel=1, note=32, velocity=0),  # running-status note off
             {"kind": "midiNote", "channel": 2, "note": 32},
             0.0,
+            0,
         ),
         (
             mido.Message("note_off", channel=1, note=32, velocity=64),
             {"kind": "midiNote", "channel": 2, "note": 32},
             0.0,
+            64,
         ),
         (
             mido.Message("pitchwheel", channel=2, pitch=-8192),
             {"kind": "midiPitchBend", "channel": 3},
             0.0,
+            -8192,
         ),
         (
             mido.Message("pitchwheel", channel=2, pitch=8191),
             {"kind": "midiPitchBend", "channel": 3},
             1.0,
+            8191,
         ),
     ],
 )
-def test_translate(message: Any, address: dict[str, Any], value: float) -> None:
-    assert translate(S, message) == InputEvent(S, cast(Any, address), value)
+def test_translate(message: Any, address: dict[str, Any], value: float, raw: int) -> None:
+    """The event keeps the number the message carried (GAP-13)."""
+    assert translate(S, message) == InputEvent(S, cast(Any, address), value, raw)
 
 
 def test_pitch_bend_centre() -> None:

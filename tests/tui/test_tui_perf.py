@@ -19,8 +19,11 @@ output) with it, so the heads' cells change, and F1's layouts A and C
 editing a new position preset (``docs/plans/tui-presets-plan.md`` step 3:
 the PRESET panel's pan and tilt rows show the output), and F8 with one head
 selected (``docs/plans/tui-pending-plan.md`` Phase 34: the DMX frame at 10 Hz,
-the CHANNELS panel lists the head's channels as they move). The gates are
-those of the plan's Phase 0 Done note.
+the CHANNELS panel lists the head's channels as they move), and F9 with a
+fader sweep coming in on an OSC surface (that plan's Phase 37: the inputs at
+10 Hz, MONITOR's line moves, BINDINGS' ``in`` with it), against a frontend
+that only waits while the same sweep comes in. The gates are those of the
+plan's Phase 0 Done note.
 """
 
 from __future__ import annotations
@@ -28,6 +31,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import socket
 import time
 from pathlib import Path
 from typing import Any
@@ -130,11 +134,12 @@ def run_frontend(
     lines: tuple[str, ...] = (),
     layout: str = "B",
     edit: str | None = None,
+    osc: int | None = None,
 ) -> Any:
-    name = f"{mode}-{page}{layout}-{len(lines)}{edit or ''}"
+    name = f"{mode}-{page}{layout}-{len(lines)}{edit or ''}{'' if osc is None else '-osc'}"
     report = tmp_path / f"{name}.json"
     plan = {"mode": mode, "seconds": SECONDS, "report": str(report), "page": page,
-            "layout": layout, "lines": lines, "edit": edit}  # fmt: skip
+            "layout": layout, "lines": lines, "edit": edit, "osc": osc}  # fmt: skip
     monkeypatch.setenv("BUSK_TUI_PERF", json.dumps(plan))
     monkeypatch.setenv("PYTHONPATH", os.pathsep.join([str(HERE), os.environ.get("PYTHONPATH", "")]))
     options = (
@@ -166,16 +171,41 @@ def test_under_busk_run_the_engine_runs_on_time(
             (6, "B", MOVING, moving, "position"), (8, "B", ONE_MOVING, moving, None))  # fmt: skip
     for page, layout, lines, bare, edit in runs:
         tui = run_frontend("tui", show, tmp_path, monkeypatch, page, lines, layout, edit)
-        cores = tui["cpu"] / tui["seconds"] - bare["cpu"] / bare["seconds"]
         what = f"F{page}" + (f" {layout}" if page == 1 else "")
         what += f" editing a {edit} preset" if edit else ""
         what += ", P11's Circle running" if lines else ""
-        print(
-            f"\nbusk run, {what}: overruns {bare['overruns']}/{bare['ticks']} bare, "
-            f"{tui['overruns']}/{tui['ticks']} with the TUI; "
-            f"console CPU {bare['cpu'] / bare['seconds']:.3f} core bare, "
-            f"{tui['cpu'] / tui['seconds']:.3f} with the TUI (+{cores:.3f})"
-        )
-        assert tui["ticks"] > 0
-        assert tui["overruns"] <= MAX_OVERRUNS * tui["ticks"]
-        assert cores <= MAX_CPU
+        check(what, bare, tui)
+    port = free_udp_port()  # F9: a fader sweep on an OSC surface, bare and with the TUI
+    document["surfaces"] = [
+        {"id": "s-touch", "name": "Touch", "kind": "osc", "match": {"port": port},
+         "faderPickup": "jump"}
+    ]  # fmt: skip
+    document["bindings"] = [
+        {"id": "b-1", "surfaceId": "s-touch", "input": {"kind": "osc", "path": "/fader/1"},
+         "action": {"kind": "playbackFader", "slot": 0}}
+    ]  # fmt: skip
+    busk.save_show(document, show, backups=False)
+    swept = run_frontend("bare", show, tmp_path, monkeypatch, osc=port)
+    tui = run_frontend("tui", show, tmp_path, monkeypatch, 9, osc=port)
+    check("F9, a fader sweep coming in", swept, tui)
+
+
+def check(what: str, bare: Any, tui: Any) -> None:
+    """The gates, on a run with the TUI against one with a frontend that waits."""
+    cores = tui["cpu"] / tui["seconds"] - bare["cpu"] / bare["seconds"]
+    print(
+        f"\nbusk run, {what}: overruns {bare['overruns']}/{bare['ticks']} bare, "
+        f"{tui['overruns']}/{tui['ticks']} with the TUI; "
+        f"console CPU {bare['cpu'] / bare['seconds']:.3f} core bare, "
+        f"{tui['cpu'] / tui['seconds']:.3f} with the TUI (+{cores:.3f})"
+    )
+    assert tui["ticks"] > 0
+    assert tui["overruns"] <= MAX_OVERRUNS * tui["ticks"]
+    assert cores <= MAX_CPU
+
+
+def free_udp_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        port: int = probe.getsockname()[1]
+        return port

@@ -78,6 +78,7 @@ class FakeBridge:
     stopped: bool = False
     watching: tuple[bool, bool] = (False, False)
     watching_dmx: bool = False
+    watching_inputs: bool = False
     tracking: int | None = None  # the cue list whose tracked states the UI asked for
     busy_line: Busy | None = None
     _tickets: Any = field(default_factory=lambda: itertools.count(1))
@@ -117,9 +118,10 @@ class FakeBridge:
         answer = self.show.expected(line)
         return Completion(answer.words, answer.values, answer.runnable, answer.error, answer.start)
 
-    def watch(self, output: bool, effects: bool, dmx: bool = False) -> None:
+    def watch(self, output: bool, effects: bool, dmx: bool = False, inputs: bool = False) -> None:
         self.watching = (output, effects)
         self.watching_dmx = dmx
+        self.watching_inputs = inputs
 
     def track(self, cue_list: int | None) -> None:
         self.tracking = cue_list
@@ -302,6 +304,7 @@ class Stub:
     programmer: busk.ProgrammerStatus = field(default_factory=lambda: stub_programmer(1))
     routes: Any = None
     surfaces: Any = None
+    inputs: tuple[busk.SurfaceInput, ...] = ()
     health: busk.EngineHealth | None = field(default_factory=stub_health)
     frame: Any = None
     effects: Any = None

@@ -868,11 +868,7 @@ class Console:
         name, and its feedback in brackets (its address only when it is not
         the input's)."""
         surfaces = {surface["id"]: surface["name"] for surface in show["surfaces"]}
-        names: dict[str, Mapping[Any, Any]] = {
-            "masterId": {master["id"]: master["name"] for master in show["masters"]},
-            "number": {page["number"]: page["name"] for page in show["pages"]},
-            "playbackId": {p["id"]: (p["number"], p["name"]) for p in show["playbacks"]},
-        }
+        names = _binding_names(show)
         lines = []
         for binding in show["bindings"]:
             line = (
@@ -1123,6 +1119,8 @@ def _surface(surface: Mapping[str, Any]) -> str:
 
 
 def _input(address: Mapping[str, Any]) -> str:
+    """An input as ``bind`` takes it; a pitch bend, which it cannot take,
+    as ``bend 1``."""
     kind = address["kind"]
     if kind == "midiCC":
         return f"cc {address['channel']} {address['cc']}"
@@ -1132,6 +1130,8 @@ def _input(address: Mapping[str, Any]) -> str:
         return f"osc {json.dumps(address['path'])}"
     if kind == "midiClock":
         return "clock"
+    if kind == "midiPitchBend":
+        return f"bend {address['channel']}"
     return " ".join(str(v) for v in address.values())
 
 
@@ -1191,6 +1191,17 @@ def _curve(curve: str | Mapping[str, Any]) -> str:
 def _trigger(trigger: Mapping[str, Any]) -> str:
     """``go``, ``wait 8`` or ``follow 0``."""
     return trigger["kind"] if trigger["kind"] == "go" else f"{trigger['kind']} {trigger['delay']:g}"
+
+
+def _binding_names(show: Show) -> dict[str, Mapping[Any, Any]]:
+    """What :func:`_action` names: by field, each master's, page's and
+    playback's id (a page's number) → its name (a playback's number and
+    name)."""
+    return {
+        "masterId": {master["id"]: master["name"] for master in show["masters"]},
+        "number": {page["number"]: page["name"] for page in show["pages"]},
+        "playbackId": {p["id"]: (p["number"], p["name"]) for p in show["playbacks"]},
+    }
 
 
 def _action(action: Mapping[str, Any], names: Mapping[str, Mapping[Any, Any]]) -> str:

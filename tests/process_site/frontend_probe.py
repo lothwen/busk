@@ -7,6 +7,10 @@ attached show, and follows the plan in the JSON file ``$BUSK_TEST_FRONTEND``:
   file next to the plan says the first call was made);
 * ``lines``: console lines to run, once the show's frame, output and effects
   have come (reading them asks for them);
+* ``osc``: then, once every surface is open, send its ``messages`` (each an
+  address and its arguments) to 127.0.0.1 at its ``port``, and wait until the
+  show has an input for each value they give (two for a message without
+  arguments);
 * ``steps``: then, for each, ask about its ``line`` and run it, and wait until
   the show's routes are its ``routes`` (each id and state) and, when it has
   them, the frame's universes are its ``universes``, the output's fixture
@@ -32,6 +36,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import socket
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -93,6 +98,8 @@ def run(show: Any, plan: dict[str, Any], records: Records, report: dict[str, Any
     report["adds"] = list(show.expected("fixture add 900 ").words)
     report["profilesBefore"] = _profiles(show)
     report["replies"] = [[line, *_reply(show.execute(line))] for line in plan.get("lines", [])]
+    if (osc := plan.get("osc")) is not None and not send_osc(show, osc, wait, report):
+        return
     report["steps"] = []
     for step in plan.get("steps", []):
         question = show.confirmation(step["line"])
@@ -159,6 +166,31 @@ def run(show: Any, plan: dict[str, Any], records: Records, report: dict[str, Any
         return
     health = show.health
     report["health"] = [health.state, 0.0 <= health.lastTickAge < 1.0]
+
+
+def send_osc(
+    show: Any, osc: dict[str, Any], wait: Callable[[str, Callable[[], bool]], bool],
+    report: dict[str, Any],
+) -> bool:  # fmt: skip
+    """The plan's ``osc``; ``False`` on a timeout."""
+    from busk.io.osc import encode
+
+    def opened() -> bool:
+        return bool(show.surfaces) and all(s.state == "ok" for s in show.surfaces)
+
+    if not wait("the surfaces", opened):
+        return False
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
+        for address, *args in osc["messages"]:
+            client.sendto(encode(address, *args), ("127.0.0.1", osc["port"]))
+    count = sum(1 if args else 2 for _, *args in osc["messages"])
+    if not wait(f"{count} inputs", lambda: len(show.inputs) >= count):
+        return False
+    report["inputs"] = [
+        [i.seq, i.surfaceId, i.surface, i.input, i.raw, i.value, list(i.drives)]
+        for i in show.inputs
+    ]
+    return True
 
 
 def follow(show: Any, states: list[str]) -> list[str]:

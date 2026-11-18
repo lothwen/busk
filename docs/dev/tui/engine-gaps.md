@@ -31,8 +31,9 @@ The TUI runs a `busk.LiveShow` in its own process, or, since GAP-11, is run by `
   (`EffectTemplateInfo`), since GAP-20 `LiveShow.expected(line)` (`Expected`, what
   may come where the word being typed starts), since GAP-21 `LiveShow.health`
   (`EngineHealth`), since GAP-27 `LiveShow.fixture_profiles`
-  (`FixtureProfileInfo`) and since GAP-46 `LiveShow.tracking(L)` (`TrackedCue`, a cue
-  list's tracked states). Since GAP-16 a profile in `LiveShow.show`
+  (`FixtureProfileInfo`), since GAP-46 `LiveShow.tracking(L)` (`TrackedCue`, a cue
+  list's tracked states) and since GAP-13 `LiveShow.inputs` (`SurfaceInput`, what came in
+  from the surfaces). Since GAP-16 a profile in `LiveShow.show`
   may have a `category`, and since GAP-17 a playback in the snapshot has the `color` of
   its current cue. The `busk.*` loggers feed the TUI's log pane.
 - **Text is not parsed.** `docs/library.md` says message text (`Reply.text`, CLI output, log
@@ -72,7 +73,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-10](#gap-10-confirmation-before-dangerous-lines) Confirmation before dangerous lines | read | important | prompt | **done** 2026-10-23 |
 | [GAP-11](#gap-11-running-the-tui-against-busk-run) Running the TUI against `busk run` | host | important | everything, on stage | **done** 2026-10-23 |
 | [GAP-12](#gap-12-concurrency-contract-of-execute) Concurrency contract of `execute()` | contract | important | responsiveness | **done** 2026-10-23 |
-| [GAP-13](#gap-13-control-input-monitor) Control input monitor | read | nice-to-have | F9 | open |
+| [GAP-13](#gap-13-control-input-monitor) Control input monitor | read | nice-to-have | F9 | **done** 2026-11-18 |
 | [GAP-14](#gap-14-stop-and-restart-a-programmer-effect) Stop and restart a programmer effect | action | nice-to-have | F1 B, F5 | **done** 2026-10-23 |
 | [GAP-15](#gap-15-effect-template-library) Effect template library | read | nice-to-have | F5 | **done** 2026-10-23 |
 | [GAP-16](#gap-16-fixture-category) Fixture category | read | nice-to-have | F1 A/C, F8 | **done** 2026-10-24 |
@@ -1181,6 +1182,11 @@ wrong worker is still correct, only slower or unordered. The TUI's own `LiveShow
 
 ## GAP-13: Control input monitor
 
+**Status:** done 2026-11-18 (see **Done** at the end of this section).
+
+The user's word of 2026-11-18, which took it out of the pending plan's "Not planned"; built in
+Phase 37 of `docs/plans/tui-pending-plan.md`.
+
 **Needed by:** F9 MONITOR (the last 14 incoming messages) and learn mode (the next incoming
 message pre-fills a `bind` line). Spec §8.9, §9 ("MIDI input").
 
@@ -1205,6 +1211,71 @@ class InputEvent:
 
 **TUI until then:** F9 hides MONITOR and learn mode. The BINDINGS `val` column shows the level of
 the bound target (a playback's fader level, a master's level), not the device's raw value.
+
+**TUI since** 2026-11-18: F9's MONITOR, between SURFACES and BINDINGS, the last 14 inputs with
+those in a row from one control on one line; BINDINGS' `in`, the last number each control sent,
+beside `val`; and learn mode, `[learn]` on the chosen surface, which puts `bind "<surface>"
+<input> ` in the prompt (Phase 37 of the pending plan, under its Q14 (a)). The bridge reads
+`inputs` at 10 Hz while F9 shows, and shows `drives` as busk words it.
+
+**Done** (2026-11-18). `LiveShow.inputs -> tuple[SurfaceInput, ...]`, with `SurfaceInput` in
+`busk.__all__` (now 45 names):
+
+```python
+@dataclass(frozen=True, slots=True, kw_only=True)
+class SurfaceInput:
+    seq: int                       # counts the inputs from 1
+    surfaceId: str                 # the surface's id in show["surfaces"]
+    surface: str                   # its name: "nanoKONTROL2"
+    input: str                     # as `bind` takes it: "cc 1 48", 'osc "/x"', "clock", "bend 1"
+    raw: int | None                # what the device sent: 102, a velocity, a pitch; None: OSC, clock
+    value: float                   # 0..1, what the bindings got
+    drives: tuple[str, ...]        # each binding's action, as `list bindings` prints it
+```
+
+The log is `busk.console.inputs.InputLog`; the binding resolver hands it every event after the
+event's commands (`BindingResolver(record=…)`), and `busk.io.events.InputEvent` gained `raw`,
+which the MIDI backend fills in. Documented in `docs/library.md` (section 3 and the reference),
+`docs/dev/internals.md` ("The input monitor") and the modules' docs. Where it differs from the
+suggestion, or settles what it left open:
+
+- **The name.** `InputEvent` was taken by the backends' events (`busk.io.events`), so the public
+  dataclass is `SurfaceInput`.
+- **Two values.** `raw` is the number the device sent (a CC's value, a note's velocity, a
+  pitch bend's pitch from −8192 to 8191), and `value` what the bindings got, 0 to 1. The
+  suggestion's `value` was `None` for notes and the clock; here a note on is 1 and a note off 0,
+  as the bindings see them. OSC and the clock have no `raw`: an OSC message's value is its
+  first argument, clamped, and the clock is a press on each beat and a release on the clock
+  after.
+- **A note off keeps its own velocity** as `raw` (often 0 or 64), as a MIDI monitor shows it.
+  Its `value` is 0.
+- **`drives` is a tuple,** one text per binding in show order, empty for a control with none;
+  the suggestion's `action` was one string or `None`. Each is `list bindings`' text after its
+  arrow (`master 'Grand Master'`, `page 1 'Main'`), named from the show the session held when
+  the input came.
+- **`surface` is the name, with `surfaceId` beside it**, as `SurfaceStatus` has both. No
+  `time`: nothing needed it, and `seq` orders them.
+- **Every input is kept, bound or not;** an unbound one is what learn mode needs. Only what
+  reaches the bindings is logged: a MIDI message busk cannot bind (a program change, sysex,
+  aftertouch) never shows, nor does the web remote, which sends commands, not inputs (calls
+  25 and 26 of the plan).
+- **A pitch bend is `bend 1`**, which `bind` cannot take. `list bindings` now words one the
+  same way (a show file can hold one); it printed `midiPitchBend 1`.
+- **`()` while no surface is open**: before `start()` and with `surfaces=False`. After `stop()`,
+  the inputs as they ended, as `surfaces` keeps its status. `OfflineShow` has no `inputs`.
+- **Published whole.** Each record appends under a lock to a deque of the newest 64 and
+  publishes a new tuple, so a reader takes no lock and gets the same object while nothing came
+  in. A record costs the input thread about 2.4 µs (the resolver's own work, 0.7 µs): a fader
+  sweep of 100 messages a second costs 0.02 % of a core.
+- **No prompt line lists them** (call 28): the read is for frontends, as `LiveShow.surfaces` is.
+- **Under `busk run` with nothing on the wire.** The surfaces, the resolver and the log live in
+  the console process with the frontend, with processes and with `--threads`; both are tested.
+- Tests: `tests/test_surface_inputs.py` (a CC, a note on and off with their velocities, a pitch
+  bend, the clock, an unbound control, two bindings, five messages busk cannot bind, the 64
+  past the sequence, names after an edit, four input threads at once, a monitor that raises, the
+  cost, OSC on a running `LiveShow` and a binding added live, no surfaces, `busk run` with
+  processes and with threads), `tests/test_midi.py`'s `translate` cases with `raw`, the public
+  API golden and `tests/api_consumer.py`.
 
 ## GAP-14: Stop and restart a programmer effect
 

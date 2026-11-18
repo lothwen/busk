@@ -310,6 +310,27 @@ for surface in live.surfaces or ():
 # Phone web ok  http://10.0.0.5:8080/?k=…
 ```
 
+`inputs` is what came in from those surfaces: the newest 64 inputs, oldest first, bound or
+not, each a `SurfaceInput`. Its `input` is the control as `bind` takes it (`cc 1 48`,
+`note 1 60`, `osc "/fader/1"`, `clock`; a pitch bend, which `bind` cannot take, is `bend 1`),
+`raw` the number the device sent (a CC's value or a note's velocity, 0 to 127; a pitch bend's
+pitch, −8192 to 8191; `None` for OSC and the clock), `value` what the bindings got, from 0 to
+1, and `drives` what each of its bindings drives, as `list bindings` prints it (empty when it
+has none). Only what reaches the bindings shows: not a MIDI message busk cannot bind (a
+program change, sysex), nor the web remote, which sends commands. Each input has a `seq`,
+counting from 1, so a display that polls reads only what is new; while nothing came in, the
+same object comes back. It is `()` before `start()` and with `surfaces=False`:
+
+```python
+last = 0
+for came in live.inputs:
+    if came.seq > last:
+        print(came.surface, came.input, came.raw, "→", ", ".join(came.drives) or "—")
+        last = came.seq
+# nanoKONTROL2 cc 1 0 102 → fader 1
+# nanoKONTROL2 cc 2 48 127 → —
+```
+
 `health` says how the engine is doing, for a display's engine warning. Its `state` is
 `"running"`, `"starting"` (no tick yet), `"stalled"` (no new frame for 1 s, counting from
 `start()` while there is none; the output holds the last frame meanwhile) or `"stopped"`
@@ -483,7 +504,7 @@ take `str` or `os.PathLike`.
 | `read_gdtf` | `read_gdtf(path, *, manufacturer=None) -> ImportReport`: convert a GDTF file |
 | `ProfileLibrary` | The built-in profiles plus directories of profiles, for `fixture add`: `get(id)`, `find(id or name)`, iteration, `problems` |
 | `OfflineShow` | A show on a clock you drive: `submit`, `execute`, `confirmation`, `expected`, `run_script`, `save`, `tick`, `tracking`; `show`, `warnings`, `snapshot`, `output`, `effects`, `programmer`, `effect_templates`, `fixture_profiles`, `time` |
-| `LiveShow` | A show in real time in your process: as `OfflineShow`, with `start`, `stop` and `with`, `frame` instead of `tick`, `routes`, `surfaces` and `health` |
+| `LiveShow` | A show in real time in your process: as `OfflineShow`, with `start`, `stop` and `with`, `frame` instead of `tick`, `routes`, `surfaces`, `inputs` and `health` |
 | `DmxFrame` | One engine output: `seq`, `time`, and `universes`, a mapping of universe number to 512 bytes |
 | `EngineHealth` | How a `LiveShow`'s engine is doing: `state` (`"starting"`, `"running"`, `"stalled"`, `"stopped"`; under `busk run` with processes also `"restarting"`, `"failed"`), `ticks`, `overruns`, `lastTickAge` (seconds since its newest tick, or `None`) |
 | `Show` | The show file format, a `TypedDict` |
@@ -512,6 +533,7 @@ take `str` or `os.PathLike`.
 | `TrackedEffect` | One effect instance in it: `id`, `trackedFrom` (the number of the earlier cue that holds it, or `None`) |
 | `RouteStatus` | One output route of a `LiveShow`: `id`, `label`, `universe` (its number), `state` (`"ok"`, `"failed"`, `"disabled"`, `"ignored"`), `detail` (why), `packets`, `errors` |
 | `SurfaceStatus` | One control surface of a `LiveShow`: `id`, `name`, `kind`, `state` (`"ok"`, `"failed"`, `"ignored"`), `detail` (why), `urls` (a web remote's addresses) |
+| `SurfaceInput` | One input that came in from a control surface of a `LiveShow`: `seq` (counting from 1), `surfaceId`, `surface` (its name), `input` (the control as `bind` takes it), `raw` (the number the device sent, or `None`), `value` (0..1, what the bindings got), `drives` (what each of its bindings drives, as `list bindings` prints it) |
 | `IdFactory` | The protocol that makes new entity ids |
 | `CounterIds` | An `IdFactory` that counts: reproducible shows |
 | `BuskError` | The base of every error the API raises on purpose |

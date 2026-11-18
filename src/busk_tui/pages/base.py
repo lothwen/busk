@@ -20,6 +20,7 @@ from busk_tui.config import Layout
 from busk_tui.model import (
     DmxModel,
     EffectsModel,
+    InputView,
     LiveState,
     OutputModel,
     ProgrammerModel,
@@ -42,6 +43,7 @@ type Part = Literal[
     "playback",
     "routes",
     "surfaces",
+    "inputs",
 ]
 
 ALL_PARTS: Final[frozenset[Part]] = frozenset(
@@ -57,6 +59,7 @@ ALL_PARTS: Final[frozenset[Part]] = frozenset(
         "playback",
         "routes",
         "surfaces",
+        "inputs",
     )
 )
 
@@ -75,6 +78,7 @@ class View:
     tracking: TrackSheet | None = None  # the tracked states of the list F4 shows
     routes: tuple[RouteView, ...] = ()
     surfaces: tuple[SurfaceView, ...] = ()
+    inputs: tuple[InputView, ...] = ()  # the newest inputs from the surfaces, while F9 shows
     beats: tuple[float, ...] = ()  # each speed master's beat count, as LiveState.speed
     playback: int = 1  # the selected playback (Space, [ ], the prompt's P1)
     faders: int = 20  # at most this many slots on F1
@@ -99,6 +103,10 @@ class Page(VerticalScroll):
     WATCH_DMX: ClassVar[bool] = False
     """Whether the page shows the DMX frame, what busk sends on each
     channel (read, too, only while such a page is visible)."""
+
+    WATCH_INPUTS: ClassVar[bool] = False
+    """Whether the page shows what comes in from the surfaces (read, too,
+    only while such a page is visible)."""
 
     def __init__(self, number: int, title: str) -> None:
         super().__init__(id=f"page-{number}")
@@ -129,6 +137,11 @@ class Page(VerticalScroll):
         """The cue list whose tracked states the page shows (F4's TRACK
         panel), which the bridge reads only then; ``None``: none."""
         return None
+
+    def escape(self) -> bool:
+        """Esc on the page, before it leaves the pane cursor or clears the
+        prompt: ``True`` when the page took it (F9's learn mode disarms)."""
+        return False
 
     def stops(self) -> list[Stop]:
         """Where the pane cursor stops, in order."""

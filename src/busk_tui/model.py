@@ -378,6 +378,28 @@ class BindingInfo:
 
 
 @dataclass(frozen=True, slots=True)
+class InputView:
+    """One input that came in from a surface (busk's ``SurfaceInput``): its
+    surface's name, its control as ``bind`` takes it (``cc 1 48``; a pitch
+    bend ``bend 1``), the number the device sent (``None`` for OSC and the
+    clock), the value the bindings got (0..1) and what each of its bindings
+    drives, in busk's words (none: unbound). ``seq`` counts them."""
+
+    seq: int
+    surface: str
+    input: str
+    raw: int | None
+    value: float
+    drives: tuple[str, ...]
+
+    @property
+    def sent(self) -> str:
+        """What the device sent, as shown: ``102``, or the value an OSC
+        message gave (``0.50``)."""
+        return f"{self.value:.2f}" if self.raw is None else str(self.raw)
+
+
+@dataclass(frozen=True, slots=True)
 class UniverseView:
     number: int
     name: str
@@ -839,6 +861,13 @@ class SurfacesChanged:
 
 
 @dataclass(frozen=True, slots=True)
+class InputsChanged:
+    """The newest inputs from the surfaces, oldest first (busk keeps 64)."""
+
+    inputs: tuple[InputView, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class HealthChanged:
     state: EngineState
     late: bool  # the engine's overruns grew over the last second or more
@@ -873,6 +902,7 @@ type BridgeEvent = (
     | TrackingChanged
     | RoutesChanged
     | SurfacesChanged
+    | InputsChanged
     | HealthChanged
     | SessionChanged
     | EngineNews
@@ -889,6 +919,7 @@ STATE_EVENTS: tuple[type, ...] = (
     TrackingChanged,
     RoutesChanged,
     SurfacesChanged,
+    InputsChanged,
     HealthChanged,
     SessionChanged,
 )
@@ -925,7 +956,9 @@ class BridgeLike(Protocol):
 
     def expected(self, line: str) -> Completion: ...
 
-    def watch(self, output: bool, effects: bool, dmx: bool = False) -> None: ...
+    def watch(
+        self, output: bool, effects: bool, dmx: bool = False, inputs: bool = False
+    ) -> None: ...
 
     def track(self, cue_list: int | None) -> None:
         """Read the tracked states of cue list ``cue_list`` (``None``: of

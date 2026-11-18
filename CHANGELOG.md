@@ -10,6 +10,15 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- What comes in from the control surfaces: `LiveShow.inputs` gives the newest 64 inputs, bound
+  or not, each a `SurfaceInput` with a sequence number, its surface, its control as `bind` takes
+  it (`cc 1 48`; a pitch bend `bend 1`), the number the device sent (`raw`: a CC's value, a
+  note's velocity, a pitch bend's pitch), the value the bindings got and what its bindings drive,
+  as `list bindings` prints it. `busk run`'s show has it too. `list bindings` words a pitch-bend
+  binding `bend 1`, not `midiPitchBend 1`. F9 has a MONITOR panel, the last 14 inputs with a
+  fader's moves on one line; BINDINGS an `in` column, the last number each control sent, beside
+  `val`; and learn mode: `[learn]` on a surface, then a control moved on it, puts `bind
+  "<surface>" cc 1 48 ` in the prompt, and the hint row says what the control drives already.
 - Undo groups: after `undo group "pan drag"`, programmer changes are one undo step, labelled
   `pan drag`, until `undo group end`; a show edit, `undo`, `redo`, another group or 2 s with no
   change closes it too. Changes from surfaces and the web remote join it; performance lines do

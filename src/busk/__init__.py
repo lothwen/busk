@@ -8,7 +8,7 @@ The public API
 ==============
 
 Every public name is importable from ``busk`` itself; ``__all__`` lists the
-44 of them. The library guide, ``docs/library.md``, has the examples and the
+45 of them. The library guide, ``docs/library.md``, has the examples and the
 reference.
 
 Show documents
@@ -33,7 +33,8 @@ Running a show
     (:meth:`~OfflineShow.expected`); a
     :class:`LiveShow` also shows its output routes
     (:attr:`~LiveShow.routes`), control surfaces
-    (:attr:`~LiveShow.surfaces`) and how its engine is doing
+    (:attr:`~LiveShow.surfaces`), what comes in from them
+    (:attr:`~LiveShow.inputs`) and how its engine is doing
     (:attr:`~LiveShow.health`).
 Data types
     :class:`Show`, :class:`FixtureProfile` and :data:`Command`, the
@@ -48,7 +49,8 @@ Data types
     :class:`FixtureModeInfo`; :class:`Expected`; :class:`ProgrammerStatus`
     with :class:`ProgrammerValue`; :class:`TrackedCue` with
     :class:`TrackedValue` and :class:`TrackedEffect`; :class:`RouteStatus`;
-    :class:`SurfaceStatus`; :class:`IdFactory` and :class:`CounterIds`.
+    :class:`SurfaceStatus`; :class:`SurfaceInput`; :class:`IdFactory` and
+    :class:`CounterIds`.
 Errors
     :class:`BuskError` is the base of every error the API raises on purpose:
     :class:`ShowLoadError`, :class:`UnsupportedFeature`, :class:`ImportFailed`
@@ -132,6 +134,7 @@ __all__ = [
     "Show",
     "ShowLoadError",
     "SpeedStatus",
+    "SurfaceInput",
     "SurfaceStatus",
     "TrackedCue",
     "TrackedEffect",
@@ -182,6 +185,7 @@ _EXPORTS: dict[str, str] = {
     "TrackedValue": "busk.session.tracked",
     "TrackedEffect": "busk.session.tracked",
     "RouteStatus": "busk.output.driver",
+    "SurfaceInput": "busk.console.inputs",
     "SurfaceStatus": "busk.io.surfaces",
     "UnsupportedFeature": "busk.compiler.compile",
     "OfflineShow": "busk.runner",
@@ -200,6 +204,7 @@ if TYPE_CHECKING:  # what type checkers see: the same table, as explicit re-expo
     from busk.console.console import FixtureModeInfo as FixtureModeInfo
     from busk.console.console import FixtureProfileInfo as FixtureProfileInfo
     from busk.console.console import Reply as Reply
+    from busk.console.inputs import SurfaceInput as SurfaceInput
     from busk.console.parser import Expected as Expected
     from busk.engine.snapshot import EffectSnapshot as EffectSnapshot
     from busk.engine.snapshot import EffectStatus as EffectStatus

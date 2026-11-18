@@ -923,6 +923,12 @@ def bind_prefill(surface: str) -> str:
     return f"bind {quoted(surface)} "
 
 
+def learned_prefill(surface: str, given: str) -> str:
+    """``bind "nanoKONTROL2" cc 1 48 ``: what the control drives next (F9's
+    learn mode, with the control that came in)."""
+    return f"bind {quoted(surface)} {given} "
+
+
 def unbind_prefill(surface: str, given: str) -> str:
     """``unbind "nanoKONTROL2" cc 1 0``, whole: Enter runs it."""
     return f"unbind {quoted(surface)} {given}"

@@ -69,11 +69,14 @@ class RunLine(Message):
 
 
 class FillPrompt(Message):
-    """Put ``text`` in the prompt, for the operator to finish (a pre-fill)."""
+    """Put ``text`` in the prompt, for the operator to finish (a pre-fill).
+    A ``note`` shows in the hint row until the line changes (F9's learn
+    mode: what the control drives already)."""
 
-    def __init__(self, text: str) -> None:
+    def __init__(self, text: str, note: str | None = None) -> None:
         super().__init__()
         self.text = text
+        self.note = note
 
 
 class ShowHint(Message):

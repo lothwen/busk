@@ -53,6 +53,11 @@ received input, in :attr:`BindingResolver.lastInput`; the feedback thread
 holds motor-fader feedback back for a moment after the control moved, so
 the motor never fights the operator's finger (phase-6-plan §5.10).
 
+**The input monitor** (GAP-13 of ``docs/dev/tui/engine-gaps.md``). With
+``record``, every event, bound or not, goes to it after its commands, with
+the bindings it found (none for an unbound control): ``LiveShow.inputs``
+keeps the newest.
+
 **Errors never escape** into the backend's thread. A command the bus
 rejects (or any other exception) is reported once per binding, through the
 ``report`` callback (by default a ``busk.surfaces`` warning; the CLI prints it
@@ -71,7 +76,7 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from typing import Final, Protocol
 
@@ -149,6 +154,7 @@ class BindingResolver:
         live: Callable[[], CompiledShow] | None = None,
         page: Callable[[], str | None] | None = None,
         clock: Callable[[], float] = time.monotonic,
+        record: Callable[[InputEvent, Sequence[Binding]], None] | None = None,
     ) -> None:
         """``live``, when given, returns the latest compiled show; the bindings
         then follow live edits (see the module docs). ``page`` returns the
@@ -156,13 +162,17 @@ class BindingResolver:
         before the first one); without it, or when it names no page, a
         ``select`` button is looked up on the lowest-numbered page, where
         the engine starts. ``clock`` times :attr:`lastInput`; it must be the
-        engine's clock, which the feedback thread compares it with."""
+        engine's clock, which the feedback thread compares it with.
+        ``record`` gets every event with its bindings (see the module docs);
+        it runs on the input threads, and what it raises is reported once."""
         self._compiled = compiled
         self._bus = bus
         self._report = report
         self._live = live
         self._page = page
         self._clock = clock
+        self._record = record
+        self._record_failed = False
         self.lastInput: dict[str, float] = {}
         """Binding id → the time it last received input. Written on the
         input threads, read by the feedback thread (single dict operations,
@@ -204,6 +214,13 @@ class BindingResolver:
                 self._report_once(bound, exc.reason)
             except Exception as exc:  # a bug must not kill the input thread
                 self._report_once(bound, f"{type(exc).__name__}: {exc}")
+        if self._record is not None:
+            try:
+                self._record(event, [bound.binding for bound in bounds])
+            except Exception as exc:  # nor a bug of the monitor's
+                if not self._record_failed:
+                    self._record_failed = True
+                    self._report(f"input monitor: {type(exc).__name__}: {exc}")
 
     def _handle(self, bound: _Bound, event: InputEvent) -> None:
         action = bound.binding["action"]

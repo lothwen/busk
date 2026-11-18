@@ -25,7 +25,9 @@ mido message                           InputEvent
 =====================================  =================================================
 
 MIDI channels in show data are 1-based (1–16), as in Appendix A; mido's are
-0-based. Other messages (sysex, program change…) are ignored.
+0-based. Other messages (sysex, program change…) are ignored. Each event
+keeps the number the message carried as its ``raw``: the CC's value, the
+note's velocity (a ``note_off``'s too), the pitch; a clock has none.
 
 **MIDI clock** (Phase 6, decision 13) arrives as one tap per beat: each
 input counts its clocks (:class:`BeatCounter`). The clock that starts a beat
@@ -114,14 +116,14 @@ def translate(
     kind = message.type
     if kind == "control_change":
         cc = MidiCC(kind="midiCC", channel=message.channel + 1, cc=message.control)
-        return InputEvent(surface, cc, message.value / 127)
+        return InputEvent(surface, cc, message.value / 127, message.value)
     if kind in ("note_on", "note_off"):
         pressed = kind == "note_on" and message.velocity > 0
         note = MidiNote(kind="midiNote", channel=message.channel + 1, note=message.note)
-        return InputEvent(surface, note, 1.0 if pressed else 0.0)
+        return InputEvent(surface, note, 1.0 if pressed else 0.0, message.velocity)
     if kind == "pitchwheel":
         bend = MidiPitchBend(kind="midiPitchBend", channel=message.channel + 1)
-        return InputEvent(surface, bend, (message.pitch + 8192) / 16383)
+        return InputEvent(surface, bend, (message.pitch + 8192) / 16383, message.pitch)
     if beats is not None:
         if kind == "clock":
             value = beats.clock()

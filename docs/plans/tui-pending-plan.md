@@ -6,7 +6,8 @@
 > findings"), `docs/plans/tui-rig-plan.md` §9, and what the last conversation left open. §5 holds
 > the plan's own calls, which the user may veto, and §8 the questions only the user can answer.
 > On 2026-11-12 the user added Phases 26 to 36. They cover the gaps found by comparing busk with a
-> grandMA3 show-programming howto (§7's items of that date).
+> grandMA3 show-programming howto (§7's items of that date). On 2026-11-18 the user added Phase
+> 37, F9's MONITOR, from GAP-13 (§7).
 
 ## 1. How a phase runs
 
@@ -22,6 +23,7 @@
   uses it. The TUI step keeps the TUI phases' rules below. Phases 26 to 36, added on 2026-11-12,
   follow the same pattern. Where an item's engine work is too large to share a phase, it gets a
   phase of its own before the TUI's: 27 before 28, and 29 before 30. Phase 31 is engine only.
+  Phase 37, added on 2026-11-18, follows it too.
 - **Engine phases** change `src/busk/` and its tests. Each gap gets an entry and a Summary row in
   `docs/dev/tui/engine-gaps.md`. A wrong message or a missing range check is a bug, not a gap, and
   gets no number.
@@ -137,6 +139,7 @@ to be at `f851165`.
 | 34 | A DMX readout: `list dmx` (GAP-52); F8's channel values | busk, TUI | | |
 | 35 | Masters renamed and deleted (GAP-53); made, renamed and deleted on F7 | busk, TUI | 33, if built | |
 | 36 | F2's option chips, the strobe cap on F7, the show's title | TUI | | |
+| 37 | What comes in from the surfaces (GAP-13); F9's MONITOR, raw value and learn mode | busk, TUI | | Q14 |
 
 ## 4. What busk does (checked on 2026-11-08)
 
@@ -238,6 +241,18 @@ Added on 2026-11-12, for Phases 26 to 36:
     `cascade`.
 24. **`list dmx` prints the last frame:** what goes out, after the masters, blackout, park and
     limits, not what the programmer or a cue holds.
+
+Added on 2026-11-18, for Phase 37:
+
+25. **MONITOR shows what reaches the bindings,** after a backend turns a message into an input. A
+    MIDI message busk cannot bind (a program change, sysex) never shows, and nor does the web
+    remote, which sends commands, not inputs.
+26. **busk keeps every input; the TUI merges** consecutive inputs from one control, as the spec
+    says. A frontend that wants each message has them.
+27. **The monitor speaks `bind`'s words** (`cc 1 48`), not the spec's `cc ch1 #48`, so what the
+    operator reads is what they type, and learn mode's pre-fill is the same text. A pitch bend,
+    which `bind` cannot take, reads `bend 1`.
+28. **No prompt line lists the inputs.** The read is for frontends, as `LiveShow.surfaces` is.
 
 ## 6. Phases
 
@@ -3601,6 +3616,167 @@ drew the spot's `gobo1` and `shutter` rows with `sel fixture 101, fixture 301`, 
 sent `set gobo1 breakup` (`gobo1: 1 target; skipped 12 no gobo1`); F7's `[cap…]` set 4.5 Hz,
 `[off]` took it away, and a click on the title renamed the show (`show Late Night *`).
 
+### Phase 37: Incoming messages on F9
+
+The user's word of 2026-11-18. F9 was built without its MONITOR, its learn mode and the raw value
+in BINDINGS (the TUI plan's Phase 4 and its Q12), because busk does not publish what comes in
+(GAP-13); §7 had left GAP-13 as not planned. Without it, finding which CC a fader sends needs
+another program, and nothing shows that a surface's messages reach busk at all. The engine step
+comes first. Code: `src/busk/io/bindings.py` (`BindingResolver.handle` sees every event, bound or
+not), `src/busk/io/events.py`, `src/busk/io/midi.py` (`translate`), `src/busk/io/osc.py`,
+`src/busk/io/surfaces.py`, `src/busk/runner.py`; `src/busk_tui/bridge.py`,
+`src/busk_tui/model.py`, `src/busk_tui/pages/surfaces.py`.
+
+1. **GAP-13: what comes in.**
+   - `LiveShow.inputs` gives the newest 64 inputs, oldest first, each with a sequence number, so a
+     frontend reads only what is new. An input names its surface, its control as `bind` takes it
+     (`cc 1 48`, `note 1 60`, `osc "/fader/1"`, `clock`), the value the device sent (102 for a
+     CC, a note's velocity; none for OSC and the clock), the value from 0 to 1 that the bindings
+     get, and what its bindings drive, as `list bindings` prints it, or nothing when it has none.
+   - Every input is kept, bound or not: an unbound one is what learn mode needs (step 3).
+   - It is `()` while no surface is open, and `OfflineShow`, which opens none, has no `inputs`.
+   - engine-gaps.md proposes the name `InputEvent`, which `busk.io.events` already has for the
+     backends' events. The public dataclass takes another name, and goes in `busk.__all__`.
+   - Each surface calls in on its own thread. The log is written under a lock and published as a
+     new tuple, as the surfaces' status is (replaced, never changed). A fader sweep sends about
+     100 messages a second: measure what the record costs the input thread.
+   - Under `busk run` the surfaces and the frontend share the console process, so the read
+     should need nothing on the wire. Check it before building on it.
+
+   Update GAP-13's entry, its Summary row and engine-gaps.md's list of reads, and `docs/library.md`.
+
+   Verify: a CC; a note on and off, with its velocity; a pitch bend; the clock; an unbound input;
+   an input with two bindings; a message busk cannot bind (a program change), which does not
+   show; the sequence past 64 inputs; an OSC surface on localhost, which needs no device, as
+   `tests/test_osc.py` sends to one; under `busk run` with processes and with `--threads`.
+
+   **Done** (2026-11-18). `LiveShow.inputs -> tuple[SurfaceInput, ...]`, `SurfaceInput` in
+   `busk.__all__` (45 names). The log is `busk.console.inputs.InputLog`, in the console's words:
+   the control through `_input` (which now words a pitch bend `bend 1`, for `list bindings` too)
+   and each binding's action through `_action` (`_binding_names`, shared with `list bindings`).
+   `BindingResolver` takes `record=` and calls it after an event's commands, with the bindings it
+   found; a monitor that raises is reported once and the bindings keep working.
+   `busk.io.events.InputEvent` gained `raw`, filled in by `midi.translate`. The read needed
+   nothing on the wire: the surfaces, the resolver and the log live in `busk run`'s console process
+   with the frontend, with processes and with `--threads`, both tested. The record costs the input
+   thread 2.4 µs (the resolver's own work, 0.7 µs), so a sweep of 100 messages a second costs
+   0.02 % of a core. GAP-13's **Done**, `docs/library.md`, `docs/dev/internals.md` ("The input
+   monitor"). Tests: 21 in `tests/test_surface_inputs.py`, the 7 `translate` cases of
+   `tests/test_midi.py` with `raw`, the public API golden and `tests/api_consumer.py`.
+
+   Calls the user may veto:
+   - **The name is `SurfaceInput`,** with `surfaceId` and `surface` (its name) as
+     `SurfaceStatus` has both, and no `time`: nothing needed it, and `seq` orders them.
+   - **`raw` and `value`:** `raw` is the number the message carried, `None` for OSC and the
+     clock; `value` is what the bindings got (a note on 1, a note off 0).
+   - **A note off keeps its own velocity** as `raw` (often 0 or 64), as a MIDI monitor shows it.
+     So a pad pressed and let go shows one line with the release's velocity (`note 1 60  64`).
+   - **`drives` is a tuple,** one `list bindings` text per binding, in show order, named from
+     the show as it was when the input came (`master 'Grand Master'`, with `list bindings`'
+     quotes, where F9's BINDINGS says `master gm`).
+   - **After `stop()`, the inputs as they ended,** as `surfaces` keeps its status; `()` before
+     `start()` and with `surfaces=False`.
+2. **F9's MONITOR.** A panel between SURFACES and BINDINGS: the last 14 inputs, newest at the2. **F9's MONITOR.** A panel between SURFACES and BINDINGS: the last 14 inputs, newest at the
+   bottom, each with its control, the value the device sent, what it drives and its surface
+   (`cc 1 48  102  → fader 1  APC mini mk2`). Consecutive inputs from one control replace its line
+   (spec §8.9), so a fader sweep is one line that moves. An unbound input reads `→ —`, dim. With no
+   surface open the panel says `no surface is open: messages show here as they come in`. The
+   bridge reads `inputs` at 10 Hz, only while F9 shows (as F8's `WATCH_DMX`), and on F9's first
+   show takes the whole log.
+
+   BINDINGS gets the raw value: a column `in` before `val`, the last value its control sent, or
+   `—` before any. `val` stays the level of what it drives, so with soft pickup the two differ
+   until the fader picks up.
+
+   Verify: OSC messages on the real engine in a `tests/tui/test_tui_e2e.py` test; the merging, with
+   two faders moved in turns; a pitch bend; F9 at 99 columns; F9's cost (F9 is not in the perf
+   gate: add it, with an OSC sender running).
+
+   **Done** (2026-11-18). `InputView` (with `sent`, the number, or an OSC value as `0.50`) and
+   `InputsChanged`, a state event carrying busk's whole log; the part `"inputs"`, `View.inputs`,
+   `Page.WATCH_INPUTS` (F9 only), `Bridge.watch(inputs=)`, `INPUTS_S` (10 Hz) and
+   `input_views`, which keeps an input's view while busk keeps it. The page keeps its own lines
+   (`merged`, `MONITOR_LINES`) and each control's last input (`last_sent`), taking the inputs past
+   the newest it took, so a sweep longer than busk's 64 still leaves the other lines. MONITOR
+   (`MonitorTable`, `monitor_cells`) sits under SURFACES in their column, BINDINGS beside them; below
+   132 columns all three stack. BINDINGS has `in` before `val`. Tests: 6 in
+   `tests/tui/test_tui_surfaces.py` (2 changed for `[learn]`), 2 in `tests/tui/test_tui_bridge.py`,
+   and `test_f9_monitors_an_osc_surface_and_learns_from_it_on_the_real_engine`; F9 in the perf gate.
+
+   Calls the user may veto:
+   - **The page keeps MONITOR's lines,** not the bridge: busk keeps 64, the page its 14 merged
+     ones, past F9's hiding. Inputs that come while another page shows are read when F9 shows
+     again, as far as busk's 64 go.
+   - **MONITOR goes under SURFACES** in the left column at 132 columns and more, so BINDINGS keeps
+     its height; below, the three stack in that order.
+   - **Columns:** `input`, `in`, `drives` (`→ fader 1, blackout` amber; `→ —` dim), `surface`,
+     the surface going first when narrow. `in` shows an OSC or clock input's value (`0.50`,
+     `1.00`), as it has no number of its own.
+   - **The empty panel** says `messages show here as they come in` while a surface is open,
+     with `no surface is open: ` before it while none is.
+   - **`in` goes, when narrow, before `val`.**
+3. **Learn mode,** as Q14 answers. Under (a): `[learn]` among the chosen surface's edits arms it,3. **Learn mode,** as Q14 answers. Under (a): `[learn]` among the chosen surface's edits arms it,
+   lit amber. The next input from that surface puts `bind "APC mini mk2" cc 1 48 ` in the prompt,
+   for the operator to finish with what it drives, and disarms. Esc or a second click disarms with
+   nothing in the prompt. When the control already has a binding, the hint row says so (`cc 1 48
+   drives fader 1: unbind it to replace it`), since `bind` adds beside the bindings already there.
+   Nothing is sent until the operator sends the line.
+
+   Verify: learn from an OSC input on the real engine, the line sent, the binding listed; an input
+   already bound; Esc; a pitch bend, which `bind` cannot take, passed over.
+
+   **Done** (2026-11-18), under Q14 (a), the recommended answer (the user's "use recommended
+   answers"). `[learn]` is the last of the chosen surface's edits, a `StripButton` with an action,
+   its label a span so lit and unlit compare different (`LEARN_LIT`, reversed amber). Armed, the
+   first new input from the chosen surface that is not a `bend` or the `clock` posts
+   `FillPrompt(commands.learned_prefill(surface, input), note)` and disarms. `FillPrompt` gained
+   `note`: the shell shows it in the hint row while the prompt holds the pre-fill unchanged
+   (`_fill_note`), since the prompt's change redraws the hint row. `Page.escape()` is a new hook,
+   which the shell's Esc asks after the help and before the pane cursor and the prompt. Tests: 3 in
+   `tests/tui/test_tui_surfaces.py`, the pre-fill in the contract test, and the real-engine test
+   above.
+
+   Calls the user may veto:
+   - **The clock is passed over too,** not only a pitch bend: a device that sends clock would
+     otherwise be learned at its next beat. `bind "<surface>" clock tap` is typed.
+   - **Learn takes only inputs that came after `[learn]`,** as far as the bridge has read them:
+     one that came in the 0.1 s before the click and was read after it counts.
+   - **Choosing another surface, or another page, disarms it,** as Esc and a second click do.
+   - **The hint row's note stays until the line changes;** a key typed brings busk's own hint
+     back. It names every binding of the control (`cc 1 48 drives fader 2, blackout: unbind it to
+     replace it`).
+
+Docs: engine-gaps.md (GAP-13, with its **TUI since**), the TUI plan's §2.10 and §2.11 rows,
+`docs/library.md`, the guide's F9 (its note that F9 has no monitor goes), the page's module
+docs, and `CHANGELOG.md`.
+
+**Done** (2026-11-18). engine-gaps.md: GAP-13's status, **TUI since** and **Done**, its Summary
+row and the list of reads; the TUI plan's §2.10 rows (MONITOR, `val`, learn mode), §2.11's MIDI
+input and adaptation 20; `docs/library.md` (section 3 and the reference);
+`docs/dev/internals.md`; the guide's first note and its F9 (a new drawing, MONITOR, `in`, learn
+mode); `docs/surfaces.md`'s MIDI section points to F9; the operations report's header and its
+"Beyond this report"; the modules' docs; `CHANGELOG.md` under Added.
+
+**Phase 37 checks** (2026-11-18), on top of `fbecf0d`. The whole suite: 7,094 passed and 1
+skipped, in 10:07 with `uv run pytest -n 6`. `ruff check`, `ruff format --check`, `mypy src` and
+`mypy --strict tests/api_consumer.py` clean. F9's, the bridge's, the contract, the frame's, the
+prompt's, the hints' and the e2e tests pass on Textual 8.2.0: 607 tests. 31 mutations of the new
+code, engine and TUI: all caught, once the note's test pressed Backspace back to the pre-fill (the
+note had come back with the line). The perf gate: F9 with a sweep of 100 OSC messages a second
+coming in, +0.18 to +0.20 core over a frontend that waits through the same sweep (F1 under it,
++0.21 to +0.22), no overrun. F1 A and C flapped around the 0.25 gate (+0.23 to +0.28); the same
+runs of `fbecf0d`, without this phase, read the same, alternated with this phase's.
+
+A real `busk run` under `busk-tui`, in a pty at 99 columns (pyte), `--state-dir` in the scratchpad:
+OSC to a surface on localhost showed a sweep as one line (`osc "/fader/1"  0.80  → fader 1`) and an
+unbound path as `→ —`; `[learn]` on Touch put `bind "Touch" osc "/fader/3" ` in the prompt, with
+busk's completion hint under it. A virtual ALSA port (mido) as a MIDI surface: a CC with two
+bindings (`cc 1 48  102  → fader 2, blackout`), a note on and off on one line (`64`, the off's
+velocity), a pitch bend (`bend 1  4096`), and a program change that never showed; learn passed
+the bend over, took the CC with the note `cc 1 48 drives fader 2, blackout: unbind it to replace
+it` in the hint row, and `fader 3` sent from there was the third binding `list bindings` listed.
+This host has a real nanoKONTROL2 plugged in; its faders were not moved.
+
 ## 7. Seen, and not in the sources
 
 Left out because the five places do not name them. Say if any should join a phase.
@@ -3611,7 +3787,8 @@ Those marked **Not planned** are extras or matter less, and stay here.
 
 - GAP-06 (one undo step for a gesture): **Phase 20**. Done there: `undo group "<label>"`, `undo
   group end`, and F2's drag as one step. GAP-13 (control input monitor): **Not planned**. `bind`
-  lines can be typed.
+  lines can be typed. On 2026-11-18 the user gave it **Phase 37**: F9's MONITOR, the raw value
+  and learn mode. Done there: `LiveShow.inputs`, MONITOR, BINDINGS' `in` and `[learn]`.
 - A cue's move, copy and renumber past its neighbours (the report's Cues table): **Phase 22**,
   steps 1 to 3. Done there: GAP-43, F4's `[number…]` and `[copy…]`.
 - Renumbering a cue list from F4 (the report's Cue lists table): **Phase 22**, step 3. Done
@@ -3973,3 +4150,15 @@ sequences, executors and recipes. Each doubtful point was checked on `OfflineSho
 
     ANSWER: (b), the recommended one (the user's standing word, "use recommended answers",
     2026-11-17). Built in Phase 33.
+14. **What learn mode learns** (Phase 37, step 3). The spec puts `[learn]` on a binding row, but
+    `bind` adds a binding beside those already on an input, so moving one to another control is
+    two lines, `unbind` then `bind`, and two undo steps.
+    - (a) `[learn]` on the chosen surface. The next input from it pre-fills `bind "<surface>"
+      <input> `, and the operator types what it drives. **Recommended:** one pre-fill, one line,
+      and nothing is removed behind the operator's back.
+    - (b) `[learn]` on a binding row, as the spec has it. The next input moves that binding to
+      the new control. This needs a new engine line, so the move is one undo step (a new gap).
+    - (c) Both.
+
+    ANSWER: (a), the recommended one (the user's standing word, "use recommended answers",
+    2026-11-18). Built in Phase 37.
