@@ -162,7 +162,7 @@ busk> fader 1 1                               # or the console does
 
 | Guide | |
 |---|---|
-| [The demo show](docs/demo-show.md) | The club-night show: its rig, pages and controller map, and a tour. |
+| [The demo show](docs/demo-show.md) | The club-night and festival shows: their rigs, pages and controller maps, and tours. |
 | [FAQ](docs/faq.md) | Shows and scripts, the order to build a show in, no light, controllers, crashes and backups. |
 | [Running a show](docs/running.md) | `busk run`: its options and output, autosave and recovery, the processes and the watchdog, the event log, values files. |
 | [The console](docs/console.md) | Every console command, recording rules, scripts. |

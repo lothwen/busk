@@ -6,6 +6,10 @@ with console commands only: two moving heads, four RGBW washes and an LED bar on
 LEDs and safety limits. It is played from a **Korg nanoKONTROL2** in its factory CC mode
 and from a phone. The script's header maps every control it binds.
 
+[`examples/festival.busk`](../examples/festival.busk) is a bigger one: a festival main
+stage of 54 fixtures on TupperDMX's simulated rig, which uses every feature of busk that
+rig can show. See [The festival show](#the-festival-show).
+
 - [Building it](#building-it)
 - [The rig](#the-rig)
 - [Page 1: looks and bumps](#page-1-looks-and-bumps)
@@ -14,6 +18,7 @@ and from a phone. The script's header maps every control it binds.
 - [Page 2, the phone and the LEDs](#page-2-the-phone-and-the-leds)
 - [Safety](#safety)
 - [A tour](#a-tour)
+- [The festival show](#the-festival-show)
 - [Other examples](#other-examples)
 
 ## Building it
@@ -227,6 +232,181 @@ busk> release all 2                          # every playback, over 2 s
 busk> quit
 # engine: 578 ticks @ 100 Hz, 0 overruns, max tick 1.573 ms, 1 command, 0 command errors, 1 restart   (the last engine's counters)
 ```
+
+## The festival show
+
+[`examples/festival.busk`](../examples/festival.busk) builds a festival main stage on the
+TupperDMX profiles: three songs, busking pages for colours, positions, effects, strobes and
+the house, an emergency pair on every page, a web remote and a nanoKONTROL2. It uses every
+feature of busk that this rig can show, each where a festival LD would use it. The script's
+comments say why each one is there, and its header maps the controller.
+
+### Building it
+
+```bash
+busk new festival.show --title "Festival Main Stage"
+busk run festival.show --script examples/festival.busk
+```
+
+Run it from the repository's top folder: the script imports the TupperDMX profiles from
+`examples/tupperdmx/profiles/`, and `festival.show` keeps a copy of each. The output goes over
+Art-Net to TupperDMX's simulator on 127.0.0.1; the web remote's **3D** button shows the
+stage without it.
+
+### The rig and the pages
+
+54 fixtures on universe 1, 506 of its 512 channels: 12 spots and 12 washes (the same moving
+head), 16 RGBW PARs, 8 LED bars, 8 blinders and 2 smoke machines, on a FOH truss, three
+trusses over the stage, the upstage floor and the downstage lip. Page P, slot S holds
+playback P·100+S.
+
+| Page | What it holds |
+|---|---|
+| 1 Songs | Songs 1–3 (tracking stacks with GO, BACK and GOTO), Busking FX and Special Looks |
+| 2 Colors | Ten colours, three colour effects and a colour chase, one at a time |
+| 3 Positions & Beams | Positions 1–7, crossfaded by the fader, and beams 1–8, snapping in at half way |
+| 4 Movement FX | Six movements on the spots, five on the washes, one per type at a time |
+| 5 Dimmer FX | Eleven dimmer effects, sized by their faders and "FX Size" |
+| 6 Strobes & SFX | Strobes, the Blinder Hit (with a swop), smoke, the LED bars' own programs |
+| 7 House & Audience | House lights on a crossfade fader, audience lighting, blinders, the MC light |
+
+Slots 9 and 10 of every page hold HOUSE FULL and PANIC WORK LIGHT, at band 200.
+
+### What it uses, and where
+
+| Feature | Where |
+|---|---|
+| `profile import`, `profile … category` | The five TupperDMX profiles |
+| `fixture … location` | Every fixture, for the web remote's 3D view |
+| `orientation.invertPan` | The floor washes, which stand: a positive pan turns every head the same way on stage |
+| Elements in a selection and a group | Group 40, the audience blinders' warm cells |
+| `sel +`, `sel -` | Group 9 (Full Stage); PANIC's shutters (everything but the LED bars) |
+| `set … spread`, `center` | Every position preset; Song 3's Solo, recorded as one spread on group 35 |
+| `set color.r`, `set … by`, `w` | Deep Blue and Lavender, mixed from Blue and Magenta; Warm White drives the white LEDs |
+| `set <attribute> preset …` | Song 3's Solo: the Gobo 2 star in the Soft Beam |
+| Presets in five pools | Colour, position (per truss), beam, intensity, and an `all` preset, MC Wash |
+| Masters | Beat and Move Speed (with `steps`), Move Size and FX Size, a group master per fixture type, Fade |
+| The effect library, template defaults | All thirteen library templates; the songs' settings kept as defaults, so most `effect add` lines name only an id |
+| A layer's `cycles` | Figure eight (the library's, ×2) and Ballyhoo (the show's own, ×3) |
+| Waveforms | Sine, triangle, square, saw, pulse (Kick), step (Build), random, curve (Heartbeat), colour palettes |
+| An effect on a beam attribute | Zoom Breathe, in Busking FX |
+| `reverse`, `bounce`, `groups`, `blocks`, `wings`, `fadein`, speed and size masters | Busking FX, pages 4 and 5 |
+| Tracking, releases, `releaseAtEnd` | The three songs: a release stops an effect, GO after the last cue releases the song |
+| A point cue | Song 1's 2.5 Riser |
+| A block cue | Song 1's Breakdown: recorded, made a block, then recorded again with `merge` |
+| Family timing, curves, split fades and delays | Every song; the Ballad eases in and out, its Solo fades 4/6 with a delay |
+| Timing per target, fans | Song 1's Build Up (`edges`), Song 2's Intro, the Walk-in (a fan of fades), the Audience Hit (`center`) |
+| `wait`, `follow` | Song 2's Chorus Hold, Song 3's Blackout |
+| A Bézier curve | The house fades |
+| `cue … effect <id> …` | Song 1's Final Drop (a size touch-up), Busking FX 5.5 (an effect removed) |
+| `cue … copy`, `load cue`, `record … replace`, `rename cue` | Busking FX 5.5; Special Looks 6 (Song 1's Breakdown, copied in) and 7 (Blue Silhouette) |
+| `record … only`, `freeze` | Pages 2 and 3; HOUSE FULL and PANIC |
+| `record slot`, `number` | The MC light, renumbered to 704 |
+| A cue-list chase, `wrap` | Page 2's Colour Step (random, on the beat, with a crossfade); Busking FX and Special Looks |
+| Faders: `master`, `size`, `rate`, `crossfade`, `temp`, `none` | Most playbacks, the effect pages, Colour Step, House Lights, Audience Blinders, the emergency pair |
+| Buttons: `go`, `back`, `goto`, `toggle`, `flash`, `swop`, `release`, `select` | Page 1, the other pages, the Blinder Hit, the MC light |
+| LTP modes | Positions follow the fader, beams snap in at half way (`ltpThreshold`), Special Looks ignore it |
+| A flash's level, LTP and band | Audience Blinders hit at 60 %, the MC light's flash brings no LTP, the Blinder Hit's plays at band 150 |
+| Exclusivity, priority, `protectFromSwop`, auto start and release, release times | Every page; the emergency pair at band 200 |
+| `uiColor`, `notes`, `tags` | Page 2, the strobes and the emergency pair in their colours; the emergency pair's notes; the songs' tags |
+| Safety | A 10 Hz strobe cap, a tilt limit on the hung spots, an 80 % limit on the audience blinders, spot 112 parked |
+| Surfaces, bindings, feedback | The web remote; the nanoKONTROL2's faders, buttons, masters, tap, blackout (latched and momentary), pages, `release all`, LEDs and soft takeover |
+
+It leaves out what the rig, the controller or a script cannot show:
+
+- The attributes the TupperDMX profiles lack: focus, iris, frost, CTO, the colour wheel,
+  colour macros and effects, gobo 2, prism rotation and position speed, and with them the
+  `focus` preset pool.
+- What the nanoKONTROL2 does not send in CC mode: OSC, MIDI notes, pitch bend and clock,
+  motor and display feedback, and `fader playback N`, which it has no spare control for.
+- sACN and DMX USB routes (the script's output section says how to switch), and `route <id>
+  …`, whose id a script cannot know.
+- A colour palette entry that names a preset: the template's JSON takes the preset's id,
+  which a script cannot know either.
+- `profile update` and mode changes: each TupperDMX profile has one revision and one mode.
+- Lines that work on a running show rather than build it: the tour below shows them.
+
+### A tour of the festival show
+
+```bash
+busk run festival.show                         # the songs
+busk> list cues 101
+#     1  Intro                time 3 easeInOut, position 0  go
+#     2  Build Up             time 2, position 4, color 1, beam 0.5, group 35 intensity 2 delay 0 to 1.5 edges  go  1 effect
+#   2.5  Riser                time 1  go  1 effect
+#     3  Drop                 time 0/2, position 1, color 0, beam 0  go  1 effect
+#     4  Verse                time 2, position 4, color 1, beam 0.5  go
+#     5  Chorus               time 1, position 2, color 0.5, beam 0  go  3 effects
+#     6  Breakdown            time 4, position 3, color 3, beam 1  go  block
+#     7  Final Drop           time 0/3, position 0.5, color 0, beam 0  go  2 effects
+busk> list cue 101/6                           # a block cue: its whole look, nothing tracked
+# cue 101/6 'Breakdown', a block cue
+#   101  intensity 'Dimmer 25%'  pan 'Spots Upstage'  tilt 'Spots Upstage'  color 'Deep Blue'  gobo1 'Gobo 2'  …
+#   …
+#   601  intensity 50%
+#   602  intensity 50%
+busk> fader 101 1                              # the Intro eases in over 3 s
+busk> go 101                                   # Build Up: the back PARs come in from the centre out
+busk> go 101                                   # Riser: they step up on every beat
+busk> status
+# GM 100% | BO off | P1 Songs | Beat 128 BPM ×1 · Move Speed 120 BPM ×1 | 101 Song 1 Opener on 2.5 Riser 1.00
+busk> list effects                             # the library's templates with the show's defaults, and its own
+# Circle               pan add sine, tilt add sine +90° (bpm "Beat" x 0.25, size 15, phase 0 360)
+# Figure eight         pan add sine, tilt add sine ×2 +90° (bpm "Beat" x 0.5, size 15, phase 0 180, groups 2)
+# …
+# Ballyhoo             pan add sine, tilt add sine ×3 +90° (bpm "Beat" x 0.125, size 20, phase 0 180, groups 2)
+# …
+busk> quit
+
+busk run festival.show                         # live edits, each one undo step
+busk> list park
+# 112 pan 0
+# 112 tilt 0
+busk> unpark fixture 112                       # the techs fixed it
+# unparked fixture 112
+busk> sel group 31
+# 6 targets selected
+busk> preset position 1
+# Spots Center Stage: 12 values on 6 targets
+busk> undo group "focus"                       # nudges, undone together
+# undo group "focus" is open
+busk> set pan by 5
+# pan: 6 targets
+busk> set pan by 5
+# pan: 6 targets
+busk> set tilt by -3
+# tilt: 6 targets
+busk> undo group end
+# closed undo group "focus": 3 steps, undone as one
+busk> undo
+# undid: focus
+busk> sel group 4
+# 16 targets selected
+busk> effect add "Kick" id k                   # a kick on the PARs, on the beat
+# added effect 'k' on 16 targets
+busk> effect stop k                            # kept, with its settings, until it runs again
+# stopped effect 'k'
+busk> effect run k
+# started effect 'k'
+busk> clear
+# programmer cleared
+busk> sel playback 704                         # the MC light's fixtures, to touch up its focus
+# 20 targets selected
+busk> delete group 35 cascade                  # it asks first, naming what would lose the group:
+                                               # Delete group 35 "Back PARs"? It leaves cues 101/2, 101/2.5, … 701/3. [y/N]
+busk> output off                               # it asks: Turn all DMX output off? [y/N]
+busk> status
+# GM 100% | BO off | OUT off | P1 Songs | Beat 128 BPM ×1 · Move Speed 120 BPM ×1
+busk> output on
+busk> release all 2                            # every playback, over 2 s
+busk> quit
+```
+
+In the TUI (`busk-tui festival.show`, see [the TUI guide](tui/guide.md)), F4's TRACK panel
+draws a song cue's look: on cue 101/5, the washes' Wide Beam is dim, tracked from 101/4,
+and on cue 101/6 nothing is, and `[block]` is lit. F9's MONITOR lists what the nanoKONTROL2
+sends; `[learn]` on it, then a control moved, puts its `bind "nanoKONTROL2" cc 1 …` line in
+the prompt.
 
 ## Other examples
 
