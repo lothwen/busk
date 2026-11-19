@@ -98,7 +98,7 @@ import logging
 
 TYPE_CHECKING = False  # as ``typing.TYPE_CHECKING``, without importing typing
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 __all__ = [
     "BuskError",

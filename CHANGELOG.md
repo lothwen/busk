@@ -8,6 +8,8 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-19
+
 ### Added
 
 - What comes in from the control surfaces: `LiveShow.inputs` gives the newest 64 inputs, bound
@@ -608,6 +610,7 @@ line; Phase 8 ([plan](docs/plans/phase-8-plan.md)) made it a library too.
 The command line is otherwise unchanged: every command, flag, exit code and output line
 is the same as before Phase 8.
 
-[Unreleased]: https://github.com/lothwen/busk/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/lothwen/busk/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/lothwen/busk/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/lothwen/busk/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/lothwen/busk/releases/tag/v0.1.0
