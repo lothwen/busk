@@ -65,6 +65,9 @@ def test_a_click_on_the_badge_opens_the_menu_under_it_and_esc_closes_it() -> Non
         assert options.border_title == "FILE"
         rows = [str(options.get_option_at_index(i).prompt) for i in range(options.option_count)]
         assert [" ".join(row.split()) for row in rows] == [
+            "New… Ctrl+N",
+            "Open… Ctrl+O",
+            "Open recent…",
             "Save Ctrl+S",
             "Save as…",
             "Import script…",

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -715,6 +716,23 @@ class ProfileRead:
 
 
 @dataclass(frozen=True, slots=True)
+class ShowRead:
+    """What busk reads in a show file, loaded and compiled as ``busk run``
+    does (file-menu plan call 13): its title (``None`` if busk could not
+    load it), how many fixtures, cue lists and playbacks it has, and when it
+    was saved (``meta.modified``); ``errors``, why it cannot be opened
+    (none: it can)."""
+
+    path: Path
+    title: str | None = None
+    fixtures: int = 0
+    cueLists: int = 0
+    playbacks: int = 0
+    saved: datetime | None = None
+    errors: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class ProfileInfo:
     """A fixture profile: the attributes its modes take, as ``set`` names
     them (``intensity``, ``pan``, ``color``, ``color.w`` with a white
@@ -957,7 +975,8 @@ def newest_only(events: list[BridgeEvent]) -> list[BridgeEvent]:
 
 class BridgeLike(Protocol):
     """What the UI calls (the real :class:`~busk_tui.bridge.Bridge`, and the
-    tests' fake). Every member is safe on the UI thread and returns at once."""
+    tests' fake). Every member is safe on the UI thread and returns at once,
+    but the two that read files (``read_profile``, ``read_show``)."""
 
     def start(self) -> None: ...
 
@@ -989,7 +1008,12 @@ class BridgeLike(Protocol):
     def help_lines(self) -> tuple[str, ...]: ...
 
     def read_profile(self, path: Path) -> ProfileRead:
-        """What busk reads in the profile file at ``path``. The one member
-        that does not return at once: it reads the file, so the app calls it
-        on a worker thread."""
+        """What busk reads in the profile file at ``path``. One of the two
+        members that do not return at once: it reads the file, so the app
+        calls it on a worker thread."""
+        ...
+
+    def read_show(self, path: Path) -> ShowRead:
+        """What busk reads in the show file at ``path``, and whether it can
+        be opened. It reads and compiles the show: on a worker thread."""
         ...

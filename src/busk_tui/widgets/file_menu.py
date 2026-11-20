@@ -1,5 +1,5 @@
 """The File menu, under the status bar's ``busk ▾`` badge (file-menu plan
-Phase 2): a click on the badge or Alt+F opens it. ↑ ↓ move, Enter or a
+Phases 2 and 3): a click on the badge or Alt+F opens it. ↑ ↓ move, Enter or a
 click chooses, and Esc, Alt+F or a click outside close it.
 
 It runs nothing: it closes with what was chosen (:data:`FileChoice`), or
@@ -20,9 +20,12 @@ from textual.widgets.option_list import Option
 
 from busk_tui import colors
 
-type FileChoice = Literal["save", "save_as", "import_script", "quit"]
+type FileChoice = Literal["new", "open", "open_recent", "save", "save_as", "import_script", "quit"]
 
 ITEMS: Final[tuple[tuple[FileChoice, str, str], ...]] = (
+    ("new", "New…", "Ctrl+N"),
+    ("open", "Open…", "Ctrl+O"),
+    ("open_recent", "Open recent…", ""),
     ("save", "Save", "Ctrl+S"),
     ("save_as", "Save as…", ""),
     ("import_script", "Import script…", ""),

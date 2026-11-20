@@ -1,7 +1,8 @@
 """The two hosts (plan step 0.1, §4.6): the ``busk run`` command line and
-environment ``busk-tui`` replaces itself with, ``--standalone``'s load
-errors, the wheel, and the bridge on a real ``busk run --frontend``, with
-processes and with ``--threads``."""
+environment ``busk-tui`` starts, ``--standalone``'s load errors and its loop
+over the shows the TUI opens, the wheel, the bridge on a real ``busk run
+--frontend``, with processes and with ``--threads``, and the parent starting
+the show a real run hands over (file-menu plan Phase 3)."""
 
 from __future__ import annotations
 
@@ -13,11 +14,13 @@ import sys
 import zipfile
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 import busk
-from busk_tui import app, config
+from busk_tui import app, config, parent
+from busk_tui.bridge import Bridge
 from process_harness import BuskRun
 
 HERE = Path(__file__).parent
@@ -40,12 +43,21 @@ def test_colors_set_textuals_colour_system_for_busk_run_too(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("TEXTUAL_COLOR_SYSTEM", raising=False)
-    ran: list[tuple[str, list[str], dict[str, str]]] = []
-    monkeypatch.setattr(os, "execve", lambda path, argv, env: ran.append((path, argv, env)))
-    assert app.main(["club.show", "--colors", "16"]) == 0
-    ((path, argv, environment),) = ran
-    assert path == sys.executable
-    assert argv[3:5] == ["run", "club.show"]
+    ran: list[tuple[list[str], Any, dict[str, str]]] = []
+
+    def run(first: list[str], then: Any, environment: dict[str, str]) -> int:
+        ran.append((first, then, environment))
+        return 5
+
+    monkeypatch.setattr(parent, "run", run)
+    assert app.main(["club.show", "--colors", "16", "--script", "x.busk"]) == 5  # the run's code
+    ((first, then, environment),) = ran
+    assert first[0] == sys.executable
+    assert first[3:5] == ["run", "club.show"]
+    assert "--script" in first
+    following = then(Path("/s/b.show"))
+    assert following[3:5] == ["run", "/s/b.show"]
+    assert "--script" not in following  # the show given's only
     assert environment["TEXTUAL_COLOR_SYSTEM"] == "standard"
 
 
@@ -59,6 +71,74 @@ def test_standalone_says_why_a_show_does_not_load_and_exits_2(
     assert err.startswith(f"busk-tui: {broken}: error ")
     assert app.main([str(tmp_path / "missing.show"), "--standalone"]) == 2
     assert "cannot read" in capsys.readouterr().err
+
+
+def test_standalone_runs_the_next_show_the_tui_opens(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A new bridge and a new app on each show the app ends with; a next
+    show that does not load ends it with 2, as the first would."""
+    shows = {name: tmp_path / f"{name}.show" for name in ("a", "b")}
+    for name, path in shows.items():
+        busk.save_show(busk.new_show(name.upper()), path, backups=False)
+    broken = tmp_path / "broken.json"
+    broken.write_text("{}")
+    from busk_tui.shell import BuskApp
+
+    opened: list[Path] = []
+    nexts = [shows["b"], None]
+    standalone = Bridge.standalone
+
+    def bridge(path: Path, **given: Any) -> Bridge:
+        opened.append(path)
+        return standalone(path, **given)
+
+    def run(self: BuskApp) -> int:
+        self.next_show = nexts.pop(0)
+        return 0
+
+    monkeypatch.setattr(Bridge, "standalone", bridge)
+    monkeypatch.setattr(BuskApp, "run", run)
+    options = ["--standalone", "--no-output", "--no-surfaces"]
+    assert app.main([str(shows["a"]), *options]) == 0
+    assert opened == [shows["a"], shows["b"]]
+    nexts = [broken]
+    assert app.main([str(shows["a"]), *options]) == 2
+    assert "busk-tui: " in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("handing", [True, False], ids=["parent", "no parent"])
+def test_the_frontend_hands_the_show_the_tui_opened_to_its_parent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, handing: bool
+) -> None:
+    """Under busk-tui's parent (``$BUSK_TUI_NEXT``), the TUI can open
+    another show, and the frontend hands it over once the app ends; without
+    one, the TUI is told it cannot."""
+    from tui_fakes import FakeBridge
+
+    from busk_tui.shell import BuskApp
+
+    next_file = tmp_path / "next.json"
+    if handing:
+        monkeypatch.setenv(parent.NEXT, str(next_file))
+    else:
+        monkeypatch.delenv(parent.NEXT, raising=False)
+    monkeypatch.setenv(config.ENVIRONMENT, json.dumps({"state_dir": str(tmp_path / "st")}))
+    seen: list[tuple[bool, Path | None]] = []
+
+    def run(self: BuskApp) -> int:
+        seen.append((self.opens, self.state_dir))
+        self.next_show = tmp_path / "b.show"
+        return 0
+
+    monkeypatch.setattr(Bridge, "attached", lambda show: FakeBridge())
+    monkeypatch.setattr(BuskApp, "run", run)
+    app.frontend(object())
+    assert seen == [(handing, tmp_path / "st")]
+    if handing:
+        assert parent.read_next(next_file) == tmp_path / "b.show"
+    else:
+        assert not next_file.exists()
 
 
 def test_python_m_busk_tui_is_busk_tui() -> None:
@@ -146,3 +226,37 @@ def test_the_bridge_on_busk_runs_show(
     assert seen["seconds"] < 1.0
     assert seen["help"] > 50
     assert seen["health"] == "running"  # the bridge never stopped the show
+
+
+def test_the_parent_starts_the_show_a_real_run_hands_over(tmp_path: Path) -> None:
+    """Two real ``busk run``s, one after the other: the first one's frontend
+    hands ``b.show`` over through ``$BUSK_TUI_NEXT``, which reaches the
+    console process; the parent starts it, and ends with its code."""
+    shows = {name: tmp_path / f"{name.lower()}.show" for name in ("A", "B")}
+    for title, path in shows.items():
+        busk.save_show(busk.new_show(title), path, backups=False)
+    report = tmp_path / "report.jsonl"
+    environment = {
+        **os.environ,
+        "PYTHONPATH": os.pathsep.join([str(HERE), os.environ.get("PYTHONPATH", "")]),
+        "BUSK_TUI_TEST_REPORT": str(report),
+        "BUSK_TUI_TEST_NEXT": str(shows["B"]),
+    }
+
+    def command(show: Path) -> list[str]:
+        return [sys.executable, "-m", "busk", "run", str(show), "--frontend",
+                "tui_handoff_frontend:main", "--state-dir", str(tmp_path / "state"),
+                "--no-log"]  # fmt: skip
+
+    with (tmp_path / "out.txt").open("w") as out:
+
+        def start(line: list[str], given: dict[str, str]) -> parent.Run:
+            return subprocess.Popen(line, env=given, stdin=subprocess.DEVNULL, stdout=out,
+                                    stderr=subprocess.STDOUT)  # fmt: skip
+
+        code = parent.run(command(shows["A"]), command, environment, start)
+    assert code == 0, (tmp_path / "out.txt").read_text()
+    seen = [json.loads(line) for line in report.read_text().splitlines()]
+    assert [entry["title"] for entry in seen] == ["A", "B"]
+    assert seen[0]["next"] == seen[1]["next"] is not None
+    assert not Path(seen[0]["next"]).parent.exists()

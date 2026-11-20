@@ -33,6 +33,8 @@ KEYS: tuple[tuple[str, str], ...] = (
     ("ctrl+z", "undo"),
     ("ctrl+y", "redo"),
     ("ctrl+s", "save"),
+    ("ctrl+n", "a new show"),
+    ("ctrl+o", "open another show"),
     ("alt+f", "the File menu (or a click on busk ▾)"),
     ("ctrl+c", "clear; twice: quit"),
 )

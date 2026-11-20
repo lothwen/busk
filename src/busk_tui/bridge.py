@@ -38,7 +38,8 @@ import threading
 import time
 from collections import deque
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from datetime import datetime
 from pathlib import Path
 from queue import Empty, SimpleQueue
 from typing import Any, Final, Literal, cast
@@ -52,7 +53,9 @@ from busk import (
     FixtureProfile,
     FixtureProfileInfo,
     ImportFailed,
+    Issue,
     LiveShow,
+    OfflineShow,
     OutputSnapshot,
     ProfileLibrary,
     ProgrammerStatus,
@@ -63,6 +66,7 @@ from busk import (
     SurfaceInput,
     SurfaceStatus,
     TrackedCue,
+    UnsupportedFeature,
     load_show,
     read_profile,
 )
@@ -131,6 +135,7 @@ from busk_tui.model import (
     ShowChanged,
     ShowLoadFailed,
     ShowModel,
+    ShowRead,
     SpeedView,
     StoredValue,
     Summary,
@@ -516,6 +521,10 @@ class Bridge:
     def read_profile(self, path: Path) -> ProfileRead:
         """What busk reads in the profile file at ``path`` (:func:`profile_read`)."""
         return profile_read(path)
+
+    def read_show(self, path: Path) -> ShowRead:
+        """What busk reads in the show file at ``path`` (:func:`show_read`)."""
+        return show_read(path)
 
     # -------------------------------------------------------------- workers
 
@@ -1116,6 +1125,50 @@ def profile_read(path: Path) -> ProfileRead:
             for mode in profile["modes"]
         ),
     )
+
+
+def show_read(path: Path) -> ShowRead:
+    """What busk reads in the show file at ``path``: loaded, then compiled as
+    ``busk run`` does, in an :class:`busk.OfflineShow`, which opens nothing
+    (file-menu plan call 13); or why it cannot be opened. It reads and
+    compiles the show: off the UI thread. Raises nothing."""
+    try:
+        doc, _ = load_show(path)
+    except ShowLoadError as exc:
+        return ShowRead(path, errors=_errors(exc.issues))
+    except OSError as exc:
+        return ShowRead(path, errors=(f"cannot read it: {exc.strerror or exc}",))
+    except Exception as exc:
+        _debug.exception("load_show(%r) raised", str(path))
+        return ShowRead(path, errors=(str(exc) or type(exc).__name__,))
+    meta = doc["meta"]
+    try:
+        saved: datetime | None = datetime.fromisoformat(meta["modified"])
+    except ValueError:
+        saved = None
+    found = ShowRead(
+        path,
+        meta["title"],
+        len(doc["fixtures"]),
+        len(doc["cueLists"]),
+        len(doc["playbacks"]),
+        saved,
+    )
+    try:
+        OfflineShow(doc)
+    except ShowLoadError as exc:
+        return replace(found, errors=_errors(exc.issues))
+    except UnsupportedFeature as exc:
+        return replace(found, errors=(f"busk cannot run it yet: {exc}",))
+    except Exception as exc:
+        _debug.exception("compiling %r raised", str(path))
+        return replace(found, errors=(str(exc) or type(exc).__name__,))
+    return found
+
+
+def _errors(issues: Sequence[Issue]) -> tuple[str, ...]:
+    """The errors among ``issues`` (a load error's: one at least), as busk words them."""
+    return tuple(str(issue) for issue in issues if issue.severity == "error")
 
 
 def master_view(master: Mapping[str, Any], groups: dict[str, GroupInfo]) -> MasterView:

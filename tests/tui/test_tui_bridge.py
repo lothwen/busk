@@ -8,6 +8,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -21,7 +22,7 @@ from tui_fakes import stub_snapshot as snapshot
 
 import busk
 from busk_tui import bridge as bridge_module
-from busk_tui.bridge import Bridge, session_state
+from busk_tui.bridge import Bridge, session_state, show_read
 from busk_tui.model import (
     BridgeEvent,
     Busy,
@@ -720,3 +721,47 @@ def test_standalone_stop_stops_the_show_once_and_honours_its_timeout(
 def test_attached_takes_only_a_live_show() -> None:
     with pytest.raises(TypeError, match=r"busk\.LiveShow"):
         Bridge.attached(object())
+
+
+# ------------------------------------------------------------ show files
+
+
+def test_a_show_file_read_as_busk_run_would_open_it(club_path: Path) -> None:
+    found = show_read(club_path)
+    doc, _ = busk.load_show(club_path)
+    assert found.path == club_path
+    assert found.title == "Club Night"
+    assert (found.fixtures, found.cueLists, found.playbacks) == (
+        len(doc["fixtures"]), len(doc["cueLists"]), len(doc["playbacks"]),
+    )  # fmt: skip
+    assert found.fixtures > 0
+    assert found.saved == datetime.fromisoformat(doc["meta"]["modified"])
+    assert found.errors == ()
+
+
+def test_a_show_file_with_errors_cannot_be_opened(tmp_path: Path) -> None:
+    broken = tmp_path / "broken.json"
+    broken.write_text("{}")
+    found = show_read(broken)
+    assert found.title is None
+    assert "schemaVersion: Field required" in found.errors  # busk's words
+
+
+def test_a_show_that_does_not_compile_cannot_be_opened(club_path: Path, tmp_path: Path) -> None:
+    doc, _ = busk.load_show(club_path)
+    fixture = doc["fixtures"][0]
+    fixture["elementPatch"] = {"0": dict(fixture["patch"])}  # type: ignore[typeddict-unknown-key]
+    path = tmp_path / "split.show"
+    busk.save_show(doc, path, backups=False)
+    found = show_read(path)
+    assert found.title == "Club Night"  # it loads
+    (error,) = found.errors
+    assert error.startswith("busk cannot run it yet: fixtures[0].elementPatch")
+
+
+def test_a_file_that_is_no_show_or_none_cannot_be_opened(tmp_path: Path) -> None:
+    text = tmp_path / "notes.show"
+    text.write_text("hello")
+    assert show_read(text).errors == ("Not a valid .show file: File is not a zip file",)
+    missing = show_read(tmp_path / "missing.show")
+    assert missing.errors == ("cannot read it: No such file or directory",)

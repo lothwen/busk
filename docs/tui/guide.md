@@ -6,8 +6,8 @@ the console prompt on one screen. Every click and key in it is a console line, e
 log, so what the UI does is what you could type.
 
 > **What it covers.** The frame (the status bar, the log, the prompt with hints and completion,
-> the help overlay, the dialogs and [the File menu](#the-file-menu): save, save as, import a
-> script) and every page: [F1 Busk](#f1-busk), to play the show, in
+> the help overlay, the dialogs and [the File menu](#the-file-menu): a new show, open another,
+> save, save as, import a script) and every page: [F1 Busk](#f1-busk), to play the show, in
 > three layouts, A (console), B (stack) and C (stage), [F2 Program](#f2-program) and
 > [F6 Presets](#f6-presets), to build a look, [F4 Cues](#f4-cues) and [F5 Effects](#f5-effects),
 > [F7 Masters](#f7-masters), and the rig: [F3 Fixtures](#f3-fixtures), [F8 Patch](#f8-patch)
@@ -32,14 +32,16 @@ uv add path/to/busk --extra tui        # or: pip install "path/to/busk[tui]"
 busk-tui club.show                     # or: python -m busk_tui club.show
 ```
 
-`busk-tui SHOW` runs `busk run SHOW --frontend busk_tui.app:frontend` and becomes that run:
-it takes `busk run`'s options and passes them on, and its exit code is the run's. Quitting the
-TUI ends the run. The options:
+`busk-tui SHOW` runs `busk run SHOW --frontend busk_tui.app:frontend` and waits for it: it
+takes `busk run`'s options and passes them on, and its exit code is the run's (128 + N when a
+signal N killed it). Quitting the TUI ends the run, and `busk-tui` with it. Opening another show
+from the TUI ends the run and starts the next, with the same options
+([Opening another show](#opening-another-show)). The options:
 
 | Option | |
 |---|---|
 | `--state-dir D`, `--library D` | As for `busk run` ([Running a show](../running.md)). |
-| `--values FILE`, `--script FILE`, `--iface IF`, `--no-recover`, `--threads`, `--stats FILE`, `--no-log` | Passed on to `busk run` as they are. A `--script` runs before the TUI opens. |
+| `--values FILE`, `--script FILE`, `--iface IF`, `--no-recover`, `--threads`, `--stats FILE`, `--no-log` | Passed on to `busk run` as they are. A `--script` runs before the TUI opens. `--values` and `--script` are the given show's: a show opened from the TUI starts without them. |
 | `--layout A\|B\|C` | The layout of the F1 page: console, stack (the default) or stage. The one chosen last is remembered. |
 | `--faders N` | At most how many of a page's slots F1 shows, 4–20 (default 20). |
 | `--colors auto\|256\|16\|truecolor` | The terminal's colours (default: as the terminal says). |
@@ -59,7 +61,8 @@ busk-tui club.show --standalone --no-output
 does. It starts faster and takes two options `busk run` lacks: `--no-output` (open no route)
 and `--no-surfaces` (open no MIDI, OSC or web surface). It has none of `busk run`'s safety
 net: no watchdog, no process isolation, no autosave, no crash recovery and no event log. If
-the TUI crashes, the output stops. **For a show, start `busk-tui` without `--standalone`.**
+the TUI crashes, the output stops. **For a show, start `busk-tui` without `--standalone`.** A
+show opened from the TUI starts in the same process, standalone too.
 
 ## The screen
 
@@ -138,6 +141,7 @@ on the prompt or, where noted, only when it is empty.
 | Esc | Close help, else leave the page, else clear the line. |
 | Ctrl+Z, Ctrl+Y | `undo`, `redo`, whatever the prompt holds. |
 | Ctrl+S | `save`, whatever the prompt holds. |
+| Ctrl+N, Ctrl+O | New show… and Open…, as in [the File menu](#the-file-menu), whatever the prompt holds. |
 | Alt+F | Open or close the File menu. It arrives only from a terminal that reports Alt with the key, as the kitty keyboard protocol does: one that sends Alt+F as Esc and `f` (xterm, and tmux by default) has Textual read it as Ctrl+→, which moves the prompt's cursor. Click the badge there. |
 | Ctrl+C | Clear the line; on an empty prompt, twice in a row, quit. |
 | Ctrl+Q | Quit. |
@@ -1455,6 +1459,9 @@ A click on the `busk ▾` badge, or Alt+F, opens it under the badge:
 
 | Item | Key | |
 |---|---|---|
+| New… | Ctrl+N | A new, empty show, in a file of its own, opened ([Opening another show](#opening-another-show)). |
+| Open… | Ctrl+O | Another show, from a file. |
+| Open recent… | | Another show, from the shows busk-tui ran last. |
 | Save | Ctrl+S | `save`: the show to its own file, busk keeping a backup of the file it replaces. It always sends `save`, even with nothing unsaved. |
 | Save as… | | The show to another file, as a new show (below). |
 | Import script… | | A console script, run with `source` (below). |
@@ -1477,6 +1484,51 @@ on in the copy ([the console](../console.md)). Before it replaces another file, 
 **Import script…** opens it on the scripts, in the show's folder: `.busk` files can be chosen
 and other files are dimmed, and the preview is a script's first lines, its comment dimmed. Choosing one sends `source "/home/me/shows/rig.busk"`: busk runs its lines, each its own
 undo step, and stops at the first it refuses. What it answers goes to the log.
+
+## Opening another show
+
+New…, Open… and Open recent… end the show that runs and start another. **The output stops
+between the two**: the run ends as it does when you quit, its routes terminate their streams,
+and the next show's routes open once it has started, about a second later for a small show.
+Under `busk run`, `busk-tui` is the parent of each run in turn; with `--standalone`, each show
+runs in the TUI's own process.
+
+**Open…** opens the file picker on show files (`.show` and `.json`; other files are dimmed), in
+the show's folder, on its file. The preview of a show file is what busk reads in it: its title,
+its file, how many fixtures, cue lists and playbacks it has, and when it was saved, or, in
+red, why busk cannot open it. **Open recent…** lists the shows busk-tui ran last, newest first,
+but the one that runs, with the same preview: ↑ ↓ move, Enter opens, Esc cancels. A show whose
+file is gone is dimmed, marked `missing`, and cannot be opened.
+
+Before it opens a show, busk loads and compiles it as `busk run` would. One that does not load
+is refused in a dialog that says why, and the show that runs goes on.
+
+**New…** asks for the title and the file. The file follows the title as you type it, as a file
+name in the show's folder (`Late Night` is `late-night.show`), until you type in it yourself; a
+name without `.show` or `.json` gets `.show`. It refuses an empty title and a file that exists.
+The show is written by `busk new`, with the installation's sACN CID, and opened.
+
+The show changes at once when it has no unsaved edits and no route sends. Otherwise a dialog
+asks first, and says what applies:
+
+```
+┌ OPEN ─────────────────────────────────────────────────────────┐
+│ Open "Festival" (~/shows/festival.show)?                      │
+│ There are unsaved edits.                                      │
+│ The output stops while the next show starts:                  │
+│ 2 routes are sending (sACN·U1, sACN·U2).                      │
+│                                                               │
+│ [s Save and open]  [o Open without saving]  [c Cancel]        │
+└───────────────────────────────────────────────────────────────┘
+```
+
+**s** saves first and opens the show once the save has worked; if it fails, the log says why
+and the show that runs stays. **o** opens it without saving: under `busk run`, the unsaved edits
+are kept in the newest autosave, as when you quit. Without unsaved edits it offers **o** Open and
+**c** Cancel. A route sends while its light is green (`● sACN·U1`).
+
+What `busk run` prints when it ends (the engine's statistics, the routes' counts, where unsaved
+edits were kept) lands on the terminal behind the TUI: you see it after the last quit.
 
 ## Files
 

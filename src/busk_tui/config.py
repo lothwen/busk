@@ -1,9 +1,12 @@
 """Options, ``config.toml`` and ``state.json`` (plan step 0.7).
 
 ``busk-tui SHOW`` runs ``busk run SHOW --frontend busk_tui.app:frontend``
-with the ``busk run`` options it was given. busk hands the frontend only the
-show, so the TUI's own options travel in the environment, as JSON in
-``BUSK_TUI_OPTIONS`` (:func:`to_environment`, :func:`from_environment`).
+with the ``busk run`` options it was given, and the same on each show opened
+from the TUI after it, without ``--values`` and ``--script``, which are the
+given show's (:func:`busk_run_command`, file-menu plan call 10). busk hands
+the frontend only the show, so the TUI's own options, and ``--state-dir``,
+travel in the environment, as JSON in ``BUSK_TUI_OPTIONS``
+(:func:`to_environment`, :func:`from_environment`).
 ``--standalone`` runs the show in the TUI's own process instead, and takes
 ``--no-output`` and ``--no-surfaces``, which ``busk run`` lacks.
 
@@ -40,6 +43,8 @@ RECENT: Final = 10
 
 _RUN_ONLY: Final = ("values", "script", "iface", "no_recover", "threads", "stats", "no_log")
 """The ``busk run`` options ``--standalone`` has no use for."""
+_FIRST_ONLY: Final = ("values", "script")
+"""The ``busk run`` options for the show given only, not the shows opened after it."""
 
 QUICK: Final = (
     "set intensity spread 0 to 1",
@@ -65,7 +70,8 @@ class Options:
     no_surfaces: bool = False
     state_dir: Path | None = None
     library: tuple[Path, ...] = ()
-    run: tuple[str, ...] = ()  # the other busk run options, as given
+    run: tuple[str, ...] = ()  # the other busk run options, as given, for every show
+    first: tuple[str, ...] = ()  # --values and --script, as given, for the show given only
     layout: Layout | None = None
     faders: int | None = None
     colors: Colors | None = None
@@ -142,13 +148,15 @@ def parse_arguments(argv: Sequence[str] | None = None) -> Options:
         if local:
             parser.error(f"{', '.join(local)} needs --standalone (busk run has no such option)")
     run_options: list[str] = []
+    first_options: list[str] = []
     for name in _RUN_ONLY:
         value = getattr(args, name)
         flag = "--" + name.replace("_", "-")
+        given = first_options if name in _FIRST_ONLY else run_options
         if value is True:
-            run_options.append(flag)
+            given.append(flag)
         elif value not in (None, False):
-            run_options += [flag, str(value)]
+            given += [flag, str(value)]
     return Options(
         show=args.show,
         standalone=args.standalone,
@@ -157,6 +165,7 @@ def parse_arguments(argv: Sequence[str] | None = None) -> Options:
         state_dir=args.state_dir,
         library=tuple(args.library),
         run=tuple(run_options),
+        first=tuple(first_options),
         layout=args.layout,
         faders=args.faders,
         colors=args.colors,
@@ -164,24 +173,38 @@ def parse_arguments(argv: Sequence[str] | None = None) -> Options:
     )
 
 
-def busk_run_command(options: Options) -> list[str]:
-    """The ``busk run`` command line that runs the TUI as its frontend."""
-    assert options.show is not None
-    command = [sys.executable, "-m", "busk", "run", str(options.show), "--frontend", FRONTEND]
+def busk_run_command(options: Options, show: Path | None = None) -> list[str]:
+    """The ``busk run`` command line that runs the TUI as its frontend: on
+    the show given, with all its options, or on ``show``, opened from the TUI
+    after it, without ``--values`` and ``--script``."""
+    first = show is None
+    if show is None:
+        assert options.show is not None
+        show = options.show
+    command = [sys.executable, "-m", "busk", "run", str(show), "--frontend", FRONTEND]
     if options.state_dir is not None:
         command += ["--state-dir", str(options.state_dir)]
     for directory in options.library:
         command += ["--library", str(directory)]
-    return command + list(options.run)
+    return command + list(options.run) + (list(options.first) if first else [])
+
+
+def busk_new_command(show: Path, title: str, state_dir: Path | None) -> list[str]:
+    """``busk new`` (file-menu plan call 14): the template show at ``show``,
+    titled ``title``, with the installation's sACN CID; it refuses a file
+    that exists."""
+    command = [sys.executable, "-m", "busk", "new", str(show), f"--title={title}"]
+    return command + ([] if state_dir is None else ["--state-dir", str(state_dir)])
 
 
 def to_environment(options: Options) -> str:
-    """The TUI's own options, for ``BUSK_TUI_OPTIONS``. Paths are made
-    absolute: ``busk run`` keeps the working directory, but a restarted
-    console must find the same files."""
+    """The TUI's own options, and ``--state-dir`` (for ``busk new``), for
+    ``BUSK_TUI_OPTIONS``. Paths are made absolute: ``busk run`` keeps the
+    working directory, but a restarted console must find the same files."""
     config = None if options.config is None else str(options.config.absolute())
+    state = None if options.state_dir is None else str(options.state_dir.absolute())
     given = {"layout": options.layout, "faders": options.faders, "colors": options.colors}
-    return json.dumps({**given, "config": config})
+    return json.dumps({**given, "config": config, "state_dir": state})
 
 
 def from_environment(environ: dict[str, str] | None = None) -> Options:
@@ -198,11 +221,13 @@ def from_environment(environ: dict[str, str] | None = None) -> Options:
     faders = given.get("faders")
     colors = given.get("colors")
     config = given.get("config")
+    state = given.get("state_dir")
     return Options(
         layout=layout if layout in LAYOUTS else None,
         faders=faders if isinstance(faders, int) and _in_range(faders) else None,
         colors=colors if colors in COLORS else None,
         config=Path(config) if isinstance(config, str) else None,
+        state_dir=Path(state) if isinstance(state, str) else None,
     )
 
 
@@ -306,6 +331,19 @@ def remember_show(path: Path, show: Path, title: str, opened: datetime | None = 
     entry = {"path": str(show), "title": title, "opened": when}
     recent = [entry, *(kept for kept in _recent(state) if kept["path"] != entry["path"])]
     return _write_state(path, {**state, "recent": recent[:RECENT]})
+
+
+@dataclass(frozen=True, slots=True)
+class RecentShow:
+    """A show of ``recent``: its file, an absolute path, and its title then."""
+
+    path: Path
+    title: str
+
+
+def recent_shows(path: Path) -> tuple[RecentShow, ...]:
+    """The recent shows of the state file at ``path``, newest first."""
+    return tuple(RecentShow(Path(e["path"]), e["title"]) for e in _recent(read_state(path)))
 
 
 def _recent(state: dict[str, Any]) -> list[dict[str, str]]:

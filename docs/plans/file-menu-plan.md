@@ -390,6 +390,59 @@ the quit dialog and `recent` in `state.json`.
 13. **Docs.** The guide's new section "Opening another show": the output stops between shows.
     The `tui-pending-plan.md` §7 line on `busk-tui` making shows is updated. CHANGELOG.
 
+**Done** 2026-11-20, on 4643af4. Code: `src/busk_tui/parent.py` (new: `run`, `hand_off`,
+`read_next`, `NEXT`); in `app.py`, `main` (`parent.run` instead of `os.execve`), `frontend`
+(`opens`, the hand-off) and `_standalone` (the loop); `config.busk_run_command(options, show)`
+with `Options.first`, `config.busk_new_command`, `state_dir` in `BUSK_TUI_OPTIONS`,
+`config.RecentShow` and `recent_shows`; `bridge.show_read`, `Bridge.read_show`, `model.ShowRead`,
+`controls.ReadShow`; the picker's `open` mode and `show_text`; `widgets/show_dialogs.py` (new:
+`OpenDialog`, `NewShowDialog`, `RecentList`, `RecentDialog`, `file_name`, `new_path`); in
+`shell.py`, `new_show`, `open_show`, `open_recent`, `_check_open`, `_confirm_open`, `_make_show`,
+`_open` and `next_show`, and Ctrl+N and Ctrl+O in `prompt_key`. Tests:
+`tests/tui/test_tui_parent.py` and `tests/tui/test_tui_open.py` (new), `tui_handoff_frontend.py`
+(new) with four new tests in `test_tui_host.py`, `show_read` in `test_tui_bridge.py`, the open
+mode in `test_tui_file_picker.py`, the options in `test_tui_config.py`. What differs from the
+steps above, or goes beyond them:
+
+- **Open recent… leaves out the show that runs**: opening it again would be Revert (§10).
+  Open… still takes the show's own file, and opens it again from disk.
+- **`RecentList` and `RecentDialog` are built here** (`widgets/show_dialogs.py`), since Open
+  recent… needs them. Phase 4's launcher reuses the list and the preview (`show_text`).
+- **A recent row** reads `title  missing  path`: the mark comes before the path, which the row
+  cuts at its end when it is long.
+- **New…'s file name** is the title's words in lower case, joined by `-` (`Late Night` is
+  `late-night.show`), in the show's folder. It follows the title as it is typed, until the file
+  is typed in. The form refuses an empty title and a file that exists. `busk new` refuses one
+  too (a file made meanwhile), and its words go to the log.
+- **`--title=T`**, not `--title T`: a title that starts with `-` would be read as an option.
+- **`--state-dir` travels in `BUSK_TUI_OPTIONS`**, for `busk new`'s sACN CID under `busk run`.
+- **A frontend without busk-tui's parent** (`busk run --frontend busk_tui.app:frontend`, typed
+  by hand) has no `$BUSK_TUI_NEXT`: New…, Open… and Open recent… say so in the log and do
+  nothing.
+- **Before the session is known** (the bridge's first look), the confirmation says that the TUI
+  cannot tell whether there are unsaved edits and offers Save and open, as the quit dialog does.
+- **A show that does not load** gets the same dialog, with busk's errors (8 at most) and Close.
+- **The route names** in the dialog are the status bar's (`sACN·U1`), not `sACN 1`.
+- **Only a run that ends with 0** starts the next show; another code ends the parent, even after
+  a hand-off.
+- **The parent's SIGINT handler** does nothing but is a Python function, not `SIG_IGN`, which
+  `busk run` would inherit through exec. Checked: the run's Python still raises
+  KeyboardInterrupt.
+- **A signal told twice is harmless** (§8): `busk run`'s root takes a second SIGTERM or SIGHUP
+  as the first (`_terminate`; `_kill_at` is set once), so the parent passes on a hang-up that
+  reached the run too. Checked in a pty: a hang-up, and a SIGTERM to `busk-tui` alone, each end
+  the whole tree, with nothing left running. After a hang-up the exit code is 120, CPython's when
+  it cannot flush onto the terminal that went; `busk run` alone ends the same way.
+- **Textual three times in one process** (§8, `--standalone`): keys, the mouse and the screen
+  work in each app, in a pty.
+
+Checks: the whole suite (`-n 6`, 9:42) 7,219 passed, 1 skipped, 1 failed: Phase 2's
+`test_waveforms.py::test_vectorised_equals_the_scalar_transcription`, untouched here; then
+`tests/tui` again on the final sources, 1,865 passed. 22 mutations, all caught. ruff, format and
+mypy clean. Two pty runs: under `busk run`, Alpha sending sACN to localhost, Ctrl+O Bravo through
+the warning (Bravo's title about 1 s later), Ctrl+N "Late Night", Alt+F (kitty) Open recent
+Bravo, quit with 0; with `--standalone`, Ctrl+N, a click on the badge, Open recent, quit with 0.
+
 ### Phase 4: the launcher
 
 14. **The options.** `show` becomes optional, and with no show the launcher runs before the

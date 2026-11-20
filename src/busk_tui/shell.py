@@ -7,7 +7,8 @@ engine (plan §4.1).
 
 Keys (plan §4.4). The prompt always has the keyboard. F1–F9 and Alt+1–9
 switch pages, F10 and Alt+0 toggle help, Alt+F opens the File menu, Ctrl+S
-saves, Esc closes help, leaves the pane cursor or clears the prompt. On an
+saves, Ctrl+N and Ctrl+O start a new show and open one, Esc closes help,
+leaves the pane cursor or clears the prompt. On an
 empty prompt only: ``?`` toggles help, Tab moves the pane cursor into the
 page, Space runs GO on the selected playback, ← → select another, ``[ ]``
 move its fader 5 %, and PgUp PgDn change the playback page. Everything else
@@ -15,6 +16,11 @@ types.
 
 What the bridge sends goes into one :class:`~busk_tui.pages.base.View`;
 after each drain the visible page redraws the parts that changed.
+
+**Another show** (file-menu plan Phase 3): New…, Open… and Open recent… end
+the app with :attr:`BuskApp.next_show` set, and the one that started it
+starts that show next: ``busk-tui``'s parent process (:mod:`busk_tui.parent`),
+or ``--standalone``'s loop.
 
 Imported only once ``TEXTUAL_COLOR_SYSTEM`` is set (:mod:`busk_tui.app`),
 since Textual reads it when it is imported.
@@ -24,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import signal
+import subprocess
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -65,6 +72,7 @@ from busk_tui.model import (
     SessionChanged,
     SessionState,
     ShowChanged,
+    ShowRead,
     SurfacesChanged,
     TrackingChanged,
 )
@@ -79,7 +87,7 @@ from busk_tui.pages.patch import PatchPage
 from busk_tui.pages.presets import PresetsPage
 from busk_tui.pages.program import ProgramPage
 from busk_tui.pages.surfaces import SurfacesPage
-from busk_tui.widgets.controls import FillPrompt, ReadProfile, RunLine, ShowHint
+from busk_tui.widgets.controls import FillPrompt, ReadProfile, ReadShow, RunLine, ShowHint
 from busk_tui.widgets.dialogs import (
     ConfirmDialog,
     QuitChoice,
@@ -88,13 +96,20 @@ from busk_tui.widgets.dialogs import (
     check_name,
 )
 from busk_tui.widgets.file_menu import FileChoice, FileMenu
-from busk_tui.widgets.file_picker import FileDialog
+from busk_tui.widgets.file_picker import FileDialog, home_text
 from busk_tui.widgets.frame import PAGES, KeyLegend, StatusBar, TabBar
 from busk_tui.widgets.help import HelpOverlay
 from busk_tui.widgets.log import LogView
 from busk_tui.widgets.playbacks import PlaybackRow
 from busk_tui.widgets.profile_picker import ProfileDialog
 from busk_tui.widgets.prompt import HintRow, Prompt, PromptRow
+from busk_tui.widgets.show_dialogs import (
+    NewShowDialog,
+    OpenChoice,
+    OpenDialog,
+    RecentDialog,
+    new_path,
+)
 
 DRAIN_S: Final = 0.025
 BUSY_AFTER_S: Final = 0.3
@@ -141,7 +156,9 @@ class FailedScreen(Screen[None]):
 
 
 class BuskApp(App[int]):
-    """The TUI on one show (see the module docs)."""
+    """The TUI on one show (see the module docs). ``opens``: whoever runs it
+    starts :attr:`next_show` once it ends, so New… and Open… can work.
+    ``state_dir``: busk's state directory, for ``busk new``'s sACN CID."""
 
     CSS_PATH = "busk.tcss"
     TITLE = "busk"
@@ -161,11 +178,16 @@ class BuskApp(App[int]):
         settings: config.Settings,
         *,
         standalone: bool = False,
+        opens: bool = True,
+        state_dir: Path | None = None,
     ) -> None:
         super().__init__()
         self.bridge = bridge
         self.settings = settings
         self.standalone = standalone
+        self.opens = opens
+        self.state_dir = state_dir
+        self.next_show: Path | None = None  # the show to start once the app ends
         self.page = settings.page
         self.view = View(faders=settings.faders, quick=settings.quick, layout=settings.layout)
         self.cursor = PaneCursor()
@@ -494,6 +516,23 @@ class BuskApp(App[int]):
 
         self.run_worker(read, thread=True, group="read-profile")
 
+    def on_read_show(self, message: ReadShow) -> None:
+        """A show file to show before it is opened (the file picker, Open
+        recent…): busk reads it on a worker thread, and ``then`` gets what it
+        found."""
+        message.stop()
+        self._read_show(message.path, message.then)
+
+    def _read_show(self, path: Path, then: Callable[[ShowRead], None]) -> None:
+        bridge = self.bridge
+
+        def read() -> None:
+            found = bridge.read_show(path)
+            if not get_current_worker().is_cancelled:
+                self.call_from_thread(then, found)
+
+        self.run_worker(read, thread=True, group="read-show")
+
     def on_fill_prompt(self, message: FillPrompt) -> None:
         """A pre-fill from a page: the text goes in the prompt, to finish."""
         message.stop()
@@ -682,6 +721,12 @@ class BuskApp(App[int]):
 
     def _file_chosen(self, choice: FileChoice | None) -> None:
         match choice:
+            case "new":
+                self.new_show()
+            case "open":
+                self.open_show()
+            case "open_recent":
+                self.open_recent()
             case "save":  # even with nothing unsaved: harmless
                 self._run(commands.save())
             case "save_as":
@@ -722,6 +767,123 @@ class BuskApp(App[int]):
 
         self.push_screen(FileDialog(folder, mode="script"), chosen)
 
+    # ------------------------------------------------------ another show
+
+    def new_show(self) -> None:
+        """New…: a form for the title and the file, in the show's folder;
+        then the confirmation, ``busk new`` (:meth:`_make_show`), and the new
+        show opened."""
+        if not self._can_open():
+            return
+        own = self._own_file()
+        folder = Path.cwd() if own is None else own.parent
+
+        def given(values: tuple[str, ...] | None) -> None:
+            if values is None:
+                return
+            title, path = values[0].strip(), new_path(folder, values[1])
+            assert path is not None  # the form's check
+            question = f'Open a new show "{title}" ({home_text(path)})?'
+            self._confirm_open("NEW SHOW", question, lambda: self._make_show(path, title))
+
+        self.push_screen(NewShowDialog(folder), given)
+
+    def open_show(self) -> None:
+        """Open…: the file picker on show files, in the show's folder, on its
+        file; then the show chosen is checked (:meth:`_check_open`)."""
+        if not self._can_open():
+            return
+        own = self._own_file()
+        folder, name = (Path.cwd(), None) if own is None else (own.parent, own.name)
+        self.push_screen(FileDialog(folder, name, "open"), self._check_open)
+
+    def open_recent(self) -> None:
+        """Open recent…: the recent shows but the one that runs; then the
+        show chosen is checked (:meth:`_check_open`)."""
+        if not self._can_open():
+            return
+        own = self._own_file()
+        shows = [show for show in config.recent_shows(config.state_path()) if show.path != own]
+        self.push_screen(RecentDialog(shows), self._check_open)
+
+    def _own_file(self) -> Path | None:
+        return None if self.session is None else self.session.path
+
+    def _can_open(self) -> bool:
+        if not self.opens:
+            self.log_view.add(
+                "warning",
+                "this TUI cannot open another show: busk-tui SHOW can, "
+                "not busk run --frontend busk_tui.app:frontend",
+            )
+        return self.opens
+
+    def _check_open(self, path: Path | None) -> None:
+        """A show chosen to open: busk reads it as ``busk run`` would load
+        it, on a worker; one that does not load is refused, with why, and the
+        show that runs goes on. Else the confirmation, and the show opened."""
+        if path is None:
+            return
+
+        def found(read: ShowRead) -> None:
+            title = f'"{read.title}" ({home_text(path)})' if read.title else home_text(path)
+            if read.errors:
+                question = f"{title} cannot be opened:"
+                self.push_screen(OpenDialog("OPEN", question, problems=read.errors))
+            else:
+                self._confirm_open("OPEN", f"Open {title}?", lambda: self._open(path))
+
+        self._read_show(path, found)
+
+    def _confirm_open(self, title: str, question: str, then: Callable[[], None]) -> None:
+        """Before the show changes (D2): ``then`` at once, unless there are
+        unsaved edits (or the TUI cannot tell) or a route sends; then the
+        confirmation first, which may save and wait for the save, as Save and
+        quit does. A failed save keeps the show that runs."""
+        dirty = None if self.session is None else self.session.dirty
+        sending = [f"{r.protocol}·U{r.universe}" for r in self.view.routes if r.state == "ok"]
+        if dirty is False and not sending:
+            then()
+            return
+
+        def saved(ok: bool) -> None:
+            if ok:
+                then()
+
+        def chosen(choice: OpenChoice | None) -> None:
+            if choice == "save":
+                line = commands.save()
+                self._send(line.text, "ui", None, line.performance, saved)
+            elif choice == "open":
+                then()
+
+        self.push_screen(OpenDialog(title, question, dirty, sending), chosen)
+
+    def _make_show(self, path: Path, title: str) -> None:
+        """``busk new`` on a worker: the template show, with the
+        installation's sACN CID; then it is opened, or the log says why not
+        and the show that runs goes on."""
+        command = config.busk_new_command(path, title, self.state_dir)
+
+        def make() -> None:
+            done = subprocess.run(command, capture_output=True, text=True, check=False)
+            said = (done.stdout if done.returncode == 0 else done.stderr).strip()
+            self.call_from_thread(made, done.returncode == 0, said)
+
+        def made(ok: bool, said: str) -> None:
+            if ok:
+                self.log_view.add("info", said)
+                self._open(path)
+            else:
+                self.log_view.add("error", said.removeprefix("busk: ") or "busk new failed")
+
+        self.run_worker(make, thread=True, group="new-show")
+
+    def _open(self, path: Path) -> None:
+        """End the app, for ``path`` to start next."""
+        self.next_show = path
+        self.exit(0)
+
     def open_help(self, lines: Sequence[str]) -> None:
         self.help_overlay.open(lines)
         self.query_one("#upper").add_class("help-open")
@@ -755,6 +917,10 @@ class BuskApp(App[int]):
                 self._interrupt()
             case "ctrl+s":
                 self._run(commands.save())
+            case "ctrl+n":
+                self.new_show()
+            case "ctrl+o":
+                self.open_show()
             case "ctrl+z":
                 self._run(commands.undo())
             case "ctrl+y":

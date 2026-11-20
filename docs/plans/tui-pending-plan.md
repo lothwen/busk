@@ -4022,8 +4022,10 @@ sequences, executors and recipes. Each doubtful point was checked on `OfflineSho
 - A position preset recorded at `target` scope, its pool's default, reaches no fixture added
   later. **Not planned**: `profile` scope reaches every fixture of the profile, and F6's scope chips
   choose it.
-- `busk-tui` opens a show but does not make one. **Not planned**: `busk new club.show --title
-  "…"` is one shell line.
+- `busk-tui` opens a show but does not make one. **Built** by the file-menu plan
+  (`docs/plans/file-menu-plan.md`, Phase 3, 2026-11-20): the File menu's New… writes a show with
+  `busk new` and opens it, and Open… and Open recent… open another show, each from inside the
+  TUI.
 - New cue lists start without tracking: §5, call 20.
 
 ## 8. Questions

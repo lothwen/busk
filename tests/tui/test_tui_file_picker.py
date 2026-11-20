@@ -1,7 +1,8 @@
 """The file picker (``busk_tui.widgets.file_picker``): three columns, the
 profile picker's keys, and a preview of the file, in each of its modes: the
 profile picker's ``[import…]`` (what busk reads in a profile file), the File
-menu's Import script… (a script's first lines) and its Save as… (a name)."""
+menu's Import script… (a script's first lines), its Save as… (a name) and its
+Open… (what busk reads in a show file)."""
 
 from __future__ import annotations
 
@@ -10,6 +11,7 @@ import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -18,7 +20,7 @@ from textual.pilot import Pilot
 from tui_fakes import FakeBridge, drive, make_app
 
 from busk_tui import colors
-from busk_tui.model import ModeInfo, ProfileRead
+from busk_tui.model import ModeInfo, ProfileRead, ShowRead
 from busk_tui.shell import BuskApp
 from busk_tui.widgets.file_picker import (
     KINDS,
@@ -33,6 +35,7 @@ from busk_tui.widgets.file_picker import (
     read_text,
     save_name,
     script_text,
+    show_text,
 )
 
 DIMMER = {
@@ -427,6 +430,7 @@ def test_it_fits_a_terminal_of_100_by_30_and_cuts_a_long_path_at_its_start(
         ("profile", "IMPORT PROFILE", "busk imports an OFL .json, a .gdtf"),
         ("script", "IMPORT SCRIPT", "busk runs a .busk script"),
         ("save", "SAVE AS", "busk saves a .show or a .json file"),
+        ("open", "OPEN SHOW", "busk opens a .show or a .json show file"),
     ],
 )
 def test_each_mode_has_its_title_and_says_what_it_takes(
@@ -615,3 +619,55 @@ def test_a_name_that_is_a_folder_is_not_saved(tmp_path: Path) -> None:
         assert opened.closed == []
 
     with_picker(folder, body, "odd.show", mode="save")
+
+
+# ------------------------------------------------------------------ opening
+
+
+def test_the_preview_of_a_show_says_its_title_size_and_when_it_was_saved(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("TZ", "UTC")
+    time.tzset()
+    try:
+        saved = datetime(2026, 11, 19, 22, 14, 30, tzinfo=UTC)
+        found = ShowRead(Path("/s/club.show"), "Club Night", 48, 6, 1, saved)
+        assert show_text(found).plain == (
+            "Club Night\n/s/club.show\n48 fixtures · 6 cue lists · 1 playback\n"
+            "saved 2026-11-19 22:14"
+        )
+        refused = ShowRead(Path("/s/x.show"), errors=("Not a valid .show file", "and this"))
+        assert show_text(refused).plain == (
+            "/s/x.show\n\nbusk cannot open it:\nNot a valid .show file\nand this"
+        )
+        untitled = ShowRead(Path("/s/u.show"), "", errors=("busk cannot run it yet: x",))
+        assert show_text(untitled).plain.startswith("untitled\n/s/u.show\n0 fixtures")
+    finally:
+        monkeypatch.undo()
+        time.tzset()
+
+
+def test_opening_shows_what_busk_reads_in_a_show_and_takes_a_show_file(
+    tmp_path: Path, club_path: Path
+) -> None:
+    folder = shows(tmp_path)
+    (folder / "club.show").write_bytes(club_path.read_bytes())
+
+    async def body(pilot: Pilot[int], opened: Opened) -> None:
+        dialog = opened.dialog
+        assert opened.names() == ["old", "club.show", "fest.json", "notes.txt"]
+        assert opened.on() == "club.show"
+        await until(pilot, lambda: "Club Night" in opened.preview())
+        assert "fixtures" in opened.preview()
+        await pilot.press("down")
+        await until(pilot, lambda: "busk cannot open it" in opened.preview())
+        await pilot.press("down")
+        assert opened.preview() == "not a show file"
+        assert entry_text(Entry("notes.txt", False), dialog.kinds).style == colors.DIM
+        await pilot.press("enter")
+        assert opened.closed == []  # dimmed: nothing
+        await pilot.press("up", "up", "enter")
+        await pilot.pause()
+        assert opened.closed == [folder / "club.show"]
+
+    with_picker(folder, body, chosen="club.show", mode="open")

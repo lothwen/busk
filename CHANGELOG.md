@@ -32,10 +32,21 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   file. Import script opens it on the `.busk` scripts, with each one's first lines as its
   preview, and runs the one chosen with `source`.
 - The TUI keeps the shows it ran last, the copies Save as made included, in its `state.json`
-  (`recent`: newest first, at most 10), for the Open recent and the launcher to come.
+  (`recent`: newest first, at most 10), for Open recent… and the launcher to come.
+- The TUI's File menu opens another show: New… (Ctrl+N) asks for a title and a file and writes
+  the show with `busk new`, Open… (Ctrl+O) opens the file picker on show files, with a preview of
+  each one's title, size and save time, and Open recent… lists the shows it ran last. busk loads
+  and compiles a show before it opens it, and refuses one that does not load, saying why. With
+  unsaved edits it offers Save and open, Open without saving and Cancel; while a route sends, it
+  says that the output stops while the next show starts.
 
 ### Changed
 
+- `busk-tui SHOW` stays as the parent of `busk run` instead of replacing itself with it, so that
+  the TUI can end the run and have the next show started. Its exit code is still the run's (128
+  + N when a signal N killed the run); it passes SIGTERM and SIGHUP on to the run, and leaves
+  Ctrl+C to the TUI. `--values` and `--script` apply to the show given only. `--standalone` runs
+  each show it opens in the same process.
 - `save PATH` to another file than the show's own makes a new show: the copy gets a new
   `meta.id`, and `meta.created` of now, so its autosaves and crash recovery are its own, and
   the reply says so (`saved copy.show as a new show; club.show stays as it was saved`). A script

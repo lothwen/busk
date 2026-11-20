@@ -36,6 +36,26 @@ def test_busk_run_gets_the_show_and_its_own_options() -> None:
     assert "--layout" not in command  # the TUI's own: in the environment
 
 
+def test_a_show_opened_from_the_tui_runs_without_the_given_shows_values_and_script() -> None:
+    options = config.parse_arguments(
+        ["s.show", "--state-dir", "st", "--library", "a", "--threads", "--values", "v.json",
+         "--script", "x.busk", "--no-log"]
+    )  # fmt: skip
+    assert options.run == ("--threads", "--no-log")
+    assert options.first == ("--values", "v.json", "--script", "x.busk")
+    command = config.busk_run_command(options, Path("/s/b.show"))
+    assert command == [sys.executable, "-m", "busk", "run", "/s/b.show", "--frontend",
+                       "busk_tui.app:frontend", "--state-dir", "st", "--library", "a",
+                       "--threads", "--no-log"]  # fmt: skip
+
+
+def test_busk_new_writes_the_new_show() -> None:
+    command = config.busk_new_command(Path("/s/new.show"), "-Late Night", None)
+    assert command == [sys.executable, "-m", "busk", "new", "/s/new.show", "--title=-Late Night"]
+    with_state = config.busk_new_command(Path("/s/new.show"), "N", Path("/st"))
+    assert with_state[-2:] == ["--state-dir", "/st"]
+
+
 def test_the_tuis_options_travel_in_the_environment(tmp_path: Path) -> None:
     options = config.parse_arguments(
         ["s.show", "--layout", "C", "--faders", "12", "--colors", "16", "--config", "c.toml"]
@@ -46,6 +66,10 @@ def test_the_tuis_options_travel_in_the_environment(tmp_path: Path) -> None:
     assert back.config is not None
     assert back.config.is_absolute()
     assert back.config.name == "c.toml"
+    assert back.state_dir is None
+    with_state = config.parse_arguments(["s.show", "--state-dir", "st"])
+    back = config.from_environment({config.ENVIRONMENT: config.to_environment(with_state)})
+    assert back.state_dir == Path("st").absolute()  # busk new's, for the installation's CID
 
 
 def test_unreadable_options_in_the_environment_are_the_defaults() -> None:
@@ -246,3 +270,14 @@ def test_an_old_state_file_reads_and_a_bad_recent_entry_is_dropped(tmp_path: Pat
     state.write_text(json.dumps({"page": 2, "recent": bad}))
     assert config.remember_show(state, Path("/s/a.show"), "A", OPENED)
     assert [e["path"] for e in config.read_state(state)["recent"]] == ["/s/a.show"]
+
+
+def test_the_recent_shows_read_back_newest_first(tmp_path: Path) -> None:
+    state = tmp_path / "state.json"
+    assert config.recent_shows(state) == ()
+    config.remember_show(state, Path("/s/a.show"), "A", OPENED)
+    config.remember_show(state, Path("/s/b.show"), "B", OPENED)
+    assert config.recent_shows(state) == (
+        config.RecentShow(Path("/s/b.show"), "B"),
+        config.RecentShow(Path("/s/a.show"), "A"),
+    )
