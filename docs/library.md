@@ -285,7 +285,27 @@ lines before it have run, and the ones after it have not:
 ```
 
 `show` is the document after the edits, and `save()` writes it (to `path`, unless given
-another): it sets `meta.modified` and backs up the file it replaces.
+another): it sets `meta.modified` and backs up the file it replaces. Saving to another file
+makes a new show: the copy gets a new `meta.id` and `created`, so its autosaves under `busk
+run` are its own, and later saves write the copy.
+
+`session` says whether the show has unsaved edits (`dirty`), the file `save` writes (`path`,
+absolute), and what `undo` and `redo` would take back: how many steps (`undoSteps`,
+`redoSteps`) and the next one's label, as `undo` prints it after `undid:` (`nextUndo`,
+`nextRedo`). `showVersion` and `programmerVersion` grow with each change to the show and to
+the programmer. It is all of one moment, and the same object until something changes:
+
+```python
+>>> _ = offline.execute('rename show "Late Night"')
+>>> session = offline.session
+>>> session.dirty, Path(session.path).name, session.nextUndo
+(True, 'club.show', 'renamed the show "Club Night" to "Late Night"')
+>>> _ = offline.execute("undo")
+>>> session = offline.session
+>>> session.nextRedo
+'renamed the show "Club Night" to "Late Night"'
+
+```
 
 ## 3. Live, inside your own application: `LiveShow`
 
@@ -508,7 +528,7 @@ another thread edited was done 32–45 ms after it was due at the 99th percentil
 
 ## Reference
 
-The 44 names of `busk.__all__`. Each has a docstring with the details; path parameters
+The 47 names of `busk.__all__`. Each has a docstring with the details; path parameters
 take `str` or `os.PathLike`.
 
 | Name | What it is |
@@ -521,7 +541,7 @@ take `str` or `os.PathLike`.
 | `read_gdtf` | `read_gdtf(path, *, manufacturer=None) -> ImportReport`: convert a GDTF file |
 | `read_profile` | `read_profile(path) -> ImportReport`: read a GDTF, OFL or busk profile file, as `profile import` does |
 | `ProfileLibrary` | The built-in profiles plus directories of profiles, for `fixture add`: `get(id)`, `find(id or name)`, iteration, `problems` |
-| `OfflineShow` | A show on a clock you drive: `submit`, `execute`, `confirmation`, `expected`, `run_script`, `save`, `tick`, `tracking`; `show`, `warnings`, `snapshot`, `output`, `effects`, `programmer`, `effect_templates`, `fixture_profiles`, `time` |
+| `OfflineShow` | A show on a clock you drive: `submit`, `execute`, `confirmation`, `expected`, `run_script`, `save`, `tick`, `tracking`; `show`, `warnings`, `snapshot`, `output`, `effects`, `programmer`, `session`, `effect_templates`, `fixture_profiles`, `time` |
 | `LiveShow` | A show in real time in your process: as `OfflineShow`, with `start`, `stop` and `with`, `frame` instead of `tick`, `routes`, `surfaces`, `inputs` and `health` |
 | `DmxFrame` | One engine output: `seq`, `time`, and `universes`, a mapping of universe number to 512 bytes |
 | `EngineHealth` | How a `LiveShow`'s engine is doing: `state` (`"starting"`, `"running"`, `"stalled"`, `"stopped"`; under `busk run` with processes also `"restarting"`, `"failed"`), `ticks`, `overruns`, `lastTickAge` (seconds since its newest tick, or `None`) |
@@ -546,6 +566,7 @@ take `str` or `os.PathLike`.
 | `Expected` | What `expected(line)` returns, about the word being typed at the end of the line: `words` (the keywords and names that may come there and that it starts), `values` (anything else, described), `runnable` (the line before it runs as it is), `error` (the mistake that stops it, or `None`), `start` (where that word starts) |
 | `ProgrammerStatus` | The programmer: `version`, `selection` (`(number, element)` pairs), `blind`, `highlight`, `fadeTime`, `values`, `effects` (as the show file holds them), `stopped` (the ids of the stopped effects) |
 | `ProgrammerValue` | One value in it: `number`, `element`, `attribute`, `value` (in the show's units), `preset` (`(pool, number, name)`, or `None`) |
+| `SessionStatus` | The session: `dirty` (unsaved edits), `path` (the absolute path `save` writes, or `None`), `undoSteps`, `redoSteps`, `nextUndo` and `nextRedo` (the labels `undo` and `redo` would print, or `None`), `showVersion` and `programmerVersion` (each grows with a change) |
 | `TrackedCue` | One cue of a list, from `tracking(L)`, as it plays when the list is played by GO from its first cue: `number`, `name`, `block`, `values`, `released` (`(number, element, attribute)` slots it takes away), `effects` |
 | `TrackedValue` | One value in it: as a `ProgrammerValue`, with `trackedFrom` (the number of the earlier cue that stores it, or `None` for the cue's own) |
 | `TrackedEffect` | One effect instance in it: `id`, `trackedFrom` (the number of the earlier cue that holds it, or `None`) |

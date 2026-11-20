@@ -1726,6 +1726,8 @@ Every command envelope is appended to a rotating log. Replaying a log against th
 
 **Safety of writes.** Write to a temp file → flush/fsync → atomic rename. Keep N rolling backups and a timestamped autosave every few minutes and after each show-edit burst.
 
+**Save as.** Saving to another file than the show's own makes a new show: the copy gets a new `meta.id` and `meta.created`, so its autosaves and crash recovery, which are keyed by the id, are its own, and the file it was saved from stays as it was last saved. Saving to the show's own file keeps the id, and so does the first save of a show that has no file yet.
+
 **Migrations.** `schemaVersion` is an integer. A chain of pure functions `migrate_n_to_n+1(json)` upgrades old shows on load; the original file is never overwritten until the user saves. Profile `revision` mismatches between show and library are reported, never silently applied.
 
 ---

@@ -13,7 +13,7 @@
   :class:`RemoteBus`.
 * **``busk run --frontend``**, real process trees running
   ``tests/process_site/frontend_probe.py``: the frontend gets the show
-  (frames, output, effects, routes, the programmer, the effect templates,
+  (frames, output, effects, routes, the programmer, the session, the effect templates,
   the fixture profiles, lines that run, a profile's category, ``status``, the playbacks' colours,
   what may come in a line being typed, the engine's health, a ``quit`` that
   says so and ends nothing) and busk run's lines as ``busk.run``
@@ -437,9 +437,8 @@ def test_busk_run_calls_the_frontend_with_its_show(
         records=["universe 7"],  # the root's line for the new route
         routes=2,
     )
-    with BuskRun(
-        run_show(tmp_path), *frontend(tmp_path, "--no-log"), sacn_port=receiver.port
-    ) as busk:
+    show = run_show(tmp_path)
+    with BuskRun(show, *frontend(tmp_path, "--no-log"), sacn_port=receiver.port) as busk:
         assert busk.wait() == 0, busk.err
     report = json.loads(report_path.read_text())
     assert report["timeout"] is None, report
@@ -455,6 +454,7 @@ def test_busk_run_calls_the_frontend_with_its_show(
     route = replies[3][1].removeprefix("added route ")
     assert report["routes"] == [["r1", "ok"], [route, "ok"]]
     assert report["selection"] == [[101, 1]]
+    assert report["session"] == [True, str(show), 3, replies[4][1]]  # two edits, a selection
     assert report["templates"][:2] == [["Pulse", "show"], ["Circle", "library"]]
     assert report["categories"] == [["Generic Spot 16ch", None], ["RGB Par 3ch", "par"]]
     assert report["colors"] == [[1, None], [3, [0.0, 0.0, 1.0]], [6, None]]  # Blue; an effect

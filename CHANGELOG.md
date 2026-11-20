@@ -10,6 +10,11 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- `OfflineShow.session` and `LiveShow.session` say whether the show has unsaved edits, the file
+  `save` writes (an absolute path), what `undo` and `redo` would take back (how many steps, and
+  the next one's label as `undo` prints it) and the counters that grow with each change to the
+  show and to the programmer, as a `SessionStatus`, all of one moment. `busk run`'s show has it
+  too.
 - `busk.read_profile(path)` reads a fixture profile file as `profile import` does, without
   importing it: a `.gdtf`, an Open Fixture Library `.json` or a busk profile `.json`, told apart
   as a profile library tells them. It returns an `ImportReport` and raises `ImportFailed` for a
@@ -21,6 +26,22 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   profile file is what busk reads in it: the maker, the name and each mode with the channels it
   takes, or why busk cannot import it. It starts where busk-tui runs, then on the file chosen
   last.
+
+### Changed
+
+- `save PATH` to another file than the show's own makes a new show: the copy gets a new
+  `meta.id`, and `meta.created` of now, so its autosaves and crash recovery are its own, and
+  the reply says so (`saved copy.show as a new show; club.show stays as it was saved`). A script
+  that made a backup with `save backup.show` now makes a new show, and goes on in it.
+  `OfflineShow.save(path)` and `LiveShow.save(path)` do the same. `save`, `save` to the show's
+  own file and the first save of a show without a file keep the id. Under `busk run`, the
+  autosaves follow the copy, so a crash recovers the copy and not the show it was saved from,
+  and a console restarted after a crash comes back on the copy.
+
+### Fixed
+
+- An edit made less than half a second after a save, under `busk run`, was taken as saved: it
+  was not autosaved, and quitting did not keep it in an autosave.
 
 ## [0.1.2] - 2026-11-19
 

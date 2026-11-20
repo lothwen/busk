@@ -656,7 +656,10 @@ written deterministically (equal shows, equal bytes) and atomically (temp file, 
 `os.replace`, directory `fsync`), with 10 rolling backups. The autosave worker reads the
 session's snapshot without its lock, writes the show 5 s after a burst of edits and
 `session.json` at most once a second, and on start-up after a crash the programmer,
-master levels and unsaved edits are restored.
+master levels and unsaved edits are restored. Its folder is the show's id: a save to another
+file gives the show a new id (GAP-55), and the worker then marks the old folder's exit clean
+and goes on in the new one. The session publishes the version and stamp each save wrote, so
+an edit made since is not taken as saved.
 
 **Processes** (`busk.process`, §16, §18). The root (`root.py`) makes two control
 socket pairs, spawns the engine (`python -m busk.process.engine_host`, in a session of its
@@ -702,8 +705,10 @@ within 10 s of the last restore sends no restore, and more than 3 in 60 s give u
 
 **Console restarts and the show stamp.** Each install carries `(sessionId, showVersion)`,
 and `session.json` records the stamp of the newest show written to disk. A restarted
-console (`--restarted`) recovers from autosave, takes the engine's masters, tempos and
-page from its `welcome`, and compares stamps: the same stamp sends only the programmer;
+console (`--restarted`) recovers from autosave, from the copy when the old folder's
+`showPath` names one (the console that crashed had saved the show as another file; a console
+that is not restarted first points its folder back at its own file), takes the engine's
+masters, tempos and page from its `welcome`, and compares stamps: the same stamp sends only the programmer;
 otherwise it installs its recovered show as a live edit. That install's slot remap is
 computed by the engine from the slot keys it keeps, since the new console never saw the
 engine's compiled show.

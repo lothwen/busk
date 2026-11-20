@@ -156,6 +156,8 @@ def run(show: Any, plan: dict[str, Any], records: Records, report: dict[str, Any
     report["effects"] = [[e.playback, e.cue, e.id] for e in effects.effects]
     report["routes"] = [[r.id, r.state] for r in show.routes or ()]
     report["selection"] = [list(target) for target in show.programmer.selection]
+    session = show.session
+    report["session"] = [session.dirty, session.path, session.undoSteps, session.nextUndo]
     report["templates"] = [[t.name, t.source] for t in show.effect_templates]
     report["profiles"] = _profiles(show)
     report["categories"] = [[p["name"], p.get("category")] for p in show.show["profiles"]]

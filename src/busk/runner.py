@@ -51,6 +51,9 @@ Tab (:class:`~busk.console.parser.Expected`, GAP-20). A :class:`LiveShow`'s
 ``tracking(L)`` gives each cue of list ``L`` with its tracked state, read
 from the compiled show: the values it stores and those it tracks, each with
 the cue that stores it (:class:`~busk.session.tracked.TrackedCue`, GAP-46).
+``session`` says whether the show has unsaved edits, where ``save`` writes and
+what ``undo`` and ``redo`` would take back
+(:class:`~busk.session.session.SessionStatus`, GAP-03).
 
 Errors (§5.8): constructing a facade raises
 :class:`~busk.persistence.show_file.ShowLoadError` for an invalid show and
@@ -127,7 +130,15 @@ from busk.persistence.paths import web_key
 from busk.persistence.show_file import ShowLoadError, show_json
 from busk.session.ids import IdFactory
 from busk.session.library import ProfileLibrary
-from busk.session.session import CommandResult, InputSink, Report, Session, SessionSnapshot
+from busk.session.session import (
+    CommandResult,
+    InputSink,
+    Report,
+    Session,
+    SessionSnapshot,
+    SessionStatus,
+    session_status,
+)
 from busk.session.status import ProgrammerStatus, programmer_status
 from busk.session.tracked import TrackedCue, tracked_cues
 from busk.web.api import WebLink
@@ -254,6 +265,7 @@ class _Facade:
     _session: Session
     _console: Console
     _status: tuple[SessionSnapshot, ProgrammerStatus] | None = None  # the last programmer read
+    _session_read: tuple[SessionSnapshot, SessionStatus] | None = None  # and session read
     _templates: tuple[Show, tuple[EffectTemplateInfo, ...]] | None = None  # and templates read
     _profiles: tuple[Show, tuple[FixtureProfileInfo, ...]] | None = None  # and profiles read
 
@@ -277,6 +289,22 @@ class _Facade:
         previous = None if cached is None else cached[1]
         status = programmer_status(snapshot.state, snapshot.programmer, previous)
         self._status = (snapshot, status)  # one assignment: other threads see the pair whole
+        return status
+
+    @property
+    def session(self) -> SessionStatus:
+        """The session: whether the show has unsaved edits, the file
+        ``save`` writes, what ``undo`` and ``redo`` would take back, and the
+        counters that grow with each change to the show and to the programmer
+        (see :class:`~busk.session.session.SessionStatus`, GAP-03). All of it
+        is of one moment, and the same object comes back until something
+        changes."""
+        snapshot = self._session.snapshot  # one read: published by reference assignment
+        cached = self._session_read
+        if cached is not None and cached[0] is snapshot:
+            return cached[1]
+        status = session_status(snapshot)
+        self._session_read = (snapshot, status)  # one assignment, as for the programmer
         return status
 
     @property
@@ -437,7 +465,12 @@ class _Facade:
     def save(self, path: str | os.PathLike[str] | None = None) -> CommandResult:
         """Save the show to ``path`` (default: the facade's ``path``, then
         wherever it was last saved). Sets ``meta.modified`` and backs up the
-        file it replaces. Never raises: a failure has ``ok=False``."""
+        file it replaces. Never raises: a failure has ``ok=False``.
+
+        Saving to another file than the show's own makes a new show, as
+        ``save PATH`` does: the copy gets a new ``meta.id`` and ``created``,
+        and the show's file is the copy from now on. A show without a file
+        keeps its id on its first save."""
         return self._session.save(_optional_path(path))
 
     # ----------------------------------------------------------- helpers

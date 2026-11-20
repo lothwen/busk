@@ -17,6 +17,7 @@ from busk.engine.clock import FakeClock
 from busk.persistence.autosave import (
     SHOWS_KEPT,
     AutosaveWorker,
+    claim,
     read_recovery,
 )
 from busk.persistence.show_file import load_show, save_show
@@ -110,6 +111,27 @@ def test_unchanged_or_saved_shows_are_not_autosaved(setup: Any) -> None:
     worker.service(20.0)
     assert shows(worker) == []  # saved before the burst ended
     assert session_json(worker)["showAutosave"] is None
+
+
+def test_an_edit_right_after_a_save_is_autosaved(setup: Any) -> None:
+    """An edit that comes after a save, before the worker looks again, is not
+    on disk: it is autosaved, and a clean exit keeps it."""
+    live, worker, wall, _ = setup
+    worker.service(0.0)
+    rename(live, "saved")
+    assert live.session.save().ok
+    rename(live, "after the save")
+    worker.service(0.5)  # sees the save and the edit at once
+    wall.now += timedelta(seconds=6)
+    worker.service(6.0)
+    assert len(shows(worker)) == 1
+    assert load_show(worker.folder / shows(worker)[0])[0]["meta"]["title"] == "after the save"
+    rename(live, "at the end")
+    assert live.session.save().ok
+    rename(live, "kept")
+    kept = worker.finish(6.5)
+    assert kept is not None
+    assert load_show(kept)[0]["meta"]["title"] == "kept"
 
 
 def test_retention_keeps_the_newest(setup: Any) -> None:
@@ -395,3 +417,95 @@ def test_programmer_effects_are_saved_and_recovered(setup: Any, tmp_path: Path) 
     assert [effect["id"] for effect in fresh.session.programmer.effects] == ["fx1"]
     fresh.tick()
     assert list(fresh.engine._programmer.bank.runtimes) == ["fx1"]  # it runs again
+
+
+# ------------------------------------------------------------------ a save to another file (GAP-55)
+
+
+def test_a_save_as_moves_the_autosaves_to_the_copy(setup: Any, tmp_path: Path) -> None:
+    """Edits, then a save as another file, then more edits and no clean exit:
+    the original recovers nothing, the copy its own edits."""
+    live, worker, wall, path = setup
+    original = live.session.show["meta"]["id"]
+    old = worker.folder
+    worker.service(0.0)
+    rename(live, "before")
+    worker.service(1.0)
+    wall.now += timedelta(seconds=10)
+    worker.service(7.0)
+    assert shows(worker)  # the original's edits were autosaved
+    copy = tmp_path / "copy.show"
+    assert live.session.save(copy).ok
+    worker.service(8.0)
+    ident = live.session.show["meta"]["id"]
+    assert ident != original
+    assert worker.folder == old.parent / ident
+    left = json.loads((old / "session.json").read_text())
+    assert left["cleanExit"] is True  # its edits went into the copy
+    assert left["showPath"] == str(copy)
+    assert left["showAutosave"] is None
+    assert session_json(worker)["cleanExit"] is False  # the copy's folder, at once
+    assert session_json(worker)["showPath"] == str(copy)
+    rename(live, "after")
+    worker.service(9.0)
+    wall.now += timedelta(seconds=10)
+    worker.service(15.0)  # and no finish(): a crash
+    os.utime(copy, (1, 1))  # the copy is older than its autosave
+    assert read_recovery(tmp_path / "state", original, path) is None
+    recovery = read_recovery(tmp_path / "state", ident, copy)
+    assert recovery is not None
+    assert recovery.showAutosave is not None
+    assert recovery.showAutosave.parent == worker.folder
+    assert load_show(recovery.showAutosave)[0]["meta"]["title"] == "after"
+    assert recovery.showPath == copy
+
+
+def test_a_clean_exit_right_after_a_save_as(setup: Any, tmp_path: Path) -> None:
+    live, worker, _, _ = setup
+    worker.service(0.0)
+    old = worker.folder
+    copy = tmp_path / "copy.show"
+    assert live.session.save(copy).ok
+    assert worker.finish(0.2) is None  # no service between: finish takes the save in
+    assert json.loads((old / "session.json").read_text())["cleanExit"] is True
+    assert worker.folder != old
+    assert session_json(worker)["cleanExit"] is True
+    assert session_json(worker)["showPath"] == str(copy)
+
+
+def test_a_clean_mark_that_cannot_be_written_is_retried(setup: Any, tmp_path: Path) -> None:
+    live, worker, _, _ = setup
+    worker.service(0.0)
+    old = worker.folder
+    (old / "session.json").unlink()
+    (old / "session.json").mkdir()  # cannot be replaced by a file
+    assert live.session.save(tmp_path / "copy.show").ok
+    with pytest.raises(IsADirectoryError):
+        worker.service(1.0)
+    assert worker.folder == old  # nothing moved: the next service tries again
+    (old / "session.json").rmdir()
+    worker.service(2.0)
+    assert worker.folder != old
+    assert json.loads((old / "session.json").read_text())["cleanExit"] is True
+
+
+def test_claim_takes_back_the_copy_a_run_before_left(setup: Any, tmp_path: Path) -> None:
+    """A run saved its show as a copy and ended: the original's session.json
+    names the copy. A later run of the original claims it back, so a console
+    restarted in that run does not follow the copy."""
+    live, worker, _, path = setup
+    original = live.session.show["meta"]["id"]
+    worker.service(0.0)
+    old = worker.folder / "session.json"
+    copy = tmp_path / "copy.show"
+    assert live.session.save(copy).ok
+    worker.finish(1.0)
+    left = json.loads(old.read_text())
+    assert left["showPath"] == str(copy)
+    claim(tmp_path / "state", original, path)
+    assert json.loads(old.read_text()) == {**left, "showPath": str(path)}  # nothing else
+    recovery = read_recovery(tmp_path / "state", original, path, force=True)
+    assert recovery is not None
+    assert recovery.showPath == path
+    claim(tmp_path / "state", "show-none", path)  # no folder: nothing happens
+    assert not (tmp_path / "state" / "autosave" / "show-none").exists()

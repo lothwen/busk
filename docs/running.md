@@ -145,6 +145,10 @@ recovered programmer with 4 values, 1 effect (blind, fade 2 s), 4 master levels,
 `--no-recover` starts clean. Quitting with unsaved edits keeps them in the newest autosave
 and prints its path. Saving keeps the 10 newest backups in `<name>.backups/`.
 
+`save PATH` to another file makes a new show, with an id of its own: from then on the
+autosaves go under the copy's id. After a crash, `busk run` of the copy recovers its edits,
+and `busk run` of the show it was saved from starts clean.
+
 ## Stopping
 
 Ctrl+C with `--no-console`, `quit` at the prompt, or the end of `--duration` closes the
@@ -200,7 +204,8 @@ goes on; ten in a row end the engine, and the watchdog restarts it.
 
 **A console that crashes** (killed by a signal, or an unexpected exception) is replaced
 (`console: restarted (killed by signal 9)`). The new one recovers the show and the
-programmer from autosave and **adopts** the running engine's masters, tempos and page
+programmer from autosave (the copy, when the console had saved the show as another file:
+`club.show was saved as copy.show: recovering that`) and **adopts** the running engine's masters, tempos and page
 instead of pushing its own; it does not run `--script` or `--values` again. If its
 recovered show is the one the engine runs, it sends only the programmer; otherwise edits
 made after the last show autosave (at most 5 s) are undone on stage. The output and the

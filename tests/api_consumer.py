@@ -100,6 +100,15 @@ def offline(directory: Path) -> bytes:
     assert frame.time == show_.time == 3.0
     assert frame.seq >= 0
     assert show_.save().ok
+    session: busk.SessionStatus = show_.session
+    unsaved: bool = session.dirty
+    where: str | None = session.path
+    steps: tuple[int, int] = (session.undoSteps, session.redoSteps)
+    labels: tuple[str | None, str | None] = (session.nextUndo, session.nextRedo)
+    versions: tuple[int, int] = (session.showVersion, session.programmerVersion)
+    assert not unsaved
+    assert where is not None
+    assert (steps, labels, versions) is not None
     assert not show_.warnings
     snapshot: busk.EngineSnapshot = show_.snapshot
     playing: list[busk.PlaybackStatus] = [p for p in snapshot.playbacks if p.state != "idle"]
@@ -197,6 +206,8 @@ def live(path: str, host: Callable[[busk.LiveShow], None]) -> busk.Show:
         assert running is None or running.time >= 0.0
         programmer: busk.ProgrammerStatus = live.programmer
         assert programmer.version >= 1
+        session: busk.SessionStatus = live.session
+        assert session.undoSteps >= 0
         templates: tuple[busk.EffectTemplateInfo, ...] = live.effect_templates
         profiles: tuple[busk.FixtureProfileInfo, ...] = live.fixture_profiles
         assert all(profile.modes for profile in profiles)

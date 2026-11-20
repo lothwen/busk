@@ -384,6 +384,13 @@ session, as the web remote's commands do. `help` prints the grammar.
   group's last one, which then is a step of its own. A group with no change leaves nothing.
   The group is the show's, not the prompt's: a change from a surface, the web remote or
   another frontend joins it while it is open. Performance lines and modes never do.
+* **Saving.** `save` writes the show to its own file, keeping a backup of the file it
+  replaces. `save PATH` to another file is *Save as*: it makes a new show, with an id of
+  its own and `created` of now, so its autosaves and crash recovery are its own
+  (`saved copy.show as a new show; club.show stays as it was saved`). The file it was
+  saved from stays as it was last saved, and later `save`s write the copy. `save PATH`
+  naming the show's own file is a plain save, and a show without a file keeps its id on
+  its first save. Neither is an undo step.
 * **Replies** say what a line did, naming what it changed as the console does:
   `renamed group 1 "Heads" to "Movers"`, `group 1 is now group 9`, `deleted cue 9/2 "Verse"`,
   `cue 9/3 goes 8 s after the cue before starts`, `set the priority of playback 3 to 60`. A

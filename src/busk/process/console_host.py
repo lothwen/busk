@@ -58,7 +58,9 @@ restarts a console that exits 70).
 
 **Restarted** (``--restarted WHY``, decision 7). The root starts a new console
 when one died of a signal or exited 70, with the same arguments. It
-recovers whether or not the last exit was clean, adopts the running
+recovers whether or not the last exit was clean, from the show the crashed
+console last saved: the file a save to another file made, which is a new
+show (GAP-55), when ``session.json`` names one. It adopts the running
 engine's masters, tempos, page and playbacks instead of pushing its own,
 runs neither ``--script`` nor ``--values``, and says
 ``busk console: restarted after a crash (WHY); type 'help'``. If its
@@ -111,7 +113,7 @@ from busk.model.show import Show
 from busk.model.validate import Issue, has_errors
 from busk.output.console import ConsoleOutput
 from busk.output.driver import RouteStatus
-from busk.persistence.autosave import AutosaveWorker, Recovery, read_recovery
+from busk.persistence.autosave import AutosaveWorker, Recovery, claim, read_recovery
 from busk.persistence.eventlog import EventLog, LogPump
 from busk.persistence.paths import state_directory
 from busk.persistence.show_file import ShowLoadError, load_show, newest_backup, utc_now
@@ -613,6 +615,10 @@ def run_console(options: RunOptions, backend: Backend, *, restarted: str | None 
         if options.no_recover and not adopt
         else read_recovery(state_dir, show["meta"]["id"], path, force=adopt)
     )
+    if adopt:
+        path, show, recovery = _saved_as(state_dir, path, show, recovery)
+    else:  # a copy a run before this one made is not this run's: never follow it
+        claim(state_dir, show["meta"]["id"], path)
     recovered_from: Path | None = None
     if recovery is not None and recovery.showAutosave is not None:
         try:
@@ -760,6 +766,29 @@ def run_console(options: RunOptions, backend: Backend, *, restarted: str | None 
         gc.unfreeze()
     backend.report()
     return code
+
+
+def _saved_as(
+    state_dir: Path, path: Path, show: Show, recovery: Recovery | None
+) -> tuple[Path, Show, Recovery | None]:
+    """A restarted console's show, file and recovery: the copy the crashed
+    console saved its show as, when ``session.json`` names another file than
+    ``path`` (a save to another file makes a new show, with autosaves of its
+    own: GAP-55), followed to the last copy. A copy that cannot be loaded is
+    not followed."""
+    seen = {path.resolve()}
+    while recovery is not None and recovery.showPath is not None:
+        copy = recovery.showPath
+        if copy.resolve() in seen:
+            break
+        seen.add(copy.resolve())
+        loaded = _load(copy)
+        if loaded is None:
+            break
+        print(f"{path} was saved as {copy}: recovering that", flush=True)
+        path, show = copy, loaded
+        recovery = read_recovery(state_dir, show["meta"]["id"], path, force=True)
+    return path, show, recovery
 
 
 def _load_frontend(name: str) -> Callable[[LiveShow], object] | None:

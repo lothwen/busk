@@ -58,6 +58,7 @@ one reference assignment after every change: they never take the lock.
 from __future__ import annotations
 
 import logging
+import os
 import queue
 import secrets
 import threading
@@ -122,8 +123,56 @@ class SessionSnapshot:
     showVersion: int  # +1 per committed show change (edit, undo, redo, save)
     programmerVersion: int  # +1 per programmer change (blind included)
     saves: int  # +1 per successful save
+    savedVersion: int  # the showVersion the last save wrote (an edit may have come since)
+    savedStamp: Stamp  # and its stamp
     path: Path | None  # where `save` writes by default
     stamp: Stamp  # the stamp of `compiled`, the show the engine was last given (Phase 7)
+    undoSteps: int  # the timeline's, as it was when the change above was made (GAP-03)
+    redoSteps: int
+    nextUndo: str | None  # the label of the step `undo` would undo
+    nextRedo: str | None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class SessionStatus:
+    """The session as a display reads it: the change counters, unsaved
+    edits, the show's file and the undo timeline (GAP-03 of
+    ``docs/dev/tui/engine-gaps.md``).
+
+    ``showVersion`` grows by one with each change to the show: an edit, an
+    undo or redo of one, a save. ``programmerVersion`` grows with each
+    change to the programmer, a mode (blind, highlight, the fade time)
+    included. ``dirty`` says the show has edits that are not saved. ``path``
+    is the absolute path of the file ``save`` writes when given none, or
+    ``None`` when the show has none yet. ``undoSteps`` and ``redoSteps``
+    count the steps ``undo`` and ``redo`` can take, and ``nextUndo`` and
+    ``nextRedo`` are the labels of the next ones, as ``undo`` and ``redo``
+    print them after ``undid:`` and ``redid:`` (``None`` when there is
+    none). An open undo group is not a step until a change joins it.
+    """
+
+    showVersion: int
+    programmerVersion: int
+    dirty: bool
+    path: str | None
+    undoSteps: int
+    redoSteps: int
+    nextUndo: str | None
+    nextRedo: str | None
+
+
+def session_status(snapshot: SessionSnapshot) -> SessionStatus:
+    """The :class:`SessionStatus` of ``snapshot``."""
+    return SessionStatus(
+        showVersion=snapshot.showVersion,
+        programmerVersion=snapshot.programmerVersion,
+        dirty=snapshot.dirty,
+        path=None if snapshot.path is None else os.path.abspath(snapshot.path),
+        undoSteps=snapshot.undoSteps,
+        redoSteps=snapshot.redoSteps,
+        nextUndo=snapshot.nextUndo,
+        nextRedo=snapshot.nextRedo,
+    )
 
 
 type Report = Callable[[str], None]
@@ -196,6 +245,7 @@ class Session:
         self._sessionId = secrets.token_hex(8)
         self._installs = 0  # shows installed: the n of the next stamp is one more
         self._stamp: Stamp = (self._sessionId, 0) if stamp is None else stamp
+        self._saved = (0, self._stamp)  # the show version and stamp the last save wrote
         self.timeline = Timeline(clock=clock)
         bus.compiled = compiled
         self._worker: threading.Thread | None = None
@@ -338,13 +388,16 @@ class Session:
         written: frozenset[str] = frozenset(),
         written_effects: frozenset[str] = frozenset(),
         cause: bytes | None = None,
+        then: Callable[[], object] | None = None,
     ) -> None:
         """Install ``new`` in the engine and, for content changes, record a step.
 
         ``written`` slots and ``written_effects`` effect ids count as touched
         even if their value or instance did not change. ``cause`` is the
         install's event-log cause; ``None`` with causes on means the whole
-        programmer is logged (an undo, redo or recovery).
+        programmer is logged (an undo, redo or recovery). ``then`` moves the
+        timeline (an undo or redo) before the snapshot is published, so the
+        snapshot shows both.
         """
         old = self._programmer
         installs = bool(
@@ -382,6 +435,8 @@ class Session:
             )
         if step and not old.same_content(new):
             self.timeline.push(ProgrammerStep(before=old, after=new, label=label))
+        if then is not None:
+            then()
         self._programmer = new
         self._versions[1] += 1
         self._publish()
@@ -435,8 +490,8 @@ class Session:
             if command["type"] == "BATCH" and command["label"]
             else "; ".join(messages)
         )
-        new_warnings = self._commit(working, label, forward)
-        self.timeline.push(ShowStep(forward=tuple(forward), inverse=tuple(inverse), label=label))
+        step = ShowStep(forward=tuple(forward), inverse=tuple(inverse), label=label)
+        new_warnings = self._commit(working, label, forward, then=lambda: self.timeline.push(step))
         return CommandResult(ok=True, message=label, issues=(*warnings, *new_warnings))
 
     def _edit(self, show: Show, command: Command) -> edits.Edit:
@@ -460,11 +515,19 @@ class Session:
             return edits.delete(show, command)
         raise CommandError(f"{command['type']} is not a show edit")
 
-    def _commit(self, candidate: Show, label: str, ops: Sequence[Op]) -> list[Issue]:
+    def _commit(
+        self,
+        candidate: Show,
+        label: str,
+        ops: Sequence[Op],
+        then: Callable[[], object] | None = None,
+    ) -> list[Issue]:
         """Validate, compile, install and commit ``candidate``; return the
         warnings it introduced. Raises :class:`CommandError` (nothing changes)
         if it does not validate or compile. ``ops`` made it from the
-        committed show: the install's event-log cause."""
+        committed show: the install's event-log cause. ``then`` changes the
+        timeline once nothing can fail, before the snapshot is published, so
+        the snapshot shows the show and its undo step together."""
         before = self._state
         show, issues = validate_edit(before.show, candidate)
         errors = [issue for issue in issues if issue.severity == "error"]
@@ -501,6 +564,8 @@ class Session:
         self._state, self._known, self._stamp = state, known, stamp
         self._dirty = True
         self._versions[0] += 1
+        if then is not None:
+            then()
         self._publish()
         return fresh
 
@@ -545,32 +610,28 @@ class Session:
         step = self.timeline.next_undo()
         if step is None:
             raise CommandError("nothing to undo")
+        label, moved = f"undo {step.label}", self.timeline.undone
         if isinstance(step, ShowStep):
-            self._commit(
-                apply(self._state.show, step.inverse)[0], f"undo {step.label}", step.inverse
-            )
+            self._commit(apply(self._state.show, step.inverse)[0], label, step.inverse, moved)
         else:
-            self._restore(step.before, f"undo {step.label}")
-        self.timeline.undone()
+            self._restore(step.before, label, moved)
         return CommandResult(ok=True, message=f"undid: {step.label}")
 
     def _redo(self) -> CommandResult:
         step = self.timeline.next_redo()
         if step is None:
             raise CommandError("nothing to redo")
+        label, moved = f"redo {step.label}", self.timeline.redone
         if isinstance(step, ShowStep):
-            self._commit(
-                apply(self._state.show, step.forward)[0], f"redo {step.label}", step.forward
-            )
+            self._commit(apply(self._state.show, step.forward)[0], label, step.forward, moved)
         else:
-            self._restore(step.after, f"redo {step.label}")
-        self.timeline.redone()
+            self._restore(step.after, label, moved)
         return CommandResult(ok=True, message=f"redid: {step.label}")
 
-    def _restore(self, target: Programmer, label: str) -> None:
+    def _restore(self, target: Programmer, label: str, then: Callable[[], object]) -> None:
         """Restore a programmer step's selection and values; the modes (blind,
         the fade time, highlight) keep their state. Selected targets that no longer exist
-        are dropped."""
+        are dropped. ``then`` moves the timeline, as for :meth:`_commit`."""
         selection = drop_missing(self._state, target.selection)
         current = self._programmer
         restored = replace(
@@ -580,19 +641,36 @@ class Session:
             fadeTime=current.fadeTime,
             highlight=current.highlight,
         )
-        self._set_programmer(restored, label=label, step=False)
+        self._set_programmer(restored, label=label, step=False, then=then)
 
     # -------------------------------------------------------------- save
 
     def save(self, path: Path | None = None) -> CommandResult:
         """Write the show (default: where it was loaded from), backing up the
-        file it replaces. Sets ``meta.modified``; not an undo step."""
+        file it replaces. Sets ``meta.modified``; not an undo step.
+
+        Saving to another file than the show's own makes a new show (GAP-55
+        of ``docs/dev/tui/engine-gaps.md``): the copy gets a new ``meta.id``,
+        and ``meta.created`` is now, so its autosaves and crash recovery are
+        its own. The two paths are compared resolved. A show without a file
+        keeps its id on its first save. The show's file is ``path`` from now
+        on."""
         with self._lock:
             target = path if path is not None else self._path
             if target is None:
                 return CommandResult(ok=False, message="no file to save to: give a path")
             now = self._wall_clock()
-            show, _ = apply(self._state.show, [Op("replace", ("meta", "modified"), iso_time(now))])
+            stamp = iso_time(now)
+            original = self._path
+            copy = original is not None and target.resolve() != original.resolve()
+            ops = [Op("replace", ("meta", "modified"), stamp)]
+            if copy:
+                taken = {self._state.show["meta"]["id"]}
+                ops += [
+                    Op("replace", ("meta", "id"), self._ids.new("show", taken)),
+                    Op("replace", ("meta", "created"), stamp),
+                ]
+            show, _ = apply(self._state.show, ops)
             try:
                 save_show(show, target, now=now)
             except (OSError, ValueError) as exc:
@@ -602,13 +680,18 @@ class Session:
             self._dirty = False
             self._versions[0] += 1
             self._versions[2] += 1
+            self._saved = (self._versions[0], self._stamp)
             self._publish()
+            if copy:
+                said = f"saved {target} as a new show; {original} stays as it was saved"
+                return CommandResult(ok=True, message=said)
             return CommandResult(ok=True, message=f"saved {target}")
 
     # ----------------------------------------------------------- helpers
 
     def _publish(self) -> None:
-        state = self._state
+        state, timeline = self._state, self.timeline
+        undo, redo = timeline.next_undo(), timeline.next_redo()
         self.snapshot = SessionSnapshot(
             show=state.show,
             compiled=state.compiled,
@@ -618,8 +701,14 @@ class Session:
             showVersion=self._versions[0],
             programmerVersion=self._versions[1],
             saves=self._versions[2],
+            savedVersion=self._saved[0],
+            savedStamp=self._saved[1],
             path=self._path,
             stamp=self._stamp,
+            undoSteps=timeline.undo_count,
+            redoSteps=timeline.redo_count,
+            nextUndo=None if undo is None else undo.label,
+            nextRedo=None if redo is None else redo.label,
         )
 
 

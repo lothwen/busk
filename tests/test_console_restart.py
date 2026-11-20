@@ -197,6 +197,66 @@ def test_a_patch_not_yet_autosaved_is_undone_through_the_engines_remap(
     assert after == before
 
 
+def show_path(session_json: Path) -> str | None:
+    """The ``showPath`` of an autosave ``session.json``, or ``None`` before it is written."""
+    try:
+        return str(json.loads(session_json.read_text())["showPath"])
+    except (OSError, ValueError):
+        return None
+
+
+def test_a_console_killed_after_a_save_as_comes_back_on_the_copy(
+    tmp_path: Path, receiver: Receiver, state_directory: Path
+) -> None:
+    """A save to another file makes a new show (GAP-55), with autosaves of its
+    own: the restarted console recovers the copy, not the show on the command
+    line."""
+    show = write(tmp_path)
+    copy = tmp_path / "copy.json"
+    with BuskRun(show, sacn_port=receiver.port) as run:
+        console = run.children()["console"]
+        blue(run)
+        run.send(f"save {copy}\n")
+        run.wait_for(f"saved {copy} as a new show; {show} stays as it was saved")
+        left = state_directory / "autosave" / "show-01" / "session.json"
+        until(lambda: show_path(left) == str(copy))
+        since = run.mark()
+        restart(run, console)
+        run.wait_for(f"{show} was saved as {copy}: recovering that", since=since)
+        run.wait_for("engine: running on with the same show", since=since)
+        run.send("info\n")
+        ident = json.loads(copy.read_text())["meta"]["id"]
+        run.wait_for(f"file: {copy}, saved", since=since)
+        run.wait_for(lambda line: line.endswith(f"({ident})"), since=since)
+        run.status_until(lambda line: line.endswith("| 3 Blue on 1.00"))
+        run.send("quit\n")
+        assert run.wait() == 0, run.err
+
+
+def test_a_run_after_a_save_as_does_not_follow_the_copy(
+    tmp_path: Path, receiver: Receiver, state_directory: Path
+) -> None:
+    """The copy a run before this one made is not this run's: a console
+    restarted now, before it wrote its own state, recovers the show it was
+    given."""
+    show = write(tmp_path)
+    copy = tmp_path / "copy.json"
+    with BuskRun(show, sacn_port=receiver.port) as run:
+        run.send(f"save {copy}\nquit\n")
+        assert run.wait() == 0, run.err
+    left = state_directory / "autosave" / "show-01" / "session.json"
+    assert json.loads(left.read_text())["showPath"] == str(copy)
+    with BuskRun(show, sacn_port=receiver.port) as run:
+        console = run.children()["console"]
+        until(lambda: show_path(left) == str(show))
+        restart(run, console)
+        run.send("info\n")
+        run.wait_for(f"file: {show}, saved")
+        assert not any("was saved as" in line for line in run.out)
+        run.send("quit\n")
+        assert run.wait() == 0, run.err
+
+
 def test_the_root_gives_the_console_up_after_three_restarts_in_a_minute(
     tmp_path: Path, receiver: Receiver
 ) -> None:

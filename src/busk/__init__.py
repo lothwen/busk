@@ -8,7 +8,7 @@ The public API
 ==============
 
 Every public name is importable from ``busk`` itself; ``__all__`` lists the
-46 of them. The library guide, ``docs/library.md``, has the examples and the
+47 of them. The library guide, ``docs/library.md``, has the examples and the
 reference.
 
 Show documents
@@ -27,8 +27,10 @@ Running a show
     (:meth:`~OfflineShow.execute`) and scripts, read their output back
     per fixture (:attr:`~OfflineShow.output`) and show their running
     effects (:attr:`~OfflineShow.effects`), their programmer
-    (:attr:`~OfflineShow.programmer`), the effect templates ``effect add``
-    takes (:attr:`~OfflineShow.effect_templates`) and the fixture profiles
+    (:attr:`~OfflineShow.programmer`), their session: unsaved edits, the
+    file and the undo steps (:attr:`~OfflineShow.session`), the effect
+    templates ``effect add`` takes (:attr:`~OfflineShow.effect_templates`)
+    and the fixture profiles
     ``fixture add`` takes (:attr:`~OfflineShow.fixture_profiles`), give a
     cue list's tracked states (:meth:`~OfflineShow.tracking`), and say
     what may come next in a line being typed
@@ -49,7 +51,7 @@ Data types
     :class:`EffectSnapshot` with :class:`EffectStatus`;
     :class:`EffectTemplateInfo`; :class:`FixtureProfileInfo` with
     :class:`FixtureModeInfo`; :class:`Expected`; :class:`ProgrammerStatus`
-    with :class:`ProgrammerValue`; :class:`TrackedCue` with
+    with :class:`ProgrammerValue`; :class:`SessionStatus`; :class:`TrackedCue` with
     :class:`TrackedValue` and :class:`TrackedEffect`; :class:`RouteStatus`;
     :class:`SurfaceStatus`; :class:`SurfaceInput`; :class:`IdFactory` and
     :class:`CounterIds`.
@@ -133,6 +135,7 @@ __all__ = [
     "Reply",
     "RouteStatus",
     "ScriptError",
+    "SessionStatus",
     "Show",
     "ShowLoadError",
     "SpeedStatus",
@@ -185,6 +188,7 @@ _EXPORTS: dict[str, str] = {
     "EffectStatus": "busk.engine.snapshot",
     "ProgrammerStatus": "busk.session.status",
     "ProgrammerValue": "busk.session.status",
+    "SessionStatus": "busk.session.session",
     "TrackedCue": "busk.session.tracked",
     "TrackedValue": "busk.session.tracked",
     "TrackedEffect": "busk.session.tracked",
@@ -243,6 +247,7 @@ if TYPE_CHECKING:  # what type checkers see: the same table, as explicit re-expo
     from busk.session.library import ProfileLibrary as ProfileLibrary
     from busk.session.library import read_profile as read_profile
     from busk.session.session import CommandResult as CommandResult
+    from busk.session.session import SessionStatus as SessionStatus
     from busk.session.status import ProgrammerStatus as ProgrammerStatus
     from busk.session.status import ProgrammerValue as ProgrammerValue
     from busk.session.tracked import TrackedCue as TrackedCue

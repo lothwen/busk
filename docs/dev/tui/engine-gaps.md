@@ -32,8 +32,9 @@ The TUI runs a `busk.LiveShow` in its own process, or, since GAP-11, is run by `
   may come where the word being typed starts), since GAP-21 `LiveShow.health`
   (`EngineHealth`), since GAP-27 `LiveShow.fixture_profiles`
   (`FixtureProfileInfo`), since GAP-46 `LiveShow.tracking(L)` (`TrackedCue`, a cue
-  list's tracked states) and since GAP-13 `LiveShow.inputs` (`SurfaceInput`, what came in
-  from the surfaces). Since GAP-54 `busk.read_profile(path)` reads a profile file as
+  list's tracked states), since GAP-13 `LiveShow.inputs` (`SurfaceInput`, what came in
+  from the surfaces) and since GAP-03 `LiveShow.session` (`SessionStatus`: unsaved edits,
+  the show's file, the undo steps). Since GAP-54 `busk.read_profile(path)` reads a profile file as
   `profile import` would, without importing it. Since GAP-16 a profile in `LiveShow.show`
   may have a `category`, and since GAP-17 a playback in the snapshot has the `color` of
   its current cue. The `busk.*` loggers feed the TUI's log pane.
@@ -64,7 +65,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 |---|---|---|---|---|
 | [GAP-01](#gap-01-fixture-output-values) Fixture output values | read | blocking | F1 A/C, F2, F3 | **done** 2026-10-22 |
 | [GAP-02](#gap-02-programmer-state) Programmer state | read | blocking | status bar, prompt, F1, F2, F3, F5, F6 | **done** 2026-10-22 |
-| [GAP-03](#gap-03-session-state-undo-redo-unsaved-edits) Session state (undo, redo, unsaved edits) | read | important | prompt, quit | open |
+| [GAP-03](#gap-03-session-state-undo-redo-unsaved-edits) Session state (undo, redo, unsaved edits) | read | important | prompt, quit | **done** 2026-11-20 |
 | [GAP-04](#gap-04-flash-and-playback-buttons-from-the-console) Flash and playback buttons from the console | action | important | F1 | **done** 2026-10-22 |
 | [GAP-05](#gap-05-relative-and-per-component-attribute-values) Relative and per-component attribute values | action | important | F2 | **done** 2026-10-22 |
 | [GAP-06](#gap-06-one-undo-step-for-a-gesture) One undo step for a gesture | action | important | F2 | **done** 2026-11-17 |
@@ -114,6 +115,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-52](#gap-52-a-dmx-readout) A DMX readout | action | nice-to-have | prompt, F8 | **done** 2026-11-12 |
 | [GAP-53](#gap-53-renaming-and-deleting-a-master) Renaming and deleting a master | action | nice-to-have | F7 | **done** 2026-11-12 |
 | [GAP-54](#gap-54-reading-a-profile-file-before-importing-it) Reading a profile file before importing it | read | nice-to-have | F3 | **done** 2026-11-20 |
+| [GAP-55](#gap-55-save-as-makes-a-new-show) Save as makes a new show | action | important | File menu | **done** 2026-11-20 |
 
 ---
 
@@ -311,6 +313,10 @@ needed: the bridge polls `programmer` with the snapshot and redraws when `versio
 
 ## GAP-03: Session state (undo, redo, unsaved edits)
 
+**Status:** done 2026-11-20 (see **Done** at the end of this section).
+
+Built in Phase 1 of `docs/plans/file-menu-plan.md`, whose File menu needs the show's file.
+
 **Needed by:** prompt context (`undo 3`), the quit dialog (save only when there are unsaved
 edits), and a modified marker next to the show name. Spec §5, §6.3.
 
@@ -348,6 +354,33 @@ run by the bridge after each line it sends and when the show or the programmer c
 gives the prompt context's `undo n`, the `*` after the show's title and a quit dialog that
 knows; if `info`'s text stops matching, they disappear and the dialog says it cannot tell.
 Remove it when this gap closes.
+
+**Done** (2026-11-20). `OfflineShow.session` and `LiveShow.session -> SessionStatus`, with
+`SessionStatus` in `busk.__all__` (now 47 names), defined in `busk.session.session` with the
+fields suggested above. The TUI still runs `session_from_info`: Phase 2 of the file-menu plan
+replaces it. What it settles:
+
+- **Of one moment.** The undo counts and labels are in the session's published
+  `SessionSnapshot`, and the timeline now moves before that snapshot is published: a show
+  step went on the timeline after the edit was published, and an undo or redo moved it after
+  its change was. So a reader never sees an edit without its step.
+- **`path` is absolute** (`os.path.abspath` of the session's path, symlinks kept), so a
+  frontend can list it without knowing busk's working directory; `None` for a show without a
+  file.
+- **`nextUndo` and `nextRedo` are the steps' labels**, what `undo` prints after `undid:`. An
+  open undo group is not a step until a change joins it; then the step's label is the group's.
+- **`showVersion` counts a save** as a change to the show, as the session always did, and an
+  undo or redo of an edit; `programmerVersion` counts the modes too (blind, highlight, the fade
+  time), which are no undo step.
+- **The same object** comes back until the session publishes again, and it publishes only on a
+  change, so no equality check is needed.
+- **Under `busk run`** the session lives in the console process with the frontend, so the read
+  needs no wire.
+- Tests: `tests/test_session_status.py` (a loaded show, an edit with its undo and redo,
+  programmer steps, an undo group, a save with a relative path, the same object, one published
+  snapshot per change holding its step, a `LiveShow`), `tests/test_frontend.py` (the read under
+  `busk run --frontend`), the public API golden and `tests/api_consumer.py`; the library
+  guide's example.
 
 ## GAP-04: Flash and playback buttons from the console
 
@@ -3439,3 +3472,62 @@ of a `.json` or a `.gdtf` file is `Bridge.read_profile`, read on a worker thread
 - Tests: `tests/test_fixture_profiles.py` (each format, as `profile import` embeds it, with its
   notes; each failing file, with `profile import`'s words), `tests/test_signatures.py`,
   `tests/test_public_api.py` and its golden, `tests/api_consumer.py`; the library guide's example.
+
+## GAP-55: Save as makes a new show
+
+**Status:** done 2026-11-20 (see **Done** at the end of this section).
+
+The user's word of 2026-11-20 (D1 of `docs/plans/file-menu-plan.md`): Save as gives the show a
+new id. Built in that plan's Phase 1.
+
+**Needed by:** the File menu's *Save as…*, which sends `save "<path>"`.
+
+**Today:** `save PATH` writes the show to PATH and makes it the show's file, keeping `meta.id`.
+Autosaves and crash recovery are keyed by the id (`<stateDir>/autosave/<meta.id>/`), so the
+copy and the file it was saved from share them: a crash while editing the copy restores its
+edits into the original, the next time that file is opened.
+
+**Engine should provide:** `save PATH` to another file than the show's own gives the show a new
+`meta.id`, with `created` and `modified` of now, and says so; `save`, and `save` to the show's
+own file, keep the id. The autosave worker follows the new id.
+
+**Priority:** important.
+
+**TUI until then:** no Save as in the File menu.
+
+**Done** (2026-11-20). In `Session.save` (`src/busk/session/session.py`), which `save PATH`,
+`OfflineShow.save(path)` and `LiveShow.save(path)` all call:
+
+- **Another file** is one whose resolved path differs from the show's (`Path.resolve`, so
+  `shows/../club.show` is the show's own; a hard link is another file). The copy gets an id
+  from the session's `IdFactory` (`CounterIds` gives reproducible ones), and `created` and
+  `modified` of now; the title is kept. The reply is `saved copy.show as a new show; club.show
+  stays as it was saved`.
+- **The first save of a show without a file** keeps its id, and so does a save that fails: the
+  show changes only once the file is written.
+- **Not an undo step**, as `meta.modified` is not. `meta.id` and `meta.created` are protected
+  from `SET` and `DELETE`, so no step's inverse holds them, and an undo after a Save as keeps
+  the new id.
+- **Autosave follows the id** (`AutosaveWorker`, `src/busk/persistence/autosave.py`): when a
+  save changes the id, the worker writes `cleanExit: true` to the old folder's `session.json`,
+  whose edits went into the copy, and goes on in the new id's folder. `finish` does the same,
+  for a quit right after a Save as. A failing write moves nothing, and the next service tries
+  again. The event log stays in the folder it opened in: one run, one log.
+- **A console restarted after a crash** (beyond the plan's call 2) comes back on the copy: the
+  old folder's `session.json` names the copy as `showPath`, which `read_recovery` now returns
+  (`Recovery.showPath`), and a console started with `--restarted` follows it, to the last copy,
+  saying `club.show was saved as copy.show: recovering that`. A console that is not restarted
+  first makes its show's `session.json` name its own file again (`claim`), so a copy a run
+  before this one made is never followed.
+- **Found and fixed:** an edit made after a save, before the worker's next look (0.5 s), was
+  taken as saved: the worker took the show version it saw then as the one on disk. It was not
+  autosaved, and a clean exit did not keep it. The session now publishes the version and stamp
+  the last save wrote (`SessionSnapshot.savedVersion`, `savedStamp`).
+- Tests: `tests/test_save_as.py` (the own file, spelled two ways; another file, its reply, the
+  original untouched and the next `save`; undo and redo after it; a show without a file; a
+  save that fails), `tests/test_autosave.py` (edits, Save as, more edits and a crash: nothing
+  for the original, the copy's edits under the copy's id; a quit right after it; a clean mark
+  that cannot be written; `claim`; an edit right after a save), `tests/test_recovery.py`
+  (`kill -9` after a Save as and an edit: the original starts clean, the copy recovers),
+  `tests/test_console_restart.py` (a console killed after a Save as comes back on the copy; a
+  run after one does not).

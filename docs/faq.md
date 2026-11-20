@@ -369,7 +369,9 @@ If a show fails to load, the error names its newest backup, if there is one.
 ### How do I save under another name?
 
 `save PATH`. The extension picks the format: `.show` for the ZIP, `.json` for plain JSON.
-Later `save`s without a path go to the new file.
+Later `save`s without a path go to the new file. The copy is a new show, with an id of its
+own, so its autosaves and crash recovery are its own; the file you saved it from stays as
+it was last saved.
 
 ### I moved my show to another computer and nothing comes out.
 

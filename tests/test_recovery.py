@@ -1,7 +1,7 @@
 """Crash recovery end to end: `kill -9` a running console, start it again (phase-3-plan §5.9;
 phase-4-plan step 15: the tempo and the programmer fade time come back too; phase-5-plan
 step 12: so do group and size levels and the programmer's effects; phase-6-plan: the page
-and fade-time levels).
+and fade-time levels; GAP-55: after a save as another file, the copy recovers).
 
 This runs ``busk run`` as a real process. The show autosave is written 5 s
 after the last edit, so the test takes a few seconds.
@@ -128,6 +128,68 @@ def test_a_killed_session_comes_back(tmp_path: Path, appendix_a: dict[str, Any])
         check=False,
     )
     assert "recovered" not in third.stdout
+
+
+def test_after_a_save_as_the_copy_recovers_and_the_original_does_not(
+    tmp_path: Path, appendix_a: dict[str, Any]
+) -> None:
+    """``save PATH`` to another file makes a new show (GAP-55): the edits after
+    it are the copy's, and only ``busk run`` of the copy recovers them."""
+    show = tmp_path / "club.json"
+    show.write_text(json.dumps(offline(appendix_a)))
+    copy = tmp_path / "copy.json"
+    env = {**os.environ, "XDG_STATE_HOME": str(tmp_path / "state")}
+    command = [sys.executable, "-m", "busk", "run"]
+    first = subprocess.Popen(
+        [*command, str(show)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+    )
+    assert first.stdin is not None
+    first.stdin.write(f'save {copy}\nrename show "Copied"\n')
+    first.stdin.flush()  # stdin stays open: the console keeps running
+    autosave = tmp_path / "state" / "busk" / "autosave"
+
+    def autosaved() -> bool:  # the edit, in the copy's folder
+        try:
+            ident = json.loads(copy.read_text())["meta"]["id"]
+            data = json.loads((autosave / ident / "session.json").read_text())
+        except (OSError, ValueError):
+            return False
+        return bool(data["showAutosave"])
+
+    wait_for(autosaved)
+    first.send_signal(signal.SIGKILL)
+    first.wait(10)
+    ident = json.loads(copy.read_text())["meta"]["id"]
+    assert ident != "show-01"
+    assert json.loads((autosave / "show-01" / "session.json").read_text())["cleanExit"] is True
+
+    def run(path: Path) -> list[str]:
+        done = subprocess.run(
+            [*command, str(path)],
+            input="info\n",
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=60,
+            check=False,
+        )
+        assert done.returncode == 0, done.stderr
+        return done.stdout.splitlines()
+
+    original = run(show)
+    assert not any(line.startswith("recovered") for line in original)
+    assert any(line.startswith("show: ") and line.endswith("(show-01)") for line in original)
+    assert f"file: {show}, saved" in original
+    copied = run(copy)
+    recovered = next(line for line in copied if line.startswith("recovered "))
+    assert "unsaved edits from" in recovered
+    assert f"show: Copied ({ident})" in copied
+    assert f"file: {copy}, unsaved edits" in copied
 
 
 def test_no_recover_starts_normally(tmp_path: Path, appendix_a: dict[str, Any]) -> None:

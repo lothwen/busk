@@ -314,6 +314,7 @@
       "routes": "property: tuple[RouteStatus, ...] | None",
       "run_script": "(self, path: str | os.PathLike[str]) -> list[str]",
       "save": "(self, path: str | os.PathLike[str] | None = None) -> CommandResult",
+      "session": "property: SessionStatus",
       "show": "property: Show",
       "snapshot": "property: EngineSnapshot | None",
       "start": "(self) -> None",
@@ -339,6 +340,7 @@
       "programmer": "property: ProgrammerStatus",
       "run_script": "(self, path: str | os.PathLike[str]) -> list[str]",
       "save": "(self, path: str | os.PathLike[str] | None = None) -> CommandResult",
+      "session": "property: SessionStatus",
       "show": "property: Show",
       "snapshot": "property: EngineSnapshot",
       "submit": "(self, command: Command) -> CommandResult",
@@ -482,6 +484,23 @@
       "text": "attribute: str"
     },
     "module": "busk.errors"
+  },
+  "SessionStatus": {
+    "fields": [
+      "showVersion: int",
+      "programmerVersion: int",
+      "dirty: bool",
+      "path: str | None",
+      "undoSteps: int",
+      "redoSteps: int",
+      "nextUndo: str | None",
+      "nextRedo: str | None"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, *, showVersion: int, programmerVersion: int, dirty: bool, path: str | None, undoSteps: int, redoSteps: int, nextUndo: str | None, nextRedo: str | None) -> None"
+    },
+    "module": "busk.session.session"
   },
   "Show": {
     "keys": {

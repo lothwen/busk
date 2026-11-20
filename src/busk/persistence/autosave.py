@@ -24,6 +24,12 @@ scheduler). It reads the session's published
 :class:`~busk.session.session.SessionSnapshot` and never takes the session
 lock, so it never blocks an edit.
 
+**A save to another file** makes a new show, with an id of its own (GAP-55
+of ``docs/dev/tui/engine-gaps.md``). The worker then marks the old folder's
+``session.json`` a clean exit, since its edits went into the copy, and goes
+on in the new id's folder. A crash after that recovers the copy, not the
+show it was saved from.
+
 **Recovery** (:func:`read_recovery`): on startup, ``busk run SHOW`` looks
 for the show's ``session.json``. Missing, or ``cleanExit: true``: a normal
 start. ``cleanExit: false``: the last run crashed, so the programmer
@@ -37,7 +43,10 @@ Phase 7 no ``showStamp``; they still load.
 A console that the root of ``busk run`` restarts after a crash recovers
 whether or not the last exit was clean (``force``: a console that exits 70
 wrote a clean exit on its way out), and compares ``showStamp`` with the
-stamp of the show the engine runs (phase-7-plan decision 8).
+stamp of the show the engine runs (phase-7-plan decision 8). When
+``showPath`` names another file than the one it loaded, the crashed console
+had saved the show as that file: it loads that one, and its recovery,
+instead.
 """
 
 from __future__ import annotations
@@ -61,7 +70,7 @@ from busk.persistence.show_file import (
     file_stamp,
 )
 from busk.session.programmer import Programmer, from_json, to_json
-from busk.session.session import Session
+from busk.session.session import Session, SessionSnapshot
 
 SHOW_DELAY: Final = 5.0
 """Seconds after the last show edit before the burst is autosaved."""
@@ -105,6 +114,7 @@ class AutosaveWorker:
         page: CurrentPage = lambda: None,
     ) -> None:
         self._session = session
+        self._state_dir = state_dir
         self.folder = autosave_directory(state_dir, session.show["meta"]["id"])
         self._clock = clock
         self._wall_clock = wall_clock
@@ -131,12 +141,7 @@ class AutosaveWorker:
     def service(self, now: float) -> None:
         """Write whatever autosave is due at time ``now`` (worker thread)."""
         snapshot = self._session.snapshot  # one read: consistent and lock-free
-        if snapshot.saves != self._saves:  # saved: the file on disk is current
-            self._saves = snapshot.saves
-            self._written_version = snapshot.showVersion
-            self._stamp = snapshot.stamp
-            self.showAutosave = None
-            self._burst_start = None
+        self._saved(snapshot, now)
         if snapshot.showVersion != self._seen_version:
             self._seen_version = snapshot.showVersion
             if snapshot.showVersion != self._written_version:
@@ -167,6 +172,7 @@ class AutosaveWorker:
         quit message names it), else ``None``.
         """
         snapshot = self._session.snapshot
+        self._saved(snapshot, now)
         if snapshot.dirty and snapshot.showVersion != self._written_version:
             self._write_show(snapshot.show, snapshot.showVersion, snapshot.stamp, now)
         self._write_session(self._session_state(clean=True), now)
@@ -181,6 +187,26 @@ class AutosaveWorker:
         while not stop.wait(SERVICE_PERIOD):
             with contextlib.suppress(OSError):
                 self.service(self._clock.now())
+
+    def _saved(self, snapshot: SessionSnapshot, now: float) -> None:
+        """Take a save in: the file on disk is current. After a save to
+        another file, which made a new show, mark the old folder's exit clean
+        and move to the new show's folder (see the module docs). A failing
+        write raises before anything changed, so the next service retries."""
+        if snapshot.saves == self._saves:
+            return
+        folder = autosave_directory(self._state_dir, snapshot.show["meta"]["id"])
+        if folder != self.folder:
+            self.showAutosave = None  # the old show's edits are in the copy
+            self._write_session(self._session_state(clean=True), now)
+            self.folder = folder
+            self._written_state = None  # the new folder gets its session.json now
+            self._last_session_write = None
+        self._saves = snapshot.saves
+        self._written_version = snapshot.savedVersion  # not an edit made since
+        self._stamp = snapshot.savedStamp
+        self.showAutosave = None
+        self._burst_start = None
 
     # ------------------------------------------------------------- writes
 
@@ -233,6 +259,7 @@ class Recovery:
     page: str | None  # the current page's id, restored last (Phase 6)
     showAutosave: Path | None  # newer than the show file: load it instead
     showStamp: Stamp | None  # the stamp of the show to load (None: unknown; Phase 7)
+    showPath: Path | None  # the show's file when it was written: after a save as, the copy's
     dropped: tuple[str, ...]  # malformed entries that were left out
 
 
@@ -278,6 +305,7 @@ def read_recovery(
         except OSError:
             pass
     stamp = _stamp(data.get("showStamp"))  # missing in files written before Phase 7
+    saved = data.get("showPath")
     return Recovery(
         programmer=programmer,
         masterLevels=masters,
@@ -285,8 +313,26 @@ def read_recovery(
         page=page if isinstance(page, str) else None,
         showAutosave=newer,
         showStamp=None if isinstance(autosave, str) and newer is None else stamp,
+        showPath=Path(saved) if isinstance(saved, str) else None,
         dropped=tuple(dropped),
     )
+
+
+def claim(state_dir: Path, show_id: str, show_path: Path) -> None:
+    """Make the ``session.json`` of the show ``show_id`` name ``show_path``,
+    when it names another file: a run before this one saved the show as that
+    file, which made a new show (GAP-55), and a console that this run
+    restarts must recover this show, not follow that one. Nothing else in it
+    changes, and a file that cannot be read or written is left as it is."""
+    path = autosave_directory(state_dir, show_id) / SESSION_FILE
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        saved = data.get("showPath") if isinstance(data, dict) else None
+        if isinstance(saved, str) and Path(saved).resolve() != show_path.resolve():
+            data["showPath"] = str(show_path)
+            atomic_write(path, (json.dumps(data, indent=2) + "\n").encode("utf-8"))
+    except (OSError, ValueError):
+        pass
 
 
 def _stamp(value: object) -> Stamp | None:
