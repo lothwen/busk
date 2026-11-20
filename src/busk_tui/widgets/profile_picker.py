@@ -5,9 +5,11 @@ A modal dialog, because its filter is typed and only a modal has the keyboard.
 It chooses and sends nothing: the form that opened it does. The show's own
 profiles come first, marked. ↑ ↓ move, Enter or a click chooses, Esc cancels.
 
-``[import…]`` (or Ctrl+O) is a path dialog, then ``profile import "<path>"``
-(GAP-39), the one line the picker sends. The app hands an open picker the
-show's profiles as they change (:meth:`ProfileDialog.offer`), so the profile
+``[import…]`` (or Ctrl+O) is the file picker (:mod:`~busk_tui.widgets.file_picker`),
+then ``profile import "<path>"`` (GAP-39), the one line the picker sends. The
+file picker starts where busk-tui runs, and after a file is chosen, on that
+file, for the rest of the run. The app hands an open picker the show's
+profiles as they change (:meth:`ProfileDialog.offer`), so the profile
 imported shows at once, and the list lands on it. busk's refusal shows under
 the list, since the log is behind the dialog.
 """
@@ -29,7 +31,8 @@ from textual.widgets.option_list import Option
 from busk_tui import colors, commands
 from busk_tui.model import ProfileChoice
 from busk_tui.widgets.controls import ActionButton, RunLine
-from busk_tui.widgets.dialogs import TextDialog, dialog_css
+from busk_tui.widgets.dialogs import dialog_css
+from busk_tui.widgets.file_picker import FILES, FileDialog
 
 MARK: Final = "●"
 MAKER_CELLS: Final = 16
@@ -37,7 +40,6 @@ NAME_CELLS: Final = 28
 MODES_CELLS: Final = 20
 ROWS: Final = 12
 PAGE: Final = ROWS - 1
-FILES: Final = "an OFL .json, a .gdtf or a busk profile .json"
 
 
 def modes_text(choice: ProfileChoice) -> str:
@@ -59,20 +61,6 @@ def choice_text(choice: ProfileChoice) -> Text:
         text.append(" ")
         text.append_text(piece)
     return text
-
-
-def profile_path(text: str) -> Path:
-    """A path as typed: ``~`` expanded, and a relative one from the TUI's own
-    folder, so that busk reads the same file."""
-    return Path(text.strip()).expanduser().absolute()
-
-
-def check_path(text: str) -> str | None:
-    """An import's path: a file there. What is in it is busk's to read."""
-    if not text.strip():
-        return f"a path to {FILES}"
-    path = profile_path(text)
-    return None if path.is_file() else f"no file at {path}"
 
 
 def matches(choice: ProfileChoice, words: Sequence[str]) -> bool:
@@ -110,6 +98,8 @@ class ProfileDialog(ModalScreen[str | None]):
         Binding("pagedown", f"move({PAGE})", "Page down", show=False),
         Binding("ctrl+o", "import", "Import", show=False),
     ]
+    last: ClassVar[Path | None] = None
+    """The file chosen last to import from, in this run: the file picker starts on it."""
 
     def __init__(self, choices: Sequence[ProfileChoice], chosen: str | None = None) -> None:
         super().__init__()
@@ -171,18 +161,20 @@ class ProfileDialog(ModalScreen[str | None]):
         self._fill(None if index is None else self.shown[index].name)
 
     def action_import(self) -> None:
-        """``[import…]``: a path, then ``profile import "<path>"``."""
+        """``[import…]``: a file from the file picker, then ``profile import "<path>"``."""
 
-        def given(text: str | None) -> None:
-            if text is None:
+        def given(path: Path | None) -> None:
+            if path is None:
                 return
+            ProfileDialog.last = path
             self.importing = True
             self.error.display = False
-            line = commands.profile_import(str(profile_path(text)))
+            line = commands.profile_import(str(path))
             self.post_message(RunLine(line, done=self._imported, refused=self._refused))
 
-        note = f"{FILES}\nrelative to {Path.cwd()}"
-        self.app.push_screen(TextDialog("IMPORT PROFILE", "", check_path, note), given)
+        last = ProfileDialog.last
+        files = FileDialog(Path.cwd()) if last is None else FileDialog(last.parent, last.name)
+        self.app.push_screen(files, given)
 
     def _imported(self, ok: bool) -> None:
         if not ok:

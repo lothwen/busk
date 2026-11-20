@@ -95,6 +95,23 @@ dropped or guessed:
 
 ```
 
+`read_profile` reads a file of any of the three formats, as `profile import` and a
+`ProfileLibrary` read one: a `.gdtf` file is GDTF, and any other is JSON, an OFL fixture
+(the manufacturer from its directory) or a busk profile. So a program can show what a file
+holds before it imports it. A file it cannot use raises `ImportFailed`, saying why:
+
+```python
+>>> report = busk.read_profile("tests/fixtures/ofl/tupperdmx/moving-head.json")
+>>> report.profile["manufacturer"], [mode["footprint"] for mode in report.profile["modes"]]
+('tupperdmx', [12, 18])
+>>> try:
+...     busk.read_profile("examples/club-night.busk")
+... except busk.ImportFailed as exc:
+...     print(exc)
+Expecting value: line 1 column 1 (char 0)
+
+```
+
 `fixture add` finds profiles in a `ProfileLibrary`: the built-in profiles, plus any
 directories of busk, OFL and GDTF profiles you give it. `find` takes an id or a name,
 ignoring case. Files it cannot read are skipped, with one line each in `problems`:
@@ -502,6 +519,7 @@ take `str` or `os.PathLike`.
 | `validate_show` | `validate_show(text) -> (Show or None, issues)`: validate a document held in memory |
 | `read_ofl` | `read_ofl(path, *, manufacturer=None) -> ImportReport`: convert an Open Fixture Library profile |
 | `read_gdtf` | `read_gdtf(path, *, manufacturer=None) -> ImportReport`: convert a GDTF file |
+| `read_profile` | `read_profile(path) -> ImportReport`: read a GDTF, OFL or busk profile file, as `profile import` does |
 | `ProfileLibrary` | The built-in profiles plus directories of profiles, for `fixture add`: `get(id)`, `find(id or name)`, iteration, `problems` |
 | `OfflineShow` | A show on a clock you drive: `submit`, `execute`, `confirmation`, `expected`, `run_script`, `save`, `tick`, `tracking`; `show`, `warnings`, `snapshot`, `output`, `effects`, `programmer`, `effect_templates`, `fixture_profiles`, `time` |
 | `LiveShow` | A show in real time in your process: as `OfflineShow`, with `start`, `stop` and `with`, `frame` instead of `tick`, `routes`, `surfaces`, `inputs` and `health` |
@@ -513,7 +531,7 @@ take `str` or `os.PathLike`.
 | `Issue` | One validation finding: `severity` (`"error"` or `"warning"`), `path`, `message` |
 | `CommandResult` | What `submit` and `save` return: `ok`, `message`, `issues` |
 | `Reply` | What `execute` returns: `text`, `ok`, and `quit`, true when the line asked to quit (`quit`, `exit`, a `source` that stops at one) |
-| `ImportReport` | What `read_ofl` and `read_gdtf` return: `profile`, `notes` |
+| `ImportReport` | What `read_ofl`, `read_gdtf` and `read_profile` return: `profile`, `notes` |
 | `EngineSnapshot` | The engine's published state: grand master, blackout, playbacks, masters, page, tempo |
 | `PlaybackStatus` | One playback in a snapshot: number, name, state, fader level, current cue, and `color`, that cue's colour to draw the playback in (linear RGB 0..1, or `None`: idle, or the cue holds no colour) |
 | `SpeedStatus` | One speed master in a snapshot: BPM, multiplier, beat |
@@ -560,7 +578,7 @@ BuskError(Exception)
 |---|---|
 | `load_show` | `ShowLoadError` (not a show, or validation errors), `OSError` |
 | `save_show` | `OSError`; `ValueError` (the extension is not `.show` or `.json`) |
-| `read_ofl`, `read_gdtf` | `ImportFailed`, also for a file that cannot be read |
+| `read_ofl`, `read_gdtf`, `read_profile` | `ImportFailed`, also for a file that cannot be read |
 | `validate_show`, `new_show`, `ProfileLibrary()` | nothing: issues and problems are returned |
 | `OfflineShow()`, `LiveShow()` | `ShowLoadError`, `UnsupportedFeature` |
 | `submit`, `execute`, `save` | nothing: the result has `ok=False` |

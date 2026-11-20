@@ -36,6 +36,7 @@ from busk_tui.shell import BuskApp
 from busk_tui.widgets.controls import ButtonStrip
 from busk_tui.widgets.dialogs import TextDialog
 from busk_tui.widgets.dmxmap import Footprint
+from busk_tui.widgets.file_picker import Entry, FileDialog
 from busk_tui.widgets.fixture_form import mode_labels, range_text, taken_text
 from busk_tui.widgets.fixture_panel import patch_heading, run_heading, swap_text
 from busk_tui.widgets.log import LogView
@@ -48,13 +49,10 @@ from busk_tui.widgets.patch_chooser import (
     takes_text,
 )
 from busk_tui.widgets.profile_picker import (
-    FILES,
     ProfileDialog,
-    check_path,
     choice_text,
     matches,
     modes_text,
-    profile_path,
 )
 
 STAGE, BALCONY = UniverseView(1, "Stage"), UniverseView(2, "Balcony")
@@ -1014,26 +1012,21 @@ def ofl_file(folder: Path) -> Path:
     return file
 
 
-def test_a_path_is_taken_as_typed_from_home_or_from_here(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-    assert profile_path(" acme/dim.json ") == tmp_path / "acme" / "dim.json"
-    assert profile_path("~/spot.gdtf") == tmp_path / "home" / "spot.gdtf"
-    assert profile_path("/srv/spot.gdtf") == Path("/srv/spot.gdtf")
-    ofl_file(tmp_path)
-    assert check_path("acme/dim.json") is None
-    assert check_path("  ") == f"a path to {FILES}"
-    assert check_path("acme/none.json") == f"no file at {tmp_path / 'acme' / 'none.json'}"
-    assert check_path("acme") == f"no file at {tmp_path / 'acme'}"  # a folder
+async def choose_file(pilot: Pilot[int], app: BuskApp, file: Path) -> None:
+    """In the open file picker, go to ``file``, and Enter."""
+    dialog = app.screen
+    assert isinstance(dialog, FileDialog)
+    dialog.go(file.parent, file.name)
+    await pilot.press("enter")
+    await settle(pilot, app)
 
 
 @pytest.mark.parametrize("how", ["click", "ctrl+o"])
-def test_import_is_a_path_dialog_that_sends_one_line_and_the_picker_stays(
-    tmp_path: Path, how: str
+def test_import_is_the_file_picker_that_sends_one_line_and_the_picker_stays(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, how: str
 ) -> None:
     file = ofl_file(tmp_path / 'a "rig"')
+    monkeypatch.chdir(file.parent.parent)
     bridge = FakeBridge()
     app = on_f3(bridge)
 
@@ -1047,16 +1040,46 @@ def test_import_is_a_path_dialog_that_sends_one_line_and_the_picker_stays(
         else:
             await pilot.press("ctrl+o")
         await pilot.pause()
-        assert isinstance(app.screen, TextDialog)
-        assert app.screen.title_text == "IMPORT PROFILE"
-        assert app.screen.note.startswith(FILES)
-        await answer(pilot, app, str(tmp_path / "none.json"))
-        assert isinstance(app.screen, TextDialog)  # it stays, saying why
-        assert str(app.screen.error.content) == f"no file at {tmp_path / 'none.json'}"
-        await answer(pilot, app, f" {file} ")
+        files = app.screen
+        assert isinstance(files, FileDialog)
+        assert files.folder == file.parent.parent  # where busk-tui runs
+        assert [entry.name for entry in files.shown] == ["acme"]
+        await pilot.press("right", *"dim", "enter")
+        await settle(pilot, app)
         assert app.screen is dialog
         assert bridge.lines() == [f"profile import {json.dumps(str(file))}"]
         assert dialog.importing
+        assert ProfileDialog.last == file
+
+    drive(app, body)
+
+
+def test_the_file_picker_starts_on_the_file_chosen_last(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """For the rest of the run, also after a refusal or a cancel."""
+    file = ofl_file(tmp_path / "rig")
+    (tmp_path / "elsewhere").mkdir()
+    monkeypatch.chdir(tmp_path / "elsewhere")
+    bridge = FakeBridge(replies={f"profile import {json.dumps(str(file))}": Reply(False, "no")})
+    app = on_f3(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await open_form(pilot, app)
+        await tap(pilot, page.panel.form.choose, app)
+        await pilot.press("ctrl+o")
+        await choose_file(pilot, app, file)
+        for leave in ("enter", "escape"):
+            await pilot.press("ctrl+o")
+            await pilot.pause()
+            files = app.screen
+            assert isinstance(files, FileDialog)
+            assert files.folder == file.parent
+            assert files.current() == Entry("dim.json", folder=False)
+            await pilot.press(leave)
+            await settle(pilot, app)
+        assert isinstance(app.screen, ProfileDialog)
+        assert len(bridge.lines()) == 2
 
     drive(app, body)
 
@@ -1074,7 +1097,7 @@ def test_the_imported_profile_shows_at_once_and_the_list_lands_on_it(tmp_path: P
         assert isinstance(dialog, ProfileDialog)
         await pilot.press(*"rgb")  # a filter that would hide it
         await pilot.press("ctrl+o")
-        await answer(pilot, app, str(file))
+        await choose_file(pilot, app, file)
         bridge.events.append(ShowChanged(rig(choices=(*CHOICES[:2], IMPORTED, *CHOICES[2:]))))
         await settle(pilot, app)
         assert app.screen is dialog
@@ -1105,7 +1128,7 @@ def test_a_library_profile_imported_into_the_show_is_the_one_landed_on(tmp_path:
         dialog = app.screen
         assert isinstance(dialog, ProfileDialog)
         await pilot.press("ctrl+o")
-        await answer(pilot, app, str(file))
+        await choose_file(pilot, app, file)
         bridge.events.append(ShowChanged(rig(choices=(*CHOICES[:2], embedded, *CHOICES[2:3]))))
         await settle(pilot, app)
         assert dialog.shown[dialog.list.highlighted or 0].name == "Blinder"
@@ -1149,7 +1172,7 @@ def test_a_refused_import_says_why_under_the_list(tmp_path: Path) -> None:
         assert isinstance(dialog, ProfileDialog)
         assert not dialog.error.display
         await pilot.press("ctrl+o")
-        await answer(pilot, app, str(file))
+        await choose_file(pilot, app, file)
         assert app.screen is dialog
         assert dialog.error.display
         assert str(dialog.error.content) == "the show has a profile named 'acme Test'"
@@ -1159,13 +1182,13 @@ def test_a_refused_import_says_why_under_the_list(tmp_path: Path) -> None:
         assert dialog.list.highlighted == 0
         bridge.replies.clear()
         await pilot.press("ctrl+o")
-        await answer(pilot, app, str(file))
+        await choose_file(pilot, app, file)
         assert not dialog.error.display  # a new try clears it
 
     drive(app, body)
 
 
-def test_esc_on_the_path_leaves_the_picker_as_it_was() -> None:
+def test_esc_on_the_file_picker_leaves_the_picker_as_it_was() -> None:
     bridge = FakeBridge()
     app = on_f3(bridge)
 

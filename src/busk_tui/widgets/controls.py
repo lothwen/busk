@@ -1,5 +1,6 @@
 """Buttons and chips (spec §4.3), and :class:`RunLine`, how every control asks
-for a line to be run.
+for a line to be run (and :class:`ReadProfile`, how the file picker asks busk
+to read a profile file).
 
 A control never talks to the bridge: it posts :class:`RunLine`, which
 bubbles up to the app. The app asks the engine's question first if there is
@@ -11,6 +12,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 from rich.text import Text
@@ -22,7 +24,7 @@ from textual.widgets import Static
 
 from busk_tui import colors
 from busk_tui.commands import Line
-from busk_tui.model import Origin
+from busk_tui.model import Origin, ProfileRead
 
 type Intent = Literal["go", "neutral", "record", "tempo", "danger", "off"]
 
@@ -66,6 +68,17 @@ class RunLine(Message):
         self.done = done
         self.ask = ask
         self.refused = refused
+
+
+class ReadProfile(Message):
+    """Have busk read the profile file at ``path``, as ``profile import``
+    would, and call ``then`` with what it found, on the UI thread. The app
+    reads it on a worker thread, as a file may take a while."""
+
+    def __init__(self, path: Path, then: Callable[[ProfileRead], None]) -> None:
+        super().__init__()
+        self.path = path
+        self.then = then
 
 
 class FillPrompt(Message):

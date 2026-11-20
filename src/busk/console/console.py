@@ -84,6 +84,7 @@ from busk.console.parser import (
 from busk.console.prompt import PROMPT, Editing, hints, split
 from busk.engine.loop import Frame
 from busk.engine.snapshot import EngineSnapshot
+from busk.importers import ImportFailed
 from busk.io.osc import feedback_target
 from busk.model.attributes import ATTRIBUTES
 from busk.model.common import TargetRef
@@ -512,9 +513,11 @@ class Console:
         """``profile import "<path>"`` (GAP-39): the file is read here, as
         ``source`` reads its own, so the parser stays pure. A profile named
         like one the show holds would not be found by name, so it is refused."""
-        profile, notes, problem = read_profile(path)
-        if profile is None:
-            return Reply(f"error: cannot import {str(path)!r}: {problem}", ok=False)
+        try:
+            report = read_profile(path)
+        except ImportFailed as exc:
+            return Reply(f"error: cannot import {str(path)!r}: {exc}", ok=False)
+        profile, notes = report.profile, report.notes
         name, folded = profile["name"], profile["name"].casefold()
         for held in self.session.show["profiles"]:
             if held["id"] == profile["id"]:

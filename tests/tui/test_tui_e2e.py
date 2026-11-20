@@ -102,6 +102,7 @@ from busk_tui.widgets.dmxmap import DmxMap
 from busk_tui.widgets.effect_panel import EffectPanel, EffectRateDialog
 from busk_tui.widgets.effects import EffectTable, TemplateTable
 from busk_tui.widgets.encoders import EncoderBar, EncoderRow
+from busk_tui.widgets.file_picker import Entry, FileDialog
 from busk_tui.widgets.fixturetable import FixtureTable
 from busk_tui.widgets.frame import StatusBar
 from busk_tui.widgets.log import LogView
@@ -1308,7 +1309,8 @@ def test_f3_patches_and_deletes_a_run_and_imports_and_updates_profiles_on_the_re
     """The spots' copy of their profile at revision 7: ``[update profile]``
     brings the library's. The pars, 201 thru 204, patched in one line and
     deleted in one; a hole between them greys both. The picker imports a
-    profile, after a missing path and a file busk refuses."""
+    profile through the file picker, after a file busk refuses, which the
+    file picker's preview says first."""
     document, _ = busk.load_show(club_path)
     document = copy.deepcopy(document)
     document["profiles"][0]["revision"] = "7"
@@ -1388,13 +1390,23 @@ def test_f3_patches_and_deletes_a_run_and_imports_and_updates_profiles_on_the_re
         picker = app.screen
         assert isinstance(picker, ProfileDialog)
         await pilot.press("ctrl+o")
-        await answer_field(pilot, app, str(tmp_path / "none.json"))
-        await until(pilot, lambda: "no file at" in str(app.screen.query_one(".error").content))
-        await answer_field(pilot, app, str(bad))
+        await until(pilot, lambda: isinstance(app.screen, FileDialog))
+        files = app.screen
+        assert isinstance(files, FileDialog)
+        files.go(tmp_path, bad.name)
+        await until(pilot, lambda: str(files.preview.content).startswith("busk cannot"))
+        await pilot.press("enter")
         await until(pilot, lambda: picker.error.display)
         assert str(picker.error.content).startswith(f"cannot import {str(bad)!r}")
         await pilot.press("ctrl+o")
-        await answer_field(pilot, app, str(good))
+        await until(pilot, lambda: isinstance(app.screen, FileDialog))
+        files = app.screen
+        assert isinstance(files, FileDialog)
+        assert (files.folder, files.current()) == (tmp_path, Entry(bad.name, False))
+        await pilot.press(*"acme", "right", *"dim")
+        await until(pilot, lambda: "acme Test" in str(files.preview.content))
+        assert str(files.preview.content) == "acme\nacme Test\n\n1 mode\nAll · 1 channel"
+        await pilot.press("enter")
         await until(pilot, lambda: picker.list.highlighted is not None and
                     picker.shown[picker.list.highlighted].name == "acme Test")  # fmt: skip
         assert app.screen is picker

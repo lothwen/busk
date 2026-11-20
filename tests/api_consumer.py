@@ -39,6 +39,10 @@ def tooling(show_path: str, ofl_path: Path) -> list[str]:
         busk.read_gdtf("spot.gdtf")
     except busk.ImportFailed as exc:
         lines.append(str(exc))
+    try:
+        lines.append(busk.read_profile(ofl_path).profile["manufacturer"])
+    except busk.ImportFailed as exc:
+        lines.append(str(exc))
 
     checked, issues = busk.validate_show(b"{}")
     if checked is None:

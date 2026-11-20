@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Literal, Protocol
 
 type Origin = Literal["typed", "ui", "internal"]
@@ -702,6 +703,18 @@ class ProfileChoice:
 
 
 @dataclass(frozen=True, slots=True)
+class ProfileRead:
+    """What busk reads in a profile file, as ``profile import`` would take it
+    (busk's ``read_profile``, GAP-54): its maker, name and modes, or
+    ``problem``, why busk cannot use it."""
+
+    manufacturer: str = ""
+    name: str = ""
+    modes: tuple[ModeInfo, ...] = ()
+    problem: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ProfileInfo:
     """A fixture profile: the attributes its modes take, as ``set`` names
     them (``intensity``, ``pan``, ``color``, ``color.w`` with a white
@@ -972,3 +985,9 @@ class BridgeLike(Protocol):
 
     @property
     def help_lines(self) -> tuple[str, ...]: ...
+
+    def read_profile(self, path: Path) -> ProfileRead:
+        """What busk reads in the profile file at ``path``. The one member
+        that does not return at once: it reads the file, so the app calls it
+        on a worker thread."""
+        ...

@@ -8,15 +8,17 @@ The public API
 ==============
 
 Every public name is importable from ``busk`` itself; ``__all__`` lists the
-45 of them. The library guide, ``docs/library.md``, has the examples and the
+46 of them. The library guide, ``docs/library.md``, has the examples and the
 reference.
 
 Show documents
     :func:`load_show`, :func:`save_show`, :func:`new_show` and
     :func:`validate_show`: what ``busk validate`` and ``busk new`` do.
 Fixture profiles
-    :func:`read_ofl` and :func:`read_gdtf` (what ``busk import`` does), and
-    :class:`ProfileLibrary` for ``fixture add`` with your own profiles.
+    :func:`read_ofl` and :func:`read_gdtf` (what ``busk import`` does),
+    :func:`read_profile` (any of the three formats, as ``profile import``
+    reads a file), and :class:`ProfileLibrary` for ``fixture add`` with your
+    own profiles.
 Running a show
     :class:`OfflineShow` renders frames on a clock the caller drives: no
     threads, no sockets. :class:`LiveShow` runs the engine and the DMX output
@@ -144,6 +146,7 @@ __all__ = [
     "new_show",
     "read_gdtf",
     "read_ofl",
+    "read_profile",
     "save_show",
     "validate_show",
 ]
@@ -160,6 +163,7 @@ _EXPORTS: dict[str, str] = {
     "Command": "busk.commands.types",
     "read_ofl": "busk.importers.ofl",
     "read_gdtf": "busk.importers.gdtf",
+    "read_profile": "busk.session.library",
     "ImportReport": "busk.importers",
     "ImportFailed": "busk.importers",
     "ProfileLibrary": "busk.session.library",
@@ -237,6 +241,7 @@ if TYPE_CHECKING:  # what type checkers see: the same table, as explicit re-expo
     from busk.session.ids import CounterIds as CounterIds
     from busk.session.ids import IdFactory as IdFactory
     from busk.session.library import ProfileLibrary as ProfileLibrary
+    from busk.session.library import read_profile as read_profile
     from busk.session.session import CommandResult as CommandResult
     from busk.session.status import ProgrammerStatus as ProgrammerStatus
     from busk.session.status import ProgrammerValue as ProgrammerValue

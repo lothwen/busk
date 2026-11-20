@@ -634,6 +634,11 @@
     "module": "busk.importers.ofl",
     "signature": "(path: str | os.PathLike[str], *, manufacturer: str | None = None) -> ImportReport"
   },
+  "read_profile": {
+    "kind": "function",
+    "module": "busk.session.library",
+    "signature": "(path: str | os.PathLike[str]) -> ImportReport"
+  },
   "save_show": {
     "kind": "function",
     "module": "busk.persistence.show_file",

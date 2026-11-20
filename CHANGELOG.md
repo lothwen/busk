@@ -8,6 +8,20 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ## [Unreleased]
 
+### Added
+
+- `busk.read_profile(path)` reads a fixture profile file as `profile import` does, without
+  importing it: a `.gdtf`, an Open Fixture Library `.json` or a busk profile `.json`, told apart
+  as a profile library tells them. It returns an `ImportReport` and raises `ImportFailed` for a
+  file it cannot use, as `read_ofl` and `read_gdtf` do.
+- The profile picker's `[import…]` (Ctrl+O) in the TUI is a file picker of three columns instead
+  of a typed path: the folder above, the folder, and a preview of what the cursor is on. Folders
+  come first; files busk does not import are dimmed, and hidden ones show while the filter starts
+  with a dot. Typing filters, ← → go up and into folders, Enter chooses. The preview of a
+  profile file is what busk reads in it: the maker, the name and each mode with the channels it
+  takes, or why busk cannot import it. It starts where busk-tui runs, then on the file chosen
+  last.
+
 ## [0.1.2] - 2026-11-19
 
 ### Added

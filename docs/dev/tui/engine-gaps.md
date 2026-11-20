@@ -33,7 +33,8 @@ The TUI runs a `busk.LiveShow` in its own process, or, since GAP-11, is run by `
   (`EngineHealth`), since GAP-27 `LiveShow.fixture_profiles`
   (`FixtureProfileInfo`), since GAP-46 `LiveShow.tracking(L)` (`TrackedCue`, a cue
   list's tracked states) and since GAP-13 `LiveShow.inputs` (`SurfaceInput`, what came in
-  from the surfaces). Since GAP-16 a profile in `LiveShow.show`
+  from the surfaces). Since GAP-54 `busk.read_profile(path)` reads a profile file as
+  `profile import` would, without importing it. Since GAP-16 a profile in `LiveShow.show`
   may have a `category`, and since GAP-17 a playback in the snapshot has the `color` of
   its current cue. The `busk.*` loggers feed the TUI's log pane.
 - **Text is not parsed.** `docs/library.md` says message text (`Reply.text`, CLI output, log
@@ -112,6 +113,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-51](#gap-51-a-templates-defaults) A template's defaults | action, read | nice-to-have | prompt, F5 | **done** 2026-11-17 |
 | [GAP-52](#gap-52-a-dmx-readout) A DMX readout | action | nice-to-have | prompt, F8 | **done** 2026-11-12 |
 | [GAP-53](#gap-53-renaming-and-deleting-a-master) Renaming and deleting a master | action | nice-to-have | F7 | **done** 2026-11-12 |
+| [GAP-54](#gap-54-reading-a-profile-file-before-importing-it) Reading a profile file before importing it | read | nice-to-have | F3 | **done** 2026-11-20 |
 
 ---
 
@@ -3394,3 +3396,46 @@ No public name was added. What it settles:
   any case, each use that refuses, each binding that goes, the question and the reply, the club
   show's masters, a script, a running `LiveShow` with masters at a level), and rows in
   `tests/test_console_prompt.py`.
+
+## GAP-54: Reading a profile file before importing it
+
+**Status:** done 2026-11-20 (see **Done** at the end of this section).
+
+The user's word of 2026-11-20: the picker's `[import…]` took a path typed relative to the folder
+busk-tui runs from, and became a file picker of three columns, as in yazi, whose preview of a
+profile file is what busk reads in it.
+
+**Needed by:** the file picker's preview: the maker, the name and the modes of a file, or why busk
+cannot import it, before `profile import` brings it into the show.
+
+**Today:** `read_ofl` and `read_gdtf` are public, but `profile import` tells three formats apart
+(`read_profile` in `src/busk/session/library.py`, GAP-39), and the third, a busk profile `.json`,
+is validated by code that is not public. A frontend that read the formats itself could say a file
+is fine that `profile import` refuses.
+
+**Engine should provide:** a public `read_profile(path)`, the reading `profile import` does,
+returning what `read_ofl` and `read_gdtf` return.
+
+**Priority:** nice-to-have.
+
+**TUI until then:** the picker's `[import…]` took a typed path, and busk's refusal came after it.
+
+**TUI since** 2026-11-20: the file picker (`src/busk_tui/widgets/file_picker.py`), whose preview
+of a `.json` or a `.gdtf` file is `Bridge.read_profile`, read on a worker thread.
+
+**Done** (2026-11-20). `read_profile` in `src/busk/session/library.py` is public:
+`busk.read_profile(path) -> ImportReport`, the 46th name of `busk.__all__`. What it settles:
+
+- **It is the reading of `profile import` and of a profile library,** which both call it: a
+  `*.gdtf` file is GDTF, and any other is JSON, an OFL fixture when it has `availableChannels` (the
+  manufacturer from its directory, as `read_ofl` finds it), else a busk profile, validated as a show
+  validates the profiles it embeds.
+- **It raises `ImportFailed` for a file it cannot use,** also one it cannot read, as `read_ofl` and
+  `read_gdtf` do; the message is what `profile import` says after `cannot import '<path>': `. It
+  had returned the profile, the notes and the problem as a tuple, and raised nothing.
+- **The path is a `str` or an `os.PathLike`,** as for the other two.
+- **It reads only the file:** whether the show holds the profile already is `profile import`'s to
+  say.
+- Tests: `tests/test_fixture_profiles.py` (each format, as `profile import` embeds it, with its
+  notes; each failing file, with `profile import`'s words), `tests/test_signatures.py`,
+  `tests/test_public_api.py` and its golden, `tests/api_consumer.py`; the library guide's example.

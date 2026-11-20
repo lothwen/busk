@@ -27,11 +27,13 @@ from builders import APPENDIX_A, ROOT, channel, load_doc, mode, profile, show_of
 from busk import (
     FixtureModeInfo,
     FixtureProfileInfo,
+    ImportFailed,
     LiveShow,
     OfflineShow,
     ProfileLibrary,
     load_show,
     new_show,
+    read_profile,
 )
 from busk.console.parser import Context, ImportProfile, parse
 from busk.model.show import Show
@@ -510,6 +512,36 @@ def test_a_file_that_fails_says_so_in_one_line_and_changes_nothing(
     assert reply.text.startswith(f"error: cannot import {str(file)!r}: ")
     assert "\n" not in reply.text
     assert show.show == before
+
+
+@pytest.mark.parametrize("make", FORMATS, ids=FORMAT_IDS)
+def test_read_profile_reads_a_file_as_profile_import_does(
+    make: Callable[[Path], tuple[Path, str]], tmp_path: Path
+) -> None:
+    """GAP-54: what a frontend shows of a file before it imports it."""
+    file, name = make(tmp_path)
+    report = read_profile(file)
+    assert report.profile["name"] == name
+    show = OfflineShow(appendix())
+    reply = show.execute(f'profile import "{file}"')
+    assert show.show["profiles"][-1] == report.profile
+    notes = [line.removeprefix("note: ") for line in reply.text.splitlines()[:-1]]
+    assert notes == list(report.notes)
+    assert bool(report.notes) == (make is gdtf_file)
+
+
+@pytest.mark.parametrize(
+    "which",
+    ["bad.json", "not-a-profile.json", "bad.gdtf", "missing.json", "missing.gdtf", "a folder"],
+)
+def test_read_profile_raises_import_failed_saying_what_profile_import_says(
+    which: str, tmp_path: Path
+) -> None:
+    file = bad_files(tmp_path)[which]
+    with pytest.raises(ImportFailed) as caught:
+        read_profile(str(file))
+    reply = OfflineShow(appendix()).execute(f'profile import "{file}"')
+    assert reply.text == f"error: cannot import {str(file)!r}: {caught.value}"
 
 
 def test_an_id_the_show_holds_is_refused(tmp_path: Path) -> None:

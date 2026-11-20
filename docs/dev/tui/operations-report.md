@@ -117,7 +117,7 @@ In short:
 | Category | `profile "<name>" category …` | yes | control: chips |
 | Change mode | `fixture N mode <mode>` (GAP-26) | yes | control: chips |
 | Change profile | `fixture N profile "<profile>" mode <mode>` (GAP-26) | yes | control: `[profile…]`, the picker, `[change]` |
-| Import, update a profile | `profile import "<path>"`, `profile update "<name>"` (GAP-39) | yes | control: the picker's `[import…]`, a path dialog; F3's `[update profile]`, grey unless the library's revision differs |
+| Import, update a profile | `profile import "<path>"`, `profile update "<name>"` (GAP-39) | yes | control: the picker's `[import…]`, a file picker with busk's preview of each file; F3's `[update profile]`, grey unless the library's revision differs |
 | Groups | `record group N [merge\|replace\|remove] ["name"]`, `rename group N "…"`, `group N number M`, `delete group N cascade` (GAP-36) | yes | control: F3's GROUPS panel in edit mode: `[record…]` from the selection, `[merge]`, `[replace]`, `[remove]` with it, `[rename…]`, `[number…]`, `[delete]` after busk's question |
 | Park | `park <targets> <attribute> <value>`, `unpark <targets> [<attribute>]`, `unpark all` | yes | control: F3's FIXTURE panel shows what is parked and `[park…]` (a form, on the selected elements); F7's PARKED panel, `[unpark]` per value and `[unpark all]`; F3's source column reads `park` (GAP-22) |
 

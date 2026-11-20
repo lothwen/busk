@@ -4,7 +4,8 @@ installed (the ``tui`` extra), so the engine's suite runs without it.
 Fixtures: ``club`` (the club-night example built once, as an
 :class:`busk.OfflineShow` whose help, ``expected`` answers and questions are
 the real ones) and ``club_path`` (that show saved in a temporary directory).
-Every test gets its own config and state directories, never the user's.
+Every test gets its own config and state directories, never the user's, and
+starts with no profile file imported (``ProfileDialog.last``).
 """
 
 from __future__ import annotations
@@ -57,3 +58,11 @@ else:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(root))
         monkeypatch.delenv("BUSK_TUI_OPTIONS", raising=False)
         return root
+
+    @pytest.fixture(autouse=True)
+    def no_import_yet(monkeypatch: pytest.MonkeyPatch) -> None:
+        """The file picker starts where the test runs, not on a file an
+        earlier test imported (the profile picker keeps it for the run)."""
+        from busk_tui.widgets.profile_picker import ProfileDialog
+
+        monkeypatch.setattr(ProfileDialog, "last", None)

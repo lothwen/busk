@@ -1407,9 +1407,8 @@ F8's `[delete]`, F8's `[off]`, F4's `[delete]` of a list and F6's `[delete]` of 
 such lines. F4's `[delete]` of a cue, `[replace]` and `[remove]`, and F6's `[delete]` of a preset
 nothing uses, `[replace]` and `[remove]`, ask the TUI's own question the same way.
 
-A name, a number or a path (`[rename…]`, `[number…]`, `[address…]`, `[offset…]`, F4's
-`[follow…]` and `[wait…]`, the picker's `[import…]`) is typed in a small dialog: Enter takes it,
-Esc cancels. What it refuses shows in red, and the dialog stays open. A form of several fields
+A name or a number (`[rename…]`, `[number…]`, `[address…]`, `[offset…]`, F4's `[follow…]`
+and `[wait…]`) is typed in a small dialog: Enter takes it, Esc cancels. What it refuses shows in red, and the dialog stays open. A form of several fields
 (`[limit…]`, `[location…]`, `[+ universe…]`, `[+ route…]` and a route's `[edit…]`, `[+ list…]`,
 `[record at…]`, `[copy…]`, `[release…]`, `[chase…]`, a cue's `[time…]`, `[delay…]` and
 `[curve…]`) works the same way: Tab moves between the fields, and Enter, in any of them, takes the
@@ -1423,12 +1422,21 @@ PgUp PgDn move, Enter or a click chooses, Esc cancels. It sends nothing: the for
 that opened it does.
 
 `[import…]` under the list, or Ctrl+O, brings in a profile from a file: an Open Fixture Library
-`.json`, a `.gdtf` or a busk profile `.json`. A dialog takes the path (`~` works, and a relative
-path starts where busk-tui runs) and refuses one with no file there. It sends `profile import
-"/home/me/fixtures/spot.gdtf"`: the profile comes into the show, as one `undo` step, and the
-picker stays open with the profile in its list, marked `●`, the filter cleared and the list on
-it. What busk refuses, such as a file it cannot read or a profile the show holds already, shows
-in red under the list, as the log is behind the picker.
+`.json`, a `.gdtf` or a busk profile `.json`. It opens a file picker of three columns: the
+folder above, the folder, and a preview of what the cursor is on. It starts where busk-tui runs,
+and after you choose a file, on that file, until busk-tui ends. Folders come first, in cyan;
+files busk does not import are dimmed, and hidden ones (`.git`) show only while the filter
+starts with a dot. The keys are the picker's: type to filter the folder, ↑ ↓ and PgUp PgDn move,
+→ goes into a folder, ← (or Backspace on an empty filter) goes up, onto the folder you left,
+Enter goes into a folder or chooses a profile file, and Esc cancels. A click in the middle
+column is Enter on that row; a click in the left one goes up, onto that row. The preview of a
+folder is what it holds; of a profile file, what busk reads in it, as `profile import` would:
+the maker, the name and each mode with the channels it takes, or, in red, why busk cannot
+import it. Choosing a file sends `profile import "/home/me/fixtures/spot.gdtf"`: the profile
+comes into the show, as one `undo` step, and the picker stays open with the profile in its
+list, marked `●`, the filter cleared and the list on it. What busk refuses, such as a file it
+cannot read or a profile the show holds already, shows in red under the list, as the log is
+behind the picker.
 
 `quit`, `exit` (also from a script you `source`), Ctrl+C twice and Ctrl+Q open the quit
 dialog. With unsaved edits it offers **s** Save and quit, **q** Quit without saving and **c**

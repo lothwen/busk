@@ -103,39 +103,43 @@ class ProfileLibrary:
         return next((p for p in self._profiles.values() if p["name"].casefold() == folded), None)
 
     def _load(self, path: Path) -> None:
-        profile, notes, problem = read_profile(path)
-        self.problems.extend(f"{path}: {note}" for note in notes)
-        if profile is None:
-            self.problems.append(f"{path}: {problem}")
-        elif profile["id"] in self._profiles:
+        try:
+            report = read_profile(path)
+        except ImportFailed as exc:
+            self.problems.append(f"{path}: {exc}")
+            return
+        profile = report.profile
+        self.problems.extend(f"{path}: {note}" for note in report.notes)
+        if profile["id"] in self._profiles:
             self.problems.append(f"{path}: profile id {profile['id']!r} is already loaded")
         else:
             self._profiles[profile["id"]] = profile
 
 
-def read_profile(path: Path) -> tuple[FixtureProfile | None, tuple[str, ...], str]:
-    """The profile in the file at ``path``, the import's notes, and why there
-    is none. A ``*.gdtf`` file is a GDTF fixture, and any other is JSON: an Open
-    Fixture Library fixture when it has ``availableChannels``, else a busk
-    profile. Raises nothing: a file that cannot be used says why."""
+def read_profile(path: str | os.PathLike[str]) -> ImportReport:
+    """The profile in the file at ``path`` and the import's notes, read as a
+    profile library and ``profile import`` read it (GAP-54): a ``*.gdtf``
+    file is a GDTF fixture, and any other is JSON, an Open Fixture Library
+    fixture when it has ``availableChannels`` (the manufacturer from the OFL
+    repository layout, as :func:`~busk.importers.ofl.read_ofl` finds it),
+    else a busk profile, validated as a show validates the profiles it
+    embeds. Raises :class:`~busk.importers.ImportFailed`, saying why, for a
+    file that cannot be used, also one that cannot be read."""
+    path = Path(path)
     data: Any = None
     if path.suffix != ".gdtf":
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-            return None, (), str(exc)
-    if path.suffix != ".gdtf" and not is_ofl(data):
-        profile, problem = validate_profile(data)
-        return profile, (), problem
-    report: ImportReport
-    try:
-        if path.suffix == ".gdtf":
-            report = read_gdtf(path)
-        else:
-            report = import_ofl(data, manufacturer=manufacturer_of(path), key=path.stem)
-    except ImportFailed as exc:
-        return None, (), str(exc)
-    return report.profile, report.notes, ""
+            raise ImportFailed(str(exc)) from exc
+    if path.suffix == ".gdtf":
+        return read_gdtf(path)
+    if is_ofl(data):
+        return import_ofl(data, manufacturer=manufacturer_of(path), key=path.stem)
+    profile, problem = validate_profile(data)
+    if profile is None:
+        raise ImportFailed(problem)
+    return ImportReport(profile=profile, notes=())
 
 
 def validate_profile(data: Any) -> tuple[FixtureProfile | None, str]:

@@ -7,8 +7,9 @@ defaults, so a library user can call them without the CLI's plumbing:
 * ``new_show(title)`` makes a fresh sACN CID, ids and timestamps, and never
   touches the state directory (``busk new`` still passes the installation's
   CID);
-* the path parameters of ``read_ofl``, ``read_gdtf``, ``ProfileLibrary`` and
-  the show-file functions accept ``str`` as well as :class:`~pathlib.Path`.
+* the path parameters of ``read_ofl``, ``read_gdtf``, ``read_profile``,
+  ``ProfileLibrary`` and the show-file functions accept ``str`` as well as
+  :class:`~pathlib.Path`.
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ from busk.importers.ofl import read_ofl
 from busk.model.validate import validate_show
 from busk.persistence.show_file import load_show, new_show, save_show, show_json
 from busk.session.ids import CounterIds
-from busk.session.library import ProfileLibrary
+from busk.session.library import ProfileLibrary, read_profile
 from gdtf_builder import archive
 from test_gdtf import spot
 
@@ -110,6 +111,12 @@ def test_read_ofl_accepts_a_str_path() -> None:
 def test_read_gdtf_accepts_a_str_path(tmp_path: Path) -> None:
     path = archive(tmp_path / "spot.gdtf", spot())
     assert read_gdtf(str(path)) == read_gdtf(path)
+
+
+def test_read_profile_accepts_a_str_path(tmp_path: Path) -> None:
+    path = archive(tmp_path / "spot.gdtf", spot())
+    assert read_profile(str(path)) == read_profile(path)
+    assert read_profile(str(OFL / "par-rgbw.json")) == read_ofl(OFL / "par-rgbw.json")
 
 
 def test_profile_library_accepts_str_directories(tmp_path: Path) -> None:

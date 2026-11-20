@@ -5,7 +5,7 @@ stub show for the real bridge.
 answers each with a ``CommandDone`` at once (``replies`` by line, ok and
 empty otherwise). With ``show``, a real :class:`busk.OfflineShow`, its help,
 ``expected`` answers and questions are the real ones; without it, the help is
-``HELP`` and nothing is asked.
+``HELP`` and nothing is asked. It reads profile files as the real bridge does.
 """
 
 from __future__ import annotations
@@ -15,12 +15,14 @@ import itertools
 import threading
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 from textual.pilot import Pilot
 
 import busk
 from busk_tui import config
+from busk_tui.bridge import profile_read
 from busk_tui.model import (
     BridgeEvent,
     Busy,
@@ -32,6 +34,7 @@ from busk_tui.model import (
     Origin,
     PageView,
     PlaybackView,
+    ProfileRead,
     ProgrammerModel,
     ShowModel,
     SpeedView,
@@ -139,6 +142,9 @@ class FakeBridge:
         if self.show is None:
             return HELP
         return tuple(self.show.execute("help").text.splitlines())
+
+    def read_profile(self, path: Path) -> ProfileRead:
+        return profile_read(path)  # busk's own reading: the files are real
 
     def lines(self) -> list[str]:
         return [sent.line for sent in self.sent]

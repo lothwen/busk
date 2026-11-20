@@ -35,6 +35,7 @@ from textual.binding import Binding, BindingType
 from textual.containers import Vertical
 from textual.screen import ModalScreen, Screen
 from textual.widgets import ContentSwitcher, Input, Static
+from textual.worker import get_current_worker
 
 from busk_tui import colors, commands, config
 from busk_tui.hints import HelpIndex, complete, hint
@@ -76,7 +77,7 @@ from busk_tui.pages.patch import PatchPage
 from busk_tui.pages.presets import PresetsPage
 from busk_tui.pages.program import ProgramPage
 from busk_tui.pages.surfaces import SurfacesPage
-from busk_tui.widgets.controls import FillPrompt, RunLine, ShowHint
+from busk_tui.widgets.controls import FillPrompt, ReadProfile, RunLine, ShowHint
 from busk_tui.widgets.dialogs import (
     ConfirmDialog,
     QuitChoice,
@@ -470,6 +471,19 @@ class BuskApp(App[int]):
             message.ask,
             message.refused,
         )
+
+    def on_read_profile(self, message: ReadProfile) -> None:
+        """A profile file to show before it is imported (the file picker):
+        busk reads it on a worker thread, and ``then`` gets what it found."""
+        message.stop()
+        bridge, path, then = self.bridge, message.path, message.then
+
+        def read() -> None:
+            found = bridge.read_profile(path)
+            if not get_current_worker().is_cancelled:
+                self.call_from_thread(then, found)
+
+        self.run_worker(read, thread=True, group="read-profile")
 
     def on_fill_prompt(self, message: FillPrompt) -> None:
         """A pre-fill from a page: the text goes in the prompt, to finish."""

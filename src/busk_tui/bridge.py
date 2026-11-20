@@ -53,6 +53,7 @@ from busk import (
     Expected,
     FixtureProfile,
     FixtureProfileInfo,
+    ImportFailed,
     LiveShow,
     OutputSnapshot,
     ProfileLibrary,
@@ -64,6 +65,7 @@ from busk import (
     SurfaceStatus,
     TrackedCue,
     load_show,
+    read_profile,
 )
 from busk_tui import attributes, commands
 from busk_tui.model import (
@@ -119,6 +121,7 @@ from busk_tui.model import (
     PresetInfo,
     ProfileChoice,
     ProfileInfo,
+    ProfileRead,
     ProgrammerChanged,
     ProgrammerModel,
     Rgb,
@@ -509,6 +512,10 @@ class Bridge:
     def help_lines(self) -> tuple[str, ...]:
         """The text of ``help``, once the ordered worker has run it."""
         return self._help
+
+    def read_profile(self, path: Path) -> ProfileRead:
+        """What busk reads in the profile file at ``path`` (:func:`profile_read`)."""
+        return profile_read(path)
 
     # -------------------------------------------------------------- workers
 
@@ -1093,6 +1100,27 @@ def profile_info(profile: FixtureProfile) -> ProfileInfo:
         frozenset(attributes),
         tuple(ranges),
         profile.get("category"),
+        tuple(
+            ModeInfo(mode["name"], mode["footprint"], len(mode["elements"]))
+            for mode in profile["modes"]
+        ),
+    )
+
+
+def profile_read(path: Path) -> ProfileRead:
+    """What busk reads in the profile file at ``path``, as ``profile import``
+    would (busk's GAP-54), or why it cannot. It reads the file: off the UI
+    thread. Raises nothing: a failing importer's error is the problem."""
+    try:
+        profile = read_profile(path).profile
+    except ImportFailed as exc:
+        return ProfileRead(problem=str(exc))
+    except Exception as exc:
+        _debug.exception("read_profile(%r) raised", str(path))
+        return ProfileRead(problem=str(exc) or type(exc).__name__)
+    return ProfileRead(
+        profile["manufacturer"],
+        profile["name"],
         tuple(
             ModeInfo(mode["name"], mode["footprint"], len(mode["elements"]))
             for mode in profile["modes"]
