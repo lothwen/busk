@@ -131,16 +131,20 @@ def test_a_click_on_the_title_renames_the_show() -> None:
     drive(app, body)
 
 
-def test_the_title_is_a_link_and_nothing_else_in_the_status_bar_is() -> None:
+def test_the_badge_and_the_title_are_links_and_nothing_else_in_the_status_bar_is() -> None:
+    def links(status: StatusBar) -> list[tuple[str, str]]:
+        text = status.left_text()
+        return [
+            (text.plain[span.start : span.end], getattr(span.style, "meta", {})["@click"])
+            for span in text.spans
+            if "@click" in getattr(span.style, "meta", {})
+        ]
+
     status = StatusBar()
     status.title = "Club Night"
-    text = status.left_text()
-    clicks = [span for span in text.spans if "@click" in getattr(span.style, "meta", {})]
-    assert [text.plain[span.start : span.end] for span in clicks] == ["Club Night"]
+    assert links(status) == [(" busk ▾ ", "app.file_menu"), ("Club Night", "app.rename_show")]
     status.title = ""
-    text = status.left_text()
-    clicks = [span for span in text.spans if "@click" in getattr(span.style, "meta", {})]
-    assert [text.plain[span.start : span.end] for span in clicks] == ["—"]
+    assert links(status) == [(" busk ▾ ", "app.file_menu"), ("—", "app.rename_show")]
 
 
 def test_the_last_page_is_where_it_starts() -> None:

@@ -1,5 +1,7 @@
-"""The file picker of the profile picker's ``[import…]`` (``busk_tui.widgets.file_picker``):
-three columns, the profile picker's keys, and a preview of what busk reads in a file."""
+"""The file picker (``busk_tui.widgets.file_picker``): three columns, the
+profile picker's keys, and a preview of the file, in each of its modes: the
+profile picker's ``[import…]`` (what busk reads in a profile file), the File
+menu's Import script… (a script's first lines) and its Save as… (a name)."""
 
 from __future__ import annotations
 
@@ -15,17 +17,22 @@ from textual.containers import Vertical
 from textual.pilot import Pilot
 from tui_fakes import FakeBridge, drive, make_app
 
+from busk_tui import colors
 from busk_tui.model import ModeInfo, ProfileRead
 from busk_tui.shell import BuskApp
 from busk_tui.widgets.file_picker import (
+    KINDS,
     ROWS,
     Entry,
     FileDialog,
+    Mode,
     entry_text,
     filtered,
     home_text,
     listing,
     read_text,
+    save_name,
+    script_text,
 )
 
 DIMMER = {
@@ -94,12 +101,14 @@ def with_picker(
     chosen: str | None = None,
     bridge: FakeBridge | None = None,
     size: tuple[int, int] = (150, 48),
+    mode: Mode = "profile",
+    own: Path | None = None,
 ) -> None:
     """Run the app with a file picker on ``folder`` (on ``chosen``)."""
     app = make_app(bridge or FakeBridge())
 
     async def main(pilot: Pilot[int]) -> None:
-        dialog = FileDialog(folder, chosen)
+        dialog = FileDialog(folder, chosen, mode, own)
         opened = Opened(app, dialog)
         app.push_screen(dialog, opened.closed.append)
         await pilot.pause()
@@ -140,11 +149,11 @@ def test_a_listing_has_its_folders_first_each_in_name_order_in_any_case(tmp_path
 
 
 def test_busk_imports_a_json_or_a_gdtf_file_and_the_rest_is_dimmed() -> None:
-    assert Entry("spot.gdtf", False).importable()
-    assert Entry("dim.json", False).importable()
-    assert not Entry("dim.json", True).importable()  # a folder
-    assert not Entry("spot.GDTF", False).importable()  # busk reads it as JSON
-    assert not Entry("notes.txt", False).importable()
+    assert Entry("spot.gdtf", False).fits(KINDS["profile"])
+    assert Entry("dim.json", False).fits(KINDS["profile"])
+    assert not Entry("dim.json", True).fits(KINDS["profile"])  # a folder
+    assert not Entry("spot.GDTF", False).fits(KINDS["profile"])  # busk reads it as JSON
+    assert not Entry("notes.txt", False).fits(KINDS["profile"])
     assert entry_text(Entry("acme", True)).plain == "acme/"
     assert entry_text(Entry("notes.txt", False)).style != entry_text(Entry("a.json", False)).style
 
@@ -407,3 +416,202 @@ def test_it_fits_a_terminal_of_100_by_30_and_cuts_a_long_path_at_its_start(
         assert len(shown) == dialog.path.size.width
 
     with_picker(folder, body, size=(100, 30))
+
+
+# ------------------------------------------------------------ the modes
+
+
+@pytest.mark.parametrize(
+    ("mode", "title", "note"),
+    [
+        ("profile", "IMPORT PROFILE", "busk imports an OFL .json, a .gdtf"),
+        ("script", "IMPORT SCRIPT", "busk runs a .busk script"),
+        ("save", "SAVE AS", "busk saves a .show or a .json file"),
+    ],
+)
+def test_each_mode_has_its_title_and_says_what_it_takes(
+    tmp_path: Path, mode: Mode, title: str, note: str
+) -> None:
+    async def body(pilot: Pilot[int], opened: Opened) -> None:
+        assert opened.dialog.query_one(Vertical).border_title == title
+        notes = [str(note.content) for note in opened.dialog.query(".note")]
+        assert notes[0].startswith(note)
+
+    with_picker(tmp_path, body, mode=mode)
+
+
+def scripts(root: Path) -> Path:
+    """``root/scripts``: ``sub/``, ``build.busk`` (a comment, then lines), ``notes.txt``."""
+    folder = root / "scripts"
+    (folder / "sub").mkdir(parents=True)
+    (folder / "build.busk").write_text("# Build the rig\n#  two lines\n\nsel group 1\n")
+    (folder / "notes.txt").write_text("x")
+    return folder
+
+
+def test_a_script_picker_takes_a_busk_file_and_shows_its_first_lines(tmp_path: Path) -> None:
+    folder = scripts(tmp_path)
+
+    async def body(pilot: Pilot[int], opened: Opened) -> None:
+        dialog = opened.dialog
+        assert opened.names() == ["sub", "build.busk", "notes.txt"]
+        assert entry_text(Entry("notes.txt", False), dialog.kinds).style == colors.DIM
+        await pilot.press("down")
+        assert opened.preview() == "# Build the rig\n#  two lines\n\nsel group 1"
+        text = script_text(folder / "build.busk")
+        styles = {text.plain[span.start : span.end]: span.style for span in text.spans}
+        assert (styles["# Build the rig"], styles["sel group 1"]) == (colors.DIM, colors.FG)
+        await pilot.press("down")
+        assert opened.preview() == "not a script"
+        await pilot.press("enter")
+        assert opened.closed == []  # dimmed: nothing
+        await pilot.press(*"bui", "enter")  # typing filters, as for a profile
+        await pilot.pause()
+        assert opened.closed == [folder / "build.busk"]
+
+    with_picker(folder, body, mode="script")
+
+
+def test_a_scripts_preview_is_its_first_rows_and_an_empty_one_says_so(tmp_path: Path) -> None:
+    folder = tmp_path / "scripts"
+    folder.mkdir()
+    (folder / "a.busk").write_text("".join(f"go {n}\n" for n in range(1, 40)))
+    (folder / "b.busk").write_text("")
+
+    async def body(pilot: Pilot[int], opened: Opened) -> None:
+        assert opened.preview().splitlines() == [f"go {n}" for n in range(1, ROWS + 1)]
+        await pilot.press("down")
+        assert opened.preview() == "empty"
+
+    with_picker(folder, body, mode="script")
+
+
+def shows(root: Path) -> Path:
+    """``root/shows``: ``old/`` (``rig.show``), ``club.show``, ``fest.json``, ``notes.txt``."""
+    folder = root / "shows"
+    (folder / "old").mkdir(parents=True)
+    (folder / "old" / "rig.show").write_text("{}")
+    (folder / "club.show").write_text("{}")
+    (folder / "fest.json").write_text("{}")
+    (folder / "notes.txt").write_text("x")
+    return folder
+
+
+def test_a_name_saves_as_a_show_file() -> None:
+    assert save_name("copy") == "copy.show"
+    assert save_name(" late night ") == "late night.show"
+    assert save_name("copy.json") == "copy.json"
+    assert save_name("COPY.SHOW") == "COPY.SHOW"  # busk reads the suffix in any case
+    assert save_name("club.v2") == "club.v2.show"
+
+
+def test_saving_starts_on_the_shows_name_on_no_row_and_enter_saves_it(tmp_path: Path) -> None:
+    folder = shows(tmp_path)
+    own = folder / "club.show"
+
+    async def body(pilot: Pilot[int], opened: Opened) -> None:
+        dialog = opened.dialog
+        assert (dialog.folder, dialog.field.value, opened.on()) == (folder, "club.show", None)
+        assert opened.names() == ["old", "club.show", "fest.json", "notes.txt"]
+        assert opened.preview() == "Enter saves the show to its own file"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert opened.closed == [own]
+
+    with_picker(folder, body, "club.show", mode="save", own=own)
+
+
+def test_a_name_typed_saves_a_copy_with_show_added(tmp_path: Path) -> None:
+    folder = shows(tmp_path)
+
+    async def body(pilot: Pilot[int], opened: Opened) -> None:
+        await pilot.press("ctrl+u")
+        assert opened.preview() == "type a name"
+        await pilot.press("enter")
+        assert opened.closed == []  # no name: nothing
+        await pilot.press(*"copy")
+        assert opened.preview() == (
+            "Enter saves a copy of the show as copy.show\n\n"
+            "a show of its own: club.show stays as it was saved"
+        )
+        await pilot.press("enter")
+        await pilot.pause()
+        assert opened.closed == [folder / "copy.show"]
+
+    with_picker(folder, body, "club.show", mode="save", own=folder / "club.show")
+
+
+def test_the_cursor_on_a_show_file_takes_its_name_and_enter_goes_into_a_folder(
+    tmp_path: Path,
+) -> None:
+    folder = shows(tmp_path)
+
+    async def body(pilot: Pilot[int], opened: Opened) -> None:
+        dialog = opened.dialog
+        await pilot.press("down")  # old/: the name stays
+        assert (opened.on(), dialog.field.value, opened.preview()) == (
+            "old",
+            "club.show",
+            "rig.show",
+        )
+        await pilot.press("down", "down")
+        assert (opened.on(), dialog.field.value) == ("fest.json", "fest.json")
+        assert opened.preview() == (
+            "fest.json exists: Enter asks before it replaces it, and busk keeps a backup of it"
+        )
+        await pilot.press("down")  # not a show file: the name stays, and Enter does nothing
+        assert (opened.on(), dialog.field.value, opened.preview()) == (
+            "notes.txt",
+            "fest.json",
+            "not a show file",
+        )
+        await pilot.press("enter")
+        assert opened.closed == []
+        await pilot.press("up", "up", "up")  # over club.show, which takes its name, onto old/
+        assert (opened.on(), dialog.field.value) == ("old", "club.show")
+        await pilot.press("enter")  # into old/, the name kept, on no row
+        assert (dialog.folder, dialog.field.value, opened.on()) == (
+            folder / "old",
+            "club.show",
+            None,
+        )
+        await pilot.press("left")  # up, on no row
+        assert (dialog.folder, opened.on()) == (folder, None)
+        await pilot.press("right")  # on no row: nothing
+        assert dialog.folder == folder
+        await pilot.press("up")  # from the name onto the last row
+        assert opened.on() == "notes.txt"
+        await pilot.press(*"late")  # typing leaves the rows
+        assert opened.on() is None
+        await pilot.press("enter")
+        await pilot.pause()
+        assert opened.closed[0] is not None
+        assert opened.closed[0].parent == folder
+        assert opened.closed[0].name.endswith("late.show")
+
+    with_picker(folder, body, "club.show", mode="save")
+
+
+def test_saving_backspace_takes_a_letter_then_goes_up(tmp_path: Path) -> None:
+    folder = shows(tmp_path) / "old"
+
+    async def body(pilot: Pilot[int], opened: Opened) -> None:
+        dialog = opened.dialog
+        await pilot.press("end", "backspace")
+        assert dialog.field.value == "a"
+        await pilot.press("backspace", "backspace")
+        assert (dialog.folder, opened.on()) == (folder.parent, None)
+
+    with_picker(folder, body, "ab", mode="save")
+
+
+def test_a_name_that_is_a_folder_is_not_saved(tmp_path: Path) -> None:
+    folder = shows(tmp_path)
+    (folder / "odd.show").mkdir()
+
+    async def body(pilot: Pilot[int], opened: Opened) -> None:
+        assert opened.preview() == "odd.show is a folder"
+        await pilot.press("enter")
+        assert opened.closed == []
+
+    with_picker(folder, body, "odd.show", mode="save")

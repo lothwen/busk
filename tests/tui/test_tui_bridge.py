@@ -13,14 +13,15 @@ from types import MappingProxyType
 from typing import Any
 
 import pytest
-from tui_fakes import INFO, Stub
+from tui_fakes import Stub
 from tui_fakes import stub_health as health
 from tui_fakes import stub_programmer as programmer
+from tui_fakes import stub_session as session_status
 from tui_fakes import stub_snapshot as snapshot
 
 import busk
 from busk_tui import bridge as bridge_module
-from busk_tui.bridge import Bridge, session_from_info
+from busk_tui.bridge import Bridge, session_state
 from busk_tui.model import (
     BridgeEvent,
     Busy,
@@ -98,9 +99,10 @@ def test_it_starts_runs_help_and_says_so(running: tuple[Bridge, Events], stub: S
     bridge, events = running
     assert isinstance(events.seen[0], EngineStarting)
     assert bridge.help_lines == ("    help | quit",)
-    assert stub.ran[:2] == ["help", "info"]
-    (session,) = events.of(SessionChanged)
-    assert session.session == SessionState(undo=2, redo=1, dirty=True)
+    assert stub.ran[:1] == ["help"]
+    session = events.until(lambda e: isinstance(e, SessionChanged), "SessionChanged")
+    assert isinstance(session, SessionChanged)
+    assert session.session == SessionState(undo=2, redo=1, dirty=True, path=Path("/tmp/t.show"))
     running_event = events.of(EngineRunning)[0]
     assert running_event.title == "Stub"
 
@@ -230,6 +232,27 @@ def test_the_programmer_only_on_a_new_version(running: tuple[Bridge, Events], st
     event = events.until(lambda e: isinstance(e, ProgrammerChanged) and e.programmer.version == 2)
     assert isinstance(event, ProgrammerChanged)
     assert event.programmer.selection == ((101, 1),)
+
+
+def test_the_session_only_when_what_the_ui_shows_of_it_changes(
+    running: tuple[Bridge, Events], stub: Stub
+) -> None:
+    """busk's session as the UI reads it: a new object with only another
+    version (a programmer step) sends nothing; a save does."""
+    _, events = running
+    events.until(lambda e: isinstance(e, SessionChanged))
+    stub.session = session_status(version=2)
+    time.sleep(0.2)
+    assert len(events.of(SessionChanged)) == 1
+    stub.session = session_status(version=3, dirty=False, path="/tmp/copy.show")
+    event = events.until(lambda e: isinstance(e, SessionChanged) and not e.session.dirty)
+    assert isinstance(event, SessionChanged)
+    assert event.session == SessionState(2, 1, dirty=False, path=Path("/tmp/copy.show"))
+    assert "info" not in stub.ran  # no text is parsed
+
+
+def test_the_session_of_a_show_without_a_file_has_no_path() -> None:
+    assert session_state(session_status(path=None)) == SessionState(2, 1, dirty=True)
 
 
 def test_the_show_only_on_a_new_document(running: tuple[Bridge, Events], stub: Stub) -> None:
@@ -629,17 +652,6 @@ def test_questions_and_answers_go_to_the_show(running: tuple[Bridge, Events]) ->
     assert bridge.confirmation("go 1") is None
     answer = bridge.expected("route add 1 sa")
     assert (answer.words, answer.start) == (("sacn",), 14)
-
-
-def test_the_info_parser() -> None:
-    assert session_from_info(INFO) == SessionState(undo=2, redo=1, dirty=True)
-    saved = INFO.replace(", unsaved edits", ", saved").replace("2 steps", "1 step")
-    assert session_from_info(saved) == SessionState(undo=1, redo=1, dirty=False)
-    assert session_from_info("something else") is None
-
-
-def test_the_info_parser_reads_busks_own_info(club: busk.OfflineShow) -> None:
-    assert session_from_info(club.execute("info").text) == SessionState(0, 0, dirty=False)
 
 
 # ------------------------------------------------------------ standalone

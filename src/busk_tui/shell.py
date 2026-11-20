@@ -6,11 +6,12 @@ and every 25 ms ``drain`` brings in what changed. Nothing here waits for the
 engine (plan §4.1).
 
 Keys (plan §4.4). The prompt always has the keyboard. F1–F9 and Alt+1–9
-switch pages, F10 and Alt+0 toggle help, Esc closes help, leaves the pane
-cursor or clears the prompt. On an empty prompt only: ``?`` toggles help,
-Tab moves the pane cursor into the page, Space runs GO on the selected
-playback, ← → select another, ``[ ]`` move its fader 5 %, and PgUp PgDn
-change the playback page. Everything else types.
+switch pages, F10 and Alt+0 toggle help, Alt+F opens the File menu, Ctrl+S
+saves, Esc closes help, leaves the pane cursor or clears the prompt. On an
+empty prompt only: ``?`` toggles help, Tab moves the pane cursor into the
+page, Space runs GO on the selected playback, ← → select another, ``[ ]``
+move its fader 5 %, and PgUp PgDn change the playback page. Everything else
+types.
 
 What the bridge sends goes into one :class:`~busk_tui.pages.base.View`;
 after each drain the visible page redraws the parts that changed.
@@ -25,6 +26,7 @@ import asyncio
 import signal
 import time
 from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import ClassVar, Final, cast
 
 from rich.text import Text
@@ -85,6 +87,8 @@ from busk_tui.widgets.dialogs import (
     TextDialog,
     check_name,
 )
+from busk_tui.widgets.file_menu import FileChoice, FileMenu
+from busk_tui.widgets.file_picker import FileDialog
 from busk_tui.widgets.frame import PAGES, KeyLegend, StatusBar, TabBar
 from busk_tui.widgets.help import HelpOverlay
 from busk_tui.widgets.log import LogView
@@ -145,6 +149,7 @@ class BuskApp(App[int]):
     BINDINGS: ClassVar[list[BindingType]] = [
         *(Binding(f"f{n},alt+{n}", f"page({n})", show=False, priority=True) for n in range(1, 10)),
         Binding("f10,alt+0", "toggle_help", show=False, priority=True),
+        Binding("alt+f", "file_menu", show=False, priority=True),
         Binding("ctrl+q", "quit_dialog", show=False, priority=True),
     ]
     """The keys that act whatever the prompt holds. The others go to the
@@ -351,8 +356,12 @@ class BuskApp(App[int]):
                 self.status.engine, self.status.late = state, late
                 self.status.refresh()
             case SessionChanged(session=session):
+                before = None if self.session is None else self.session.path
                 self.session = self.status.session = session
                 self.status.refresh()
+                if session.path is not None and session.path != before:
+                    # the show it runs, or the copy a save as made: a recent show
+                    config.remember_show(config.state_path(), session.path, self.status.title)
             case EngineNews(level=level, text=text):
                 self.log_view.add(level, text)
 
@@ -661,6 +670,58 @@ class BuskApp(App[int]):
 
         self.push_screen(TextDialog("RENAME SHOW", title, check_name(True)), given)
 
+    def action_file_menu(self) -> None:
+        """A click on the badge, or Alt+F: the File menu; Alt+F again closes it."""
+        if isinstance(self.screen, FileMenu):
+            self.screen.dismiss(None)
+            return
+        if self._modal():
+            raise SkipAction
+        self._disarm()
+        self.push_screen(FileMenu(), self._file_chosen)
+
+    def _file_chosen(self, choice: FileChoice | None) -> None:
+        match choice:
+            case "save":  # even with nothing unsaved: harmless
+                self._run(commands.save())
+            case "save_as":
+                self.save_as()
+            case "import_script":
+                self.import_script()
+            case "quit":
+                self.action_quit_dialog()
+
+    def save_as(self) -> None:
+        """Save as…: the file picker, saving, in the show's folder on its
+        file's name; then ``save "<path>"``, after a question if it replaces a
+        file, or ``save`` for the show's own file."""
+        own = None if self.session is None else self.session.path
+        folder, name = (Path.cwd(), "") if own is None else (own.parent, own.name)
+
+        def chosen(path: Path | None) -> None:
+            if path is None:
+                return
+            if own is not None and path.resolve() == own.resolve():
+                self._run(commands.save())
+                return
+            line = commands.save_as(str(path))
+            ask = f"Replace {path.name}? busk keeps a backup of it." if path.exists() else None
+            self.run_line(line.text, "ui", ask=ask)
+
+        self.push_screen(FileDialog(folder, name, "save", own), chosen)
+
+    def import_script(self) -> None:
+        """Import script…: a ``.busk`` file from the file picker, in the
+        show's folder; then ``source "<path>"``, whose reply goes to the log."""
+        own = None if self.session is None else self.session.path
+        folder = Path.cwd() if own is None else own.parent
+
+        def chosen(path: Path | None) -> None:
+            if path is not None:
+                self._run(commands.source(str(path)))
+
+        self.push_screen(FileDialog(folder, mode="script"), chosen)
+
     def open_help(self, lines: Sequence[str]) -> None:
         self.help_overlay.open(lines)
         self.query_one("#upper").add_class("help-open")
@@ -692,6 +753,8 @@ class BuskApp(App[int]):
                 self._escape()
             case "ctrl+c":
                 self._interrupt()
+            case "ctrl+s":
+                self._run(commands.save())
             case "ctrl+z":
                 self._run(commands.undo())
             case "ctrl+y":

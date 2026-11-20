@@ -6,7 +6,8 @@ the console prompt on one screen. Every click and key in it is a console line, e
 log, so what the UI does is what you could type.
 
 > **What it covers.** The frame (the status bar, the log, the prompt with hints and completion,
-> the help overlay and the dialogs) and every page: [F1 Busk](#f1-busk), to play the show, in
+> the help overlay, the dialogs and [the File menu](#the-file-menu): save, save as, import a
+> script) and every page: [F1 Busk](#f1-busk), to play the show, in
 > three layouts, A (console), B (stack) and C (stage), [F2 Program](#f2-program) and
 > [F6 Presets](#f6-presets), to build a look, [F4 Cues](#f4-cues) and [F5 Effects](#f5-effects),
 > [F7 Masters](#f7-masters), and the rig: [F3 Fixtures](#f3-fixtures), [F8 Patch](#f8-patch)
@@ -63,7 +64,7 @@ the TUI crashes, the output stops. **For a show, start `busk-tui` without `--sta
 ## The screen
 
 ```
- busk  show Club Night *  ● sACN·U1  GM 80%  BPM 120.0 ●  FADE 0.0s  PROG 3  BLIND  BLACKOUT  PAGE 1 Main   21:04:23
+ busk ▾  show Club Night *  ● sACN·U1  GM 80%  BPM 120.0 ●  FADE 0.0s  PROG 3  BLIND  BLACKOUT  PAGE 1 Main 21:04:23
  F1 Busk  F2 Program  F3 Fixtures  F4 Cues  F5 Effects  F6 Presets  F7 Masters  F8 Patch  F9 Surfaces  F10 Help
  ┌ the page ──────────────────────────────────────────────────────────────────────────────────────────────┐
  ─LOG───────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -76,6 +77,7 @@ the TUI crashes, the output stops. **For a show, start `busk-tui` without `--sta
 
 **The status bar**, from the left:
 
+- the `busk ▾` badge: a click opens the File menu ([The File menu](#the-file-menu));
 - the show's title, with `*` while it has unsaved edits. A click on the title opens a name
   dialog that sends `rename show "Late Night"`, and refuses an empty name;
 - `ENGINE STALLED`, `ENGINE RESTARTING` or `ENGINE FAILED` (red) while the engine does not
@@ -135,6 +137,8 @@ on the prompt or, where noted, only when it is empty.
 | PgUp PgDn on an empty prompt | `page prev`, `page next`. While help is open, they scroll it. |
 | Esc | Close help, else leave the page, else clear the line. |
 | Ctrl+Z, Ctrl+Y | `undo`, `redo`, whatever the prompt holds. |
+| Ctrl+S | `save`, whatever the prompt holds. |
+| Alt+F | Open or close the File menu. It arrives only from a terminal that reports Alt with the key, as the kitty keyboard protocol does: one that sends Alt+F as Esc and `f` (xterm, and tmux by default) has Textual read it as Ctrl+→, which moves the prompt's cursor. Click the badge there. |
 | Ctrl+C | Clear the line; on an empty prompt, twice in a row, quit. |
 | Ctrl+Q | Quit. |
 
@@ -1445,12 +1449,41 @@ autosave either way, and the run prints its path when it ends
 ([Running a show](../running.md)). `SIGTERM` and `SIGHUP` end the run as `quit` does, without
 the dialog.
 
+## The File menu
+
+A click on the `busk ▾` badge, or Alt+F, opens it under the badge:
+
+| Item | Key | |
+|---|---|---|
+| Save | Ctrl+S | `save`: the show to its own file, busk keeping a backup of the file it replaces. It always sends `save`, even with nothing unsaved. |
+| Save as… | | The show to another file, as a new show (below). |
+| Import script… | | A console script, run with `source` (below). |
+| Quit | Ctrl+Q | The quit dialog. |
+
+↑ ↓ move, Enter or a click chooses, and Esc, Alt+F or a click outside close it.
+
+**Save as…** opens the file picker (the profile picker's `[import…]`, above) to save, in the
+show's folder, with the show's file name in its field and the cursor on no row. The field is
+the name, not a filter: type another
+(`late night` saves `late night.show`; a name ending in `.show` or `.json` is kept as it is),
+or put the cursor on a show file with ↑ ↓, which takes its name. Enter goes into the folder the
+cursor is on, else saves as the name in the field; → and ← go into and up from folders, and
+Backspace on an empty name goes up. The preview says what Enter does. It sends `save
+"/home/me/shows/late night.show"`, which makes a copy that is a show of its own: its own id,
+autosaves and crash recovery. The file it was saved from stays as it was saved, and the TUI goes
+on in the copy ([the console](../console.md)). Before it replaces another file, it asks
+`Replace fest.show? busk keeps a backup of it.`; the show's own file is a plain `save`.
+
+**Import script…** opens it on the scripts, in the show's folder: `.busk` files can be chosen
+and other files are dimmed, and the preview is a script's first lines, its comment dimmed. Choosing one sends `source "/home/me/shows/rig.busk"`: busk runs its lines, each its own
+undo step, and stops at the first it refuses. What it answers goes to the log.
+
 ## Files
 
 | File | |
 |---|---|
 | `$XDG_CONFIG_HOME/busk-tui/config.toml` | Defaults and F2's quick lines, read only (`--config` names another). |
-| `$XDG_STATE_HOME/busk-tui/state.json` | The last page and layout. |
+| `$XDG_STATE_HOME/busk-tui/state.json` | The last page and layout, and the shows run last (`recent`: newest first, at most 10, each with its path, title and when it was opened), the copies Save as made included. |
 | `$XDG_STATE_HOME/busk-tui/debug.log` | Tracebacks the TUI caught, for a bug report. |
 
 `config.toml`:

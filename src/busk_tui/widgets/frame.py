@@ -42,6 +42,9 @@ BLINK_S = 0.25
 RENAME_SHOW = Style(meta={"@click": "app.rename_show"})
 """The status bar's title: a click opens the show's name dialog."""
 
+FILE_MENU = Style(meta={"@click": "app.file_menu"})
+"""The status bar's ``busk ▾`` badge: a click opens the File menu."""
+
 _ENGINE_WARNINGS: dict[EngineState, bool] = {
     "starting": False,
     "stalled": True,
@@ -79,7 +82,8 @@ class StatusBar(Widget):
 
     The app hands it each piece as it changes; it draws them all in one line,
     the clock right-aligned, and cuts what does not fit. A click on the
-    show's title runs the app's ``rename_show`` (pending plan Phase 36)."""
+    ``busk ▾`` badge runs the app's ``file_menu`` (file-menu plan Phase 2),
+    and one on the show's title its ``rename_show`` (pending plan Phase 36)."""
 
     DEFAULT_CSS = f"""
     StatusBar {{
@@ -128,7 +132,8 @@ class StatusBar(Widget):
     def left_text(self) -> Text:
         """Everything but the clock."""
         text = Text()
-        text.append(" busk ", style=f"bold {colors.BG} on {colors.CYAN}")
+        badge = Style(bold=True, color=colors.BG, bgcolor=colors.CYAN) + FILE_MENU
+        text.append(" busk ▾ ", style=badge)
         text.append("  show ", style=colors.DIM)
         title = self.title if len(self.title) <= 24 else self.title[:23] + "…"
         text.append(title or "—", style=Style(color=colors.FG) + RENAME_SHOW)

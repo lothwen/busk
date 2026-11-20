@@ -68,6 +68,19 @@ def save() -> Line:
     return Line("save")
 
 
+def save_as(path: str) -> Line:
+    """``save "/home/me/shows/copy.show"``: to another file than the show's
+    own, a copy with an id of its own (busk's GAP-55), which the show is
+    from then on."""
+    return Line(f"save {quoted(path)}")
+
+
+def source(path: str) -> Line:
+    """``source "/home/me/shows/rig.busk"``: the script's lines, each its
+    own step, up to the first that busk refuses."""
+    return Line(f"source {quoted(path)}")
+
+
 def number(value: float) -> str:
     """A number as busk reads it, to two decimals at most: ``120``, ``120.5``.
     Every digit is written: busk reads no exponent (``1e+06``)."""

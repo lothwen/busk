@@ -772,12 +772,14 @@ class ShowModel:
 
 @dataclass(frozen=True, slots=True)
 class SessionState:
-    """Undo depth and unsaved edits, read from the text of ``info``: a
-    temporary parser until GAP-03 gives them typed (question Q2)."""
+    """The steps ``undo`` and ``redo`` can take, whether the show has unsaved
+    edits, and the absolute path of the file ``save`` writes (``None`` while
+    it has none), from busk's ``session`` (GAP-03)."""
 
     undo: int
     redo: int
     dirty: bool
+    path: Path | None = None
 
 
 # ------------------------------------------------------------------ events

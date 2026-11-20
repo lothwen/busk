@@ -1,22 +1,34 @@
-"""The file picker of the profile picker's ``[import…]``: three columns, as
-in yazi (the folder above, the folder, and a preview of what the cursor is
-on), to find a profile file instead of typing its path.
+"""The file picker: three columns, as in yazi (the folder above, the folder,
+and a preview of what the cursor is on), to find a file instead of typing
+its path. It has a mode (:data:`Mode`) for each use: a profile file to
+import (the profile picker's ``[import…]``), a console script to run (the
+File menu's Import script…), or the file to save the show as (Save as…).
 
 It starts in a folder, on a name in it (the profile picker's: where
 busk-tui runs, or on the file chosen last). Every entry is listed, folders
-first; a file busk does not import (not a ``.json`` or a ``.gdtf``) is
+first; a file the mode cannot take (:data:`KINDS`: a profile is a ``.json``
+or a ``.gdtf``, a script a ``.busk``, a show a ``.show`` or a ``.json``) is
 dimmed, and a hidden one (``.name``) shows only while the filter starts with
 a dot. The keys are the profile picker's: typing filters the folder, ↑ ↓
 PgUp PgDn move, → goes into a folder, ← (or Backspace on an empty filter)
 goes up, onto the folder it leaves, Enter goes into a folder or chooses a
-profile file, and Esc cancels. A click in the middle column is Enter on that
+file it takes, and Esc cancels. A click in the middle column is Enter on that
 row; a click in the left one goes up, onto that row. A folder that cannot
 be read says why.
 
-The preview of a folder is what it holds; of a profile file, what busk reads
-in it: its maker, name and modes, or why busk cannot import it. The app
-reads it on a worker thread (:class:`~busk_tui.widgets.controls.ReadProfile`),
-one file at a time, each once.
+The preview of a folder is what it holds. Of a profile file, it is what busk
+reads in it: its maker, name and modes, or why busk cannot import it. The
+app reads it on a worker thread
+(:class:`~busk_tui.widgets.controls.ReadProfile`), one file at a time, each
+once. Of a script, it is its first lines, which are its comment as a rule.
+
+**Saving**, the field is the file's name, not a filter: it starts with
+``chosen`` and the cursor on no row, and typing takes the cursor off the
+rows. ↑ ↓ put it on one, and a show file's name goes into the field. Enter
+goes into the folder the cursor is on, else chooses the name in the
+field, with ``.show`` added unless it ends in ``.show`` or ``.json``. The
+preview says what Enter would do: save a copy, replace a file, or save the
+show to its own file (``own``).
 
 It sends nothing: it closes with the file's path, or ``None``.
 """
@@ -27,7 +39,7 @@ import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import ClassVar, Final
+from typing import ClassVar, Final, Literal
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -44,11 +56,44 @@ from busk_tui.widgets.controls import ReadProfile
 from busk_tui.widgets.dialogs import dialog_css
 from busk_tui.widgets.group_panel import plural
 
-KINDS: Final = (".json", ".gdtf")
-"""The files busk imports, as ``profile import`` tells them apart."""
+type Mode = Literal["profile", "script", "save"]
+"""What the picker finds: a profile file to import, a script to run, or the
+file to save the show as."""
+
+KINDS: Final[dict[Mode, tuple[str, ...]]] = {
+    "profile": (".json", ".gdtf"),  # as ``profile import`` tells them apart
+    "script": (".busk",),  # by convention: ``source`` runs any file
+    "save": (".show", ".json"),  # what ``save`` writes
+}
+"""The files each mode takes, by suffix."""
 FILES: Final = "an OFL .json, a .gdtf or a busk profile .json"
+TITLES: Final[dict[Mode, str]] = {
+    "profile": "IMPORT PROFILE",
+    "script": "IMPORT SCRIPT",
+    "save": "SAVE AS",
+}
+NOTES: Final[dict[Mode, str]] = {
+    "profile": f"busk imports {FILES}; other files are dimmed",
+    "script": "busk runs a .busk script of console lines, as source does; other files are dimmed",
+    "save": "busk saves a .show or a .json file; a name without either gets .show",
+}
+KEYS: Final[dict[Mode, str]] = {
+    "profile": "type: filter (from . for hidden) · ↑ ↓: move · →: into · ←: up · "
+    "Enter: choose · Esc: cancel",
+    "script": "type: filter (from . for hidden) · ↑ ↓: move · →: into · ←: up · "
+    "Enter: choose · Esc: cancel",
+    "save": "type: the name · ↑ ↓: move · →: into · ←: up · "
+    "Enter: into a folder, else save · Esc: cancel",
+}
+WHAT: Final[dict[Mode, str]] = {
+    "profile": "a profile file",
+    "script": "a script",
+    "save": "a show file",
+}
 ROWS: Final = 16
 PAGE: Final = ROWS - 1
+SCRIPT_BYTES: Final = 4096
+"""The most of a script its preview reads (at once, on the UI thread)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,9 +103,9 @@ class Entry:
     name: str
     folder: bool
 
-    def importable(self) -> bool:
-        """Whether busk imports it: a ``.json`` or a ``.gdtf`` file."""
-        return not self.folder and Path(self.name).suffix in KINDS
+    def fits(self, kinds: Sequence[str]) -> bool:
+        """Whether it is a file with one of the suffixes ``kinds``."""
+        return not self.folder and Path(self.name).suffix in kinds
 
 
 def listing(folder: Path) -> tuple[Entry, ...]:
@@ -84,15 +129,15 @@ def filtered(entries: Sequence[Entry], text: str) -> tuple[Entry, ...]:
     )
 
 
-def entry_text(entry: Entry) -> Text:
-    """A row: a folder in cyan, with a ``/``; a file busk does not import, dimmed."""
+def entry_text(entry: Entry, kinds: Sequence[str] = KINDS["profile"]) -> Text:
+    """A row: a folder in cyan, with a ``/``; a file not of ``kinds``, dimmed."""
     if entry.folder:
         return Text(f"{entry.name}/", style=colors.CYAN, no_wrap=True, overflow="ellipsis")
-    style = colors.FG if entry.importable() else colors.DIM
+    style = colors.FG if entry.fits(kinds) else colors.DIM
     return Text(entry.name, style=style, no_wrap=True, overflow="ellipsis")
 
 
-def folder_text(folder: Path) -> Text:
+def folder_text(folder: Path, kinds: Sequence[str] = KINDS["profile"]) -> Text:
     """The preview of a folder: what it holds, without its hidden entries."""
     try:
         entries = filtered(listing(folder), "")
@@ -100,7 +145,45 @@ def folder_text(folder: Path) -> Text:
         return Text(f"cannot read it: {exc.strerror or exc}", style=colors.RED)
     if not entries:
         return Text("empty", style=colors.DIM)
-    return Text("\n").join(entry_text(entry) for entry in entries[:ROWS])
+    return Text("\n").join(entry_text(entry, kinds) for entry in entries[:ROWS])
+
+
+def script_text(path: Path) -> Text:
+    """The preview of a script: its first lines, the comments dimmed."""
+    try:
+        with path.open(encoding="utf-8", errors="replace") as file:
+            lines = file.read(SCRIPT_BYTES).splitlines()[:ROWS]
+    except OSError as exc:
+        return Text(f"cannot read it: {exc.strerror or exc}", style=colors.RED)
+    if not lines:
+        return Text("empty", style=colors.DIM)
+    return Text("\n").join(
+        Text(line, style=colors.DIM if line.lstrip().startswith("#") else colors.FG)
+        for line in lines
+    )
+
+
+def save_name(name: str) -> str:
+    """The file a typed name saves to: with ``.show`` unless it ends in
+    ``.show`` or ``.json``, in any case, as busk reads them."""
+    name = name.strip()
+    return name if Path(name).suffix.lower() in KINDS["save"] else f"{name}.show"
+
+
+def save_text(target: Path, own: Path | None) -> Text:
+    """The preview while saving: what Enter does with ``target``."""
+    if own is not None and target.resolve() == own.resolve():
+        return Text("Enter saves the show to its own file", style=colors.FG)
+    if target.is_dir():
+        return Text(f"{target.name} is a folder", style=colors.RED)
+    if target.exists():
+        text = Text(f"{target.name} exists: ", style=colors.AMBER)
+        text.append("Enter asks before it replaces it, and busk keeps a backup of it", colors.FG)
+        return text
+    text = Text(f"Enter saves a copy of the show as {target.name}", style=colors.FG)
+    if own is not None:
+        text.append(f"\n\na show of its own: {own.name} stays as it was saved", colors.DIM)
+    return text
 
 
 def read_text(found: ProfileRead) -> Text:
@@ -149,9 +232,10 @@ class PathLine(Widget):
 
 
 class FileDialog(ModalScreen[Path | None]):
-    """Closes with a profile file's path, or ``None`` (see the module docs).
-    It starts in ``folder`` (the nearest folder that exists), on ``chosen``
-    if it is there, else on the first row."""
+    """Closes with a file's path, or ``None`` (see the module docs). It
+    starts in ``folder`` (the nearest folder that exists), on ``chosen`` if
+    it is there, else on the first row; saving, with ``chosen`` as the name
+    and on no row. ``own`` is the show's file, while saving."""
 
     DEFAULT_CSS = (
         dialog_css("FileDialog")
@@ -185,20 +269,31 @@ class FileDialog(ModalScreen[Path | None]):
         Binding("backspace", "back", "Back", show=False, priority=True),
     ]
 
-    def __init__(self, folder: Path, chosen: str | None = None) -> None:
+    def __init__(
+        self,
+        folder: Path,
+        chosen: str | None = None,
+        mode: Mode = "profile",
+        own: Path | None = None,
+    ) -> None:
         super().__init__()
         folder = folder.absolute()
         while not folder.is_dir() and folder != folder.parent:
             folder = folder.parent
         self.folder = folder
         self.chosen = chosen
+        self.mode: Mode = mode
+        self.kinds = KINDS[mode]
+        self.own = own
+        self.saving = mode == "save"
         self.entries: tuple[Entry, ...] = ()  # the folder's
         self.shown: tuple[Entry, ...] = ()  # those the filter finds
         self.problem: str | None = None  # why the folder cannot be read
         self.read: dict[Path, ProfileRead] = {}  # what busk found in each file read
         self.reading: Path | None = None  # the file busk is reading now
         self.path = PathLine()
-        self.field = Input(placeholder="type to filter", compact=True)
+        placeholder = "the file's name" if self.saving else "type to filter"
+        self.field = Input((chosen or "") if self.saving else "", placeholder, compact=True)
         self.parent_entries: tuple[Entry, ...] = ()  # the left column's
         self.parent_list = OptionList(classes="parent")
         self.parent_list.can_focus = False
@@ -209,7 +304,7 @@ class FileDialog(ModalScreen[Path | None]):
 
     def compose(self) -> ComposeResult:
         with Vertical() as box:
-            box.border_title = "IMPORT PROFILE"
+            box.border_title = TITLES[self.mode]
             yield self.path
             yield self.field
             with Horizontal(classes="columns"):
@@ -217,21 +312,18 @@ class FileDialog(ModalScreen[Path | None]):
                 yield self.list
                 yield self.none
                 yield self.preview
-            yield Static(f"busk imports {FILES}; other files are dimmed", classes="note")
-            yield Static(
-                "type: filter (from . for hidden) · ↑ ↓: move · →: into · ←: up · "
-                "Enter: choose · Esc: cancel",
-                classes="note",
-            )
+            yield Static(NOTES[self.mode], classes="note")
+            yield Static(KEYS[self.mode], classes="note")
 
     def on_mount(self) -> None:
-        self.go(self.folder, self.chosen)
+        self.go(self.folder, None if self.saving else self.chosen)
         self.field.focus()
 
     # ------------------------------------------------------------ the folder
 
     def go(self, folder: Path, keep: str | None = None) -> None:
-        """Show ``folder``, the filter cleared, on ``keep`` if it is there."""
+        """Show ``folder``, the filter cleared, on ``keep`` if it is there;
+        saving, the name kept and on no row."""
         self.folder = folder
         self.path.show(home_text(folder))
         try:
@@ -239,8 +331,9 @@ class FileDialog(ModalScreen[Path | None]):
         except OSError as exc:
             self.entries, self.problem = (), f"cannot read it: {exc.strerror or exc}"
         self._fill_parent()
-        with self.prevent(Input.Changed):
-            self.field.value = ""
+        if not self.saving:
+            with self.prevent(Input.Changed):
+                self.field.value = ""
         self._fill(keep)
 
     def _fill_parent(self) -> None:
@@ -259,18 +352,24 @@ class FileDialog(ModalScreen[Path | None]):
             entry for entry in found if not entry.name.startswith(".") or entry.name == name
         )
         names = [entry.name for entry in self.parent_entries]
-        self.parent_list.add_options([Option(entry_text(entry)) for entry in self.parent_entries])
+        self.parent_list.add_options(
+            [Option(entry_text(entry, self.kinds)) for entry in self.parent_entries]
+        )
         self.parent_list.highlighted = names.index(name) if name in names else None
 
     def _fill(self, keep: str | None) -> None:
         """The middle column: what the filter finds, on ``keep`` if it is
-        there, else the first row; then the preview."""
-        text = self.field.value
+        there, else the first row (saving, everything but the hidden, on no
+        row); then the preview."""
+        text = "" if self.saving else self.field.value
         self.shown = filtered(self.entries, text)
         names = [entry.name for entry in self.shown]
         self.list.clear_options()
-        self.list.add_options([Option(entry_text(entry)) for entry in self.shown])
-        self.list.highlighted = (names.index(keep) if keep in names else 0) if names else None
+        self.list.add_options([Option(entry_text(entry, self.kinds)) for entry in self.shown])
+        if self.saving or not names:
+            self.list.highlighted = None
+        else:
+            self.list.highlighted = names.index(keep) if keep in names else 0
         self.list.display = bool(names)
         self.none.display = not names
         if self.problem is not None:
@@ -290,14 +389,24 @@ class FileDialog(ModalScreen[Path | None]):
 
     def _preview(self) -> None:
         entry = self.current()
+        if self.saving and (entry is None or entry.fits(self.kinds)):
+            name = self.field.value.strip()
+            target = None if not name else self.folder / save_name(name)
+            text = (
+                Text("type a name", colors.DIM) if target is None else save_text(target, self.own)
+            )
+            self.preview.update(text)
+            return
         if entry is None:
             self.preview.update("")
             return
         path = self.folder / entry.name
         if entry.folder:
-            self.preview.update(folder_text(path))
-        elif not entry.importable():
-            self.preview.update(Text("not a profile file", style=colors.DIM))
+            self.preview.update(folder_text(path, self.kinds))
+        elif not entry.fits(self.kinds):
+            self.preview.update(Text(f"not {WHAT[self.mode]}", style=colors.DIM))
+        elif self.mode == "script":
+            self.preview.update(script_text(path))
         elif (found := self.read.get(path)) is not None:
             self.preview.update(read_text(found))
         else:
@@ -317,6 +426,8 @@ class FileDialog(ModalScreen[Path | None]):
     # ------------------------------------------------------------ the keys
 
     def on_input_changed(self, event: Input.Changed) -> None:
+        """Typing: the filter finds again, on the row it was on; saving, the
+        cursor leaves the rows (:meth:`_fill`), so Enter saves as the name typed."""
         event.stop()
         entry = self.current()
         self._fill(None if entry is None else entry.name)
@@ -326,9 +437,15 @@ class FileDialog(ModalScreen[Path | None]):
         self._enter()
 
     def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        """The cursor on a row: its preview; saving, a show file's name in the field."""
         event.stop()
-        if event.option_list is self.list:
-            self._preview()
+        if event.option_list is not self.list:
+            return
+        entry = self.current()
+        if self.saving and entry is not None and entry.fits(self.kinds):
+            with self.prevent(Input.Changed):
+                self.field.value = entry.name
+        self._preview()
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         event.stop()
@@ -338,19 +455,26 @@ class FileDialog(ModalScreen[Path | None]):
             self.go(self.folder.parent, self.parent_entries[event.option_index].name)
 
     def _enter(self) -> None:
-        """Enter: into a folder, or a profile file chosen."""
+        """Enter: into a folder, or a file it takes chosen; saving, the name."""
         entry = self.current()
-        if entry is None:
-            return
-        if entry.folder:
+        if entry is not None and entry.folder:
             self.go(self.folder / entry.name)
-        elif entry.importable():
+        elif entry is not None and not entry.fits(self.kinds):
+            return  # dimmed
+        elif self.saving:
+            name = self.field.value.strip()
+            target = self.folder / save_name(name) if name else None
+            if target is not None and not target.is_dir():
+                self.dismiss(target)
+        elif entry is not None:
             self.dismiss(self.folder / entry.name)
 
     def action_move(self, by: int) -> None:
         index = self.list.highlighted
         if index is not None:
             self.list.highlighted = index + by  # the list stops it at its ends
+        elif self.saving and self.shown:  # from the name onto the rows
+            self.list.highlighted = 0 if by > 0 else len(self.shown) - 1
 
     def action_out(self) -> None:
         """←: up, onto the folder it leaves; not at the root."""

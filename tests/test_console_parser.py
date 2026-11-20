@@ -673,6 +673,8 @@ def test_elements_of_multi_element_fixtures() -> None:
         ("help", Query("help")),
         ("save", Save(None)),
         ('save "/tmp/my show.show"', Save(Path("/tmp/my show.show"))),
+        ("save /tmp/my show.show", Save(Path("/tmp/my show.show"))),
+        ('save "/tmp/a \\"b\\" \\\\ c.show"', Save(Path('/tmp/a "b" \\ c.show'))),
         ("source build.busk", Source(Path("build.busk"))),
         ("quit", Quit()),
         ("exit", Quit()),

@@ -12,6 +12,11 @@ ModalScreen {
     background: #000000 55%;
 }
 
+/* The File menu drops from the status bar: the frame stays as it is. */
+FileMenu {
+    background: transparent;
+}
+
 #upper {
     height: 1fr;
     layers: base overlay;

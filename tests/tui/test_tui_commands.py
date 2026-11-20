@@ -988,6 +988,40 @@ def test_busk_imports_the_file_at_the_path_the_picker_sends(
     assert show.show["profiles"][-1]["name"] == "acme Test"
 
 
+def test_busk_saves_a_copy_at_the_path_save_as_sends(
+    show: busk.OfflineShow, tmp_path: Path
+) -> None:
+    """A path with a space, a quote and a backslash reaches busk whole, and
+    the copy is a show of its own."""
+    folder = tmp_path / 'my "shows" \\ here'
+    folder.mkdir()
+    copy_path = folder / "copy.show"
+    line = commands.save_as(str(copy_path))
+    assert line.text == f"save {json.dumps(str(copy_path))}"
+    assert not line.performance
+    first = show.show["meta"]["id"]
+    reply = show.execute(line.text)
+    assert reply.ok, reply.text
+    saved, _ = busk.load_show(copy_path)
+    assert saved["meta"]["id"] != first
+    assert show.session.path == str(copy_path)
+
+
+def test_busk_runs_the_script_at_the_path_import_script_sends(
+    show: busk.OfflineShow, tmp_path: Path
+) -> None:
+    folder = tmp_path / 'my "rig" \\ scripts'
+    folder.mkdir()
+    script = folder / "groups.busk"
+    script.write_text('# a group\nsel fixture 101\nrecord group 90 "Script group"\n')
+    line = commands.source(str(script))
+    assert line.text == f"source {json.dumps(str(script))}"
+    assert not line.performance
+    reply = show.execute(line.text)
+    assert reply.ok, reply.text
+    assert any(group["name"] == "Script group" for group in show.show["groups"])
+
+
 def test_busk_updates_the_profile_the_panel_names(club_path: Path) -> None:
     document, _ = busk.load_show(club_path)
     document = copy.deepcopy(document)

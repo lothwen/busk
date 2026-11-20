@@ -3644,6 +3644,9 @@ class _Parser:
     def _cmd_save(self) -> Action:
         token = self.peek()
         self.ending(need="a path")
+        if token is not None and token.quoted and self.k == len(self.tokens) - 1:
+            self.k += 1  # one quoted path: its escapes read, as ``source`` reads its own
+            return Save(Path(token.text))
         self.k = len(self.tokens)
         return Save(
             None if token is None else Path(self.line[token.start : self.end].strip().strip('"'))

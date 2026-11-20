@@ -10,8 +10,8 @@ show, so the TUI's own options travel in the environment, as JSON in
 ``$XDG_CONFIG_HOME/busk-tui/config.toml`` (or ``--config FILE``) holds
 defaults (``[defaults]``) and F2's quick lines (``[program] quick``); it is
 only read. ``$XDG_STATE_HOME/busk-tui/state.json`` remembers
-the last page and layout; a state file that cannot be read or written is
-ignored.
+the last page and layout, and the shows opened last (``recent``); a state
+file that cannot be read or written is ignored.
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ import sys
 import tomllib
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Final, Literal, cast
 
@@ -34,6 +35,8 @@ FRONTEND: Final = "busk_tui.app:frontend"
 LAYOUTS: Final = ("A", "B", "C")
 COLORS: Final = ("auto", "256", "16", "truecolor")
 FADERS: Final = (4, 20)
+RECENT: Final = 10
+"""The most shows ``state.json`` keeps in ``recent``."""
 
 _RUN_ONLY: Final = ("values", "script", "iface", "no_recover", "threads", "stats", "no_log")
 """The ``busk run`` options ``--standalone`` has no use for."""
@@ -288,11 +291,41 @@ def read_state(path: Path) -> dict[str, Any]:
 
 
 def write_state(path: Path, *, page: int, layout: Layout) -> bool:
-    """Remember the page and layout; ``False`` if it cannot be written."""
+    """Remember the page and layout, keeping the rest of the file; ``False``
+    if it cannot be written."""
+    return _write_state(path, {**read_state(path), "page": page, "layout": layout})
+
+
+def remember_show(path: Path, show: Path, title: str, opened: datetime | None = None) -> bool:
+    """Put ``show`` (an absolute path) first in ``recent``, with its title
+    and when it was opened (default: now), keeping the rest of the file:
+    newest first, each path once, at most :data:`RECENT`. ``False`` if it
+    cannot be written."""
+    state = read_state(path)
+    when = (opened or datetime.now()).astimezone().isoformat(timespec="seconds")
+    entry = {"path": str(show), "title": title, "opened": when}
+    recent = [entry, *(kept for kept in _recent(state) if kept["path"] != entry["path"])]
+    return _write_state(path, {**state, "recent": recent[:RECENT]})
+
+
+def _recent(state: dict[str, Any]) -> list[dict[str, str]]:
+    """The entries of ``recent`` that hold a path, a title and a time."""
+    found = state.get("recent")
+    if not isinstance(found, list):
+        return []
+    keys = ("path", "title", "opened")
+    return [
+        entry
+        for entry in found
+        if isinstance(entry, dict) and all(isinstance(entry.get(key), str) for key in keys)
+    ]
+
+
+def _write_state(path: Path, state: dict[str, Any]) -> bool:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         temporary = path.with_suffix(".tmp")
-        temporary.write_text(json.dumps({"page": page, "layout": layout}), encoding="utf-8")
+        temporary.write_text(json.dumps(state), encoding="utf-8")
         temporary.replace(path)
     except OSError:
         return False

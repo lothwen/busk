@@ -144,6 +144,24 @@ def test_a_selection_and_its_undo_step(live: tuple[Bridge, Drained]) -> None:
     drained.until(lambda e: isinstance(e, SessionChanged) and e.session.undo == 1)
 
 
+def test_the_session_names_the_file_a_save_as_wrote(
+    live: tuple[Bridge, Drained], tmp_path: Path
+) -> None:
+    bridge, drained = live
+    first = drained.until(lambda e: isinstance(e, SessionChanged))
+    assert isinstance(first, SessionChanged)
+    assert first.session.path == tmp_path / "club.show"
+    bridge.send("sel group 1", "typed")
+    drained.until(lambda e: isinstance(e, SessionChanged) and e.session.undo == 1)
+    bridge.send(f'save "{tmp_path / "copy.show"}"', "typed")
+    saved = drained.until(
+        lambda e: isinstance(e, SessionChanged) and e.session.path != first.session.path
+    )
+    assert isinstance(saved, SessionChanged)
+    assert saved.session.path == tmp_path / "copy.show"
+    assert not saved.session.dirty
+
+
 def test_a_profile_moves_from_the_library_to_the_show_once_a_fixture_takes_it(
     live: tuple[Bridge, Drained],
 ) -> None:

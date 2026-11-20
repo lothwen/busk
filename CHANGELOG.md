@@ -26,6 +26,13 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   profile file is what busk reads in it: the maker, the name and each mode with the channels it
   takes, or why busk cannot import it. It starts where busk-tui runs, then on the file chosen
   last.
+- A File menu in the TUI, behind the status bar's `busk ▾` badge (a click, or Alt+F): Save
+  (Ctrl+S), Save as…, Import script… and Quit. Save as opens the file picker on the show's file
+  name, in its folder, and saves a copy as a show of its own; it asks before it replaces another
+  file. Import script opens it on the `.busk` scripts, with each one's first lines as its
+  preview, and runs the one chosen with `source`.
+- The TUI keeps the shows it ran last, the copies Save as made included, in its `state.json`
+  (`recent`: newest first, at most 10), for the Open recent and the launcher to come.
 
 ### Changed
 
@@ -37,11 +44,16 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   own file and the first save of a show without a file keep the id. Under `busk run`, the
   autosaves follow the copy, so a crash recovers the copy and not the show it was saved from,
   and a console restarted after a crash comes back on the copy.
+- The TUI reads the undo steps, unsaved edits and the show's file from `session`, no longer from
+  the text of `info`.
 
 ### Fixed
 
 - An edit made less than half a second after a save, under `busk run`, was taken as saved: it
   was not autosaved, and quitting did not keep it in an autosave.
+- `save "<path>"` reads the escapes of a quoted path (`\"`, `\\`) as `source` and `profile
+  import` do; it kept them, and saved to another file than the one named. An unquoted path is
+  read as before, spaces and all.
 
 ## [0.1.2] - 2026-11-19
 

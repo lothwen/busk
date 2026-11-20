@@ -390,7 +390,9 @@ session, as the web remote's commands do. `help` prints the grammar.
   (`saved copy.show as a new show; club.show stays as it was saved`). The file it was
   saved from stays as it was last saved, and later `save`s write the copy. `save PATH`
   naming the show's own file is a plain save, and a show without a file keeps its id on
-  its first save. Neither is an undo step.
+  its first save. Neither is an undo step. The path may be quoted, with JSON's escapes
+  (`save "/shows/Late \"night\".show"`), as `source` takes its file; unquoted, the rest of
+  the line is the path, spaces and all.
 * **Replies** say what a line did, naming what it changed as the console does:
   `renamed group 1 "Heads" to "Movers"`, `group 1 is now group 9`, `deleted cue 9/2 "Verse"`,
   `cue 9/3 goes 8 s after the cue before starts`, `set the priority of playback 3 to 60`. A

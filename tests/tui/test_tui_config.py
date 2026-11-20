@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -180,4 +181,68 @@ def test_an_unwritable_state_directory_is_ignored(tmp_path: Path) -> None:
     blocked = tmp_path / "file"
     blocked.write_text("")
     assert not config.write_state(blocked / "state.json", page=1, layout="B")
+    assert not config.remember_show(blocked / "state.json", Path("/s/a.show"), "A")
     assert config.read_state(blocked / "state.json") == {}
+
+
+OPENED = datetime(2026, 11, 20, 21, 47, 5, tzinfo=UTC)
+
+
+def test_a_show_opened_goes_first_in_the_recent_shows(tmp_path: Path) -> None:
+    state = tmp_path / "state.json"
+    assert config.remember_show(state, Path("/s/club.show"), "Club Night", OPENED)
+    later = OPENED + timedelta(minutes=5)
+    assert config.remember_show(state, Path("/s/fest.show"), "Festival", later)
+    (fest, club) = config.read_state(state)["recent"]
+    assert fest == {
+        "path": "/s/fest.show",
+        "title": "Festival",
+        "opened": later.astimezone().isoformat(timespec="seconds"),
+    }
+    assert datetime.fromisoformat(fest["opened"]) == later
+    assert (club["path"], club["title"]) == ("/s/club.show", "Club Night")
+
+
+def test_a_show_opened_again_moves_up_and_is_listed_once(tmp_path: Path) -> None:
+    state = tmp_path / "state.json"
+    for name in ("a", "b", "c"):
+        config.remember_show(state, Path(f"/s/{name}.show"), name.upper(), OPENED)
+    config.remember_show(state, Path("/s/a.show"), "A renamed", OPENED)
+    recent = config.read_state(state)["recent"]
+    assert [(e["path"], e["title"]) for e in recent] == [
+        ("/s/a.show", "A renamed"),
+        ("/s/c.show", "C"),
+        ("/s/b.show", "B"),
+    ]
+
+
+def test_the_recent_shows_keep_the_newest_ten(tmp_path: Path) -> None:
+    state = tmp_path / "state.json"
+    for number in range(12):
+        config.remember_show(state, Path(f"/s/{number}.show"), str(number), OPENED)
+    recent = config.read_state(state)["recent"]
+    assert [e["path"] for e in recent] == [f"/s/{n}.show" for n in range(11, 1, -1)]
+    assert len(recent) == config.RECENT
+
+
+def test_the_page_and_the_recent_shows_keep_each_other(tmp_path: Path) -> None:
+    state = tmp_path / "state.json"
+    assert config.write_state(state, page=4, layout="C")
+    assert config.remember_show(state, Path("/s/club.show"), "Club Night", OPENED)
+    assert config.write_state(state, page=6, layout="A")
+    remembered = config.read_state(state)
+    assert (remembered["page"], remembered["layout"]) == (6, "A")
+    assert [e["path"] for e in remembered["recent"]] == ["/s/club.show"]
+    assert config.settings(Options(), config=tmp_path / "c", state=state).page == 6
+
+
+def test_an_old_state_file_reads_and_a_bad_recent_entry_is_dropped(tmp_path: Path) -> None:
+    state = tmp_path / "state.json"
+    state.write_text(json.dumps({"page": 2, "layout": "B"}))  # before the recent shows
+    assert config.settings(Options(), config=tmp_path / "c", state=state).page == 2
+    assert config.remember_show(state, Path("/s/a.show"), "A", OPENED)
+    assert config.read_state(state)["page"] == 2
+    bad = [{"path": "/s/b.show"}, "c.show", {"path": 1, "title": "D", "opened": "x"}]
+    state.write_text(json.dumps({"page": 2, "recent": bad}))
+    assert config.remember_show(state, Path("/s/a.show"), "A", OPENED)
+    assert [e["path"] for e in config.read_state(state)["recent"]] == ["/s/a.show"]

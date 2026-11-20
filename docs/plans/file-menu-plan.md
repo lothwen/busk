@@ -313,6 +313,58 @@ What differs from the steps above, or goes beyond them:
 9. **Docs.** `docs/tui/guide.md`: the badge in "The screen", "Keys", and `recent` in "Files".
    The TUI spec's status bar (§5).
 
+**Done** 2026-11-20, on 4379878. Code: `session_state` and the reader's `session` read
+(`src/busk_tui/bridge.py`), `SessionState.path` (`model.py`), `FileMenu`
+(`src/busk_tui/widgets/file_menu.py`), the picker's `Mode`, `KINDS`, `save_name`, `save_text`
+and `script_text` (`widgets/file_picker.py`), `action_file_menu`, `save_as` and `import_script`
+(`shell.py`), `commands.save_as` and `commands.source`, `config.remember_show` and the merging
+`write_state`. Tests: `tests/tui/test_tui_file_menu.py` (new, one test on the real engine), the
+modes in `test_tui_file_picker.py`, the recent shows in `test_tui_config.py`, the session in
+`test_tui_bridge.py` and `test_tui_bridge_live.py`. What differs from the steps above, or goes
+beyond them:
+
+- **An engine fix:** `save "<path>"` kept the escapes of a quoted path (`\"`, `\\`), so the
+  menu's Save as, which quotes as every TUI line does, would have written another file than the
+  one named. The contract test found it. `_cmd_save` now reads one quoted path as a token, as
+  `source` does; an unquoted path is the rest of the line, as before. §2's "both take a quoted
+  path with spaces" held, but not for these two characters.
+- **Alt+F arrives only from a terminal that reports Alt with the key** (the kitty keyboard
+  protocol, which Textual asks for: kitty, for one). Textual reads `Esc f`, what xterm, VTE and
+  tmux send for Alt+F, as Ctrl+→ (iTerm's word keys), so there the prompt's cursor moves a word
+  instead. The guide says so and points to the badge. Checked in a pty: `ESC [102;3u` opens the
+  menu, `ESC f` does not. See §9: Alt+1–9 have the same trouble.
+- **Ctrl+S goes through the prompt's key hook** (`prompt_key`), as Ctrl+Z does, not an app
+  binding, so a save never overtakes a line typed just before it. It works whatever the prompt
+  holds, and not while a dialog or the menu is open. Checked in a pty: it arrives.
+- **Saving, the picker's keys** (call 6 left them open): the field is the name, and the cursor
+  starts on no row. ↑ ↓ put it on a row, and a show file's name goes into the field; typing takes
+  it off the rows. Enter goes into the folder the cursor is on, else saves as the name. → and ←
+  go into and up from folders (onto no row), and Backspace on an empty name goes up. The preview
+  says what Enter would do (the show's own file, a file it replaces, or a copy, "a show of its
+  own: club.show stays as it was saved").
+- **A name that does not end in `.show` or `.json`** (in any case, as busk reads them) gets
+  `.show`, not only a name with no suffix: `club.v2` saves `club.v2.show`, as busk would refuse
+  `club.v2`.
+- **The replace question** is the app's, asked after the picker closes, with the line it
+  confirms (`ConfirmDialog`); No goes back to the screen, not to the picker.
+- **The recent shows are written when the session's file changes**: the first read of a show
+  with a file, and a Save as. That is call 8's two moments, with the path the session gives (the
+  bridge's `EngineRunning` has no path). The title is the status bar's then.
+- **Both pickers start in the show's folder** (Import script was not said), or where busk-tui
+  runs, with an empty name, for a show without a file.
+- **The menu does not dim the frame** (`FileMenu { background: transparent }` in `busk.tcss`,
+  which outranks the dialogs' rule). Its keys do nothing while it is open but its own, Alt+F and
+  Esc. The help overlay lists Ctrl+S and Alt+F; the key legend is as it was.
+- **The quit dialog's "cannot tell"** stays for the moment before the bridge's first look,
+  when no session has come yet.
+
+Checks: the whole suite (`-n 6`, 9:43) 7,179 passed, 1 skipped, 1 failed:
+`test_waveforms.py::test_vectorised_equals_the_scalar_transcription`, untouched here, where
+Hypothesis found a `phi` of -1.45e-106, whose phase rounds to 1.0, past the test's own scalar
+curve (`min()` of nothing). 19 mutations, all caught. ruff, format and mypy clean. A pty run
+under `busk run`: the badge, Ctrl+S, Alt+F as kitty sends it, Save as a copy, Import script,
+the quit dialog and `recent` in `state.json`.
+
 ### Phase 3: one show after another
 
 10. **The parent** (D3, calls 9–11, 16): `app.main` starts `busk run` as a child through
@@ -389,6 +441,11 @@ What differs from the steps above, or goes beyond them:
   opens.
   - D1 closes this for Save as, but not for `cp`.
   - The fix: `read_recovery` compares the path and says why it skipped a recovery.
+- **Alt+digit does not switch pages in most terminals** (found in Phase 2). The guide says to
+  use Alt+1–9 over SSH, where F-keys may not arrive. Textual reads `Esc 1` … `Esc 0`, what a
+  terminal without the kitty keyboard protocol sends, as the characters macOS's Option key
+  types (`¡`, `™` …), so they go into the prompt instead. They work from a terminal that speaks
+  the protocol (kitty). Alt+F, the File menu's key, has the same limit.
 
 ## 10. After this
 

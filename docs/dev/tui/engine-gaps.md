@@ -357,8 +357,9 @@ Remove it when this gap closes.
 
 **Done** (2026-11-20). `OfflineShow.session` and `LiveShow.session -> SessionStatus`, with
 `SessionStatus` in `busk.__all__` (now 47 names), defined in `busk.session.session` with the
-fields suggested above. The TUI still runs `session_from_info`: Phase 2 of the file-menu plan
-replaces it. What it settles:
+fields suggested above. Phase 2 of the file-menu plan took `session_from_info` out of the TUI
+(2026-11-20): the bridge's reader reads `session` at each look and sends a `SessionChanged` when
+what the UI shows of it (the steps, unsaved edits, the file) changes. What it settles:
 
 - **Of one moment.** The undo counts and labels are in the session's published
   `SessionSnapshot`, and the timeline now moves before that snapshot is published: a show

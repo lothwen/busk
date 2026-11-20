@@ -32,6 +32,8 @@ KEYS: tuple[tuple[str, str], ...] = (
     ("PgUp PgDn", "on an empty prompt: the previous, next page"),
     ("ctrl+z", "undo"),
     ("ctrl+y", "redo"),
+    ("ctrl+s", "save"),
+    ("alt+f", "the File menu (or a click on busk ▾)"),
     ("ctrl+c", "clear; twice: quit"),
 )
 

@@ -24,9 +24,7 @@ own (plan §4.1):
 
 The UI thread never waits: :meth:`Bridge.send` queues a line and returns its
 ticket, and :meth:`Bridge.drain` returns the events that have come since.
-Only names of ``busk.__all__`` are used, and no reply text is parsed, except
-``info``'s undo and unsaved-edits lines (:func:`session_from_info`), until
-GAP-03 gives them typed.
+Only names of ``busk.__all__`` are used, and no reply text is parsed.
 """
 
 from __future__ import annotations
@@ -59,6 +57,7 @@ from busk import (
     ProfileLibrary,
     ProgrammerStatus,
     RouteStatus,
+    SessionStatus,
     Show,
     ShowLoadError,
     SurfaceInput,
@@ -270,6 +269,8 @@ class _Seen:
     frame: int | None = None
     health: tuple[EngineState, bool] | None = None
     late_mark: tuple[float, int] | None = None  # (monotonic time, overruns) of the last look
+    status: SessionStatus | None = None
+    session: SessionState | None = None
 
 
 class _News(logging.Handler):
@@ -309,7 +310,6 @@ class Bridge:
         self._threads: list[threading.Thread] = []
         self._busy: Busy | None = None
         self._help: tuple[str, ...] = ()
-        self._session: SessionState | None = None
         self._watching = (False, False, False, False)  # output, effects, DMX, inputs
         self._tracking: int | None = None  # the cue list whose tracked states the reader reads
         self._seen = _Seen()
@@ -526,7 +526,6 @@ class Bridge:
         assert show is not None
         self._ready.set()
         self._run(_Job(0, commands.help_().text, "internal", None, then=self._take_help))
-        self._refresh_session()
         warnings = (
             *(self._standalone.warnings if self._standalone is not None else ()),
             *(f"{issue.severity} {issue}" for issue in show.warnings),
@@ -539,12 +538,10 @@ class Bridge:
                 continue
             self._busy = Busy(job.line, time.monotonic())
             try:
-                ok = self._run(job)
+                self._run(job)
             finally:
                 self._busy = None
             self._poke.set()  # the document may have changed: look now
-            if ok:
-                self._refresh_session()
 
     def _controls_main(self) -> None:
         while not self._ready.wait(0.1):
@@ -615,18 +612,6 @@ class Bridge:
         if ok:
             self._help = tuple(text.splitlines())
 
-    def _refresh_session(self) -> None:
-        """Read the undo depth and unsaved edits again (``info``, on the
-        ordered worker: a query, which waits for the line another thread
-        runs)."""
-        self._run(_Job(0, "info", "internal", None, then=self._take_info))
-
-    def _take_info(self, ok: bool, text: str) -> None:
-        session = session_from_info(text) if ok else None
-        if session is not None and session != self._session:
-            self._session = session
-            self._events.put(SessionChanged(session))
-
     # --------------------------------------------------------------- reader
 
     def _reader_main(self) -> None:
@@ -683,8 +668,13 @@ class Bridge:
             if changed != seen.programmer_model:
                 seen.programmer_model = changed
                 put(ProgrammerChanged(changed))
-        if new_doc or new_programmer:  # perhaps from a surface: undo and unsaved edits again
-            self._ordered.put(_Job(0, "info", "internal", "session", then=self._take_info))
+        status = show.session  # the same object until the session changes
+        if status is not seen.status:
+            session = session_state(status)
+            seen.status = status
+            if session != seen.session:
+                seen.session = session
+                put(SessionChanged(session))
         routes = show.routes
         if routes is not seen.routes or new_doc:
             views = route_views(doc, routes)
@@ -1587,28 +1577,15 @@ def _action_words(
     return str(action["kind"]), None
 
 
-_UNDO: Final = re.compile(r"undo: (\d+) steps?, redo: (\d+) steps?")
-
-
-def session_from_info(text: str) -> SessionState | None:
-    """The undo and redo depth and the unsaved-edits flag from the text of
-    ``info``; ``None`` if it does not say them as busk 0.1 does.
-
-    **Temporary** (question Q2 of the plan): busk's message text may change
-    in any release. Remove this once GAP-03 gives them typed."""
-    undo: tuple[int, int] | None = None
-    dirty: bool | None = None
-    for line in text.splitlines():
-        if (match := _UNDO.fullmatch(line)) is not None:
-            undo = (int(match[1]), int(match[2]))
-        elif line.startswith("file: "):
-            if line.endswith(", unsaved edits"):
-                dirty = True
-            elif line.endswith(", saved"):
-                dirty = False
-    if undo is None or dirty is None:
-        return None
-    return SessionState(undo=undo[0], redo=undo[1], dirty=dirty)
+def session_state(status: SessionStatus) -> SessionState:
+    """busk's session (GAP-03) as the UI reads it: the undo and redo steps,
+    unsaved edits, and the show's file."""
+    return SessionState(
+        undo=status.undoSteps,
+        redo=status.redoSteps,
+        dirty=status.dirty,
+        path=None if status.path is None else Path(status.path),
+    )
 
 
 def _chase_text(chase: Mapping[str, Any], names: _Names) -> str:

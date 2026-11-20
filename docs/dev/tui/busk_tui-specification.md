@@ -81,7 +81,7 @@ Every screen shares the same vertical frame. Only the main area changes between 
 
 | Row(s) | Region | Content |
 |---|---|---|
-| 1 | Status bar (bg 235) | `busk` badge (cyan reverse, bold) · show name · network TX per route (`● sACN·U1 ● ArtNet·U2`) · `GM 100%` (amber when \< 100) · `BPM 128.0 ●` (dot flashes on beat) · `FADE 0.0s` · `PROG n` (magenta) · BLIND chip · BLACKOUT chip · clock (right-aligned, HH:MM:SS). |
+| 1 | Status bar (bg 235) | `busk ▾` badge (cyan reverse, bold; a click or Alt+F opens the File menu: Save Ctrl+S, Save as…, Import script…, Quit Ctrl+Q) · show name (`*` with unsaved edits; a click renames it) · network TX per route (`● sACN·U1 ● ArtNet·U2`) · `GM 100%` (amber when \< 100) · `BPM 128.0 ●` (dot flashes on beat) · `FADE 0.0s` · `PROG n` (magenta) · BLIND chip · BLACKOUT chip · clock (right-aligned, HH:MM:SS). |
 | 1–2 | Tab bar | F1 Busk · F2 Program · F3 Fixtures · F4 Cues · F5 Effects · F6 Presets · F7 Masters · F8 Patch · F9 MIDI · F10 Help. Wraps on narrow terminals. Bottom border 239. |
 | flex | Main area | Active screen. Scrolls vertically if content exceeds height. |
 | 7 | Log | Top border with `LOG` title (dim). Six visible lines, scrollable, auto-scrolls to newest. See 7.3. |

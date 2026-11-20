@@ -294,11 +294,19 @@ def stub_health(state: str = "running", overruns: int = 0) -> busk.EngineHealth:
     return busk.EngineHealth(state=state, ticks=100, overruns=overruns, lastTickAge=0.01)  # type: ignore[arg-type]
 
 
-INFO = """show: t (show-1)
-file: /tmp/t.show, unsaved edits
-0 universes, 0 fixtures, 0 groups, 0 presets, 0 cue lists, 0 playbacks, 0 bindings
-undo: 2 steps, redo: 1 step
-programmer: 0 selected, 0 values, blind off"""
+def stub_session(
+    version: int = 1, dirty: bool = True, path: str | None = "/tmp/t.show"
+) -> busk.SessionStatus:
+    return busk.SessionStatus(
+        showVersion=version,
+        programmerVersion=1,
+        dirty=dirty,
+        path=path,
+        undoSteps=2,
+        redoSteps=1,
+        nextUndo="set intensity 50%",
+        nextRedo="clear",
+    )
 
 
 @dataclass
@@ -312,6 +320,7 @@ class Stub:
     surfaces: Any = None
     inputs: tuple[busk.SurfaceInput, ...] = ()
     health: busk.EngineHealth | None = field(default_factory=stub_health)
+    session: busk.SessionStatus = field(default_factory=stub_session)
     frame: Any = None
     effects: Any = None
     output: Any = None
@@ -337,8 +346,6 @@ class Stub:
         self.ran.append(line)
         if line == "help":
             return busk.Reply("    help | quit")
-        if line == "info":
-            return busk.Reply(INFO)
         if line.startswith("bad"):
             return busk.Reply("error: no such thing", ok=False)
         return busk.Reply(f"did {line}")
