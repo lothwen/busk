@@ -3,10 +3,11 @@ stub show for the real bridge.
 
 :class:`FakeBridge` implements ``BridgeLike``. It records the lines sent and
 answers each with a ``CommandDone`` at once (``replies`` by line, ok and
-empty otherwise). With ``show``, a real :class:`busk.OfflineShow`, its help,
-``expected`` answers and questions are the real ones; without it, the help is
-``HELP`` and nothing is asked. It reads profile and show files as the real
-bridge does.
+empty otherwise), and runs a script's lines the same way, with a
+``ScriptLine`` each and a ``ScriptDone`` (:func:`script_events`). With
+``show``, a real :class:`busk.OfflineShow`, its help, ``expected`` answers
+and questions are the real ones; without it, the help is ``HELP`` and
+nothing is asked. It reads profile and show files as the real bridge does.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ import asyncio
 import itertools
 import threading
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -37,6 +38,8 @@ from busk_tui.model import (
     PlaybackView,
     ProfileRead,
     ProgrammerModel,
+    ScriptDone,
+    ScriptLine,
     ShowModel,
     ShowRead,
     SpeedView,
@@ -86,6 +89,7 @@ class FakeBridge:
     watching_inputs: bool = False
     tracking: int | None = None  # the cue list whose tracked states the UI asked for
     busy_line: Busy | None = None
+    scripts: list[tuple[int, Path]] = field(default_factory=list)  # (ticket, path) run
     _tickets: Any = field(default_factory=lambda: itertools.count(1))
 
     def start(self) -> None:
@@ -112,6 +116,13 @@ class FakeBridge:
                     quit=reply.quit,
                 )
             )
+        return ticket
+
+    def run_script(self, path: Path) -> int:
+        ticket = next(self._tickets)
+        self.scripts.append((ticket, path))
+        if self.auto_reply:
+            self.events += script_events(ticket, path, self.replies)
         return ticket
 
     def confirmation(self, line: str) -> str | None:
@@ -153,6 +164,29 @@ class FakeBridge:
 
     def lines(self) -> list[str]:
         return [sent.line for sent in self.sent]
+
+
+def script_events(
+    ticket: int, path: Path, replies: dict[str, Reply] | None = None
+) -> list[ScriptLine | ScriptDone]:
+    """What the bridge sends as it runs the script at ``path``: a
+    ``ScriptLine`` per line (``replies`` by line, ok and empty otherwise;
+    blank lines and comments ok and empty), up to the first refused or
+    ``quit`` one, and the ``ScriptDone``. It leaves an undo step if a line
+    that is not blank or a comment ran, and busk took it."""
+    lines = [line.strip() for line in path.read_text(encoding="utf-8").splitlines()]
+    events: list[ScriptLine | ScriptDone] = []
+    reply = Reply()
+    for number, line in enumerate(lines, start=1):
+        reply = (replies or {}).get(line, Reply())
+        events.append(
+            ScriptLine(ticket, number, len(lines), line, reply.ok, tuple(reply.text.splitlines()))
+        )
+        if not reply.ok or reply.quit:
+            break
+    stepped = any(event.ok and event.line and not event.line.startswith("#") for event in events)
+    quit = reply.ok and reply.quit
+    return [*events, ScriptDone(ticket, path, reply.ok, len(events), len(lines), stepped, quit)]
 
 
 def live_state(**changes: Any) -> LiveState:
@@ -357,6 +391,26 @@ class Stub:
 
     def confirmation(self, line: str) -> str | None:
         return "Really?" if line == "output off" else None
+
+    def run_script(self, path: Path, *, each: Any = None) -> list[str]:
+        """As busk's: each line through :meth:`execute` (blank lines and
+        comments not), told to ``each``, up to the first refused one, with
+        the session's undo steps one more once a line has run and been taken."""
+        lines = [line.strip() for line in path.read_text(encoding="utf-8").splitlines()]
+        stepped = False
+        for number, line in enumerate(lines, start=1):
+            reply = busk.Reply("") if not line or line.startswith("#") else self.execute(line)
+            if line and not line.startswith("#") and reply.ok and not stepped:
+                stepped = True
+                steps = self.session.undoSteps + 1
+                self.session = replace(self.session, undoSteps=steps, nextUndo=f"source {path}")
+            if each is not None:
+                each(number, len(lines), line, reply)
+            if not reply.ok:
+                raise busk.ScriptError(path, number, line, [])
+            if reply.quit:
+                break
+        return []
 
     def tracking(self, cue_list: int) -> tuple[busk.TrackedCue, ...] | None:
         self.tracking_reads.append(cue_list)

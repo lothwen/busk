@@ -27,10 +27,16 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   takes, or why busk cannot import it. It starts where busk-tui runs, then on the file chosen
   last.
 - A File menu in the TUI, behind the status bar's `busk ▾` badge (a click, or Alt+F): Save
-  (Ctrl+S), Save as…, Import script… and Quit. Save as opens the file picker on the show's file
-  name, in its folder, and saves a copy as a show of its own; it asks before it replaces another
-  file. Import script opens it on the `.busk` scripts, with each one's first lines as its
-  preview, and runs the one chosen with `source`.
+  (Ctrl+S), Save as…, Import script…, Import profile… and Quit. Save as opens the file picker on
+  the show's file name, in its folder, and saves a copy as a show of its own; it asks before it
+  replaces another file. Import script opens it on the `.busk` scripts, with each one's first
+  lines as its preview, and runs the one chosen as `source` does, as one undo step: each line
+  goes to the log as it runs, with its place in the file (`festival.busk:812`) and busk's
+  reply, a bar under the prompt says how far it is, and the log says at the end how many lines
+  ran and whether one Ctrl+Z takes them back. Meanwhile the pages and the performance controls
+  work, typed lines wait for it, and New…, Open… and Open recent… wait until it ends. Import
+  profile opens the profile picker's file picker on the profile file chosen last, and imports
+  the one chosen with `profile import`.
 - The TUI keeps the shows it ran last, the copies Save as made included, in its `state.json`
   (`recent`: newest first, at most 10), for Open recent… and the launcher.
 - The TUI's File menu opens another show: New… (Ctrl+N) asks for a title and a file and writes

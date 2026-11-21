@@ -22,8 +22,11 @@ selected (``docs/plans/tui-pending-plan.md`` Phase 34: the DMX frame at 10 Hz,
 the CHANNELS panel lists the head's channels as they move), and F9 with a
 fader sweep coming in on an OSC surface (that plan's Phase 37: the inputs at
 10 Hz, MONITOR's line moves, BINDINGS' ``in`` with it), against a frontend
-that only waits while the same sweep comes in. The gates are those of the
-plan's Phase 0 Done note.
+that only waits while the same sweep comes in; and while Import script… runs
+``examples/festival.busk`` into a new show (``docs/plans/file-menu-plan.md``
+Phase 7: each line in the log, the bar in the hint row, the reader with a show
+that changes at every line), against a frontend that runs the same script.
+The gates are those of the plan's Phase 0 Done note.
 """
 
 from __future__ import annotations
@@ -48,6 +51,7 @@ from process_harness import BuskRun
 pytestmark = pytest.mark.perf
 
 HERE = Path(__file__).parent
+ROOT = HERE.parents[1]
 SECONDS = 8.0
 
 MIN_RATE = 0.97
@@ -61,6 +65,13 @@ its ticks."""
 MAX_CPU = 0.25
 """Under busk run: the console process's CPU with the TUI, at most this many
 cores more than with a frontend that only waits."""
+
+MAX_IMPORT = 2.5
+"""Under busk run: a script imported through the TUI takes at most this many
+times as long as busk's ``run_script`` alone. The script holds the GIL for
+most of it, so the TUI's work comes out of the script's time: 2.9 times
+before the reader looked less often and the log was written less often
+while a script runs (file-menu plan Phase 7), 1.75 after."""
 
 
 def rate(show: Any, seconds: float) -> float:
@@ -135,11 +146,14 @@ def run_frontend(
     layout: str = "B",
     edit: str | None = None,
     osc: int | None = None,
+    script: Path | None = None,
 ) -> Any:
     name = f"{mode}-{page}{layout}-{len(lines)}{edit or ''}{'' if osc is None else '-osc'}"
+    name += "" if script is None else "-script"
     report = tmp_path / f"{name}.json"
     plan = {"mode": mode, "seconds": SECONDS, "report": str(report), "page": page,
-            "layout": layout, "lines": lines, "edit": edit, "osc": osc}  # fmt: skip
+            "layout": layout, "lines": lines, "edit": edit, "osc": osc,
+            "script": None if script is None else str(script)}  # fmt: skip
     monkeypatch.setenv("BUSK_TUI_PERF", json.dumps(plan))
     monkeypatch.setenv("PYTHONPATH", os.pathsep.join([str(HERE), os.environ.get("PYTHONPATH", "")]))
     options = (
@@ -190,8 +204,43 @@ def test_under_busk_run_the_engine_runs_on_time(
     check("F9, a fader sweep coming in", swept, tui)
 
 
-def check(what: str, bare: Any, tui: Any) -> None:
-    """The gates, on a run with the TUI against one with a frontend that waits."""
+def festival(folder: Path) -> Path:
+    """``examples/festival.busk`` (2,189 lines), its profiles' paths made
+    absolute, without its route, its surfaces and what binds them: no
+    packets on the network, no port opened."""
+    lines = (ROOT / "examples" / "festival.busk").read_text(encoding="utf-8").splitlines()
+    kept = [
+        line.replace('profile import "examples/', f'profile import "{ROOT}/examples/')
+        for line in lines
+        if not line.startswith(("route ", "surface ", "bind ", "feedback "))
+    ]
+    path = folder / "festival.busk"
+    path.write_text("\n".join(kept) + "\n", encoding="utf-8")
+    return path
+
+
+def test_under_busk_run_the_engine_runs_on_time_while_a_script_imports(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    script = festival(tmp_path)
+    bare_show, tui_show = tmp_path / "bare.show", tmp_path / "tui.show"
+    for show in (bare_show, tui_show):
+        busk.save_show(busk.new_show("Festival Main Stage"), show, backups=False)
+    bare = run_frontend("bare", bare_show, tmp_path, monkeypatch, script=script)
+    tui = run_frontend("tui", tui_show, tmp_path, monkeypatch, script=script)
+    print(
+        f"\nimporting {len(script.read_text().splitlines())} lines of festival.busk took "
+        f"{bare['seconds']:.1f} s with run_script, {tui['seconds']:.1f} s with the TUI"
+    )
+    # busk's own edits cost the engine a few overruns, with a display or
+    # without (the compiled show changes at each): the TUI adds none.
+    check("F1 B, festival.busk importing", bare, tui, overruns=bare["overruns"] / bare["ticks"])
+    assert tui["seconds"] <= MAX_IMPORT * bare["seconds"]
+
+
+def check(what: str, bare: Any, tui: Any, overruns: float = 0.0) -> None:
+    """The gates, on a run with the TUI against one with a frontend that
+    waits; ``overruns``, the share of ticks the engine overran without it."""
     cores = tui["cpu"] / tui["seconds"] - bare["cpu"] / bare["seconds"]
     print(
         f"\nbusk run, {what}: overruns {bare['overruns']}/{bare['ticks']} bare, "
@@ -200,7 +249,7 @@ def check(what: str, bare: Any, tui: Any) -> None:
         f"{tui['cpu'] / tui['seconds']:.3f} with the TUI (+{cores:.3f})"
     )
     assert tui["ticks"] > 0
-    assert tui["overruns"] <= MAX_OVERRUNS * tui["ticks"]
+    assert tui["overruns"] <= (overruns + MAX_OVERRUNS) * tui["ticks"]
     assert cores <= MAX_CPU
 
 

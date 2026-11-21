@@ -178,6 +178,37 @@ def test_a_300_character_reply_shows_every_word_at_99_columns() -> None:
     drive(app, body, size=(99, 30))
 
 
+def test_a_held_log_writes_what_was_added_at_each_flush_and_once() -> None:
+    """As while a script imports: the entries at once, the pane at a flush;
+    a reflow meanwhile writes them all, and the flush then nothing twice."""
+    app = make_app()
+
+    async def body(pilot: Pilot[int]) -> None:
+        log = app.query_one(LogView)
+        log.add("info", "before")
+        await pilot.pause()
+        before = strip_rows(log)
+        log.hold()
+        log.add("result", "one\ntwo")
+        await pilot.pause()
+        assert list(log.entries)[-2:] == [("result", "one"), ("result", "two")]
+        assert strip_rows(log) == before
+        log.flush(hold=True)
+        log.add("result", "three")
+        await pilot.pause()
+        assert strip_rows(log) == [*before, "      one", "      two"]
+        await pilot.resize_terminal(60, 30)
+        await pilot.pause()
+        log.flush()
+        log.add("info", "after")
+        await pilot.pause()
+        rows = strip_rows(log)
+        assert rows[-4:] == ["      one", "      two", "      three", " · after"]
+        assert rows.count("      three") == 1
+
+    drive(app, body)
+
+
 def test_a_resize_flows_the_kept_lines_again() -> None:
     app = make_app()
 

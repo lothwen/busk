@@ -10,6 +10,11 @@ turns each half second: F9's MONITOR), ``seconds`` to run, and ``report``, where
 the engine's ticks and overruns over the run, and the CPU time this process
 used and the wall time over the steady part of it: the TUI's imports and its
 start-up are left out, and ``seconds`` is how long that part really ran.
+
+With ``script``, a console script's path, the steady part is that script
+running instead (file-menu plan Phase 7): the frontend that only waits runs
+it with ``run_script``, the TUI imports it as Import script… does, typing a
+line now and then, until it has ended.
 """
 
 from __future__ import annotations
@@ -36,10 +41,15 @@ def main(show: Any) -> None:
     if (port := plan.get("osc")) is not None:
         threading.Thread(target=_sweep, args=(port, stop), daemon=True).start()
     first = show.health
+    script = plan.get("script")
     if plan["mode"] == "tui":
         cpu, wall = _run_tui(
-            show, seconds, plan.get("page", 1), plan.get("layout", "B"), plan.get("edit")
+            show, seconds, plan.get("page", 1), plan.get("layout", "B"), plan.get("edit"), script
         )
+    elif script is not None:
+        cpu, wall = time.process_time(), time.monotonic()
+        show.run_script(script)
+        cpu, wall = time.process_time() - cpu, time.monotonic() - wall
     else:
         cpu, wall = time.process_time(), time.monotonic()
         time.sleep(seconds)
@@ -71,9 +81,10 @@ def _sweep(port: int, stop: threading.Event) -> None:
 
 
 def _run_tui(
-    show: Any, seconds: float, page: int, layout: str, edit: str | None
+    show: Any, seconds: float, page: int, layout: str, edit: str | None, script: str | None
 ) -> tuple[float, float]:
-    """The CPU and wall time of the steady loop, after the start-up."""
+    """The CPU and wall time of the steady loop, after the start-up: for
+    ``seconds``, or while ``script`` imports."""
     from busk_tui import config
     from busk_tui.bridge import Bridge
     from busk_tui.pages.presets import PresetsPage
@@ -91,8 +102,15 @@ def _run_tui(
                     await pilot.pause(0.05)
                 tiles = presets.tiles
                 presets.choose(next(t for t in tiles if t.pool == edit and t.preset is None))
+            if script is not None:
+                while not bridge.help_lines:
+                    await pilot.pause(0.05)
             cpu, start = time.process_time(), time.monotonic()
-            while time.monotonic() < start + seconds:
+            if script is not None:
+                app.start_import(Path(script))
+            while (
+                time.monotonic() < start + seconds if script is None else app.importing is not None
+            ):
                 for key in ("g", "m", "space", "8", "0", "%", "enter"):
                     await pilot.press(key)
                 await pilot.pause(0.5)

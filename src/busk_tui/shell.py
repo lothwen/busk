@@ -22,6 +22,11 @@ the app with :attr:`BuskApp.next_show` set, and the one that started it
 starts that show next: ``busk-tui``'s parent process (:mod:`busk_tui.parent`),
 or ``--standalone``'s loop.
 
+**Import script…** (file-menu plan Phase 7) runs a script through the bridge:
+each line goes to the log as it runs, with its reply, and the hint row is a
+bar until it ends. Meanwhile the lines sent wait for it, and another show
+cannot open.
+
 Imported only once ``TEXTUAL_COLOR_SYSTEM`` is set (:mod:`busk_tui.app`),
 since Textual reads it when it is imported.
 """
@@ -33,6 +38,7 @@ import signal
 import subprocess
 import time
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar, Final, cast
 
@@ -69,6 +75,8 @@ from busk_tui.model import (
     ProgrammerChanged,
     ProgrammerModel,
     RoutesChanged,
+    ScriptDone,
+    ScriptLine,
     SessionChanged,
     SessionState,
     ShowChanged,
@@ -116,6 +124,11 @@ BUSY_AFTER_S: Final = 0.3
 NARROW: Final = 100
 """Below this many columns, side-by-side panels stack (the ``narrow`` class)."""
 
+LOG_S: Final = 0.2
+"""While a script imports, the log's pane is written this often (5 Hz): each
+write lays the screen out again, which at every drain made the import take
+twice as long (file-menu plan Phase 7)."""
+
 NUDGE_S: Final = 0.5
 """``[ ]`` step from the level they last sent for this long; after it, from
 the level the engine shows."""
@@ -153,6 +166,22 @@ class FailedScreen(Screen[None]):
         text.append(self.message, style=colors.FG)
         text.append("\n\nq to quit", style=colors.DIM)
         yield Static(text, id="failed")
+
+
+def lines_text(count: int) -> str:
+    """``2,189 lines``, ``1 line``."""
+    return f"{count:,} line" + ("" if count == 1 else "s")
+
+
+@dataclass(slots=True)
+class Importing:
+    """The script Import script… runs: its ticket, its file, and the line of
+    the file that ran last, of how many (0 of 0 until the first has run)."""
+
+    ticket: int
+    path: Path
+    number: int = 0
+    total: int = 0
 
 
 class BuskApp(App[int]):
@@ -204,6 +233,9 @@ class BuskApp(App[int]):
         self._waiting: dict[int, Callable[[bool], None]] = {}  # ticket → what to call when done
         self._refusals: dict[int, Callable[[str], None]] = {}  # ticket → who says why it failed
         self._keyed: dict[str, int] = {}  # key → the newest ticket with such a callback
+        self.importing: Importing | None = None  # the script Import script… runs
+        self._bar_moved = False  # a line of it has run since the bar was drawn
+        self._log_written = 0.0  # when the held log was last written (monotonic)
 
     # ------------------------------------------------------------ layout
 
@@ -289,6 +321,12 @@ class BuskApp(App[int]):
             return
         for event in self.bridge.drain():
             self.take(event)
+        if self._bar_moved:
+            self._bar_moved = False
+            self._show_bar()
+        if self.importing is not None and time.monotonic() - self._log_written >= LOG_S:
+            self.log_view.flush(hold=True)
+            self._log_written = time.monotonic()
         self._redraw()
 
     def _redraw(self) -> None:
@@ -386,6 +424,10 @@ class BuskApp(App[int]):
                     config.remember_show(config.state_path(), session.path, self.status.title)
             case EngineNews(level=level, text=text):
                 self.log_view.add(level, text)
+            case ScriptLine():
+                self._script_line(event)
+            case ScriptDone():
+                self._script_done(event)
 
     def _banner(self, title: str) -> None:
         how = "standalone" if self.standalone else "under busk run"
@@ -418,15 +460,59 @@ class BuskApp(App[int]):
                 return
         if done.ok and done.line.split()[:1] == ["help"]:
             self.open_help(done.lines)
-        elif done.ok:
-            if done.lines:
-                self.log_view.add("result", "\n".join(done.lines))
         else:
-            lines = list(done.lines) or ["failed"]
-            lines[0] = lines[0].removeprefix("error: ")  # busk's mark of a refused line
-            self.log_view.add("error", "\n".join(lines))
-            if refused is not None:
-                refused("\n".join(lines))
+            said = self._log_reply(done.ok, done.lines)
+            if not done.ok and refused is not None:
+                refused(said)
+        if done.quit:
+            self.action_quit_dialog()
+
+    def _log_reply(self, ok: bool, lines: Sequence[str]) -> str:
+        """A line's reply in the log, a result, or an error without busk's
+        mark of a refused line; the text shown."""
+        if ok:
+            if lines:
+                self.log_view.add("result", "\n".join(lines))
+            return "\n".join(lines)
+        shown = list(lines) or ["failed"]
+        shown[0] = shown[0].removeprefix("error: ")
+        self.log_view.add("error", "\n".join(shown))
+        return "\n".join(shown)
+
+    def _script_line(self, line: ScriptLine) -> None:
+        """A line of the script Import script… runs: in the log with its
+        place (``festival.busk:812``) and its reply, as a typed line is,
+        unless it is blank or a comment; and the bar moves on."""
+        importing = self.importing
+        if importing is None or line.ticket != importing.ticket:
+            return
+        importing.number, importing.total = line.number, line.total
+        self._bar_moved = True
+        if line.line and not line.line.startswith("#"):
+            self.log_view.add("ui", f"{importing.path.name}:{line.number}  {line.line}")
+            self._log_reply(line.ok, line.lines)
+
+    def _script_done(self, done: ScriptDone) -> None:
+        """The script has ended: what happened, in the log; the hint row is
+        the hint again. A ``quit`` line in it opens the quit dialog, as from
+        a script ``source`` runs."""
+        importing = self.importing
+        if importing is None or done.ticket != importing.ticket:
+            return
+        self.importing = None
+        self.log_view.flush()
+        if done.problem is not None:
+            self.log_view.add("error", done.problem)
+        elif done.ok:
+            ran = lines_text(done.total)
+            if done.quit:
+                ran = f"{done.number:,} of {ran}, to its quit"
+            undo = " (Ctrl+Z undoes it)" if done.stepped else ""
+            self.log_view.add("info", f"imported {done.path.name}: {ran}{undo}")
+        else:
+            undo = " (Ctrl+Z undoes the lines before it)" if done.stepped else ""
+            self.log_view.add("error", f"stopped at line {done.number:,} of {done.total:,}{undo}")
+        self._show_hint()
         if done.quit:
             self.action_quit_dialog()
 
@@ -549,7 +635,7 @@ class BuskApp(App[int]):
         message.stop()
         if message.text is None:
             self._show_hint()
-        else:
+        elif self.importing is None:  # else the bar keeps the row
             self.query_one(HintRow).show_text(message.text, colors.MID)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -571,6 +657,9 @@ class BuskApp(App[int]):
         self._show_hint()
 
     def _show_hint(self) -> None:
+        if self.importing is not None:  # the bar takes the hint row's place
+            self._show_bar()
+            return
         prompt = self.prompt
         if self._fill_note is not None:  # a pre-fill's note, until the line changes
             if prompt.value == self._fill_note[0]:
@@ -582,6 +671,14 @@ class BuskApp(App[int]):
             self._help_index = HelpIndex(self.bridge.help_lines)
         completion = self.bridge.expected(before) if before.strip() else None
         self.query_one(HintRow).show(hint(self._help_index, before, completion))
+
+    def _show_bar(self) -> None:
+        """The import bar in the hint row, while a script imports; not over
+        Ctrl+C's word on quitting, which stays until it is disarmed."""
+        importing = self.importing
+        if importing is not None and not self._interrupted:
+            hint_row = self.query_one(HintRow)
+            hint_row.show_import(importing.path.name, importing.number, importing.total)
 
     def _show_context(self) -> None:
         """The prompt's right side: busy line, selection, page, playback, undo."""
@@ -733,6 +830,8 @@ class BuskApp(App[int]):
                 self.save_as()
             case "import_script":
                 self.import_script()
+            case "import_profile":
+                self.import_profile()
             case "quit":
                 self.action_quit_dialog()
 
@@ -757,15 +856,56 @@ class BuskApp(App[int]):
 
     def import_script(self) -> None:
         """Import script…: a ``.busk`` file from the file picker, in the
-        show's folder; then ``source "<path>"``, whose reply goes to the log."""
+        show's folder; then the bridge runs it (:meth:`start_import`). Not
+        while another imports."""
+        if self._held("import another script"):
+            return
         own = None if self.session is None else self.session.path
         folder = Path.cwd() if own is None else own.parent
 
         def chosen(path: Path | None) -> None:
             if path is not None:
-                self._run(commands.source(str(path)))
+                self.start_import(path)
 
         self.push_screen(FileDialog(folder, mode="script"), chosen)
+
+    def start_import(self, path: Path) -> None:
+        """Run the script at ``path`` through the bridge, after the lines
+        sent before it, as one undo step: its lines go to the log as they
+        run, and the hint row is its bar until it ends (file-menu plan
+        calls 20 and 21)."""
+        self.importing = Importing(self.bridge.run_script(path), path)
+        self.log_view.add("info", f"importing {home_text(path)}")
+        self.log_view.hold()  # its lines reach the pane 5 times a second
+        self._log_written = time.monotonic()
+        self._show_hint()
+
+    def import_profile(self) -> None:
+        """Import profile…: the profile picker's file picker, on the profile
+        file chosen last in this run, else in the show's folder; then
+        ``profile import "<path>"``, whose reply goes to the log."""
+        last = ProfileDialog.last
+        if last is not None:
+            files = FileDialog(last.parent, last.name)
+        else:
+            own = self._own_file()
+            files = FileDialog(Path.cwd() if own is None else own.parent)
+
+        def chosen(path: Path | None) -> None:
+            if path is not None:
+                ProfileDialog.last = path
+                self._run(commands.profile_import(str(path)))
+
+        self.push_screen(files, chosen)
+
+    def _held(self, what: str) -> bool:
+        """Whether a script imports, which ``what`` waits for: the log says
+        so, and nothing is done (file-menu plan call 21)."""
+        if self.importing is None:
+            return False
+        name = self.importing.path.name
+        self.log_view.add("warning", f"{name} is importing: {what} once it ends")
+        return True
 
     # ------------------------------------------------------ another show
 
@@ -773,7 +913,7 @@ class BuskApp(App[int]):
         """New…: a form for the title and the file, in the show's folder;
         then the confirmation, ``busk new`` (:meth:`_make_show`), and the new
         show opened."""
-        if not self._can_open():
+        if not self._can_open("start a new show"):
             return
         own = self._own_file()
         folder = Path.cwd() if own is None else own.parent
@@ -791,7 +931,7 @@ class BuskApp(App[int]):
     def open_show(self) -> None:
         """Open…: the file picker on show files, in the show's folder, on its
         file; then the show chosen is checked (:meth:`_check_open`)."""
-        if not self._can_open():
+        if not self._can_open("open another show"):
             return
         own = self._own_file()
         folder, name = (Path.cwd(), None) if own is None else (own.parent, own.name)
@@ -800,7 +940,7 @@ class BuskApp(App[int]):
     def open_recent(self) -> None:
         """Open recent…: the recent shows but the one that runs; then the
         show chosen is checked (:meth:`_check_open`)."""
-        if not self._can_open():
+        if not self._can_open("open another show"):
             return
         own = self._own_file()
         shows = [show for show in config.recent_shows(config.state_path()) if show.path != own]
@@ -809,14 +949,14 @@ class BuskApp(App[int]):
     def _own_file(self) -> Path | None:
         return None if self.session is None else self.session.path
 
-    def _can_open(self) -> bool:
+    def _can_open(self, what: str) -> bool:
         if not self.opens:
             self.log_view.add(
                 "warning",
                 "this TUI cannot open another show: busk-tui SHOW can, "
                 "not busk run --frontend busk_tui.app:frontend",
             )
-        return self.opens
+        return self.opens and not self._held(what)
 
     def _check_open(self, path: Path | None) -> None:
         """A show chosen to open: busk reads it as ``busk run`` would load
@@ -880,7 +1020,10 @@ class BuskApp(App[int]):
         self.run_worker(make, thread=True, group="new-show")
 
     def _open(self, path: Path) -> None:
-        """End the app, for ``path`` to start next."""
+        """End the app, for ``path`` to start next; not while a script
+        imports (one started while the show was read or made)."""
+        if self._held("open another show"):
+            return
         self.next_show = path
         self.exit(0)
 

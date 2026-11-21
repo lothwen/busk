@@ -7,7 +7,7 @@ log, so what the UI does is what you could type.
 
 > **What it covers.** The frame (the status bar, the log, the prompt with hints and completion,
 > the help overlay, the dialogs and [the File menu](#the-file-menu): a new show, open another,
-> save, save as, import a script) and every page: [F1 Busk](#f1-busk), to play the show, in
+> save, save as, import a script or a profile) and every page: [F1 Busk](#f1-busk), to play the show, in
 > three layouts, A (console), B (stack) and C (stage), [F2 Program](#f2-program) and
 > [F6 Presets](#f6-presets), to build a look, [F4 Cues](#f4-cues) and [F5 Effects](#f5-effects),
 > [F7 Masters](#f7-masters), and the rig: [F3 Fixtures](#f3-fixtures), [F8 Patch](#f8-patch)
@@ -1496,7 +1496,8 @@ A click on the `busk ▾` badge, or Alt+F, opens it under the badge:
 | Open recent… | | Another show, from the shows busk-tui ran last. |
 | Save | Ctrl+S | `save`: the show to its own file, busk keeping a backup of the file it replaces. It always sends `save`, even with nothing unsaved. |
 | Save as… | | The show to another file, as a new show (below). |
-| Import script… | | A console script, run with `source` (below). |
+| Import script… | | A console script, run as `source` runs it, each line in the log as it runs (below). |
+| Import profile… | | A fixture profile from a file, into the show (below). |
 | Quit | Ctrl+Q | The quit dialog. |
 
 ↑ ↓ move, Enter or a click chooses, and Esc, Alt+F or a click outside close it.
@@ -1514,8 +1515,38 @@ on in the copy ([the console](../console.md)). Before it replaces another file, 
 `Replace fest.show? busk keeps a backup of it.`; the show's own file is a plain `save`.
 
 **Import script…** opens it on the scripts, in the show's folder: `.busk` files can be chosen
-and other files are dimmed, and the preview is a script's first lines, its comment dimmed. Choosing one sends `source "/home/me/shows/rig.busk"`: busk runs its lines, as one undo
-step, and stops at the first it refuses. What it answers goes to the log.
+and other files are dimmed, and the preview is a script's first lines, its comment dimmed. busk
+runs the script chosen as `source` runs it, as one undo step, and stops at the first line it
+refuses. Each line goes to the log as it runs, with its place in the file and busk's reply
+(blank lines and comments are left out; the log shows them a few times a second), and the hint
+row under the prompt is a bar until the script ends:
+
+```
+ ui> festival.busk:506  record preset intensity 2 "Dimmer 25%"
+      recorded preset intensity 2 'Dimmer 25%': 1 value
+busk>
+IMPORT festival.busk  ━━━━━━━───────────────────────  506 / 2189 · lines typed now wait
+```
+
+The log then says `imported festival.busk: 2,189 lines (Ctrl+Z undoes it)`, or, after the line
+busk refused and why, `stopped at line 812 of 2,189 (Ctrl+Z undoes the lines before it)`. One
+Ctrl+Z takes the whole import back, the programmer too. A script that changed nothing leaves
+nothing to undo, and the parenthesis is left out. The log keeps its last 2,000 lines, so the
+first lines of a long script scroll out of it. Under `busk run`, festival.busk's 2,189 lines
+take about 8 s this way, and about 4.5 s with no display.
+
+While a script runs, the pages and the performance controls (faders, GO, flash, the masters)
+work, and what they show follows the show 4 times a second. Lines you type, and the edits the
+pages send, wait for it, and run once it ends, in order. New…, Open…, Open recent… and another Import script… say in the log that it is
+importing, and do nothing. There is no stop: a script runs to its end or to the first line busk
+refuses. Quit's Save and quit saves once it has ended; Quit without saving stops it after the
+line it runs, and the lines that ran stay in the show (under `busk run`, in the newest
+autosave).
+
+**Import profile…** opens the file picker of the profile picker's `[import…]` (above) on the
+profile file chosen last, in either, until busk-tui ends, else in the show's folder. Choosing a
+file sends `profile import "/home/me/fixtures/spot.gdtf"`: the profile comes into the show, as
+one undo step, for `fixture add` and F3's profile picker. What busk answers goes to the log.
 
 ## Opening another show
 

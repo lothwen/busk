@@ -919,6 +919,39 @@ class EngineNews:
     text: str
 
 
+@dataclass(frozen=True, slots=True)
+class ScriptLine:
+    """A line of the script :meth:`BridgeLike.run_script` runs, once it has
+    run (busk's GAP-57): its number from 1, the file's number of lines, the
+    line stripped (empty for a blank line), whether busk took it, and its
+    reply, line by line."""
+
+    ticket: int
+    number: int
+    total: int
+    line: str
+    ok: bool
+    lines: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ScriptDone:
+    """The script :meth:`BridgeLike.run_script` ran has ended. ``ok``: every
+    line ran, or a ``quit`` line (``quit``) ended it; else it stopped at
+    line ``number``, the last that ran. ``stepped``: it left an undo step,
+    so one ``undo`` takes it back. ``problem``: why it did not run at all
+    (the file cannot be read)."""
+
+    ticket: int
+    path: Path
+    ok: bool
+    number: int
+    total: int
+    stepped: bool
+    quit: bool = False
+    problem: str | None = None
+
+
 type BridgeEvent = (
     EngineStarting
     | EngineRunning
@@ -939,6 +972,8 @@ type BridgeEvent = (
     | HealthChanged
     | SessionChanged
     | EngineNews
+    | ScriptLine
+    | ScriptDone
 )
 
 STATE_EVENTS: tuple[type, ...] = (
@@ -985,6 +1020,13 @@ class BridgeLike(Protocol):
     def send(
         self, line: str, origin: Origin, key: str | None = None, performance: bool = False
     ) -> int: ...
+
+    def run_script(self, path: Path) -> int:
+        """Queue the console script at ``path`` as typed lines are queued:
+        it runs after the lines sent before it, as one undo step, and the
+        lines sent after it wait for it. A :class:`ScriptLine` comes as each
+        line runs, then a :class:`ScriptDone`; returns their ticket."""
+        ...
 
     def confirmation(self, line: str) -> str | None: ...
 

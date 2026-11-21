@@ -6,7 +6,8 @@ ran `` ui> ``, a result (6 spaces), an error `` ✗ ``, an info line `` · ``
 engine's warnings). A line wider than the pane wraps at its words, the later
 rows under the text and not the prefix, and a resize flows what is kept again.
 At most :data:`MAX_LINES` are kept; the view follows the newest unless
-scrolled back.
+scrolled back. While held (:meth:`LogView.hold`), what is added reaches the
+pane only at each flush.
 """
 
 from __future__ import annotations
@@ -81,13 +82,30 @@ class LogView(RichLog):
         self.entries: deque[tuple[Kind, str]] = deque(maxlen=MAX_LINES)
         self._firsts: deque[bool] = deque(maxlen=MAX_LINES)  # alongside entries
         self._flow_width = 0  # what the rows are wrapped to; 0 until the pane has a width
+        self._held: list[tuple[tuple[Kind, str], bool]] | None = None  # added, not yet written
 
     def add(self, kind: Kind, text: str) -> None:
         added = [((kind, line), i == 0) for i, line in enumerate(text.splitlines() or [""])]
         for entry, first in added:
             self.entries.append(entry)
             self._firsts.append(first)
-        self._write_rows(added)
+        if self._held is not None:
+            self._held += added
+        else:
+            self._write_rows(added)
+
+    def hold(self) -> None:
+        """Keep what is added off the pane until :meth:`flush` (``entries``
+        has it at once): each write lays the screen out again, which many
+        lines a second, as a script imports, make costly."""
+        if self._held is None:
+            self._held = []
+
+    def flush(self, *, hold: bool = False) -> None:
+        """Write what was held, as one write; then hold on, or not."""
+        held, self._held = self._held, ([] if hold else None)
+        if held:
+            self._write_rows(held)
 
     def on_resize(self, event: Resize) -> None:
         """Flow what is kept again at a new width (the first one writes it all)."""
@@ -96,6 +114,8 @@ class LogView(RichLog):
         if width != self._flow_width:
             self._flow_width = width
             self.clear()
+            if self._held is not None:
+                self._held = []  # written now, with the rest
             self._write_rows(zip(self.entries, self._firsts, strict=True))
 
     def _write_rows(self, lines: Iterable[tuple[tuple[Kind, str], bool]]) -> None:

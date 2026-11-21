@@ -3,13 +3,14 @@
 The prompt always has the keyboard. It keeps the history (↑ ↓), and offers
 each key to the app first (``offer``), in the order the keys were typed: Tab,
 Esc, Ctrl+C, the keys that act only on an empty prompt, and those of the pane
-cursor.
+cursor. While a script imports, the hint row is its bar (file-menu plan
+call 21).
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import ClassVar
+from typing import ClassVar, Final
 
 from rich.text import Text
 from textual import events
@@ -120,3 +121,41 @@ class HintRow(Static):
     def show_text(self, text: str, style: str = colors.AMBER) -> None:
         """A plain message instead (Ctrl+C's, what is under the mouse)."""
         self.update(Text(text, style=style), layout=False)
+
+    def show_import(self, name: str, number: int, total: int) -> None:
+        """The import bar instead, while a script imports (:func:`import_text`)."""
+        self.update(import_text(name, number, total, self.size.width), layout=False)
+
+
+BAR: Final = 30
+"""The import bar's cells, at most."""
+
+LEAST_BAR: Final = 10
+"""The import bar's cells, at least: the row cuts its end first."""
+
+
+def import_text(name: str, number: int, total: int, width: int) -> Text:
+    """``IMPORT festival.busk  ━━━━╸──────  812 / 2189 · lines typed now wait``
+    in ``width`` cells: the script, the lines of its file that have run (none
+    known yet: ``starting``), and that the lines typed meanwhile wait."""
+    count = f"  {number} / {total}" if total else "  starting"
+    note = " · lines typed now wait"
+    room = width - len(f"IMPORT {name}  ") - len(count) - len(note)
+    cells = max(LEAST_BAR, min(BAR, room))
+    text = Text("IMPORT ", style=f"bold {colors.CYAN}")
+    text.append(name, style=colors.FG)
+    text.append("  ")
+    text.append_text(progress_text(number / total if total else 0.0, cells))
+    text.append(count, style=colors.MID)
+    text.append(note, style=colors.DIM)
+    return text
+
+
+def progress_text(done: float, width: int) -> Text:
+    """``done`` (0..1) as ``━`` on a ``─`` track ``width`` cells wide, to half
+    a cell (``╸``)."""
+    full, half = divmod(round(max(0.0, min(1.0, done)) * width * 2), 2)
+    text = Text("━" * full, style=colors.CYAN)
+    text.append("╸" * half, style=colors.CYAN)
+    text.append("─" * (width - full - half), style=colors.BORDER)
+    return text

@@ -39,6 +39,8 @@ from busk_tui.model import (
     LiveChanged,
     OutputChanged,
     ProgrammerChanged,
+    ScriptDone,
+    ScriptLine,
     SessionChanged,
     SessionState,
     ShowChanged,
@@ -645,6 +647,149 @@ def test_lines_queued_at_stop_are_dropped(stub: Stub) -> None:
     bridge.stop(timeout=2.0)
     assert "slow" in stub.ran  # the line it ran finished
     assert "never" not in stub.ran
+
+
+# --------------------------------------------------------------- scripts
+
+
+def script(tmp_path: Path, text: str) -> Path:
+    path = tmp_path / "rig.busk"
+    path.write_text(text)
+    return path
+
+
+def test_a_script_runs_its_lines_in_turn_and_tells_each(
+    running: tuple[Bridge, Events], stub: Stub, tmp_path: Path
+) -> None:
+    """After the lines sent before it, before those sent after it, on the
+    ordered worker; blank lines and comments are told too (the UI leaves
+    them out), and it leaves an undo step."""
+    bridge, events = running
+    path = script(tmp_path, "edit 1\n\n# a comment\nedit 2\n")
+    bridge.send("before", "typed")
+    ticket = bridge.run_script(path)
+    bridge.send("after", "typed")
+    events.done("after")
+    assert stub.ran[-4:] == ["before", "edit 1", "edit 2", "after"]
+    assert {stub.threads["edit 1"], stub.threads["edit 2"]} == {"busk-tui-ordered"}
+    assert events.of(ScriptLine) == [
+        ScriptLine(ticket, 1, 4, "edit 1", True, ("did edit 1",)),
+        ScriptLine(ticket, 2, 4, "", True, ()),
+        ScriptLine(ticket, 3, 4, "# a comment", True, ()),
+        ScriptLine(ticket, 4, 4, "edit 2", True, ("did edit 2",)),
+    ]
+    assert events.of(ScriptDone) == [ScriptDone(ticket, path, True, 4, 4, stepped=True)]
+    order = [type(e).__name__ for e in events.seen if isinstance(e, ScriptDone | CommandDone)]
+    assert order[-3:] == ["CommandDone", "ScriptDone", "CommandDone"]
+
+
+def test_each_line_is_told_as_it_runs_and_the_script_is_not_busy(
+    running: tuple[Bridge, Events], stub: Stub, tmp_path: Path
+) -> None:
+    bridge, events = running
+    gate = stub.gates["edit 2"] = threading.Event()
+    path = script(tmp_path, "edit 1\nedit 2\n")
+    bridge.run_script(path)
+    bridge.send("typed meanwhile", "typed")
+    events.until(lambda e: isinstance(e, ScriptLine) and e.number == 1, "line 1")
+    time.sleep(0.05)
+    assert not events.of(ScriptDone)
+    assert "typed meanwhile" not in stub.ran  # it waits for the script
+    assert bridge.busy is None  # the UI shows the script's own progress
+    gate.set()
+    events.done("typed meanwhile")
+    assert stub.ran[-3:] == ["edit 1", "edit 2", "typed meanwhile"]
+
+
+def test_a_refused_line_ends_the_script_there(
+    running: tuple[Bridge, Events], stub: Stub, tmp_path: Path
+) -> None:
+    bridge, events = running
+    path = script(tmp_path, "edit 1\nbad line\nedit 3\n")
+    ticket = bridge.run_script(path)
+    done = events.until(lambda e: isinstance(e, ScriptDone), "ScriptDone")
+    assert done == ScriptDone(ticket, path, False, 2, 3, stepped=True)
+    assert events.of(ScriptLine)[-1] == ScriptLine(
+        ticket, 2, 3, "bad line", False, ("error: no such thing",)
+    )
+    assert "edit 3" not in stub.ran
+
+
+def test_a_script_that_changes_nothing_leaves_no_step(
+    running: tuple[Bridge, Events], tmp_path: Path
+) -> None:
+    bridge, events = running
+    path = script(tmp_path, "# nothing to do\n")
+    ticket = bridge.run_script(path)
+    done = events.until(lambda e: isinstance(e, ScriptDone), "ScriptDone")
+    assert done == ScriptDone(ticket, path, True, 1, 1, stepped=False)
+
+
+def test_a_quit_line_ends_the_script_and_asks_to_quit(
+    running: tuple[Bridge, Events], stub: Stub, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bridge, events = running
+    execute = stub.execute
+    monkeypatch.setattr(
+        stub, "execute", lambda line: busk.Reply("", quit=True) if line == "quit" else execute(line)
+    )
+    path = script(tmp_path, "edit 1\nquit\nedit 3\n")
+    ticket = bridge.run_script(path)
+    done = events.until(lambda e: isinstance(e, ScriptDone), "ScriptDone")
+    assert done == ScriptDone(ticket, path, True, 2, 3, stepped=True, quit=True)
+
+
+def test_a_script_that_cannot_be_read_says_why(
+    running: tuple[Bridge, Events], tmp_path: Path
+) -> None:
+    bridge, events = running
+    gone, binary = tmp_path / "gone.busk", tmp_path / "binary.busk"
+    binary.write_bytes(b"\xff\xfe\x00")
+    for path, why in ((gone, "No such file or directory"), (binary, "it is not UTF-8 text")):
+        ticket = bridge.run_script(path)
+        done = events.until(lambda e, t=ticket: isinstance(e, ScriptDone) and e.ticket == t)
+        problem = f"cannot read {str(path)!r}: {why}"
+        assert done == ScriptDone(ticket, path, False, 0, 0, stepped=False, problem=problem)
+
+
+def test_the_reader_looks_four_times_a_second_while_a_script_runs(
+    running: tuple[Bridge, Events], stub: Stub, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The show changes at almost every line: each look would convert it all."""
+    bridge, events = running
+    looks: list[float] = []
+    look = bridge._look
+
+    def counted() -> None:
+        looks.append(time.monotonic())
+        look()
+
+    monkeypatch.setattr(bridge, "_look", counted)
+    gate = stub.gates["edit 2"] = threading.Event()
+    bridge.run_script(script(tmp_path, "edit 1\nedit 2\n"))
+    events.until(lambda e: isinstance(e, ScriptLine) and e.number == 1, "line 1")
+    looks.clear()
+    time.sleep(1.0)
+    assert len(looks) <= 6  # 4 a second; 20 without the script
+    gate.set()
+    events.until(lambda e: isinstance(e, ScriptDone), "ScriptDone")
+
+
+def test_stopping_the_bridge_ends_a_script_at_its_next_line(stub: Stub, tmp_path: Path) -> None:
+    bridge = Bridge(stub, None)  # type: ignore[arg-type]
+    gate = stub.gates["edit 2"] = threading.Event()
+    bridge.start()
+    events = Events(bridge)
+    events.until(lambda e: isinstance(e, EngineRunning))
+    bridge.run_script(script(tmp_path, "edit 1\nedit 2\nedit 3\n"))
+    events.until(lambda e: isinstance(e, ScriptLine) and e.number == 1, "line 1")
+    threading.Timer(0.1, gate.set).start()
+    started = time.monotonic()
+    bridge.stop(timeout=2.0)
+    assert time.monotonic() - started < 1.0
+    assert stub.ran[-2:] == ["edit 1", "edit 2"]  # the line it ran finished; no more
+    assert not events.of(ScriptDone)
+    assert not [t for t in threading.enumerate() if t.name.startswith("busk-tui")]
 
 
 def test_questions_and_answers_go_to_the_show(running: tuple[Bridge, Events]) -> None:

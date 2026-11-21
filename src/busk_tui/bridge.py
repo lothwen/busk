@@ -8,15 +8,16 @@ UI what :class:`~busk_tui.model.BridgeLike` promises, from four threads of its
 own (plan §4.1):
 
 * the **ordered** worker runs typed lines, edits and programmer lines, one at
-  a time, in order (and, with ``--standalone``, builds and starts the show
-  first);
+  a time, in order, and the scripts of Import script…, a line at a time,
+  each told as it runs (and, with ``--standalone``, builds and starts the
+  show first);
 * the **controls** worker runs the performance lines of the TUI's own
   controls, in order; they never wait for an ordered line (busk's GAP-12);
-* the **reader** looks at the show's published state 20 times a second (the
-  output, the running effects, the DMX frame and the inputs from the
-  surfaces, while a page shows them, 10 times; a cue list's tracked states,
-  while F4 shows the list, once and after each show edit) and
-  sends an event only when something changed; when the selection changes,
+* the **reader** looks at the show's published state 20 times a second, 4
+  while a script runs (the output, the running effects, the DMX frame and
+  the inputs from the surfaces, while a page shows them, 10 times; a cue
+  list's tracked states, while F4 shows the list, once and after each show
+  edit) and sends an event only when something changed; when the selection changes,
   it asks busk's completion which options the selection offers (busk's
   ``expected`` only reads, so any thread may ask);
 * a **log handler** on the ``busk`` logger turns its records into
@@ -59,7 +60,9 @@ from busk import (
     OutputSnapshot,
     ProfileLibrary,
     ProgrammerStatus,
+    Reply,
     RouteStatus,
+    ScriptError,
     SessionStatus,
     Show,
     ShowLoadError,
@@ -130,6 +133,8 @@ from busk_tui.model import (
     Rgb,
     RoutesChanged,
     RouteView,
+    ScriptDone,
+    ScriptLine,
     SessionChanged,
     SessionState,
     ShowChanged,
@@ -154,6 +159,11 @@ from busk_tui.model import (
 
 POLL_S: Final = 0.05
 """How often the reader looks at the show (20 Hz)."""
+
+SCRIPT_POLL_S: Final = 0.25
+"""How often it looks while a script runs (4 Hz): the show changes at almost
+every line, and each look then converts it all again, which took a festival
+show's import from 4.5 s to 13 s at 20 Hz (file-menu plan Phase 7)."""
 
 LATE_S: Final = 1.0
 """The engine is late while its overruns grow over this long, or longer."""
@@ -191,6 +201,11 @@ class _Job:
     origin: Origin
     key: str | None
     then: Callable[[bool, str], None] | None = None  # the bridge's own follow-up, no event
+    script: Path | None = None  # a script to run (Bridge.run_script), not the line
+
+
+class _Halted(Exception):
+    """The bridge stops: the script it runs ends at its next line."""
 
 
 class _Lane:
@@ -314,6 +329,7 @@ class Bridge:
         self._poke = threading.Event()  # look at the show now, not at the next poll
         self._threads: list[threading.Thread] = []
         self._busy: Busy | None = None
+        self._scripting = False  # the ordered worker runs a script: the reader looks less
         self._help: tuple[str, ...] = ()
         self._watching = (False, False, False, False)  # output, effects, DMX, inputs
         self._tracking: int | None = None  # the cue list whose tracked states the reader reads
@@ -439,6 +455,18 @@ class Bridge:
         lane.put(_Job(ticket, line, origin, key))
         return ticket
 
+    def run_script(self, path: Path) -> int:
+        """Queue the console script at ``path`` on the ordered worker, as a
+        typed line: it runs after the lines sent before it, and those sent
+        after it wait for it. Its lines run as busk's ``source`` runs them,
+        one undo step; a :class:`~busk_tui.model.ScriptLine` comes as each
+        one runs, then a :class:`~busk_tui.model.ScriptDone`, both with the
+        ticket it returns."""
+        ticket = next(self._tickets)
+        line = commands.source(str(path)).text
+        self._ordered.put(_Job(ticket, line, "ui", None, script=path))
+        return ticket
+
     def confirmation(self, line: str) -> str | None:
         """The engine's question before ``line`` (busk's GAP-10), or ``None``."""
         show = self._show
@@ -545,6 +573,14 @@ class Bridge:
             if job.then is not None:  # the bridge's own: not shown as busy
                 self._run(job)
                 continue
+            if job.script is not None:  # not shown as busy: the UI shows its own progress
+                self._scripting = True
+                try:
+                    self._run_script(job.ticket, job.script)
+                finally:
+                    self._scripting = False
+                self._poke.set()
+                continue
             self._busy = Busy(job.line, time.monotonic())
             try:
                 self._run(job)
@@ -617,6 +653,53 @@ class Bridge:
             )
         return ok
 
+    def _run_script(self, ticket: int, path: Path) -> None:
+        """Run the script at ``path`` with busk's ``run_script`` (busk's
+        GAP-56 and GAP-57): a ``ScriptLine`` as each line runs, then a
+        ``ScriptDone``. It left an undo step if busk's undo stack changed.
+        Once the bridge stops, it ends at its next line, with no event."""
+        show = self._show
+        assert show is not None
+        before = show.session
+        last = ScriptLine(ticket, 0, 0, "", True, ())
+        quit = False  # the last line asked to quit, which ended the script
+
+        def each(number: int, total: int, line: str, reply: Reply) -> None:
+            nonlocal last, quit
+            if self._halt.is_set():
+                raise _Halted
+            last = ScriptLine(ticket, number, total, line, reply.ok, tuple(reply.text.splitlines()))
+            quit = reply.quit
+            self._events.put(last)
+
+        problem = None
+        try:
+            show.run_script(path, each=each)
+        except _Halted:
+            return
+        except ScriptError:
+            pass  # its failing line came as a ScriptLine
+        except OSError as exc:  # as busk's source says it
+            problem = f"cannot read {str(path)!r}: {exc.strerror or exc}"
+        except UnicodeDecodeError:
+            problem = f"cannot read {str(path)!r}: it is not UTF-8 text"
+        except Exception as exc:
+            _debug.exception("run_script(%r) raised", path)
+            problem = f"internal error: {type(exc).__name__}: {exc}"
+        after = show.session
+        self._events.put(
+            ScriptDone(
+                ticket=ticket,
+                path=path,
+                ok=problem is None and last.ok,
+                number=last.number,
+                total=last.total,
+                stepped=(after.undoSteps, after.nextUndo) != (before.undoSteps, before.nextUndo),
+                quit=problem is None and last.ok and quit,
+                problem=problem,
+            )
+        )
+
     def _take_help(self, ok: bool, text: str) -> None:
         if ok:
             self._help = tuple(text.splitlines())
@@ -625,7 +708,7 @@ class Bridge:
 
     def _reader_main(self) -> None:
         while not self._halt.is_set():
-            self._poke.wait(POLL_S)
+            self._poke.wait(SCRIPT_POLL_S if self._scripting else POLL_S)
             self._poke.clear()
             if self._halt.is_set() or not self._ready.is_set():
                 continue

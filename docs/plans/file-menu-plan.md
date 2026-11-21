@@ -724,6 +724,70 @@ recovery, the public API, the docs and the File menu then passed again. ruff, fo
     Verify: a pilot test from the menu to the line sent; a refusal reaches the log.
 24. **Docs.** The guide's File menu (the import bar, Import profile…), CHANGELOG.
 
+**Done** 2026-11-21, on 271e8d8. Code: `Bridge.run_script`, `_run_script`, `_Halted`,
+`SCRIPT_POLL_S` (`src/busk_tui/bridge.py`); `model.ScriptLine`, `ScriptDone` and
+`BridgeLike.run_script`; in `shell.py`, `Importing`, `start_import`, `_script_line`,
+`_script_done`, `_log_reply` (shared with typed lines), `_show_bar`, `_held`, `import_profile`
+and `LOG_S`; `HintRow.show_import`, `import_text` and `progress_text` (`widgets/prompt.py`);
+`LogView.hold` and `flush`; `import_profile` in `FileMenu`'s `ITEMS`. Tests:
+`tests/tui/test_tui_import.py` (new, on `FakeBridge` and on the real engine), the scripts in
+`test_tui_bridge.py` (on the stub, which gains `run_script`), the held log in
+`test_tui_prompt.py`, the menu in `test_tui_file_menu.py`, the gate in `test_tui_perf.py` and
+`tui_perf_frontend.py` (a `script` mode); `FakeBridge.run_script` and `script_events` in
+`tui_fakes.py`. What differs from the steps above, or goes beyond them:
+
+- **The reader looks 4 times a second while a script runs** (vetoable). The perf gate found
+  the import of festival.busk 2.9 times as slow through the TUI as with `run_script` alone
+  (12.9 s against 4.5 s, under `busk run`): the show changes at almost every line, and each of
+  the reader's 20 looks a second converted it all again (the show model, the selection's
+  options, the routes and surfaces). The script holds the GIL for most of the time, so the
+  TUI's work comes out of the script's. So the pages, and the live state the performance
+  controls show, follow the show at 4 Hz during an import.
+- **The log's pane is written 5 times a second while a script imports** (`LogView.hold`,
+  vetoable): each write of `RichLog` lays the screen out again (`virtual_size` is a layout
+  reactive), at every drain. The entries take each line at once. With both: 7.8 to 8.1 s in the
+  gate, 7.4 to 9.7 s in a pty, against 4.5 s.
+- **Another Import script… waits too**, saying so in the log, as New…, Open… and Open
+  recent… do (call 21 names those and Close). `_open` checks again, for a show read or made
+  while an import started.
+- **Where it starts and how it ends.** The log says `importing ~/shows/festival.busk`, and the
+  bar reads `starting` until the first line has run (it waits for the lines sent before it).
+  `(Ctrl+Z undoes it)` is said only when busk's undo stack changed (`undoSteps` and `nextUndo`,
+  before and after): a script that changes nothing, or is refused at its first line, leaves no
+  step. A `quit` line ends it with `imported rig.busk: 2 of 3 lines, to its quit (…)`, and
+  opens the quit dialog, as a `quit` in a `source`d script did. A file that cannot be read gets
+  busk's words (`cannot read '…': No such file or directory`), or `it is not UTF-8 text`.
+- **A script's line in the log** is ` ui> festival.busk:812  <line>` (the TUI ran it), then its
+  reply as a typed line's: a result, or an error without busk's `error: `.
+- **The bar keeps the hint row** while typing and under the mouse (F8's cells); only Ctrl+C's
+  `press Ctrl+C again to quit` shows over it, until it is disarmed. The context's busy mark
+  (`⧗ line 1.2s`) is left out for a script.
+- **Quitting during an import:** Save and quit saves once the script has ended (the save waits
+  its turn); Quit without saving stops the script after the line it runs (the bridge's `each`
+  raises once the bridge stops), so `Bridge.stop` does not wait out its 5 s. In a pty, the run
+  ended 0.68 s after the quit, and the lines that ran were in the autosave.
+- **The gate for an import** compares the overruns with the bare run's: busk's own edits cost
+  the engine 2 to 4 overruns per import with no display at all (the compiled show changes at
+  each), more than 0.2 % of the import's ticks; with the TUI, 2 or 3, a smaller share. So the
+  gate is that the TUI adds none (`check(…, overruns=)`), and that an import takes at most 2.5
+  times as long as `run_script` (`MAX_IMPORT`), which the 2.9 above fails. Its festival.busk
+  leaves out the route, the surfaces, the bindings and the feedback (no packets, no port), with
+  the profiles' paths absolute: 2,129 lines.
+- **`--standalone`** imports festival.busk in 23 s in a pty: the engine, its output and the
+  script share one process.
+- **festival.busk alone** takes 5.06 s line by line and 5.14 s with `run_script` on an
+  `OfflineShow`: Phase 6's one step costs nothing.
+
+Checks: the whole suite (`-n 6`, 10:47) 7,303 passed, 1 skipped, 2 failed: Phase 2's
+`test_waveforms.py::test_vectorised_equals_the_scalar_transcription`, and
+`test_tui_e2e.py::test_an_f2_drag_is_one_undo_on_the_real_engine`, a wait that timed out under
+load (it runs no script; it passes alone, three times). Both are untouched here. The gate
+(`-m perf`, the import alone) passes: 8.1 s against 4.4 s, 2 overruns of 802 ticks against 2
+of 401. 31 mutations, all caught. ruff, format and mypy clean. Pty runs under `busk run` on a new show: Alt+F, Import
+script festival.busk (the bar, the lines and their replies, the end), `gm 70%` typed during it
+running after it, one Ctrl+Z (`undid: source …/festival.busk`), quit with 0; the same quitting
+mid-import (0.68 s, exit 0); the import under `--standalone`, quit with 0.
+
 ### Phase 8: the recent shows (forget, the recovery mark)
 
 25. **Forget** (call 23): `config.forget_show`, and Delete and `d` in `RecentShows`.
@@ -826,4 +890,6 @@ The items listed here on 2026-11-20 are now Phases 6–10:
 Left after them:
 
 - Stopping an import midway. busk stops a script only on the main thread's Ctrl+C
-  (`Console.interrupted`), and the TUI's lines run on the bridge's thread.
+  (`Console.interrupted`), and the TUI's lines run on the bridge's thread. But an exception
+  from `run_script`'s `each` stops it between two lines (GAP-57), as the bridge does when it
+  stops (Phase 7, `_Halted`): a stop key would need no engine change.

@@ -1,6 +1,7 @@
 """The File menu (``busk_tui.widgets.file_menu``) on the status bar's badge,
 what its items do (Save, Save as…, Import script…, Quit), Ctrl+S, and the
-recent shows the app keeps in ``state.json`` (file-menu plan Phase 2)."""
+recent shows the app keeps in ``state.json`` (file-menu plan Phase 2). How an
+import runs, and Import profile…, are in ``test_tui_import.py``."""
 
 from __future__ import annotations
 
@@ -71,6 +72,7 @@ def test_a_click_on_the_badge_opens_the_menu_under_it_and_esc_closes_it() -> Non
             "Save Ctrl+S",
             "Save as…",
             "Import script…",
+            "Import profile…",
             "Quit Ctrl+Q",
         ]
         await pilot.press("escape")
@@ -231,12 +233,11 @@ def test_save_as_before_the_show_has_a_file_starts_where_busk_tui_runs(
 # ------------------------------------------------------------ import script
 
 
-def test_import_script_starts_in_the_shows_folder_and_sends_source(tmp_path: Path) -> None:
+def test_import_script_starts_in_the_shows_folder_and_runs_the_script(tmp_path: Path) -> None:
     folder = show_folder(tmp_path)
     script = folder / "rig.busk"
     script.write_text("sel group 1\n")
-    line = f"source {json.dumps(str(script))}"
-    bridge = FakeBridge(replies={line: Reply(text="2 targets selected")})
+    bridge = FakeBridge(replies={"sel group 1": Reply(text="2 targets selected")})
     app = make_app(bridge)
 
     async def body(pilot: Pilot[int]) -> None:
@@ -247,9 +248,10 @@ def test_import_script_starts_in_the_shows_folder_and_sends_source(tmp_path: Pat
         assert (picker.mode, picker.folder) == ("script", folder)
         await pilot.press(*"rig", "enter")
         await settle(pilot, app)
-        assert bridge.lines() == [line]
+        assert [path for _, path in bridge.scripts] == [script]
+        assert bridge.lines() == []  # not as a line
         entries = app.query_one(LogView).entries
-        assert ("ui", line) in entries
+        assert ("ui", "rig.busk:1  sel group 1") in entries
         assert ("result", "2 targets selected") in entries
 
     drive(app, body)
