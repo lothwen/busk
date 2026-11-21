@@ -29,7 +29,9 @@ threads). The session routes it by class
   ``docs/dev/tui/engine-gaps.md``): the programmer steps between them are
   one step on the timeline (:mod:`busk.session.timeline`), whichever thread
   or surface sent them. A line that is refused changes nothing, the group
-  included.
+  included. While a script runs (:meth:`Session.script`, GAP-56), every
+  step joins one, and undoing it puts back its show edits and its
+  programmer in one change.
 
 **Ordering.** Installs and performance commands share the engine's FIFO
 queue, and installs are queued while the lock is held, so the engine sees
@@ -57,13 +59,14 @@ one reference assignment after every change: they never take the lock.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import queue
 import secrets
 import threading
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Final, cast
@@ -389,6 +392,7 @@ class Session:
         written_effects: frozenset[str] = frozenset(),
         cause: bytes | None = None,
         then: Callable[[], object] | None = None,
+        publish: bool = True,
     ) -> None:
         """Install ``new`` in the engine and, for content changes, record a step.
 
@@ -397,7 +401,8 @@ class Session:
         install's event-log cause; ``None`` with causes on means the whole
         programmer is logged (an undo, redo or recovery). ``then`` moves the
         timeline (an undo or redo) before the snapshot is published, so the
-        snapshot shows both.
+        snapshot shows both. Without ``publish``, the caller publishes (a
+        script's step: its show and its programmer as one change).
         """
         old = self._programmer
         installs = bool(
@@ -439,7 +444,8 @@ class Session:
             then()
         self._programmer = new
         self._versions[1] += 1
-        self._publish()
+        if publish:
+            self._publish()
 
     def _take_causes(self) -> tuple[bytes, ...]:
         """The causes waiting for an install, now on one (the lock is held)."""
@@ -613,8 +619,10 @@ class Session:
         label, moved = f"undo {step.label}", self.timeline.undone
         if isinstance(step, ShowStep):
             self._commit(apply(self._state.show, step.inverse)[0], label, step.inverse, moved)
-        else:
+        elif isinstance(step, ProgrammerStep):
             self._restore(step.before, label, moved)
+        else:
+            self._script_step(step.inverse, step.before, label, moved)
         return CommandResult(ok=True, message=f"undid: {step.label}")
 
     def _redo(self) -> CommandResult:
@@ -624,14 +632,47 @@ class Session:
         label, moved = f"redo {step.label}", self.timeline.redone
         if isinstance(step, ShowStep):
             self._commit(apply(self._state.show, step.forward)[0], label, step.forward, moved)
-        else:
+        elif isinstance(step, ProgrammerStep):
             self._restore(step.after, label, moved)
+        else:
+            self._script_step(step.forward, step.after, label, moved)
         return CommandResult(ok=True, message=f"redid: {step.label}")
 
-    def _restore(self, target: Programmer, label: str, then: Callable[[], object]) -> None:
+    def _script_step(
+        self,
+        ops: Sequence[Op],
+        programmer: Programmer | None,
+        label: str,
+        moved: Callable[[], object],
+    ) -> None:
+        """Undo or redo a :class:`~busk.session.timeline.ScriptStep`: its
+        show ops, then its programmer (``None``: the script changed none),
+        published as one change. Nothing changes if the show would not
+        validate or compile."""
+        if programmer is None:
+            self._commit(apply(self._state.show, ops)[0], label, ops, moved)
+        elif not ops:
+            self._restore(programmer, label, moved)
+        else:
+            self._commit(
+                apply(self._state.show, ops)[0],
+                label,
+                ops,
+                lambda: self._restore(programmer, label, moved, publish=False),
+            )
+
+    def _restore(
+        self,
+        target: Programmer,
+        label: str,
+        then: Callable[[], object],
+        *,
+        publish: bool = True,
+    ) -> None:
         """Restore a programmer step's selection and values; the modes (blind,
         the fade time, highlight) keep their state. Selected targets that no longer exist
-        are dropped. ``then`` moves the timeline, as for :meth:`_commit`."""
+        are dropped. ``then`` moves the timeline, as for :meth:`_commit`;
+        ``publish`` is :meth:`_set_programmer`'s."""
         selection = drop_missing(self._state, target.selection)
         current = self._programmer
         restored = replace(
@@ -641,7 +682,22 @@ class Session:
             fadeTime=current.fadeTime,
             highlight=current.highlight,
         )
-        self._set_programmer(restored, label=label, step=False, then=then)
+        self._set_programmer(restored, label=label, step=False, then=then, publish=publish)
+
+    @contextlib.contextmanager
+    def script(self, label: str) -> Iterator[None]:
+        """Make the steps of the block one, labelled ``label`` (``source
+        rig.busk``), while a script runs in it (GAP-56 of
+        ``docs/dev/tui/engine-gaps.md``; :mod:`busk.session.timeline`). A
+        script run inside it joins its step. Steps another thread pushes
+        meanwhile join it too, as they join an undo group."""
+        with self._lock:
+            self.timeline.open_script(label)
+        try:
+            yield
+        finally:
+            with self._lock:
+                self.timeline.close_script()
 
     # -------------------------------------------------------------- save
 

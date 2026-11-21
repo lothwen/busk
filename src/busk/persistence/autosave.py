@@ -47,27 +47,35 @@ stamp of the show the engine runs (phase-7-plan decision 8). When
 ``showPath`` names another file than the one it loaded, the crashed console
 had saved the show as that file: it loads that one, and its recovery,
 instead.
+
+**Before opening a show** (GAP-58 of ``docs/dev/tui/engine-gaps.md``),
+:func:`pending_recovery` says whether ``busk run`` would recover it, by
+:func:`read_recovery`'s rules, for a frontend to mark it in a list of shows.
 """
 
 from __future__ import annotations
 
 import contextlib
 import json
+import os
 import threading
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
 
 from busk.engine.clock import Clock
 from busk.engine.install import Stamp
 from busk.model.master import MAX_BPM
-from busk.persistence.paths import autosave_directory
+from busk.persistence.paths import autosave_directory, state_directory
 from busk.persistence.show_file import (
+    ShowLoadError,
     WallClock,
     atomic_write,
     encode_show,
     file_stamp,
+    read_show_bytes,
 )
 from busk.session.programmer import Programmer, from_json, to_json
 from busk.session.session import Session, SessionSnapshot
@@ -315,6 +323,60 @@ def read_recovery(
         showStamp=None if isinstance(autosave, str) and newer is None else stamp,
         showPath=Path(saved) if isinstance(saved, str) else None,
         dropped=tuple(dropped),
+    )
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class PendingRecovery:
+    """What ``busk run`` would recover of a show whose last run did not end
+    cleanly (GAP-58 of ``docs/dev/tui/engine-gaps.md``): it crashed or was
+    killed, or it runs still.
+
+    ``written`` is when that run last wrote what it is recovered from, its
+    ``session.json``, in UTC. ``edits`` says that unsaved edits come back
+    too: an autosave of the show newer than its file, which ``busk run``
+    loads instead of the file, as unsaved edits. Either way the programmer,
+    the masters' levels, the tempos and the page come back.
+    """
+
+    written: datetime
+    edits: bool
+
+
+def pending_recovery(
+    path: str | os.PathLike[str], *, state_dir: str | os.PathLike[str] | None = None
+) -> PendingRecovery | None:
+    """What ``busk run PATH`` would recover of the show at ``path`` (see
+    :class:`PendingRecovery`), or ``None`` when it would start clean: no
+    run left anything for the show's id, the last one ended cleanly, or the
+    file cannot be read or holds no show id. Only the show's id is read,
+    not the whole show, so a list of shows can ask for each.
+
+    ``state_dir`` is ``busk run``'s ``--state-dir``: by default
+    ``$XDG_STATE_HOME/busk``, else ``~/.local/state/busk``. The rules are
+    those of ``busk run`` started without ``--no-recover``, which recovers
+    nothing. A show that a ``busk run`` runs now is pending too: its
+    ``session.json`` says what a crash would leave. Nothing is written.
+    """
+    path = Path(path)
+    try:
+        document = json.loads(read_show_bytes(path))
+    except (OSError, ValueError, ShowLoadError):
+        return None
+    meta = document.get("meta") if isinstance(document, dict) else None
+    show_id = meta.get("id") if isinstance(meta, dict) else None
+    if not isinstance(show_id, str):
+        return None
+    directory = state_directory(None if state_dir is None else Path(state_dir))
+    recovery = read_recovery(directory, show_id, path)
+    if recovery is None:
+        return None
+    try:
+        written = (autosave_directory(directory, show_id) / SESSION_FILE).stat().st_mtime
+    except OSError:  # deleted since it was read
+        return None
+    return PendingRecovery(
+        written=datetime.fromtimestamp(written, UTC), edits=recovery.showAutosave is not None
     )
 
 

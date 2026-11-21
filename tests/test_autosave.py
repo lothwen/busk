@@ -1,6 +1,7 @@
 """Autosave triggers, retention, session.json and the recovery decision (phase-3-plan §5.9;
 phase-4-plan §5.12: the programmer fade time and the speed masters' tempos; phase-5-plan
-§5.10: the programmer's effects; phase-7-plan §5.8: the show stamp and forced recovery)."""
+§5.10: the programmer's effects; phase-7-plan §5.8: the show stamp and forced recovery;
+GAP-58: whether a recovery is pending, before opening the show)."""
 
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ from typing import Any
 import pytest
 
 from builders import APPENDIX_A, effect_instance, load_doc
+from busk import PendingRecovery, pending_recovery
 from busk.engine.clock import FakeClock
 from busk.persistence.autosave import (
     SHOWS_KEPT,
@@ -509,3 +511,117 @@ def test_claim_takes_back_the_copy_a_run_before_left(setup: Any, tmp_path: Path)
     assert recovery.showPath == path
     claim(tmp_path / "state", "show-none", path)  # no folder: nothing happens
     assert not (tmp_path / "state" / "autosave" / "show-none").exists()
+
+
+# ------------------------------------------------------------- pending recovery (GAP-58)
+
+
+def test_a_crash_is_pending_with_its_edits_and_when_it_last_wrote(
+    setup: Any, tmp_path: Path
+) -> None:
+    _, worker, path = crash(setup)
+    os.utime(worker.folder / "session.json", (1_700_000_000, 1_700_000_000))
+    assert pending_recovery(path, state_dir=tmp_path / "state") == PendingRecovery(
+        written=datetime.fromtimestamp(1_700_000_000, UTC), edits=True
+    )
+
+
+def test_without_an_autosave_newer_than_the_file_no_edits_come_back(
+    setup: Any, tmp_path: Path
+) -> None:
+    _, _, path = crash(setup)
+    os.utime(path, None)  # saved again since, outside the session: busk run loads the file
+    pending = pending_recovery(str(path), state_dir=str(tmp_path / "state"))
+    assert pending is not None
+    assert not pending.edits
+
+
+def test_a_crash_with_programmer_changes_only_is_pending_without_edits(
+    setup: Any, tmp_path: Path
+) -> None:
+    live, worker, _, path = setup
+    worker.service(0.0)
+    live.do(sel("fx-mh2"), put("tilt", -20))
+    worker.service(2.0)  # and no finish(): a crash
+    assert pending_recovery(path, state_dir=tmp_path / "state") == PendingRecovery(
+        written=datetime.fromtimestamp((worker.folder / "session.json").stat().st_mtime, UTC),
+        edits=False,
+    )
+
+
+@pytest.mark.parametrize("case", ["missing", "clean", "garbage"])
+def test_a_normal_start_is_not_pending(setup: Any, tmp_path: Path, case: str) -> None:
+    _, worker, _, path = setup
+    worker.service(0.0)
+    session = worker.folder / "session.json"
+    if case == "missing":
+        session.unlink()
+    elif case == "clean":
+        worker.finish(1.0)
+    else:
+        session.write_text("{not json")
+    assert pending_recovery(path, state_dir=tmp_path / "state") is None
+
+
+@pytest.mark.parametrize(
+    ("name", "content"),
+    [
+        ("gone.show", None),
+        ("broken.json", b"{not json"),
+        ("list.json", b"[]"),
+        ("no-id.json", b'{"meta": {"title": "Club Night"}}'),
+        ("number.json", b'{"meta": {"id": 1}}'),
+        ("club.txt", b'{"meta": {"id": "show-01"}}'),
+        ("not-a-zip.show", b"PK no zip"),
+    ],
+)
+def test_a_file_that_holds_no_show_id_is_not_pending(
+    setup: Any, tmp_path: Path, name: str, content: bytes | None
+) -> None:
+    crash(setup)  # show-01's recovery is pending
+    path = tmp_path / name
+    if content is not None:
+        path.write_bytes(content)
+    assert pending_recovery(path, state_dir=tmp_path / "state") is None
+
+
+def test_only_the_shows_id_is_read(setup: Any, tmp_path: Path) -> None:
+    """A file with the show's id is pending, whatever else it holds: as a
+    copy made with ``cp``, which busk run would recover into."""
+    crash(setup)
+    copy = tmp_path / "copy.json"
+    copy.write_text('{"meta": {"id": "show-01"}}')
+    os.utime(copy, (1, 1))
+    pending = pending_recovery(copy, state_dir=tmp_path / "state")
+    assert pending is not None
+    assert pending.edits
+
+
+def test_the_state_directory_is_busk_runs_by_default(
+    setup: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, _, path = crash(setup)
+    xdg = tmp_path / "xdg"
+    xdg.mkdir()
+    (tmp_path / "state").rename(xdg / "busk")
+    monkeypatch.setenv("XDG_STATE_HOME", str(xdg))
+    assert pending_recovery(path) is not None
+    monkeypatch.delenv("XDG_STATE_HOME")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    assert pending_recovery(path) is None
+    (tmp_path / "home" / ".local" / "state").mkdir(parents=True)
+    (xdg / "busk").rename(tmp_path / "home" / ".local" / "state" / "busk")
+    assert pending_recovery(path) is not None
+
+
+def test_asking_changes_nothing(setup: Any, tmp_path: Path) -> None:
+    _, _, path = crash(setup)
+    state = tmp_path / "state"
+
+    def files() -> dict[Path, tuple[bytes, int]]:
+        found = sorted(p for p in state.rglob("*") if p.is_file())
+        return {p: (p.read_bytes(), p.stat().st_mtime_ns) for p in found}
+
+    before = files()
+    assert pending_recovery(path, state_dir=state) is not None
+    assert files() == before

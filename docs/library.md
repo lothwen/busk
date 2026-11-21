@@ -284,6 +284,24 @@ lines before it have run, and the ones after it have not:
 
 ```
 
+A script is one undo step, as `source` is at the prompt: one `undo` takes back what its lines
+changed, the show and the programmer together, and names it as the line that runs it
+(`source names.busk`). A script that stops at an error leaves one step for the lines that ran,
+and one that changes nothing leaves none. To follow a long script as it runs, pass `each`: it is
+called after each line of the file, before the next one runs, with the line's number, the
+file's number of lines, the line (stripped; blank lines and comments too) and its `Reply`:
+
+```python
+>>> _ = Path("names.busk").write_text('# the heads\nfixture 101 name "Lead"\nfixture 102 name "Spot"\n')
+>>> _ = offline.run_script("names.busk", each=lambda n, total, line, reply: print(f"{n}/{total} {line}"))
+1/3 # the heads
+2/3 fixture 101 name "Lead"
+3/3 fixture 102 name "Spot"
+>>> offline.execute("undo").text
+'undid: source names.busk'
+
+```
+
 `show` is the document after the edits, and `save()` writes it (to `path`, unless given
 another): it sets `meta.modified` and backs up the file it replaces. Saving to another file
 makes a new show: the copy gets a new `meta.id` and `created`, so its autosaves under `busk
@@ -304,6 +322,19 @@ the programmer. It is all of one moment, and the same object until something cha
 >>> session = offline.session
 >>> session.nextRedo
 'renamed the show "Club Night" to "Late Night"'
+
+```
+
+`busk.pending_recovery(path)` says whether `busk run` would recover the show at `path` when it
+opens it, because the show's last run did not end cleanly: it crashed, was killed, or runs
+still. It returns a `PendingRecovery`, with `written`, when that run last wrote what it is
+recovered from (UTC), and `edits`, whether unsaved edits come back too; else `None`. It reads
+only the show's id and `busk run`'s state directory (`state_dir`, by default
+`$XDG_STATE_HOME/busk`), and changes nothing, so a list of shows can ask for each:
+
+```python
+>>> print(busk.pending_recovery("club.show", state_dir="state"))  # no run of it has started
+None
 
 ```
 
@@ -528,7 +559,7 @@ another thread edited was done 32–45 ms after it was due at the 99th percentil
 
 ## Reference
 
-The 47 names of `busk.__all__`. Each has a docstring with the details; path parameters
+The 49 names of `busk.__all__`. Each has a docstring with the details; path parameters
 take `str` or `os.PathLike`.
 
 | Name | What it is |
@@ -541,8 +572,9 @@ take `str` or `os.PathLike`.
 | `read_gdtf` | `read_gdtf(path, *, manufacturer=None) -> ImportReport`: convert a GDTF file |
 | `read_profile` | `read_profile(path) -> ImportReport`: read a GDTF, OFL or busk profile file, as `profile import` does |
 | `ProfileLibrary` | The built-in profiles plus directories of profiles, for `fixture add`: `get(id)`, `find(id or name)`, iteration, `problems` |
-| `OfflineShow` | A show on a clock you drive: `submit`, `execute`, `confirmation`, `expected`, `run_script`, `save`, `tick`, `tracking`; `show`, `warnings`, `snapshot`, `output`, `effects`, `programmer`, `session`, `effect_templates`, `fixture_profiles`, `time` |
+| `OfflineShow` | A show on a clock you drive: `submit`, `execute`, `confirmation`, `expected`, `run_script` (one undo step; `each` follows it line by line), `save`, `tick`, `tracking`; `show`, `warnings`, `snapshot`, `output`, `effects`, `programmer`, `session`, `effect_templates`, `fixture_profiles`, `time` |
 | `LiveShow` | A show in real time in your process: as `OfflineShow`, with `start`, `stop` and `with`, `frame` instead of `tick`, `routes`, `surfaces`, `inputs` and `health` |
+| `pending_recovery` | `pending_recovery(path, *, state_dir=None) -> PendingRecovery or None`: whether `busk run` would recover the show at `path` |
 | `DmxFrame` | One engine output: `seq`, `time`, and `universes`, a mapping of universe number to 512 bytes |
 | `EngineHealth` | How a `LiveShow`'s engine is doing: `state` (`"starting"`, `"running"`, `"stalled"`, `"stopped"`; under `busk run` with processes also `"restarting"`, `"failed"`), `ticks`, `overruns`, `lastTickAge` (seconds since its newest tick, or `None`) |
 | `Show` | The show file format, a `TypedDict` |
@@ -567,6 +599,7 @@ take `str` or `os.PathLike`.
 | `ProgrammerStatus` | The programmer: `version`, `selection` (`(number, element)` pairs), `blind`, `highlight`, `fadeTime`, `values`, `effects` (as the show file holds them), `stopped` (the ids of the stopped effects) |
 | `ProgrammerValue` | One value in it: `number`, `element`, `attribute`, `value` (in the show's units), `preset` (`(pool, number, name)`, or `None`) |
 | `SessionStatus` | The session: `dirty` (unsaved edits), `path` (the absolute path `save` writes, or `None`), `undoSteps`, `redoSteps`, `nextUndo` and `nextRedo` (the labels `undo` and `redo` would print, or `None`), `showVersion` and `programmerVersion` (each grows with a change) |
+| `PendingRecovery` | What `pending_recovery` returns: `written` (when the run that did not end cleanly last wrote what it is recovered from, a UTC `datetime`), `edits` (unsaved edits come back too) |
 | `TrackedCue` | One cue of a list, from `tracking(L)`, as it plays when the list is played by GO from its first cue: `number`, `name`, `block`, `values`, `released` (`(number, element, attribute)` slots it takes away), `effects` |
 | `TrackedValue` | One value in it: as a `ProgrammerValue`, with `trackedFrom` (the number of the earlier cue that stores it, or `None` for the cue's own) |
 | `TrackedEffect` | One effect instance in it: `id`, `trackedFrom` (the number of the earlier cue that holds it, or `None`) |
@@ -603,7 +636,8 @@ BuskError(Exception)
 | `validate_show`, `new_show`, `ProfileLibrary()` | nothing: issues and problems are returned |
 | `OfflineShow()`, `LiveShow()` | `ShowLoadError`, `UnsupportedFeature` |
 | `submit`, `execute`, `save` | nothing: the result has `ok=False` |
-| `run_script` | `ScriptError`, `OSError` |
+| `run_script` | `ScriptError`, `OSError`; whatever its `each` raises, which stops the script there |
+| `pending_recovery` | nothing: `None` also for a file it cannot read |
 | `OfflineShow.tick` | `ValueError` (time going back) |
 | `LiveShow.start` | `RuntimeError` (started before). Routes and surfaces that fail to open are logged and retried, as in `busk run` |
 

@@ -518,7 +518,12 @@ and patching have their own commands. Every edit is a list of JSON-patch ops (`a
 copied, so an untouched subtree of the new show *is* the old object, and the inverse ops
 are captured while applying. Undo applies the inverse, redo the forward ops, through the
 same validate → compile → install path. Programmer changes share the timeline, so one
-`undo` undoes the last action, whatever it was; blind is a mode and is never undone.
+`undo` undoes the last action, whatever it was; blind is a mode and is never undone. A
+script is one step (`ScriptStep`, GAP-56): while `Session.script` is open, every step
+pushed joins the one on top of the stack, its ops appended forward and prepended inverse,
+the programmer kept from its first programmer step's `before` to its last's `after`. Its
+undo commits the inverse ops, then restores that programmer against the restored show, and
+publishes once.
 
 **Validating an edit** (`validate_edit`). Copy-on-write makes the touched entities exactly
 those that are not the very objects they were before, so only they are validated

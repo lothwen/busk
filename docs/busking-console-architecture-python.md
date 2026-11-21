@@ -1684,6 +1684,8 @@ Recording copies **active** programmer values (and effects) into the destination
 
 Show-edit commands are applied as **patches** on the immutable show tree: each produces `{"forward": …, "inverse": …}` JSON patches. Undo applies the inverse and triggers recompile. This is more robust than hand-written `undo()` methods per command, and the same patches can be sent to remote UIs for sync.
 
+**A script is one step.** The lines of a script (`source FILE`, `busk run --script`, a library's `run_script`) make one undo step: their forward patches in order, their inverse patches in reverse order, and the programmer as it was before the script's first programmer change and after its last. Undo applies the inverse and restores that programmer as one change, and redo does the same the other way. A script that stops at an error leaves one step for the lines that ran.
+
 ### 15.5 Event log
 
 Every command envelope is appended to a rotating log. Replaying a log against the same show with a fake clock reproduces a performance exactly — invaluable for bug reports ("it did something weird during the second chorus").

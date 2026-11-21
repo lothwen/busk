@@ -67,11 +67,22 @@ def offline(directory: Path) -> bytes:
 
     ids: busk.IdFactory = busk.CounterIds(start=1)
     show_ = busk.OfflineShow(show, path=path, library=library, ids=ids)
+    progress: list[tuple[int, int, str, bool]] = []
+
+    def told(number: int, total: int, line: str, reply: busk.Reply) -> None:
+        progress.append((number, total, line, reply.ok))
+
     try:
-        written: list[str] = show_.run_script("examples/club-night.busk")
+        written: list[str] = show_.run_script("examples/club-night.busk", each=told)
     except busk.ScriptError as exc:
         written = [f"{exc.path}:{exc.line}: {exc.text}", *exc.output]
     assert written
+    assert progress
+    pending: busk.PendingRecovery | None = busk.pending_recovery(path, state_dir=directory)
+    if pending is not None:
+        when: datetime = pending.written
+        edits: bool = pending.edits
+        assert (when, edits) is not None
 
     reply: busk.Reply = show_.execute("fader 1 1")
     assert reply.ok, reply.text

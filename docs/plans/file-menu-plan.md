@@ -4,6 +4,8 @@
 > Open, Save, Save as, Import script…), and a launcher when `busk-tui` starts without a show.
 > The user answered the three questions the same day (§4). §5's calls are the plan's, open to
 > veto. Checked on 2026-11-20 at 2cf566e.
+> Extended on 2026-11-21 at d442851: §10's items became Phases 6–10, with calls 18–25 and the
+> facts at the end of §2.
 
 ## 1. Scope
 
@@ -18,10 +20,12 @@
 - A list of recent shows, kept in the TUI's `state.json`.
 - A launcher when `busk-tui` is given no show: the recent shows, `[new show…]`, `[open…]`.
 - GAP-03, the typed session state, which the menu needs for the show's path.
+- Added on 2026-11-21 (Phases 6–10): Close, back to the launcher; forgetting a recent show; a
+  mark on the recent shows busk would recover; Import script as one undo step, with a bar and
+  each line shown as it runs; Import profile… in the menu.
 
-**Out** (§10): a Close item that goes back to the launcher, forgetting a recent show, a
-"recovery pending" mark in the launcher, a script imported as one undo step, Revert, and
-changing shows without stopping the output.
+**Out:** Revert, changing shows without stopping the output, and stopping an import midway
+(§10).
 
 ## 2. What busk does today
 
@@ -74,6 +78,29 @@ changing shows without stopping the output.
 - **The pending plan** says that `busk-tui` making a show is not planned
   (`tui-pending-plan.md` §7). This plan replaces that line.
 
+**For §10's items** (checked on 2026-11-21 at d442851):
+
+- **Undo groups take programmer steps only** (`session/timeline.py`): a show step closes the
+  group, so a group cannot hold a script. Each line of a `source` script is its own step.
+- **The history keeps 1,000 steps** (`timeline.LIMIT`). `examples/festival.busk` (2,189 lines)
+  fills it, so an import loses every step from before it. Run line by line on an
+  `OfflineShow`, it takes 5.1 s.
+- **`source` runs the whole script under the console's lock** (`Console._lines`) and replies
+  once, at the end. `busk run --script` and the facades' `run_script` go through the same loop.
+  The TUI's Import script sends `source "<path>"` (`commands.source`).
+- **The bridge** runs lines one at a time on its ordered lane, and the controls' performance
+  lines on another (`Bridge.send`). A performance line runs while a script holds the lock.
+- **The log** keeps 2,000 entries (`widgets/log.py`, `MAX_LINES`).
+- **Recovery is not public.** `read_recovery` and the autosave folder's name are inside
+  `busk.persistence`. `session.json` says `cleanExit: false` while a run goes, not only after a
+  crash.
+- **The launcher only reads `recent`.** The hand-off file holds only `{"open": …}`
+  (`parent.read_next`). The launcher runs in `app.main` before `parent.run`, with the default
+  signal handlers.
+- **Ctrl+W** deletes a word in the prompt (Textual's `Input`).
+- **The profile picker's `[import…]`** opens `FileDialog` in profile mode and sends
+  `profile import "<path>"` (`ProfileDialog.action_import`).
+
 ## 3. The design in one picture
 
 The menu, from a click on the badge or Alt+F:
@@ -124,6 +151,25 @@ The launcher, `busk-tui` with no show:
  Old rig           ~/old/rig.show      missing  │ saved 2026-11-19 22:14
                                                 │
  [new show…]   [open…]   [quit]                 │
+```
+
+Importing a script (calls 20 and 21), the bar in the hint row:
+
+```
+ festival.busk:811  record cue 101/6 "Breakdown"
+ recorded cue 101/6 "Breakdown"
+ festival.busk:812  record cue 101/7 "Final Drop"
+ recorded cue 101/7 "Final Drop"
+ > _
+ IMPORT festival.busk  ━━━━━━━━━━━━╸──────────────────  812 / 2189 · lines typed now wait
+```
+
+A recent show that busk would recover (call 24):
+
+```
+ Club Night        recovers  ~/shows/club.show  │ Its last run did not end cleanly
+                                                │ (2026-11-20 22:14): busk recovers the
+                                                │ programmer and its unsaved edits.
 ```
 
 ## 4. Decisions (answered 2026-11-20)
@@ -233,6 +279,88 @@ The launcher, `busk-tui` with no show:
     new `Bridge.standalone` and a new `BuskApp` start on it.
 17. **Between shows**, the statistics `busk run` prints when it ends land on the terminal's main
     screen. They are seen after the last quit.
+
+**Calls for §10's items** (2026-11-21, Phases 6–10):
+
+18. **A script is one undo step (GAP-56)**, wherever it runs: `source FILE` at the prompt or
+    from the TUI, `busk run --script`, and the facades' `run_script`.
+    - The timeline gets a `ScriptStep`. It holds the show ops of the script's lines (forward in
+      order, inverse in reverse order), and the programmer before the first line and after the
+      last, as a programmer step keeps it. Undo puts both back in one published snapshot, and
+      redo does the same the other way.
+    - Its label is the line, `source festival.busk`, so undo replies `undid: source
+      festival.busk`.
+    - A nested `source` joins the outer script's step. A script that changes nothing leaves no
+      step.
+    - A script that stops at an error leaves one step for the lines that ran, so one Ctrl+Z
+      takes back a half import.
+    - An `undo` or `redo` line in a script closes the step so far, as it closes an undo group.
+      The lines after it make a step of their own.
+    - The steps from before a long script stay in the history (§2: festival.busk fills it
+      today).
+19. **A script reports each line as it runs (GAP-57).** `run_script(path, *, each=None)` on both
+    facades calls `each(number, total, line, reply)` after each line of the file, on the thread
+    that runs the script. `total` is the file's number of lines. A nested `source` is one line,
+    with its whole reply. No new public name. The engine runs the lines, not the TUI, so they
+    run as `source` runs them: under the console's lock, with nested `source`, `quit` and the
+    one undo step.
+20. **Import script runs the script through the bridge**, not as a `source` line.
+    - `Bridge.run_script(path)` queues it on the ordered lane. It runs after the lines sent
+      before it, and the lines sent after it wait for it.
+    - Each line shows in the log as it runs, with its place (`festival.busk:812`), then its
+      reply, as a typed line does. Blank lines and comments are not shown.
+    - The lines arrive at the bridge's drain rate, many at a time. The log keeps its 2,000
+      entries, so the first lines of a long script scroll out.
+    - The end says what happened: `imported festival.busk: 2,189 lines (Ctrl+Z undoes it)`, or
+      the failing line with busk's words, then `stopped at line 812 of 2,189 (Ctrl+Z undoes the
+      lines before it)`.
+21. **The import bar** takes the hint row's place, under the prompt, while a script runs:
+    `IMPORT festival.busk`, a bar, `812 / 2189` (lines of the file) and `lines typed now wait`.
+    - The TUI stays usable: the pages, the reads, and the performance controls, which run beside
+      a script. Lines typed meanwhile wait their turn.
+    - New…, Open…, Open recent… and Close say in the log that a script is importing, and do
+      nothing until it ends.
+    - There is no stop: a script runs to its end or to its first error (§10).
+22. **Import profile…** goes in the File menu after Import script…, with no key.
+    - It opens the profile picker's file picker (`FileDialog` in profile mode), on the last
+      profile file chosen in this run (`ProfileDialog.last`), else in the show's folder.
+    - Then it sends `profile import "<path>"`, and the reply goes to the log.
+23. **Forgetting a recent show.** Delete, or `d`, on a row takes it off `recent` at once,
+    without a question, in the launcher and in Open recent…. The file is not touched.
+    - `config.forget_show(state, path)` writes it, merging as `write_state` does. The launcher
+      now writes `state.json` (call 8 said it only reads it).
+    - The row goes and the cursor stays where it was. The notes add `Delete: forget`.
+24. **The recovery mark (GAP-58).** busk tells whether `busk run PATH` would recover a show.
+    - `busk.pending_recovery(path, *, state_dir=None)` returns `busk.PendingRecovery` or `None`.
+      It has `written`, when the last run last wrote its `session.json`, and `edits`, whether an
+      autosave newer than the file comes back. It follows `read_recovery`'s rules, without
+      `--restarted`'s force. These are the 48th and 49th public names.
+    - The TUI reads it with `bridge.recovery_read(path, state_dir)`, giving `model.Recovery`.
+      The list reads each row's on a worker when it opens (it reads the file's id, not the whole
+      show), and a row's mark comes when it is known.
+    - A row whose show would be recovered reads `title  recovers  path`, with the mark in amber.
+      The preview adds "Its last run did not end cleanly (2026-11-20 22:14): busk recovers the
+      programmer and its unsaved edits." Without `edits`, the line ends at "the programmer".
+    - With `--no-recover` there is no mark: busk-tui passes it to `busk run`, which then
+      recovers nothing.
+    - A show that another `busk run` runs right now is marked too, since its `session.json` says
+      what a crash leaves. A copy made with `cp` (§9) is marked when busk would recover into it.
+25. **Close** goes in the File menu before Quit. It goes back to the launcher.
+    - No key: Ctrl+W deletes a word in the prompt.
+    - The confirmation is Open's (call 12), worded for closing: Save and close, Close without
+      saving, Cancel. With live output it says "The output stops until a show is opened" and
+      names the routes.
+    - The TUI hands over `{"close": true}` in `$BUSK_TUI_NEXT` and quits. `parent.read_next`
+      reads it as `CLOSE`, and `parent.run` returns, saying the run closed. `main` then runs the
+      launcher again, outside the parent's signal handlers as at the start, and `parent.run` on
+      the show chosen. Quitting the launcher exits with 0.
+    - Only a run that ends with 0 goes back to the launcher, as only such a run opens the next
+      show (Phase 3).
+    - `--values` and `--script` do not apply again: a show chosen after a Close is opened, not
+      given (call 10).
+    - `--standalone` runs the launcher in its own process too, then goes on with its loop.
+    - Without busk-tui's parent, Close says so in the log and does nothing, as Open… does.
+    - A busk-tui started with a show closes to the launcher too.
 
 ## 6. Phases
 
@@ -504,6 +632,140 @@ Club Night, quit with 0; the launcher at 80×24, empty, and `q` with 0.
 
     Findings go to §9.
 
+### Phase 6: the engine (GAP-56, GAP-57, GAP-58)
+
+18. **GAP-56: a script is one undo step** (call 18). A `ScriptStep` in `timeline.py`.
+    `Console._lines` opens it for the outermost script and closes it at the end, after an error
+    or a `quit` line too. The session's undo and redo apply it in one snapshot.
+    Verify:
+    - `source` of a script that patches, records and selects: one `undo` puts the show and the
+      programmer back, and one `redo` brings both back; `SessionStatus.undoSteps` grows by 1;
+    - a nested `source`; a script that fails at line N (one step for the lines before it); a
+      script that changes nothing (no step); an `undo` line inside a script;
+    - `busk run --script`, and `run_script` on both facades;
+    - the steps from before `examples/festival.busk` are still there after it;
+    - a performance line that runs beside the lock while a script runs: find which lines can,
+      and whether they push a step, and write the rule in GAP-56.
+19. **GAP-57: `run_script`'s `each`** (call 19).
+    Verify:
+    - one call per line, in order, with `total`;
+    - a failing line is reported before `ScriptError` is raised;
+    - a nested `source` is one call;
+    - on `LiveShow`, the calls come as the lines run, not all at the end.
+20. **GAP-58: `busk.pending_recovery`** (call 24).
+    Verify:
+    - no `session.json`; a clean exit; a crash with and without a newer autosave; a file that
+      is not a show; the default `state_dir`; the public API golden file;
+    - with processes, as Phase 1 did: `kill -9` a run, then `pending_recovery` says so, and
+      `busk run` recovers; after a clean quit it says `None`.
+21. **Docs.** `docs/console.md` (`source` is one undo step), `docs/library.md` (`run_script`'s
+    `each`, `pending_recovery`), the spec's §15.4, `docs/faq.md` ("How far back does `undo`
+    go?"), `engine-gaps.md` (GAP-56 to GAP-58), CHANGELOG.
+
+**Done** 2026-11-21, on d442851. The Done notes of GAP-56 to GAP-58 in `engine-gaps.md` have the
+details. Code: `ScriptStep`, `open_script` and `close_script` (`src/busk/session/timeline.py`),
+`Session.script` and `_script_step` (`src/busk/session/session.py`), `Console._lines` and
+`run_lines`' `each` (`src/busk/console/console.py`), the facades' `run_script`
+(`src/busk/runner.py`), `pending_recovery` and `PendingRecovery`
+(`src/busk/persistence/autosave.py`). Tests: `tests/test_script_undo.py` (new), the pending
+recovery in `test_autosave.py` and `test_recovery.py`, `test_signatures.py`, `test_public_api.py`
+and its golden, `api_consumer.py`. What differs from the steps above, or goes beyond them:
+
+- **The step grows on top of the stack,** as an undo group's does, instead of being pushed
+  when the script ends. So it is there while the script runs: `undoSteps` grows by 1 at the
+  script's first change and `nextUndo` names the script, which Phase 7's bar can rely on.
+- **An `undo` line in a script takes back all the script's lines before it** (vetoable): call
+  18 says it "closes the step so far, as it closes an undo group", and `undo` in an open group
+  takes the whole group back. The lines after it make a step of their own.
+- **Undo groups and scripts:** opening and closing a script close the open group. A group
+  opened inside a script counts its steps for `undo group end` and makes none of its own.
+- **Beside a script** (step 18's question): only performance lines run while a script holds the
+  console, and they push no step. A command that reaches the session another way meanwhile,
+  `submit` from another thread or a surface's select button or `command` binding, joins the
+  script's step, as it joins an open undo group.
+- **The label** is `source` and the path as given, quoted when it is not one word, as
+  `source` takes it. Phase 7's import passes an absolute path, so its label names it.
+- **`each` is told of every line,** blank lines and comments too, their reply empty, the line
+  stripped: call 20's "blank lines and comments are not shown" is the TUI's to filter. An
+  exception from `each` stops the script and comes out of `run_script`.
+- **`pending_recovery` reads only the show's id,** so a file with an id that fails validation is
+  answered; `written` is the `session.json`'s modification time, a UTC `datetime`.
+- **The TUI's wording** (no behaviour change): the TUI sends `source`, which is now one step, so
+  `commands.source`'s docstring and the guide's Import script… paragraph said each line was its
+  own step; they say one step now. One Ctrl+Z after an import already takes it back whole.
+- **A test changed meaning:** `test_build_from_scratch.py` walked the Phase 3 build script's
+  100+ undo steps; it now checks that the script is one step, and a new test walks the same
+  lines typed one by one.
+- **The internals doc** (`docs/dev/internals.md`, "Edits and undo") has a few lines on the step.
+
+Checks: the whole suite (`-n 6`, 9:31) 7,279 passed, 1 skipped, 2 failed: Phase 2's
+`test_waveforms.py::test_vectorised_equals_the_scalar_transcription`, and
+`test_tui_e2e.py::test_f6_records_and_changes_presets_from_controls_on_the_real_engine`, a pilot
+click on the wrong tile under load (it runs no script; it passes alone, three times). 27
+mutations, 26 caught; the one missed showed that resetting the script's step in
+`Timeline.redone` can never matter (a push clears the redo stack, so a redo follows an undo,
+which resets it), and that line was removed; the tests of the timeline, the session, scripts,
+recovery, the public API, the docs and the File menu then passed again. ruff, format, mypy and
+`mypy --strict tests/api_consumer.py` clean.
+
+### Phase 7: importing (no process change)
+
+22. **Import script with the bar** (calls 20 and 21): `Bridge.run_script` and its events
+    (`model.ScriptLine`, `model.ScriptDone`), the lines in the log, the bar in the hint row, and
+    New, Open and Close held while a script runs. `FakeBridge` gets `run_script`.
+    Verify:
+    - e2e on `FakeBridge`: the bar moves and goes away; the lines and their replies reach the
+      log in order; a failing line; one Ctrl+Z after it undoes the whole import;
+    - a line typed during the import runs after it;
+    - the perf gate while a 2,000-line script runs;
+    - a pty run under `busk run`: Import script `examples/festival.busk` into a new show, timed,
+      live.
+23. **Import profile…** (call 22) in `FileMenu`'s `ITEMS` and `_file_chosen`.
+    Verify: a pilot test from the menu to the line sent; a refusal reaches the log.
+24. **Docs.** The guide's File menu (the import bar, Import profile…), CHANGELOG.
+
+### Phase 8: the recent shows (forget, the recovery mark)
+
+25. **Forget** (call 23): `config.forget_show`, and Delete and `d` in `RecentShows`.
+    Verify:
+    - in `test_tui_config.py`: the merge keeps the rest of the file; a path not in the list; a
+      file that cannot be written;
+    - pilot tests in the launcher and in Open recent….
+26. **The recovery mark** (call 24): `bridge.recovery_read`, `model.Recovery`, the rows' mark,
+    the preview's line, and `--no-recover`.
+    Verify:
+    - pilot tests on fake reads, and `test_tui_bridge.py` on a state dir holding a crashed
+      `session.json`;
+    - a pty run: `kill -9` a run, start `busk-tui` with no show and see the mark, open the show,
+      quit, and the mark is gone.
+27. **Docs.** The guide's launcher and Open recent…, CHANGELOG.
+
+### Phase 9: Close
+
+28. **Close** (call 25): `FileMenu`, `shell.close_show`, the close hand-off (`parent.hand_off`,
+    `read_next`), what `parent.run` returns, the loop in `app.main`, and the launcher in
+    `_standalone`.
+    Verify:
+    - `test_tui_parent.py`: a close hand-off returns closed; a run that ends with another code
+      after a close ends the parent;
+    - `test_tui_host.py`: Close, the launcher, another show, quit with 0; Close, then quit the
+      launcher with 0; `--values` is not applied again;
+    - e2e on `FakeBridge`: each way through the confirmation; Close without busk-tui's parent;
+    - pty runs under `busk run` and `--standalone`: Close, the launcher, Enter, Close, `q`, exit
+      0. The kitty keyboard mode is pushed and popped evenly between the apps.
+29. **Docs.** The guide's "Start" and "Opening another show", CHANGELOG.
+
+### Phase 10: the user's check
+
+30. **On the rig**, with the TupperDMX simulator running:
+    - import `examples/festival.busk` into a new show, watch the bar and the lines, then Ctrl+Z
+      once;
+    - Close, then open another show from the launcher;
+    - forget a show;
+    - `kill -9` a run and find the mark in the launcher.
+
+    Findings go to §9.
+
 ## 7. Compatibility
 
 - **`save PATH` to another file changes meaning.** The copy is a new show. A script that made a
@@ -511,6 +773,11 @@ Club Night, quit with 0; the launcher at 80×24, empty, and `q` with 0.
 - **`busk-tui SHOW` behaves as today,** with one more process, the parent.
 - **An old `state.json`** (page and layout only) still reads.
 - **`SessionStatus` is added** to the public API; nothing is removed.
+- **A script is one undo step** (Phase 6). One `undo` after `source` or `--script` takes back
+  the whole script, where it took back its last line. The CHANGELOG says so.
+- **`run_script` gains `each`**, optional and keyword-only. `pending_recovery` and
+  `PendingRecovery` are added; nothing is removed.
+- **The hand-off file** may hold `{"close": true}`. Only busk-tui writes it and reads it.
 
 ## 8. Risks
 
@@ -524,6 +791,10 @@ Club Night, quit with 0; the launcher at 80×24, empty, and `q` with 0.
   is checked in Phase 3.
 - **The perf gate flaps** under load (see the memory of earlier phases): new e2e tests make
   the suite longer.
+- **The log under a script.** festival.busk sends over 4,000 lines and replies in a few
+  seconds. Phase 7 measures the frame rate while it runs.
+- **The launcher many times in one process.** With Close, `--standalone` starts Textual apps
+  without a limit, where Phase 3 checked three.
 
 ## 9. Found while planning (busk, not fixed here)
 
@@ -541,10 +812,18 @@ Club Night, quit with 0; the launcher at 80×24, empty, and `q` with 0.
 
 ## 10. After this
 
-- Close: back to the launcher without quitting.
-- Forgetting a recent show from the list.
-- A "recovery pending" mark on launcher rows, read from the show's `session.json`.
-- Import script as one undo step, inside an undo group.
-- Revert: open the show again from disk.
-- Import profile in the File menu, beside F3's picker.
-- Changing shows without stopping the output: the engine loading a new show while it runs.
+The items listed here on 2026-11-20 are now Phases 6–10:
+
+- Close, back to the launcher: Phase 9 (call 25).
+- Forgetting a recent show: Phase 8 (call 23).
+- A "recovery pending" mark on the launcher's rows: Phase 8 (call 24, GAP-58).
+- Import script as one undo step: Phase 6 (call 18, GAP-56). An undo group cannot hold it (§2),
+  so the step is a new kind.
+- A bar while a script imports, with its lines shown as they run: Phases 6 and 7 (calls 19–21,
+  GAP-57).
+- Import profile… in the File menu: Phase 7 (call 22).
+
+Left after them:
+
+- Stopping an import midway. busk stops a script only on the main thread's Ctrl+C
+  (`Console.interrupted`), and the TUI's lines run on the bridge's thread.

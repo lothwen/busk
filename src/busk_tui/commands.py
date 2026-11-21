@@ -76,8 +76,8 @@ def save_as(path: str) -> Line:
 
 
 def source(path: str) -> Line:
-    """``source "/home/me/shows/rig.busk"``: the script's lines, each its
-    own step, up to the first that busk refuses."""
+    """``source "/home/me/shows/rig.busk"``: the script's lines, one undo
+    step (busk's GAP-56), up to the first that busk refuses."""
     return Line(f"source {quoted(path)}")
 
 

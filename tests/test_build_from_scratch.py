@@ -43,7 +43,9 @@ REGOLDEN = os.environ.get("BUSK_REGOLDEN") == "1"
 class Build:
     """``busk new`` + the build script, on a session with an engine."""
 
-    def __init__(self, tmp_path: Path) -> None:
+    def __init__(self, tmp_path: Path, *, typed: bool = False) -> None:
+        """``typed`` runs the script's lines one by one, as typed at the
+        prompt, each its own undo step, instead of as a script, one step."""
         state = tmp_path / "state"
         state.mkdir()
         (state / "cid").write_text(CID + "\n")  # an installation with a known CID
@@ -63,7 +65,11 @@ class Build:
         )
         self.console = Console(self.session, ProfileLibrary())
         self.output: list[str] = []
-        self.ok = self.console.run_script(SCRIPT, self.output.append)
+        if typed:
+            replies = [self.console.execute(line) for line in SCRIPT.read_text().splitlines()]
+            self.ok = all(reply.ok for reply in replies)
+        else:
+            self.ok = self.console.run_script(SCRIPT, self.output.append)
 
     def do(self, *lines: str) -> None:
         for line in lines:
@@ -147,10 +153,23 @@ def test_a_live_preset_edit_reaches_output_through_references(tmp_path: Path) ->
 
 
 def test_undo_everything_gives_the_template_and_redo_the_final_show(build: Build) -> None:
+    assert build.session.timeline.undo_count == 1  # the script is one step (GAP-56)
+    undo_and_redo_everything(build)
+
+
+def test_undoing_each_line_typed_gives_the_template_and_redo_the_final_show(
+    tmp_path: Path,
+) -> None:
+    build = Build(tmp_path, typed=True)
+    assert build.ok
+    assert build.session.timeline.undo_count > 100
+    undo_and_redo_everything(build)
+
+
+def undo_and_redo_everything(build: Build) -> None:
     session = build.session
     final = copy.deepcopy(session.show)
     steps = session.timeline.undo_count
-    assert steps > 100
     for _ in range(steps):
         assert session.submit(cast(Command, {"type": "UNDO"})).ok
     assert session.show == build.template

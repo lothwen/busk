@@ -12,6 +12,11 @@ GAP-18 of ``docs/dev/tui/engine-gaps.md``), as does that of a ``source``
 that stops at one, for a frontend to end on. It also sets
 :attr:`Console.quit_requested`, which ends ``busk run``'s loops.
 
+A script is one undo step (GAP-56): what its lines change, the lines of the
+scripts it sources included, is undone at once, labelled as the line that
+runs it (``source rig.busk``; :meth:`Session.script
+<busk.session.session.Session.script>`).
+
 :func:`interact` is the interactive loop of ``busk run`` on a terminal, with
 ``readline`` history, Tab completion and ``?`` (:mod:`busk.console.prompt`).
 Ctrl+C clears a typed line. On an empty line it says how to quit, and a
@@ -73,6 +78,7 @@ from busk.console.parser import (
     Source,
     Submit,
     SubmitAll,
+    _word,
     defaults_words,
     expected,
     find_profile,
@@ -460,16 +466,21 @@ class Console:
         write: Callable[[str], None],
         *,
         failed: Callable[[int, str], None] | None = None,
+        each: Callable[[int, int, str, Reply], object] | None = None,
     ) -> bool:
         """Run ``lines``, read from ``path``, as :meth:`run_script` does.
 
         ``failed(number, line)`` is told which line failed (1-based, its
-        text stripped) before the location line is written. Returns success.
-        They run whole, as one line does: a line of another thread waits
-        until they are done, unless it is a performance line. A line whose
-        reply asks to quit ends them (a ``quit`` of an earlier line does not).
+        text stripped) before the location line is written. ``each(number,
+        total, line, reply)`` is told of every line once it has run, on this
+        thread (``total`` is ``len(lines)``, the line is stripped), before
+        the next one runs; a ``source`` line is one line, with its whole
+        reply (GAP-57). Returns success. They run whole, as one line does: a
+        line of another thread waits until they are done, unless it is a
+        performance line. A line whose reply asks to quit ends them (a
+        ``quit`` of an earlier line does not). They are one undo step.
         """
-        return self._lines(path, lines, write, failed)[0]
+        return self._lines(path, lines, write, failed, each)[0]
 
     def _lines(
         self,
@@ -477,10 +488,11 @@ class Console:
         lines: Sequence[str],
         write: Callable[[str], None],
         failed: Callable[[int, str], None] | None,
+        each: Callable[[int, int, str, Reply], object] | None = None,
     ) -> tuple[bool, bool]:
         """:meth:`run_lines`'s success, and whether a ``quit`` line ended them."""
         main = threading.current_thread() is threading.main_thread()
-        with self._lock:
+        with self._lock, self.session.script(f"source {_word(str(path))}"):
             for number, line in enumerate(lines, start=1):
                 reply = self.execute(line)
                 if not reply.ok:
@@ -489,6 +501,8 @@ class Console:
                     write(f"{path}:{number}: {line.strip()}")
                 if reply.text:
                     write(reply.text)
+                if each is not None:
+                    each(number, len(lines), line.strip(), reply)
                 if not reply.ok:
                     return False, False
                 if main and self.interrupted:

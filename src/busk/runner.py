@@ -437,10 +437,33 @@ class _Facade:
         """
         return self._console.expected(line)
 
-    def run_script(self, path: str | os.PathLike[str]) -> list[str]:
+    def run_script(
+        self,
+        path: str | os.PathLike[str],
+        *,
+        each: Callable[[int, int, str, Reply], object] | None = None,
+    ) -> list[str]:
         """Run the console script at ``path``, line by line, and return the
         lines it wrote. A ``quit`` line ends it early (the script, not the
         show).
+
+        The script is one undo step, as ``source`` is (GAP-56 of
+        ``docs/dev/tui/engine-gaps.md``): one ``undo`` takes back what its
+        lines changed, the show and the programmer, labelled ``source
+        <path>``. A script that stops at an error leaves one step for the
+        lines that ran, and one that changes nothing leaves none.
+
+        ``each(number, total, line, reply)`` is called after each line of
+        the file has run, before the next one runs (GAP-57): the line's
+        number from 1, the file's number of lines, the line's text stripped
+        (empty for a blank line; a comment too) and its
+        :class:`~busk.console.console.Reply`. A ``source`` line is one call,
+        with its script's whole reply. It is called on the thread that runs
+        the script, while other threads' lines wait (performance lines
+        excepted), so a display can follow a long script as it runs; a
+        failing line is reported before :class:`~busk.errors.ScriptError`
+        is raised. An exception it raises stops the script there and comes
+        out of ``run_script``.
 
         Raises :class:`~busk.errors.ScriptError` at the first line that
         fails (the lines after it do not run; the edits before it stay),
@@ -455,6 +478,7 @@ class _Facade:
             lines,
             lambda text: output.extend(text.splitlines()),
             failed=lambda number, line: failure.append((number, line)),
+            each=each,
         )
         self._interrupted()
         if not ok:

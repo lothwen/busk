@@ -234,7 +234,9 @@ programmer.
 
 1000 steps, on one timeline of show edits and programmer changes: `undo` reverses the
 last action, whatever it was, and `redo` brings it back. Saving is not a step, and blind
-and the programmer's fade time are modes, which are never undone.
+and the programmer's fade time are modes, which are never undone. A script, `source FILE`
+or `busk run --script FILE`, is one step however many lines it has, so a long one leaves the
+steps from before it, and one `undo` takes the whole script back.
 
 ## Playing
 

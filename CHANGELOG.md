@@ -43,6 +43,14 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   preview as Open recent…, a new show (n) and a show from a file (o). busk reads the show chosen
   first and refuses one that does not load. The show chosen runs as the show given, with the
   options given.
+- `run_script(path, each=…)` on `OfflineShow` and `LiveShow` calls `each(number, total, line,
+  reply)` after each line of the script has run, before the next one: the line's number, the
+  file's number of lines, the line and its `Reply`, so a display can follow a long script as
+  it runs.
+- `busk.pending_recovery(path)` says whether `busk run` would recover the show at `path`
+  because its last run did not end cleanly, as a `PendingRecovery`: when that run last wrote
+  what it is recovered from, and whether unsaved edits come back too; else `None`. It reads
+  only the show's id, and takes `busk run`'s state directory (`state_dir`).
 
 ### Changed
 
@@ -61,6 +69,11 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   and a console restarted after a crash comes back on the copy.
 - The TUI reads the undo steps, unsaved edits and the show's file from `session`, no longer from
   the text of `info`.
+- A script is one undo step: `source FILE`, `busk run --script FILE` and `run_script`. One
+  `undo` after it takes back what all its lines changed, the show and the programmer, where it
+  took back its last line (`undid: source build.busk`), and a script longer than the 1,000
+  steps the history keeps no longer pushes the steps from before it out. A script that stops
+  at an error leaves one step for the lines that ran.
 
 ### Fixed
 

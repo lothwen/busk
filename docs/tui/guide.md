@@ -1514,8 +1514,8 @@ on in the copy ([the console](../console.md)). Before it replaces another file, 
 `Replace fest.show? busk keeps a backup of it.`; the show's own file is a plain `save`.
 
 **Import script…** opens it on the scripts, in the show's folder: `.busk` files can be chosen
-and other files are dimmed, and the preview is a script's first lines, its comment dimmed. Choosing one sends `source "/home/me/shows/rig.busk"`: busk runs its lines, each its own
-undo step, and stops at the first it refuses. What it answers goes to the log.
+and other files are dimmed, and the preview is a script's first lines, its comment dimmed. Choosing one sends `source "/home/me/shows/rig.busk"`: busk runs its lines, as one undo
+step, and stops at the first it refuses. What it answers goes to the log.
 
 ## Opening another show
 

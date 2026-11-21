@@ -1,7 +1,8 @@
 """Crash recovery end to end: `kill -9` a running console, start it again (phase-3-plan §5.9;
 phase-4-plan step 15: the tempo and the programmer fade time come back too; phase-5-plan
 step 12: so do group and size levels and the programmer's effects; phase-6-plan: the page
-and fade-time levels; GAP-55: after a save as another file, the copy recovers).
+and fade-time levels; GAP-55: after a save as another file, the copy recovers; GAP-58:
+``busk.pending_recovery`` says so before).
 
 This runs ``busk run`` as a real process. The show autosave is written 5 s
 after the last edit, so the test takes a few seconds.
@@ -15,12 +16,14 @@ import signal
 import subprocess
 import sys
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from builders import effect_instance, offline
+from busk import PendingRecovery, pending_recovery
 
 pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="needs SIGKILL")
 
@@ -190,6 +193,56 @@ def test_after_a_save_as_the_copy_recovers_and_the_original_does_not(
     assert "unsaved edits from" in recovered
     assert f"show: Copied ({ident})" in copied
     assert f"file: {copy}, unsaved edits" in copied
+
+
+def test_pending_recovery_says_what_busk_run_recovers(
+    tmp_path: Path, appendix_a: dict[str, Any]
+) -> None:
+    """GAP-58: pending while the run goes (its session.json says what a crash
+    leaves), with the edits once they are autosaved, still after ``kill -9``;
+    ``busk run`` recovers it, and after that run quits cleanly nothing is."""
+    show = tmp_path / "club.json"
+    show.write_text(json.dumps(offline(appendix_a)))
+    os.utime(show, (1, 1))  # older than any autosave
+    state = tmp_path / "state" / "busk"
+    session_json = state / "autosave" / "show-01" / "session.json"
+    env = {**os.environ, "XDG_STATE_HOME": str(tmp_path / "state")}
+    command = [sys.executable, "-m", "busk", "run", str(show)]
+    assert pending_recovery(show, state_dir=state) is None
+    first = subprocess.Popen(
+        command,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=env,
+    )
+    assert first.stdin is not None
+    first.stdin.write("sel group 1\nset pan 33\n")
+    first.stdin.flush()  # stdin stays open: the console keeps running
+    found: list[PendingRecovery | None] = []
+
+    def pending(edits: bool) -> bool:
+        found.append(pending_recovery(show, state_dir=state))
+        return found[-1] is not None and found[-1].edits == edits
+
+    wait_for(lambda: pending(edits=False))
+    first.stdin.write('rename show "Crashed"\n')
+    first.stdin.flush()
+    wait_for(lambda: pending(edits=True))  # 5 s after the edit
+    first.send_signal(signal.SIGKILL)
+    first.wait(10)
+    written = datetime.fromtimestamp(session_json.stat().st_mtime, UTC)
+    assert pending_recovery(show, state_dir=state) == PendingRecovery(written=written, edits=True)
+
+    second = subprocess.run(
+        command, input="info\n", capture_output=True, text=True, env=env, timeout=60, check=False
+    )
+    assert second.returncode == 0, second.stderr
+    out = second.stdout.splitlines()
+    assert any(line.startswith("recovered ") and "unsaved edits from" in line for line in out)
+    assert "show: Crashed (show-01)" in out
+    assert pending_recovery(show, state_dir=state) is None
 
 
 def test_no_recover_starts_normally(tmp_path: Path, appendix_a: dict[str, Any]) -> None:

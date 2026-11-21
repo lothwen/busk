@@ -35,7 +35,9 @@ The TUI runs a `busk.LiveShow` in its own process, or, since GAP-11, is run by `
   list's tracked states), since GAP-13 `LiveShow.inputs` (`SurfaceInput`, what came in
   from the surfaces) and since GAP-03 `LiveShow.session` (`SessionStatus`: unsaved edits,
   the show's file, the undo steps). Since GAP-54 `busk.read_profile(path)` reads a profile file as
-  `profile import` would, without importing it. Since GAP-16 a profile in `LiveShow.show`
+  `profile import` would, without importing it, and since GAP-58 `busk.pending_recovery(path)`
+  says whether `busk run` would recover a show. Since GAP-57 `run_script(path, each=…)` tells
+  each line of a script as it runs. Since GAP-16 a profile in `LiveShow.show`
   may have a `category`, and since GAP-17 a playback in the snapshot has the `color` of
   its current cue. The `busk.*` loggers feed the TUI's log pane.
 - **Text is not parsed.** `docs/library.md` says message text (`Reply.text`, CLI output, log
@@ -116,6 +118,9 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-53](#gap-53-renaming-and-deleting-a-master) Renaming and deleting a master | action | nice-to-have | F7 | **done** 2026-11-12 |
 | [GAP-54](#gap-54-reading-a-profile-file-before-importing-it) Reading a profile file before importing it | read | nice-to-have | F3 | **done** 2026-11-20 |
 | [GAP-55](#gap-55-save-as-makes-a-new-show) Save as makes a new show | action | important | File menu | **done** 2026-11-20 |
+| [GAP-56](#gap-56-a-script-is-one-undo-step) A script is one undo step | action | important | Import script | **done** 2026-11-21 |
+| [GAP-57](#gap-57-a-script-reports-each-line-as-it-runs) A script reports each line as it runs | read | nice-to-have | Import script | **done** 2026-11-21 |
+| [GAP-58](#gap-58-whether-busk-run-would-recover-a-show) Whether `busk run` would recover a show | read | nice-to-have | launcher, Open recent | **done** 2026-11-21 |
 
 ---
 
@@ -3532,3 +3537,172 @@ own file, keep the id. The autosave worker follows the new id.
   (`kill -9` after a Save as and an edit: the original starts clean, the copy recovers),
   `tests/test_console_restart.py` (a console killed after a Save as comes back on the copy; a
   run after one does not).
+
+## GAP-56: A script is one undo step
+
+**Status:** done 2026-11-21 (see **Done** at the end of this section).
+
+Call 18 of `docs/plans/file-menu-plan.md`, built in its Phase 6.
+
+**Needed by:** the File menu's *Import script…*, whose import one Ctrl+Z should take back.
+
+**Today:** each line of a `source` script is its own undo step. An undo group cannot hold a
+script, since it takes programmer steps only and a show step closes it. The timeline keeps 1,000
+steps, so `examples/festival.busk` (2,189 lines) pushes every step from before it out of the
+history, and taking the import back is 1,000 Ctrl+Z, which still leave half of it.
+
+**Engine should provide:** a script is one step, wherever it runs (`source FILE`, `busk run
+--script`, `run_script` on both facades), labelled as the line `source <file>`. Undo puts the
+show and the programmer back in one change, and redo brings both back. A nested `source` joins
+the outer step; a script that stops at an error leaves one step for the lines that ran; one
+that changes nothing leaves none; an `undo` or `redo` line in it closes the step so far.
+
+**Priority:** important.
+
+**TUI until then:** Import script sends `source "<path>"`, and its lines are undone one by one.
+
+**Done** (2026-11-21). A `ScriptStep` in `src/busk/session/timeline.py`, and
+`Session.script(label)` in `src/busk/session/session.py`, a context manager that
+`Console._lines` opens around every script: `source`, `busk run --script`, `run_script` and
+`run_lines`.
+
+- **The step grows on top of the stack,** as an undo group's does: the script's first change
+  makes it, and each later one is joined to it (show ops appended forward and prepended
+  inverse; the programmer's `before` from its first programmer step, `after` from its last).
+  So it is there while the script runs: `SessionStatus.undoSteps` grows by 1 at the first
+  change, and `nextUndo` is the script's label. A script that stops at an error, a `quit` line,
+  a Ctrl+C or an exception leaves it with the lines that ran.
+- **The label** is `source <path>`, the path as given: as typed in the `source` line, or as
+  passed to `run_script` or `--script`, quoted with JSON's escapes when it is not one word, as
+  `source` takes it (`source "my rig.busk"`). The TUI's import will name the absolute path.
+- **Undo and redo** commit the ops first (validated, compiled, installed as an edit's), then
+  restore the programmer against the show they made, so a selection of a fixture the script
+  added comes back on redo; the session publishes once, with both. The engine gets two
+  installs, the show and then the programmer frame, queued together under the session's lock.
+  A step whose ops no longer validate changes nothing, the programmer included.
+- **Nesting** is counted by the timeline: only the outermost script opens and closes the step.
+- **An `undo` line in a script** takes back the last step, as at the prompt: the script's own
+  lines before it, all of them, when they changed something, as `undo` in an open group takes
+  the group back. The lines after an `undo` or `redo` line make another step, with the same
+  label.
+- **Undo groups:** opening and closing a script close the open group, so a gesture before a
+  script and the script are two steps. A group opened inside a script counts the steps that
+  join the script's step (`undo group end` says so) and makes none of its own.
+- **Beside a script** (the plan's question): only performance lines run while a script holds
+  the console's lock (`go`, `back`, `goto`, `release`, `fader`, `flash`, `toggle`, `button`
+  except a select button's press, `gm`, `master`, `blackout`, `tap`, `bpm`, `page`, `output`),
+  and they push no step: their commands go to the engine's queue, never to the timeline. A
+  command that reaches the session another way meanwhile, `submit` from another thread or a
+  surface's binding (a select button's press, a `command` binding; the web remote sends
+  performance commands only), takes the session's lock between the script's lines and joins
+  the script's step, as it joins an open undo group. Checked both ways from `run_script`'s
+  `each` (GAP-57).
+- **A script that changes nothing** (comments, queries, modes such as `blind`) leaves no
+  step. One whose changes cancel out (`sel fixture 1`, then `clear`) leaves one, as a group
+  does.
+- **Cost:** none measured. `examples/festival.busk` runs in 6.3 s with its step and 7–8 s
+  with `Session.script` stubbed out (noise; no deque of 1,000 steps to keep), and its step
+  holds 1,155 ops each way. Undoing it takes 7 ms.
+- **Changed meaning:** one `undo` after a script takes back the whole script, where it took
+  back its last line. `tests/test_build_from_scratch.py` walked the Phase 3 build script's
+  100+ steps back and forth; it now checks that the script is one step, and a new test walks
+  the same lines typed one by one.
+- Tests: `tests/test_script_undo.py` (the timeline's step, nesting, `undo` and `redo` inside,
+  groups, a script longer than the timeline; one undo and one redo, each one published
+  change, for `source`, `run_script` on both facades and `busk run --script`; a nested
+  `source`, a failing script, one that changes nothing, an `undo` line, a `quit` line,
+  festival.busk with the step before it kept; a performance line and a submitted command
+  beside a script).
+
+## GAP-57: A script reports each line as it runs
+
+**Status:** done 2026-11-21 (see **Done** at the end of this section).
+
+Call 19 of `docs/plans/file-menu-plan.md`, built in its Phase 6.
+
+**Needed by:** the File menu's *Import script…*: a bar that moves as the script runs, and each
+line in the log with its reply.
+
+**Today:** `source` replies once, at the end, with every line's reply, and `run_script` returns
+the lines it wrote at the end. A frontend that ran the lines itself, one `execute` at a time,
+would lose what `source` does: the console's lock over the whole script, a nested `source`,
+`quit`, and the one undo step (GAP-56).
+
+**Engine should provide:** `run_script(path, *, each=None)` on both facades, calling
+`each(number, total, line, reply)` after each line, on the thread that runs the script.
+
+**Priority:** nice-to-have.
+
+**TUI until then:** no bar: the log gets the script's reply when it ends.
+
+**Done** (2026-11-21). `run_script(path, *, each=None)` on `OfflineShow` and `LiveShow`
+(`src/busk/runner.py`), through `Console.run_lines(..., each=…)`
+(`src/busk/console/console.py`). No new public name: `each` is a
+`Callable[[int, int, str, Reply], object]`.
+
+- **Every line of the file** is told, blank lines and comments too (their reply is empty), so
+  `number` counts the file's lines and `total` is their number (`splitlines`): a display's bar
+  reaches `total`. `line` is stripped, as `ScriptError.text` is.
+- **When:** after the line's reply is written, before the next line runs, on the thread that
+  runs the script, so the calls come as the lines run (a `LiveShow` from another thread too:
+  checked). A failing line is told before `ScriptError` is raised; a line after which the
+  script stops (`quit`, Ctrl+C) is told too.
+- **A `source` line is one line,** with its script's whole reply; the lines of the script it
+  sources are not told.
+- **It runs under the console's lock,** as the script does: a line `each` sends from another
+  thread and waits for would wait for the script, so a display records what it is told and
+  returns. A performance line does not wait (GAP-12).
+- **An exception it raises** stops the script there and comes out of `run_script`; the
+  script's undo step holds the lines that ran.
+- Tests: `tests/test_script_undo.py` (each line in order with the total and its reply; a
+  failing line before the error; a nested `source` as one call; on a `LiveShow`, the calls
+  as the lines run, on the script's thread; an exception), `tests/api_consumer.py`, the
+  public API golden, the library guide's example.
+
+## GAP-58: Whether `busk run` would recover a show
+
+**Status:** done 2026-11-21 (see **Done** at the end of this section).
+
+Call 24 of `docs/plans/file-menu-plan.md`, built in its Phase 6.
+
+**Needed by:** the launcher's and Open recent…'s rows: a `recovers` mark on a show whose last
+run did not end cleanly, and a line in the preview saying what comes back.
+
+**Today:** `read_recovery` and the autosave folder's name (`<stateDir>/autosave/<meta.id>/`) are
+inside `busk.persistence`, not public.
+
+**Engine should provide:** `busk.pending_recovery(path, *, state_dir=None)`, returning a
+`busk.PendingRecovery` with `written` and `edits`, or `None`, by `read_recovery`'s rules
+without `--restarted`'s force.
+
+**Priority:** nice-to-have.
+
+**TUI until then:** no mark.
+
+**Done** (2026-11-21). `pending_recovery` and `PendingRecovery` in
+`src/busk/persistence/autosave.py`, the 48th and 49th names of `busk.__all__`.
+
+- **It reads the show's id only:** the file's `meta.id`, from a `.show` ZIP or a `.json`,
+  without validating the rest, then `read_recovery(stateDir, id, path)` as `busk run` calls it
+  (not restarted). A file that holds an id and fails validation is answered; `busk run` would
+  refuse to load it, which the launcher's preview says.
+- **`None`** when there is no `session.json` for the id, it says `cleanExit: true` or cannot be
+  read, and for a file that cannot be read, is not JSON (or a damaged ZIP, or has another
+  suffix) or has no string `meta.id`.
+- **`written`** is the `session.json`'s modification time, a UTC `datetime`: when the run last
+  wrote it, at most once a second and only when something in it changed, so about when that
+  run last changed something. **`edits`** is `read_recovery`'s `showAutosave`: an autosave newer
+  than the file, which `busk run` loads instead of it, as unsaved edits.
+- **`state_dir`** is `busk run`'s `--state-dir`, a `str` or a path; by default
+  `$XDG_STATE_HOME/busk`, else `~/.local/state/busk`, as `busk run`'s.
+- **What it does not know:** `--no-recover` (the caller's), and whether the autosave it would
+  load still loads. It writes nothing (`busk run` first claims the folder back, GAP-55).
+- **A show that a `busk run` runs now is pending**, its `session.json` saying what a crash
+  leaves; a file copied with `cp` is pending when `busk run` would recover into it (§9 of the
+  plan).
+- Tests: `tests/test_autosave.py` (a crash with and without newer edits, programmer changes
+  only, a normal start three ways, seven files that hold no show id, the id alone, the default
+  state directory, nothing written), `tests/test_recovery.py` (pending while `busk run` runs,
+  with the edits once autosaved, after `kill -9`; `busk run` recovers it, and after its clean
+  quit nothing is pending), `tests/test_signatures.py`, `tests/test_public_api.py` and its
+  golden, `tests/api_consumer.py`, the library guide's example.

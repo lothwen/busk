@@ -8,7 +8,7 @@ The public API
 ==============
 
 Every public name is importable from ``busk`` itself; ``__all__`` lists the
-47 of them. The library guide, ``docs/library.md``, has the examples and the
+49 of them. The library guide, ``docs/library.md``, has the examples and the
 reference.
 
 Show documents
@@ -39,7 +39,8 @@ Running a show
     (:attr:`~LiveShow.routes`), control surfaces
     (:attr:`~LiveShow.surfaces`), what comes in from them
     (:attr:`~LiveShow.inputs`) and how its engine is doing
-    (:attr:`~LiveShow.health`).
+    (:attr:`~LiveShow.health`). :func:`pending_recovery` says whether
+    ``busk run`` would recover a show its last run left behind.
 Data types
     :class:`Show`, :class:`FixtureProfile` and :data:`Command`, the
     ``TypedDict``\\ s of the file and command formats; :class:`Issue`,
@@ -53,8 +54,8 @@ Data types
     :class:`FixtureModeInfo`; :class:`Expected`; :class:`ProgrammerStatus`
     with :class:`ProgrammerValue`; :class:`SessionStatus`; :class:`TrackedCue` with
     :class:`TrackedValue` and :class:`TrackedEffect`; :class:`RouteStatus`;
-    :class:`SurfaceStatus`; :class:`SurfaceInput`; :class:`IdFactory` and
-    :class:`CounterIds`.
+    :class:`SurfaceStatus`; :class:`SurfaceInput`; :class:`PendingRecovery`;
+    :class:`IdFactory` and :class:`CounterIds`.
 Errors
     :class:`BuskError` is the base of every error the API raises on purpose:
     :class:`ShowLoadError`, :class:`UnsupportedFeature`, :class:`ImportFailed`
@@ -128,6 +129,7 @@ __all__ = [
     "OfflineShow",
     "OutputSnapshot",
     "PageStatus",
+    "PendingRecovery",
     "PlaybackStatus",
     "ProfileLibrary",
     "ProgrammerStatus",
@@ -147,6 +149,7 @@ __all__ = [
     "UnsupportedFeature",
     "load_show",
     "new_show",
+    "pending_recovery",
     "read_gdtf",
     "read_ofl",
     "read_profile",
@@ -202,6 +205,8 @@ _EXPORTS: dict[str, str] = {
     "EngineHealth": "busk.runner",
     "BuskError": "busk.errors",
     "ScriptError": "busk.errors",
+    "pending_recovery": "busk.persistence.autosave",
+    "PendingRecovery": "busk.persistence.autosave",
 }
 """Each public name → the module that defines it (phase-8-plan §5.1)."""
 
@@ -234,6 +239,8 @@ if TYPE_CHECKING:  # what type checkers see: the same table, as explicit re-expo
     from busk.model.validate import Issue as Issue
     from busk.model.validate import validate_show as validate_show
     from busk.output.driver import RouteStatus as RouteStatus
+    from busk.persistence.autosave import PendingRecovery as PendingRecovery
+    from busk.persistence.autosave import pending_recovery as pending_recovery
     from busk.persistence.show_file import ShowLoadError as ShowLoadError
     from busk.persistence.show_file import load_show as load_show
     from busk.persistence.show_file import new_show as new_show

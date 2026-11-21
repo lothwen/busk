@@ -312,7 +312,7 @@
       "output": "property: OutputSnapshot | None",
       "programmer": "property: ProgrammerStatus",
       "routes": "property: tuple[RouteStatus, ...] | None",
-      "run_script": "(self, path: str | os.PathLike[str]) -> list[str]",
+      "run_script": "(self, path: str | os.PathLike[str], *, each: Callable[[int, int, str, Reply], object] | None = None) -> list[str]",
       "save": "(self, path: str | os.PathLike[str] | None = None) -> CommandResult",
       "session": "property: SessionStatus",
       "show": "property: Show",
@@ -338,7 +338,7 @@
       "fixture_profiles": "property: tuple[FixtureProfileInfo, ...]",
       "output": "property: OutputSnapshot",
       "programmer": "property: ProgrammerStatus",
-      "run_script": "(self, path: str | os.PathLike[str]) -> list[str]",
+      "run_script": "(self, path: str | os.PathLike[str], *, each: Callable[[int, int, str, Reply], object] | None = None) -> list[str]",
       "save": "(self, path: str | os.PathLike[str] | None = None) -> CommandResult",
       "session": "property: SessionStatus",
       "show": "property: Show",
@@ -374,6 +374,17 @@
       "__init__": "(self, *, id: str, number: int, name: str) -> None"
     },
     "module": "busk.engine.snapshot"
+  },
+  "PendingRecovery": {
+    "fields": [
+      "written: datetime",
+      "edits: bool"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, *, written: datetime, edits: bool) -> None"
+    },
+    "module": "busk.persistence.autosave"
   },
   "PlaybackStatus": {
     "fields": [
@@ -642,6 +653,11 @@
     "kind": "function",
     "module": "busk.persistence.show_file",
     "signature": "(title: str, *, cid: str | None = None, now: datetime | None = None, ids: IdFactory | None = None) -> Show"
+  },
+  "pending_recovery": {
+    "kind": "function",
+    "module": "busk.persistence.autosave",
+    "signature": "(path: str | os.PathLike[str], *, state_dir: str | os.PathLike[str] | None = None) -> PendingRecovery | None"
   },
   "read_gdtf": {
     "kind": "function",

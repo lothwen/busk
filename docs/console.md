@@ -375,7 +375,7 @@ session, as the web remote's commands do. `help` prints the grammar.
   update`. The question says when a playback that goes is running.
 * **Undo** walks one timeline of show edits and programmer changes (1000 steps): the last
   action, whatever it was. Blind and the programmer's fade time are modes and are never
-  undone. Saving is not a step.
+  undone. Saving is not a step. A script is one step (see [Scripts](#scripts)).
 * **Undo groups** make a gesture one step, as a frontend's encoder drag does. After `undo
   group "pan drag"`, the programmer changes are one step, labelled `pan drag`, until `undo
   group end` (`closed undo group "pan drag": 30 steps, undone as one`); then `undo` takes
@@ -480,3 +480,14 @@ Scripts are console lines in a file (`#` starts a comment); `source FILE` runs o
 from the console and `busk run --script FILE` before it. A script stops at its first
 error and says where (`build.busk:12: sel group 7`). A `quit` line stops it too, and ends
 the run, as it does at the prompt.
+
+A script is one undo step, however long: one `undo` takes back what its lines changed, the
+show and the programmer together, and names it as the line that ran it (`undid: source
+build.busk`), so the steps from before it stay. The scripts it sources are part of its step.
+A script that stops at an error leaves one step for the lines that ran, and one that changes
+nothing leaves none. An `undo` line in a script takes back the last step, as at the prompt:
+the script's lines before it, all of them, when they changed something. The lines after an
+`undo` or `redo` line make a step of their own. While a script runs, other lines wait for it,
+except performance lines (`go`, `fader`, `gm` …), which run at once and are no undo step. A
+change from a control surface meanwhile (a select button, a bound command) joins the
+script's step, as it joins an undo group.

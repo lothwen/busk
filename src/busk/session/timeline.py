@@ -23,6 +23,19 @@ redoing a step. A programmer step more than :data:`GROUP_GAP` seconds after
 the group's last step (or its opening) closes it too, and stands alone, so
 a group nobody closes stops taking steps without a timer. A group that took
 no step leaves nothing.
+
+**Scripts** (GAP-56): while a script runs (:meth:`Timeline.open_script` to
+:meth:`Timeline.close_script`), every step pushed joins one
+:class:`ScriptStep`, labelled as the script, which holds the show ops of its
+show steps (forward in order, inverse in reverse order) and the programmer
+as it was before its first programmer step and after its last. The step
+grows on top of the stack, as a group's does, so it is there from the
+script's first change, and a script that stops at an error leaves the lines
+that ran. ``undo`` and ``redo`` close the step so far: the steps after them
+make another. A script inside a script joins the outer one. A script that
+pushes nothing leaves nothing. Opening and closing a script close an undo
+group, and a group opened inside a script only counts the steps that join
+the script's step.
 """
 
 from __future__ import annotations
@@ -62,7 +75,20 @@ class ProgrammerStep:
     label: str
 
 
-type Step = ShowStep | ProgrammerStep
+@dataclass(frozen=True, kw_only=True)
+class ScriptStep:
+    """What a script changed, one step (GAP-56): its show ops, and the
+    programmer before its first programmer step and after its last (``None``
+    when it changed no programmer)."""
+
+    forward: tuple[Op, ...]
+    inverse: tuple[Op, ...]
+    before: Programmer | None
+    after: Programmer | None
+    label: str
+
+
+type Step = ShowStep | ProgrammerStep | ScriptStep
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -91,25 +117,65 @@ class Timeline:
         self._redo: list[Step] = []
         self._clock = clock
         self._group: Group | None = None
+        self._script: str | None = None  # the open script's label
+        self._scripts = 0  # how deep scripts are nested
+        self._joined = False  # the last step is the open script's
 
-    def push(self, step: Step) -> None:
+    def push(self, step: ShowStep | ProgrammerStep) -> None:
         """Record a new step; this clears the redo stack. A programmer step
-        joins the open group (see the module docs)."""
+        joins the open group, and any step the open script (see the module
+        docs)."""
         group = self._group
         if group is not None:
             now = self._clock()
             if isinstance(step, ShowStep) or now - group.last > GROUP_GAP:
                 self._group = None
-            elif isinstance(step, ProgrammerStep):
-                if group.steps:  # the group's step is the last one: it grows
-                    first = self._undo.pop()
-                    assert isinstance(first, ProgrammerStep)
-                    step = replace(first, after=step.after)
-                else:
-                    step = replace(step, label=group.label)
+            else:
+                if self._script is None:  # in a script, the script's step takes it
+                    if group.steps:  # the group's step is the last one: it grows
+                        first = self._undo.pop()
+                        assert isinstance(first, ProgrammerStep)
+                        step = replace(first, after=step.after)
+                    else:
+                        step = replace(step, label=group.label)
                 self._group = replace(group, steps=group.steps + 1, last=now)
-        self._undo.append(step)
+        self._undo.append(step if self._script is None else self._scripted(step, self._script))
         self._redo.clear()
+
+    def _scripted(self, step: ShowStep | ProgrammerStep, label: str) -> ScriptStep:
+        """The open script's step with ``step`` joined: the last step, taken
+        off the stack, or a new one labelled ``label``."""
+        if self._joined:
+            script = self._undo.pop()
+            assert isinstance(script, ScriptStep)
+        else:
+            script = ScriptStep(forward=(), inverse=(), before=None, after=None, label=label)
+            self._joined = True
+        if isinstance(step, ShowStep):
+            return replace(
+                script,
+                forward=script.forward + step.forward,
+                inverse=step.inverse + script.inverse,
+            )
+        before = step.before if script.before is None else script.before
+        return replace(script, before=before, after=step.after)
+
+    def open_script(self, label: str) -> None:
+        """A script starts: the steps until it ends are one, labelled
+        ``label``. Inside a script, nothing changes but the depth."""
+        if self._scripts == 0:
+            self._group = None
+            self._script = label
+            self._joined = False
+        self._scripts += 1
+
+    def close_script(self) -> None:
+        """The script :meth:`open_script` started ends."""
+        self._scripts -= 1
+        if self._scripts == 0:
+            self._group = None
+            self._script = None
+            self._joined = False
 
     def open_group(self, label: str) -> Group | None:
         """Open an undo group labelled ``label``; return the group it closed, if one was open."""
@@ -132,6 +198,7 @@ class Timeline:
 
     def undone(self) -> None:
         self._group = None
+        self._joined = False
         self._redo.append(self._undo.pop())
 
     def next_redo(self) -> Step | None:
@@ -143,6 +210,7 @@ class Timeline:
 
     def clear(self) -> None:
         self._group = None
+        self._joined = False
         self._undo.clear()
         self._redo.clear()
 

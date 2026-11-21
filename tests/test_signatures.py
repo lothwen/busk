@@ -8,8 +8,8 @@ defaults, so a library user can call them without the CLI's plumbing:
   touches the state directory (``busk new`` still passes the installation's
   CID);
 * the path parameters of ``read_ofl``, ``read_gdtf``, ``read_profile``,
-  ``ProfileLibrary`` and the show-file functions accept ``str`` as well as
-  :class:`~pathlib.Path`.
+  ``ProfileLibrary``, ``pending_recovery`` and the show-file functions accept
+  ``str`` as well as :class:`~pathlib.Path`.
 """
 
 from __future__ import annotations
@@ -24,6 +24,7 @@ import pytest
 from busk.importers.gdtf import read_gdtf
 from busk.importers.ofl import read_ofl
 from busk.model.validate import validate_show
+from busk.persistence.autosave import pending_recovery
 from busk.persistence.show_file import load_show, new_show, save_show, show_json
 from busk.session.ids import CounterIds
 from busk.session.library import ProfileLibrary, read_profile
@@ -117,6 +118,18 @@ def test_read_profile_accepts_a_str_path(tmp_path: Path) -> None:
     path = archive(tmp_path / "spot.gdtf", spot())
     assert read_profile(str(path)) == read_profile(path)
     assert read_profile(str(OFL / "par-rgbw.json")) == read_ofl(OFL / "par-rgbw.json")
+
+
+def test_pending_recovery_accepts_str_paths(tmp_path: Path) -> None:
+    """A show whose last run did not end cleanly, by its id's ``session.json``."""
+    show = tmp_path / "club.show"
+    save_show(new_show("Club Night", ids=CounterIds()), show)
+    folder = tmp_path / "state" / "autosave" / "show-000000000001"
+    folder.mkdir(parents=True)
+    (folder / "session.json").write_text('{"cleanExit": false}')
+    pending = pending_recovery(str(show), state_dir=str(tmp_path / "state"))
+    assert pending is not None
+    assert pending == pending_recovery(show, state_dir=tmp_path / "state")
 
 
 def test_profile_library_accepts_str_directories(tmp_path: Path) -> None:
