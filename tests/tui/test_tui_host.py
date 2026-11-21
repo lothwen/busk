@@ -1,8 +1,9 @@
 """The two hosts (plan step 0.1, §4.6): the ``busk run`` command line and
 environment ``busk-tui`` starts, ``--standalone``'s load errors and its loop
 over the shows the TUI opens, the wheel, the bridge on a real ``busk run
---frontend``, with processes and with ``--threads``, and the parent starting
-the show a real run hands over (file-menu plan Phase 3)."""
+--frontend``, with processes and with ``--threads``, the parent starting
+the show a real run hands over (file-menu plan Phase 3), and the launcher
+again after the TUI closes its show (Phase 9)."""
 
 from __future__ import annotations
 
@@ -97,6 +98,59 @@ def test_without_a_show_busk_run_runs_the_one_the_launcher_chose(
     monkeypatch.setattr(Launcher, "run", crash)
     assert app.main([]) == 1
     assert ran == []
+
+
+def test_a_closed_show_goes_back_to_the_launcher_and_the_show_chosen_there_is_opened(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After a run that closed its show, the launcher runs, and its choice
+    runs without ``--values`` and ``--script`` (file-menu plan call 25);
+    quitting the launcher ends ``busk-tui`` with 0, and a crash with its
+    code. The run that follows a close ends ``busk-tui`` as any run does."""
+    from busk_tui.launcher import Launcher
+
+    chosen: list[Path | None] = []
+    ran: list[list[str]] = []
+    ends: list[int | parent.Close] = []
+
+    def launch(self: Launcher) -> Path | None:
+        assert self.recovery is not None  # under busk run, the marks are read
+        show = chosen.pop(0)
+        if show == Path("crash"):
+            self._return_code = 1
+            return None
+        return show
+
+    def run(first: list[str], then: Any, environment: dict[str, str]) -> int | parent.Close:
+        ran.append(first)
+        return ends.pop(0)
+
+    monkeypatch.setattr(Launcher, "run", launch)
+    monkeypatch.setattr(parent, "run", run)
+    given = ["/s/a.show", "--values", "v.json", "--threads"]
+    chosen[:] = [Path("/s/b.show"), None]
+    ends[:] = [parent.CLOSE, parent.CLOSE]
+    assert app.main(given) == 0  # the launcher quit
+    assert [line[3:5] for line in ran] == [["run", "/s/a.show"], ["run", "/s/b.show"]]
+    assert ran[0][-3:] == ["--threads", "--values", "v.json"]
+    assert ran[1][-1] == "--threads"
+    assert "--values" not in ran[1]  # opened, not given
+    assert chosen == []
+    ran.clear()
+    chosen[:] = [Path("/s/b.show")]
+    ends[:] = [parent.CLOSE, 3]
+    assert app.main(given) == 3  # the next run's code
+    assert len(ran) == 2
+    ran.clear()
+    chosen[:] = [Path("/s/a.show"), Path("/s/b.show")]  # no show given: the launcher's first
+    ends[:] = [parent.CLOSE, 0]
+    assert app.main(["--values", "v.json"]) == 0
+    assert ["--values" in line for line in ran] == [True, False]
+    ran.clear()
+    chosen[:] = [Path("crash")]
+    ends[:] = [parent.CLOSE]
+    assert app.main(given) == 1
+    assert len(ran) == 1
 
 
 def test_the_recent_shows_are_marked_only_where_the_show_opened_recovers(
@@ -204,13 +258,58 @@ def test_standalone_runs_the_next_show_the_tui_opens(
     assert "busk-tui: " in capsys.readouterr().err
 
 
+def test_standalone_runs_the_launcher_when_the_tui_closes_its_show(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """In its own process too (file-menu plan call 25): the show chosen
+    there runs next, and quitting it ends ``busk-tui`` with 0."""
+    shows = {name: tmp_path / f"{name}.show" for name in ("a", "b")}
+    for name, path in shows.items():
+        busk.save_show(busk.new_show(name.upper()), path, backups=False)
+    from busk_tui.launcher import Launcher
+    from busk_tui.shell import BuskApp
+
+    opened: list[Path] = []
+    nexts: list[Path | parent.Close | None] = []
+    chosen: list[Path | None] = []
+    standalone = Bridge.standalone
+
+    def bridge(path: Path, **given: Any) -> Bridge:
+        opened.append(path)
+        return standalone(path, **given)
+
+    def run(self: BuskApp) -> int:
+        self.next_show = nexts.pop(0)
+        return 0
+
+    def launch(self: Launcher) -> Path | None:
+        assert self.recovery is None  # standalone recovers nothing
+        return chosen.pop(0)
+
+    monkeypatch.setattr(Bridge, "standalone", bridge)
+    monkeypatch.setattr(BuskApp, "run", run)
+    monkeypatch.setattr(Launcher, "run", launch)
+    options = ["--standalone", "--no-output", "--no-surfaces"]
+    nexts[:] = [parent.CLOSE, parent.CLOSE]
+    chosen[:] = [shows["b"], None]
+    assert app.main([str(shows["a"]), *options]) == 0
+    assert opened == [shows["a"], shows["b"]]
+    assert chosen == []
+    opened.clear()
+    nexts[:] = [parent.CLOSE, None]
+    chosen[:] = [shows["b"], shows["a"]]  # no show given: the launcher's first
+    assert app.main(options) == 0
+    assert opened == [shows["b"], shows["a"]]
+
+
+@pytest.mark.parametrize("closing", [False, True], ids=["open", "close"])
 @pytest.mark.parametrize("handing", [True, False], ids=["parent", "no parent"])
 def test_the_frontend_hands_the_show_the_tui_opened_to_its_parent(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, handing: bool
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, handing: bool, closing: bool
 ) -> None:
     """Under busk-tui's parent (``$BUSK_TUI_NEXT``), the TUI can open
-    another show, and the frontend hands it over once the app ends; without
-    one, the TUI is told it cannot."""
+    another show, or close its own, and the frontend hands it over once the
+    app ends; without one, the TUI is told it cannot."""
     from tui_fakes import FakeBridge
 
     from busk_tui.shell import BuskApp
@@ -223,9 +322,11 @@ def test_the_frontend_hands_the_show_the_tui_opened_to_its_parent(
     monkeypatch.setenv(config.ENVIRONMENT, json.dumps({"state_dir": str(tmp_path / "st")}))
     seen: list[tuple[bool, Path | None]] = []
 
+    handed = parent.CLOSE if closing else tmp_path / "b.show"
+
     def run(self: BuskApp) -> int:
         seen.append((self.opens, self.state_dir))
-        self.next_show = tmp_path / "b.show"
+        self.next_show = handed
         return 0
 
     monkeypatch.setattr(Bridge, "attached", lambda show: FakeBridge())
@@ -233,7 +334,7 @@ def test_the_frontend_hands_the_show_the_tui_opened_to_its_parent(
     app.frontend(object())
     assert seen == [(handing, tmp_path / "st")]
     if handing:
-        assert parent.read_next(next_file) == tmp_path / "b.show"
+        assert parent.read_next(next_file) == handed
     else:
         assert not next_file.exists()
 
@@ -325,10 +426,12 @@ def test_the_bridge_on_busk_runs_show(
     assert seen["health"] == "running"  # the bridge never stopped the show
 
 
-def test_the_parent_starts_the_show_a_real_run_hands_over(tmp_path: Path) -> None:
+@pytest.mark.parametrize("closing", [False, True], ids=["quit", "close"])
+def test_the_parent_starts_the_show_a_real_run_hands_over(tmp_path: Path, closing: bool) -> None:
     """Two real ``busk run``s, one after the other: the first one's frontend
     hands ``b.show`` over through ``$BUSK_TUI_NEXT``, which reaches the
-    console process; the parent starts it, and ends with its code."""
+    console process; the parent starts it, and ends with its code, or
+    returns :data:`~busk_tui.parent.CLOSE` when it closes its show."""
     shows = {name: tmp_path / f"{name.lower()}.show" for name in ("A", "B")}
     for title, path in shows.items():
         busk.save_show(busk.new_show(title), path, backups=False)
@@ -338,6 +441,7 @@ def test_the_parent_starts_the_show_a_real_run_hands_over(tmp_path: Path) -> Non
         "PYTHONPATH": os.pathsep.join([str(HERE), os.environ.get("PYTHONPATH", "")]),
         "BUSK_TUI_TEST_REPORT": str(report),
         "BUSK_TUI_TEST_NEXT": str(shows["B"]),
+        **({"BUSK_TUI_TEST_CLOSE": "B"} if closing else {}),
     }
 
     def command(show: Path) -> list[str]:
@@ -352,7 +456,7 @@ def test_the_parent_starts_the_show_a_real_run_hands_over(tmp_path: Path) -> Non
                                     stderr=subprocess.STDOUT)  # fmt: skip
 
         code = parent.run(command(shows["A"]), command, environment, start)
-    assert code == 0, (tmp_path / "out.txt").read_text()
+    assert code == (parent.CLOSE if closing else 0), (tmp_path / "out.txt").read_text()
     seen = [json.loads(line) for line in report.read_text().splitlines()]
     assert [entry["title"] for entry in seen] == ["A", "B"]
     assert seen[0]["next"] == seen[1]["next"] is not None

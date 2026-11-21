@@ -11,7 +11,11 @@ starts ``busk run`` on one show after another.
   (:func:`hand_off`) and quits, and the run ends;
 * the parent reads the file, deletes it, and starts the next run on that
   show (:func:`run`). Without the file, or after a run that did not end
-  with 0, it exits with the run's code.
+  with 0, it exits with the run's code;
+* to close the show (file-menu plan call 25), the TUI writes
+  ``{"close": true}`` instead, and :func:`run` returns :data:`CLOSE`, for
+  ``busk-tui`` to run the launcher, then :func:`run` again on the show
+  chosen there.
 
 While a run goes, the parent ignores SIGINT: the TUI reads Ctrl+C as a key,
 and a run that is not full-screen yet takes it itself. (A handler that does
@@ -27,6 +31,7 @@ It imports neither busk nor Textual.
 from __future__ import annotations
 
 import contextlib
+import enum
 import json
 import os
 import signal
@@ -41,6 +46,16 @@ NEXT: Final = "BUSK_TUI_NEXT"
 """The variable that names the file the TUI hands the next show over in."""
 
 PASSED_ON: Final = (signal.SIGTERM, signal.SIGHUP)
+
+
+class Close(enum.Enum):
+    """The launcher, handed over in place of a show."""
+
+    CLOSE = "close"
+
+
+CLOSE: Final = Close.CLOSE
+"""What the TUI hands over to close the show, and what :func:`run` returns then."""
 
 
 class Run(Protocol):
@@ -64,10 +79,11 @@ def run(
     then: Callable[[Path], list[str]],
     environment: Mapping[str, str],
     start: Start = popen,
-) -> int:
+) -> int | Close:
     """Run ``first``, the ``busk run`` of the show given, then ``then(show)``
     for each show the TUI hands over; return the last run's exit code, or
-    128 + N if a signal N killed it (see the module docs). Main thread only:
+    128 + N if a signal N killed it, or :data:`CLOSE` after a run that
+    closed its show and ended with 0 (see the module docs). Main thread only:
     it sets signal handlers, and puts the old ones back when it returns."""
     stopping: list[int] = []  # the signals passed on: nothing more starts
     running: list[Run] = []
@@ -96,6 +112,8 @@ def run(
                 show = read_next(next_file)
                 if show is None or code != 0 or stopping:
                     return 128 - code if code < 0 else code
+                if show is CLOSE:
+                    return CLOSE
                 command = then(show)
     finally:
         for number, handler in previous.items():
@@ -106,9 +124,9 @@ def _ignore(number: int, frame: FrameType | None) -> None:
     pass
 
 
-def read_next(file: Path) -> Path | None:
-    """The show the TUI handed over in ``file``, which is deleted; ``None``
-    if there is none, or it cannot be read."""
+def read_next(file: Path) -> Path | Close | None:
+    """The show the TUI handed over in ``file``, which is deleted, or
+    :data:`CLOSE`; ``None`` if there is none, or it cannot be read."""
     try:
         text = file.read_text(encoding="utf-8")
     except OSError:
@@ -119,21 +137,27 @@ def read_next(file: Path) -> Path | None:
         given = json.loads(text)
     except ValueError:
         return None
-    show = given.get("open") if isinstance(given, dict) else None
+    if not isinstance(given, dict):
+        return None
+    if given.get("close") is True:
+        return CLOSE
+    show = given.get("open")
     return Path(show) if isinstance(show, str) and show else None
 
 
-def hand_off(show: Path, environ: Mapping[str, str] | None = None) -> bool:
+def hand_off(show: Path | Close, environ: Mapping[str, str] | None = None) -> bool:
     """Ask the parent to start ``show`` (an absolute path) once this run
-    ends: ``{"open": …}`` in :data:`NEXT`'s file, written whole. ``False``
-    without a parent, or if it cannot be written."""
+    ends, or the launcher (:data:`CLOSE`): ``{"open": …}`` or ``{"close":
+    true}`` in :data:`NEXT`'s file, written whole. ``False`` without a
+    parent, or if it cannot be written."""
     target = (os.environ if environ is None else environ).get(NEXT)
     if not target:
         return False
     file = Path(target)
     temporary = file.with_name(file.name + ".tmp")
     try:
-        temporary.write_text(json.dumps({"open": str(show)}), encoding="utf-8")
+        given = {"close": True} if show is CLOSE else {"open": str(show)}
+        temporary.write_text(json.dumps(given), encoding="utf-8")
         temporary.replace(file)
     except OSError:
         return False

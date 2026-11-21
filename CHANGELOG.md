@@ -53,6 +53,11 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   not touched), and a show whose last run did not end cleanly is marked `recovers`, in amber:
   its preview says when that run last wrote what comes back, and whether its unsaved edits come
   back with the programmer. With `--no-recover`, or `--standalone`, no show is marked.
+- The TUI's File menu has Close: it ends the show that runs and goes back to the launcher, to
+  choose the next show or quit, whether `busk-tui` was started with a show or without one. It
+  asks first as Open… does: Save and close, Close without saving (x) and Cancel with unsaved
+  edits, and that the output stops until a show is opened while a route sends. A show chosen
+  after a Close starts without `--values` and `--script`.
 - `run_script(path, each=…)` on `OfflineShow` and `LiveShow` calls `each(number, total, line,
   reply)` after each line of the script has run, before the next one: the line's number, the
   file's number of lines, the line and its `Reply`, so a display can follow a long script as

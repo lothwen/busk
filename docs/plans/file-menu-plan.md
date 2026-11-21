@@ -866,6 +866,49 @@ empty the list, "No recent shows" shows, `state.json` keeps `recent: []`, and bo
       0. The kitty keyboard mode is pushed and popped evenly between the apps.
 29. **Docs.** The guide's "Start" and "Opening another show", CHANGELOG.
 
+**Done** 2026-11-21, on fd88b99. Code: `Close` and `CLOSE`, and `CLOSE` in `read_next`,
+`hand_off` and what `run` returns (`src/busk_tui/parent.py`); in `app.py`, `main`'s loop and
+`_launch`, the launcher in `_standalone`, and the close in `frontend`'s hand-off; in `shell.py`,
+`close_show`, `_open` taking a show or `CLOSE`, `_confirm_open`'s `closing`, and `_can_open`'s
+words; `OpenDialog`'s `closing` (`widgets/show_dialogs.py`); `close` in `FileMenu`'s `ITEMS`.
+Tests: the close in `test_tui_parent.py`; in `test_tui_host.py`, `main`'s loop, `--standalone`'s,
+the frontend's hand-off of a close, and two real runs that end in one (`tui_handoff_frontend.py`
+closes the show `$BUSK_TUI_TEST_CLOSE` names); a Close section in `test_tui_open.py`; the menu's
+rows in `test_tui_file_menu.py`; Close held in `test_tui_import.py`. What differs from the steps
+above, or goes beyond them:
+
+- **x is Close without saving** (vetoable): `c` is Cancel there, as in every dialog. Without
+  unsaved edits it offers `[x Close]  [c Cancel]`; `o` does nothing in it.
+- **The question names the show**: `Close "Club Night" (~/shows/club.show) and go back to the
+  launcher?`, or "the show" while the TUI knows no title.
+- **Without busk-tui's parent** each item says what it cannot do: `this TUI cannot close the
+  show: busk-tui SHOW can, …`. New… now says `cannot start a new show`, where it said `cannot
+  open another show`: one message for the four.
+- **Held while a script imports**, as call 21 says, and again when the close comes: Save and
+  close waits for the save's reply, and an import can start meanwhile (`_open` checks, as for
+  Open).
+- **The launcher's first choice is still the show given** (Phase 4): with no show,
+  `busk-tui --values v.json` applies `--values` to the first show chosen, and not to one
+  chosen after a Close.
+- **A run that closes after a SIGTERM or SIGHUP** ends the parent with the run's code, as a
+  run that hands a show over does: the parent starts nothing more, the launcher neither.
+- **The launcher reads `recent` each time it opens**, so the show just closed is first.
+
+Checks: the whole suite (`-n 6`, 8:14) 7,332 passed, 1 skipped, 2 failed: Phase 2's
+`test_waveforms.py::test_vectorised_equals_the_scalar_transcription`, and
+`test_watchdog.py::test_a_killed_engine_comes_back_with_the_same_frame_and_no_gap`, which reads
+the receiver's last sACN packet before one has come (`IndexError` in `process_harness`'s
+`latest`). It runs no TUI, and fails 4 times in 6 alone on fd88b99 without these changes. 21
+mutations, all caught. ruff, format and mypy clean.
+Pty runs at 120×32: under `busk run`, Club Night sending sACN to localhost: Alt+F (kitty) Close,
+the dialog naming the route, `o` doing nothing, `x`; the launcher, Enter on Festival, an unsaved
+rename, a click on the badge, Close, `c`, Close again, `s` (the file then holds the new title);
+the launcher, `q`, exit 0. With `--standalone` and no show: the launcher, Festival, Close at
+once (nothing unsaved, no route), `o` Club Night, Close through the route's warning, Enter on
+it, Close, `q`, exit 0: seven Textual apps in one process (§8). In both raw streams each app
+pushes the kitty keyboard mode (`ESC[>25u`) and pops it inside its own alternate screen, and
+nothing was left running.
+
 ### Phase 10: the user's check
 
 30. **On the rig**, with the TupperDMX simulator running:
@@ -905,7 +948,7 @@ empty the list, "No recent shows" shows, `state.json` keeps `recent: []`, and bo
 - **The log under a script.** festival.busk sends over 4,000 lines and replies in a few
   seconds. Phase 7 measures the frame rate while it runs.
 - **The launcher many times in one process.** With Close, `--standalone` starts Textual apps
-  without a limit, where Phase 3 checked three.
+  without a limit, where Phase 3 checked three. Phase 9 checked seven in a pty.
 
 ## 9. Found while planning (busk, not fixed here)
 

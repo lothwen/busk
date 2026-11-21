@@ -8,7 +8,8 @@
   With ``--standalone`` it runs the show in this process instead, and stops
   it when the TUI ends, or starts the next show the TUI opens. Given no
   show, it runs the launcher first (:mod:`busk_tui.launcher`), and the show
-  chosen there is the show given.
+  chosen there is the show given. When the TUI closes its show, it runs the
+  launcher again, and the show chosen there is opened as the TUI opens one.
 * :func:`frontend` is what ``busk run`` calls, on its console process's main
   thread, with the run's show, already started. The run ends when it returns,
   after it has handed the next show, if any, to the parent.
@@ -46,21 +47,39 @@ def main(argv: Sequence[str] | None = None) -> int:
     if system is not None:
         os.environ["TEXTUAL_COLOR_SYSTEM"] = system
     if options.show is None:  # the launcher chooses it (file-menu plan call 15)
-        from busk_tui.bridge import show_read
-        from busk_tui.launcher import Launcher
-
-        _debug_log()
-        launcher = Launcher(show_read, recovery=recovery(options), state_dir=options.state_dir)
-        show = launcher.run()
-        if show is None:  # quit, or it crashed
-            return launcher.return_code or 0
-        options = replace(options, show=show)
+        chosen = _launch(options)
+        if not isinstance(chosen, Path):
+            return chosen
+        options = replace(options, show=chosen)
     if options.standalone:
         return _standalone(options, settings)
     command, environment = run_command(options)
-    sys.stdout.flush()
-    sys.stderr.flush()
-    return parent.run(command, lambda show: config.busk_run_command(options, show), environment)
+
+    def then(show: Path) -> list[str]:
+        return config.busk_run_command(options, show)
+
+    while True:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        ended = parent.run(command, then, environment)
+        if ended is not parent.CLOSE:
+            return ended
+        chosen = _launch(options)  # the show closed (call 25), outside the parent's handlers
+        if not isinstance(chosen, Path):
+            return chosen
+        command = then(chosen)  # opened, not given: without --values and --script
+
+
+def _launch(options: config.Options) -> Path | int:
+    """The launcher: the show chosen there, or the exit code, when it is
+    quit (0) or crashed."""
+    from busk_tui.bridge import show_read
+    from busk_tui.launcher import Launcher
+
+    _debug_log()
+    launcher = Launcher(show_read, recovery=recovery(options), state_dir=options.state_dir)
+    show = launcher.run()
+    return (launcher.return_code or 0) if show is None else show
 
 
 def run_command(options: config.Options) -> tuple[list[str], dict[str, str]]:
@@ -73,8 +92,9 @@ def frontend(show: object) -> None:
     """Run the TUI on ``busk run``'s show (``busk run --frontend
     busk_tui.app:frontend``). It neither starts nor stops the show: the run
     ends when this returns, and the parent starts the show the TUI opened, if
-    it opened one. An exception is a console crash, after which ``busk run``
-    starts a new console that calls this again."""
+    it opened one, or the launcher, if it closed the show. An exception is a
+    console crash, after which ``busk run`` starts a new console that calls
+    this again."""
     from busk_tui.bridge import Bridge
     from busk_tui.shell import BuskApp
 
@@ -94,7 +114,8 @@ def frontend(show: object) -> None:
         bridge.stop()
         config.write_state(config.state_path(), page=app.page, layout=app.view.layout)
     if app.next_show is not None and not parent.hand_off(app.next_show):
-        print(f"busk-tui: cannot hand {app.next_show} over to open it", file=sys.stderr)
+        what = "the launcher" if app.next_show is parent.CLOSE else app.next_show
+        print(f"busk-tui: cannot hand {what} over to open it", file=sys.stderr)
 
 
 def recovery(options: config.Options) -> Callable[[Path], Recovery | None] | None:
@@ -111,7 +132,9 @@ def recovery(options: config.Options) -> Callable[[Path], Recovery | None] | Non
 
 def _standalone(options: config.Options, settings: config.Settings) -> int:
     """Run the show given in this process, then each show the TUI opens
-    (file-menu plan call 16): a new bridge and a new app on it."""
+    (file-menu plan call 16): a new bridge and a new app on it. When the TUI
+    closes its show, the launcher runs here too, and the show chosen there
+    is the next (call 25)."""
     from busk_tui.bridge import Bridge
     from busk_tui.model import ShowLoadFailed
 
@@ -141,7 +164,13 @@ def _standalone(options: config.Options, settings: config.Settings) -> int:
             config.write_state(config.state_path(), page=app.page, layout=app.view.layout)
         if app.next_show is None:
             return 0 if code is None else code
-        show = app.next_show
+        if app.next_show is parent.CLOSE:
+            chosen = _launch(options)
+            if not isinstance(chosen, Path):
+                return chosen
+            show = chosen
+        else:
+            show = app.next_show
         settings = config.settings(  # the page and layout the last show left
             options, config=options.config or config.config_path(), state=config.state_path()
         )

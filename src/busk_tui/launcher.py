@@ -12,7 +12,9 @@ refused, with why. A new show is written by ``busk new`` in the folder
 busk-tui runs in.
 
 The app ends with the show chosen (``None``: quit), and ``busk-tui`` runs it
-as the show given (:mod:`busk_tui.app`).
+as the show given (:mod:`busk_tui.app`). It runs again when the TUI closes
+its show (file-menu plan call 25), and the show chosen then is opened, as
+the TUI opens one.
 
 Imported only once ``TEXTUAL_COLOR_SYSTEM`` is set, as :mod:`busk_tui.shell`.
 """

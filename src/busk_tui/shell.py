@@ -20,12 +20,12 @@ after each drain the visible page redraws the parts that changed.
 **Another show** (file-menu plan Phase 3): New…, Open… and Open recent… end
 the app with :attr:`BuskApp.next_show` set, and the one that started it
 starts that show next: ``busk-tui``'s parent process (:mod:`busk_tui.parent`),
-or ``--standalone``'s loop.
+or ``--standalone``'s loop. Close (Phase 9) ends it with the launcher next.
 
 **Import script…** (file-menu plan Phase 7) runs a script through the bridge:
 each line goes to the log as it runs, with its reply, and the hint row is a
 bar until it ends. Meanwhile the lines sent wait for it, and another show
-cannot open.
+cannot open, nor the show close.
 
 Imported only once ``TEXTUAL_COLOR_SYSTEM`` is set (:mod:`busk_tui.app`),
 since Textual reads it when it is imported.
@@ -52,7 +52,7 @@ from textual.screen import ModalScreen, Screen
 from textual.widgets import ContentSwitcher, Input, Static
 from textual.worker import get_current_worker
 
-from busk_tui import colors, commands, config
+from busk_tui import colors, commands, config, parent
 from busk_tui.hints import HelpIndex, complete, hint
 from busk_tui.model import (
     Beat,
@@ -194,7 +194,7 @@ class Importing:
 
 class BuskApp(App[int]):
     """The TUI on one show (see the module docs). ``opens``: whoever runs it
-    starts :attr:`next_show` once it ends, so New… and Open… can work.
+    starts :attr:`next_show` once it ends, so New…, Open… and Close can work.
     ``state_dir``: busk's state directory, for ``busk new``'s sACN CID.
     ``recovery``: what busk would recover of a show file, for Open recent…'s
     marks, called on a worker thread (``None``: the shows opened recover
@@ -229,7 +229,7 @@ class BuskApp(App[int]):
         self.opens = opens
         self.state_dir = state_dir
         self.recovery = recovery
-        self.next_show: Path | None = None  # the show to start once the app ends
+        self.next_show: Path | parent.Close | None = None  # what starts once the app ends
         self.page = settings.page
         self.view = View(faders=settings.faders, quick=settings.quick, layout=settings.layout)
         self.cursor = PaneCursor()
@@ -863,6 +863,8 @@ class BuskApp(App[int]):
                 self.import_script()
             case "import_profile":
                 self.import_profile()
+            case "close":
+                self.close_show()
             case "quit":
                 self.action_quit_dialog()
 
@@ -977,6 +979,18 @@ class BuskApp(App[int]):
         shows = [show for show in config.recent_shows(config.state_path()) if show.path != own]
         self.push_screen(RecentDialog(shows), self._check_open)
 
+    def close_show(self) -> None:
+        """Close: back to the launcher (file-menu plan call 25), after the
+        confirmation, worded for closing."""
+        if not self._can_open("close the show"):
+            return
+        named = "the show" if self.view.show is None else f'"{self.view.show.title}"'
+        own = self._own_file()
+        if own is not None:
+            named += f" ({home_text(own)})"
+        question = f"Close {named} and go back to the launcher?"
+        self._confirm_open("CLOSE", question, lambda: self._open(parent.CLOSE), closing=True)
+
     def _own_file(self) -> Path | None:
         return None if self.session is None else self.session.path
 
@@ -984,7 +998,7 @@ class BuskApp(App[int]):
         if not self.opens:
             self.log_view.add(
                 "warning",
-                "this TUI cannot open another show: busk-tui SHOW can, "
+                f"this TUI cannot {what}: busk-tui SHOW can, "
                 "not busk run --frontend busk_tui.app:frontend",
             )
         return self.opens and not self._held(what)
@@ -1006,11 +1020,13 @@ class BuskApp(App[int]):
 
         self._read_show(path, found)
 
-    def _confirm_open(self, title: str, question: str, then: Callable[[], None]) -> None:
-        """Before the show changes (D2): ``then`` at once, unless there are
-        unsaved edits (or the TUI cannot tell) or a route sends; then the
-        confirmation first, which may save and wait for the save, as Save and
-        quit does. A failed save keeps the show that runs."""
+    def _confirm_open(
+        self, title: str, question: str, then: Callable[[], None], closing: bool = False
+    ) -> None:
+        """Before the show changes (D2), or ``closing`` it: ``then`` at once,
+        unless there are unsaved edits (or the TUI cannot tell) or a route
+        sends; then the confirmation first, which may save and wait for the
+        save, as Save and quit does. A failed save keeps the show that runs."""
         dirty = None if self.session is None else self.session.dirty
         sending = [f"{r.protocol}·U{r.universe}" for r in self.view.routes if r.state == "ok"]
         if dirty is False and not sending:
@@ -1028,7 +1044,7 @@ class BuskApp(App[int]):
             elif choice == "open":
                 then()
 
-        self.push_screen(OpenDialog(title, question, dirty, sending), chosen)
+        self.push_screen(OpenDialog(title, question, dirty, sending, closing=closing), chosen)
 
     def _make_show(self, path: Path, title: str) -> None:
         """``busk new`` on a worker: the template show, with the
@@ -1050,12 +1066,13 @@ class BuskApp(App[int]):
 
         self.run_worker(make, thread=True, group="new-show")
 
-    def _open(self, path: Path) -> None:
-        """End the app, for ``path`` to start next; not while a script
-        imports (one started while the show was read or made)."""
-        if self._held("open another show"):
+    def _open(self, show: Path | parent.Close) -> None:
+        """End the app, for ``show`` to start next, or the launcher
+        (:data:`~busk_tui.parent.CLOSE`); not while a script imports (one
+        started while the show was read, made or saved)."""
+        if self._held("close the show" if show is parent.CLOSE else "open another show"):
             return
-        self.next_show = path
+        self.next_show = show
         self.exit(0)
 
     def open_help(self, lines: Sequence[str]) -> None:

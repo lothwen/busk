@@ -1,6 +1,7 @@
 """``busk-tui``'s parent process (``busk_tui.parent``, file-menu plan D3,
 calls 9 and 11): one ``busk run`` after another, the hand-off file, the
-signals and the exit codes; with fake runs, then with real processes."""
+signals and the exit codes, and a run that closes its show (call 25); with
+fake runs, then with real processes."""
 
 from __future__ import annotations
 
@@ -33,7 +34,7 @@ class FakeRun:
     command: list[str]
     environment: dict[str, str]
     code: int = 0
-    hand: Path | None = None
+    hand: Path | parent.Close | None = None
     signal_parent: int | None = None
     signals: list[int] = field(default_factory=list)
     sigint: Any = None  # the parent's SIGINT handler while it waits
@@ -94,6 +95,29 @@ def test_a_run_that_did_not_end_well_starts_nothing_more(code: int) -> None:
     assert len(runs.started) == 1
 
 
+def test_a_run_that_closed_its_show_returns_close_with_the_handlers_put_back() -> None:
+    """busk-tui runs the launcher then, outside the parent's handlers, and
+    the hand-off folder is gone with the run."""
+    before = {number: signal.getsignal(number) for number in (signal.SIGINT, *parent.PASSED_ON)}
+    runs = Runs({"hand": Path("/s/b.show")}, {"hand": parent.CLOSE})
+    assert parent.run(FIRST, then, {}, runs) is parent.CLOSE
+    assert [run.command for run in runs.started] == [FIRST, then(Path("/s/b.show"))]
+    assert {number: signal.getsignal(number) for number in before} == before
+    assert not Path(runs.started[0].environment[parent.NEXT]).parent.exists()
+
+
+@pytest.mark.parametrize(
+    ("given", "code"),
+    [({"code": 1}, 1), ({"code": -signal.SIGKILL}, 137), ({"signal_parent": signal.SIGTERM}, 0)],
+    ids=["code 1", "killed", "sigterm"],
+)
+def test_a_run_that_closed_its_show_but_did_not_end_well_ends_the_parent(
+    given: dict[str, Any], code: int
+) -> None:
+    runs = Runs({"hand": parent.CLOSE, **given})
+    assert parent.run(FIRST, then, {}, runs) == code
+
+
 def test_a_run_a_signal_killed_ends_with_128_and_the_signal() -> None:
     assert parent.run(FIRST, then, {}, Runs({"code": -signal.SIGKILL})) == 137
 
@@ -127,7 +151,11 @@ def test_the_hand_off_file(tmp_path: Path) -> None:
     assert parent.read_next(file) == Path("/s/b.show")
     assert not file.exists()  # read once
     assert parent.read_next(file) is None
-    for text in ("{", "[]", '{"open": 3}', '{"open": ""}'):
+    assert parent.hand_off(parent.CLOSE, {parent.NEXT: str(file)})
+    assert json.loads(file.read_text()) == {"close": True}
+    assert parent.read_next(file) is parent.CLOSE
+    assert not file.exists()
+    for text in ("{", "[]", '{"open": 3}', '{"open": ""}', '{"close": false}', '{"close": 1}'):
         file.write_text(text)
         assert parent.read_next(file) is None
         assert not file.exists()

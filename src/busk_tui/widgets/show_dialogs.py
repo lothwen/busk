@@ -1,7 +1,8 @@
 """The dialogs of opening another show (file-menu plan Phase 3): the
-confirmation before the show changes (:class:`OpenDialog`), the new show's
-form (:class:`NewShowDialog`), and the recent shows (:class:`RecentDialog`,
-on :class:`RecentShows`, which the launcher shows too).
+confirmation before the show changes or closes (:class:`OpenDialog`), the
+new show's form (:class:`NewShowDialog`), and the recent shows
+(:class:`RecentDialog`, on :class:`RecentShows`, which the launcher shows
+too).
 
 None of them sends anything: each closes with what was chosen, and the app
 opens the show. The recent shows forget one at the operator's word
@@ -54,6 +55,11 @@ class OpenDialog(ModalScreen[OpenChoice]):
     saving; without them, Open. The names of the routes that send
     (``sending``) say that the output stops while the next show starts.
 
+    ``closing``: the same before Close (call 25), worded for it: Save and
+    close, and Close without saving (on **x**, as **c** is Cancel), or Close;
+    the output stops until a show is opened. Close goes on as Open does: the
+    dialog closes with ``"open"``.
+
     With ``problems``, the show cannot be opened: it says why, and closes;
     ``running``: a show runs, and goes on (not in the launcher)."""
 
@@ -61,6 +67,7 @@ class OpenDialog(ModalScreen[OpenChoice]):
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("s", "choose('save')", "Save and open", show=False),
         Binding("o", "choose('open')", "Open", show=False),
+        Binding("x", "choose('close')", "Close", show=False),
         Binding("c,escape,enter", "choose('cancel')", "Cancel", show=False),
     ]
 
@@ -72,6 +79,7 @@ class OpenDialog(ModalScreen[OpenChoice]):
         sending: Sequence[str] = (),
         problems: Sequence[str] = (),
         running: bool = True,
+        closing: bool = False,
     ) -> None:
         super().__init__()
         self.title_text = title
@@ -80,6 +88,7 @@ class OpenDialog(ModalScreen[OpenChoice]):
         self.sending = tuple(sending)
         self.problems = tuple(problems)
         self.running = running
+        self.go = "close" if closing else "open"  # the choice that goes on
 
     def compose(self) -> ComposeResult:
         with Vertical() as box:
@@ -95,14 +104,17 @@ class OpenDialog(ModalScreen[OpenChoice]):
             if self.sending:
                 count = len(self.sending)
                 sending = f"{plural(count, 'route')} {'is' if count == 1 else 'are'} sending"
-                text = f"The output stops while the next show starts:\n{sending} "
+                closing = self.go == "close"
+                until = "until a show is opened" if closing else "while the next show starts"
+                text = f"The output stops {until}:\n{sending} "
                 yield Static(Text(f"{text}({', '.join(self.sending)}).", colors.AMBER))
+            key, verb = ("x", "Close") if self.go == "close" else ("o", "Open")
             with Horizontal():
                 if self.dirty is not False:
-                    yield Choice("s", "Save and open", "save", colors.GREEN)
-                    yield Choice("o", "Open without saving", "open", colors.RED)
+                    yield Choice("s", f"Save and {verb.lower()}", "save", colors.GREEN)
+                    yield Choice(key, f"{verb} without saving", self.go, colors.RED)
                 else:
-                    yield Choice("o", "Open", "open", colors.AMBER)
+                    yield Choice(key, verb, self.go, colors.AMBER)
                 yield Choice("c", "Cancel", "cancel", colors.MID)
 
     def _refused(self) -> ComposeResult:
@@ -120,6 +132,10 @@ class OpenDialog(ModalScreen[OpenChoice]):
             return
         if value == "save" and self.dirty is False:
             return
+        if value in ("open", "close"):
+            if value != self.go:  # o opens, x closes
+                return
+            value = "open"
         self.dismiss(cast(OpenChoice, value))
 
     def on_choice_chosen(self, message: Choice.Chosen) -> None:

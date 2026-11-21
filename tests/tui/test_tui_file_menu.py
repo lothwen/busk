@@ -73,6 +73,7 @@ def test_a_click_on_the_badge_opens_the_menu_under_it_and_esc_closes_it() -> Non
             "Save as…",
             "Import script…",
             "Import profile…",
+            "Close",
             "Quit Ctrl+Q",
         ]
         await pilot.press("escape")

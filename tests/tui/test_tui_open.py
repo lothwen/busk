@@ -1,7 +1,8 @@
 """Opening another show (file-menu plan Phase 3): New…, Open… and Open
 recent… in the File menu, Ctrl+N and Ctrl+O, the show read before it is
 opened, the confirmation before the show changes (D2, call 12), and the app
-ending with the show to start next (``BuskApp.next_show``)."""
+ending with the show to start next (``BuskApp.next_show``); Close, which
+ends it with the launcher next (Phase 9, call 25)."""
 
 from __future__ import annotations
 
@@ -10,12 +11,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from textual.containers import Vertical
 from textual.pilot import Pilot
 from textual.widgets import Input, Static
-from tui_fakes import FakeBridge, Reply, drive, settle
+from tui_fakes import FakeBridge, Reply, drive, settle, show_model
 
 import busk
-from busk_tui import config
+from busk_tui import config, parent
 from busk_tui.model import (
     CommandDone,
     Recovery,
@@ -23,6 +25,7 @@ from busk_tui.model import (
     RouteView,
     SessionChanged,
     SessionState,
+    ShowChanged,
 )
 from busk_tui.shell import BuskApp
 from busk_tui.widgets.file_menu import ITEMS
@@ -306,13 +309,19 @@ def test_a_tui_whose_host_cannot_start_another_show_says_so(tmp_path: Path) -> N
             await pilot.press(key)
             await pilot.pause()
             assert app.screen is app.screen_stack[0]
-        await choose(pilot, "open_recent")
-        assert app.screen is app.screen_stack[0]
+        for item in ("open_recent", "close"):
+            await choose(pilot, item)
+            assert app.screen is app.screen_stack[0]
         warnings = [text for kind, text in app.query_one(LogView).entries if kind == "warning"]
-        assert len(warnings) == 3
-        assert warnings[0].startswith("this TUI cannot open another show: busk-tui SHOW can")
+        said = ["open another show", "start a new show", "open another show", "close the show"]
+        assert warnings == [
+            f"this TUI cannot {what}: busk-tui SHOW can, "
+            "not busk run --frontend busk_tui.app:frontend"
+            for what in said
+        ]
 
     drive(app, body)
+    assert app.next_show is None
 
 
 # ------------------------------------------------------------------ new
@@ -580,3 +589,99 @@ def test_open_recent_without_recent_shows_says_so(tmp_path: Path) -> None:
         assert not isinstance(app.screen, RecentDialog)
 
     drive(app, body)
+
+
+# ------------------------------------------------------------------ close
+
+
+def test_close_with_nothing_unsaved_and_no_output_goes_back_to_the_launcher_at_once(
+    tmp_path: Path,
+) -> None:
+    bridge = FakeBridge()
+    app = make(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events.append(at(tmp_path / "club.show"))
+        await settle(pilot, app)
+        await choose(pilot, "close")
+        await until(pilot, lambda: not app.is_running)
+
+    drive(app, body)
+    assert app.next_show is parent.CLOSE
+    assert app.return_value == 0
+    assert bridge.lines() == []
+
+
+@pytest.mark.parametrize("answer", ["c", "x", "s"])
+def test_close_with_unsaved_edits_asks_to_save_and_close_close_without_saving_or_cancel(
+    tmp_path: Path, answer: str
+) -> None:
+    bridge = FakeBridge()
+    app = make(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events += [ShowChanged(show_model()), at(tmp_path / "club.show", dirty=True)]
+        await settle(pilot, app)
+        await choose(pilot, "close")
+        dialog = dialog_of(app)
+        assert dialog.query_one(Vertical).border_title == "CLOSE"
+        assert texts(app) == [
+            f'Close "Club Night" ({tmp_path / "club.show"}) and go back to the launcher?',
+            "There are unsaved edits.",
+            "[s Save and close]",
+            "[x Close without saving]",
+            "[c Cancel]",
+        ]
+        await pilot.press("o")  # Open's key: not here
+        await pilot.pause()
+        assert isinstance(app.screen, OpenDialog)
+        await pilot.press(answer)
+        await settle(pilot, app)
+        if answer != "c":
+            await until(pilot, lambda: not app.is_running)
+
+    drive(app, body)
+    assert bridge.lines() == (["save"] if answer == "s" else [])
+    assert app.next_show is (None if answer == "c" else parent.CLOSE)
+
+
+def test_close_with_live_output_says_the_output_stops_until_a_show_is_opened() -> None:
+    bridge = FakeBridge()
+    app = make(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events += [at(None), RoutesChanged((route("sACN", 1, "ok"), route("sACN", 2, None)))]
+        await settle(pilot, app)
+        await choose(pilot, "close")
+        dialog_of(app)
+        assert texts(app) == [
+            "Close the show and go back to the launcher?",
+            "The output stops until a show is opened:\n1 route is sending (sACN·U1).",
+            "[x Close]",
+            "[c Cancel]",
+        ]
+        await pilot.click("#choice-close")
+        await until(pilot, lambda: not app.is_running)
+
+    drive(app, body)
+    assert app.next_show is parent.CLOSE
+    assert bridge.lines() == []
+
+
+def test_a_failed_save_and_close_keeps_the_show(tmp_path: Path) -> None:
+    bridge = FakeBridge(replies={"save": Reply(ok=False, text="error: cannot write club.show")})
+    app = make(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events.append(at(tmp_path / "club.show", dirty=True))
+        await settle(pilot, app)
+        await choose(pilot, "close")
+        await pilot.press("s")
+        await settle(pilot, app)
+        await settle(pilot, app)
+        assert ("error", "cannot write club.show") in app.query_one(LogView).entries
+        assert app.is_running
+
+    drive(app, body)
+    assert bridge.lines() == ["save"]
+    assert app.next_show is None

@@ -37,12 +37,13 @@ busk-tui                               # the launcher: choose a show
 takes `busk run`'s options and passes them on, and its exit code is the run's (128 + N when a
 signal N killed it). Quitting the TUI ends the run, and `busk-tui` with it. Opening another show
 from the TUI ends the run and starts the next, with the same options
-([Opening another show](#opening-another-show)). The options:
+([Opening another show](#opening-another-show)), and the File menu's Close ends it and goes back
+to the [launcher](#the-launcher-busk-tui-without-a-show). The options:
 
 | Option | |
 |---|---|
 | `--state-dir D`, `--library D` | As for `busk run` ([Running a show](../running.md)). |
-| `--values FILE`, `--script FILE`, `--iface IF`, `--no-recover`, `--threads`, `--stats FILE`, `--no-log` | Passed on to `busk run` as they are. A `--script` runs before the TUI opens. `--values` and `--script` are the given show's: a show opened from the TUI starts without them. |
+| `--values FILE`, `--script FILE`, `--iface IF`, `--no-recover`, `--threads`, `--stats FILE`, `--no-log` | Passed on to `busk run` as they are. A `--script` runs before the TUI opens. `--values` and `--script` are the given show's: a show opened from the TUI, or from the launcher after a Close, starts without them. |
 | `--layout A\|B\|C` | The layout of the F1 page: console, stack (the default) or stage. The one chosen last is remembered. |
 | `--faders N` | At most how many of a page's slots F1 shows, 4–20 (default 20). |
 | `--colors auto\|256\|16\|truecolor` | The terminal's colours (default: as the terminal says). |
@@ -95,7 +96,10 @@ With `--no-recover`, or with `--standalone`, which recovers nothing, no show is 
 Before it opens a show, busk loads and compiles it, as `busk run` would. One that does not load
 is refused in a dialog that says why, and the launcher stays. The show chosen then runs as if it
 had been given: under `busk run`, or with `--standalone`, with the options given, `--values` and
-`--script` included. Quitting the TUI ends `busk-tui`; it does not go back to the launcher.
+`--script` included. Quitting the TUI ends `busk-tui`; the File menu's Close goes back to the
+launcher, whether `busk-tui` was started with a show or without one
+([Opening another show](#opening-another-show)). A show chosen then is opened, as from the TUI:
+without `--values` and `--script`. Quitting the launcher then ends `busk-tui` with 0.
 
 ### `--standalone`: for development and rehearsal
 
@@ -108,7 +112,8 @@ does. It starts faster and takes two options `busk run` lacks: `--no-output` (op
 and `--no-surfaces` (open no MIDI, OSC or web surface). It has none of `busk run`'s safety
 net: no watchdog, no process isolation, no autosave, no crash recovery and no event log. If
 the TUI crashes, the output stops. **For a show, start `busk-tui` without `--standalone`.** A
-show opened from the TUI starts in the same process, standalone too.
+show opened from the TUI starts in the same process, standalone too, and so does the launcher
+after a Close.
 
 ## The screen
 
@@ -1512,6 +1517,7 @@ A click on the `busk ▾` badge, or Alt+F, opens it under the badge:
 | Save as… | | The show to another file, as a new show (below). |
 | Import script… | | A console script, run as `source` runs it, each line in the log as it runs (below). |
 | Import profile… | | A fixture profile from a file, into the show (below). |
+| Close | | The show, and back to the [launcher](#the-launcher-busk-tui-without-a-show) ([Opening another show](#opening-another-show)). |
 | Quit | Ctrl+Q | The quit dialog. |
 
 ↑ ↓ move, Enter or a click chooses, and Esc, Alt+F or a click outside close it.
@@ -1551,7 +1557,7 @@ take about 8 s this way, and about 4.5 s with no display.
 
 While a script runs, the pages and the performance controls (faders, GO, flash, the masters)
 work, and what they show follows the show 4 times a second. Lines you type, and the edits the
-pages send, wait for it, and run once it ends, in order. New…, Open…, Open recent… and another Import script… say in the log that it is
+pages send, wait for it, and run once it ends, in order. New…, Open…, Open recent…, Close and another Import script… say in the log that it is
 importing, and do nothing. There is no stop: a script runs to its end or to the first line busk
 refuses. Quit's Save and quit saves once it has ended; Quit without saving stops it after the
 line it runs, and the lines that ran stay in the show (under `busk run`, in the newest
@@ -1605,6 +1611,14 @@ asks first, and says what applies:
 and the show that runs stays. **o** opens it without saving: under `busk run`, the unsaved edits
 are kept in the newest autosave, as when you quit. Without unsaved edits it offers **o** Open and
 **c** Cancel. A route sends while its light is green (`● sACN·U1`).
+
+**Close** ends the show that runs and goes back to the
+[launcher](#the-launcher-busk-tui-without-a-show), where you choose the next show, or quit. It
+asks first as opening does, worded for closing: with unsaved edits, **s** Save and close, **x**
+Close without saving (**c** is Cancel), or, without them, **x** Close; while a route sends, it
+says that the output stops until a show is opened. The output stays off while the launcher is
+open. A show chosen in the launcher after a Close starts without `--values` and `--script`, as
+a show opened from the TUI does.
 
 What `busk run` prints when it ends (the engine's statistics, the routes' counts, where unsaved
 edits were kept) lands on the terminal behind the TUI: you see it after the last quit.

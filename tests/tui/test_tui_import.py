@@ -1,6 +1,6 @@
 """Importing (file-menu plan Phase 7): Import script… runs a script through
 the bridge, its lines in the log as they run and a bar in the hint row, and
-another show waits for it; Import profile… in the File menu. On the fake
+another show, or Close, waits for it; Import profile… in the File menu. On the fake
 bridge, then on the real engine."""
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from rich.text import Text
 from textual.pilot import Pilot
 from tui_fakes import FakeBridge, Reply, drive, make_app, script_events, settle
 
-from busk_tui import config, shell
+from busk_tui import config, parent, shell
 from busk_tui.bridge import Bridge
 from busk_tui.model import ScriptDone, SessionChanged, SessionState
 from busk_tui.shell import LOG_S, BuskApp
@@ -282,17 +282,21 @@ def test_another_show_and_another_script_wait_for_the_import(tmp_path: Path) -> 
         await pilot.press("ctrl+n", "ctrl+o")
         await choose(pilot, "open_recent")
         await choose(pilot, "import_script")
+        await choose(pilot, "close")
         assert not isinstance(app.screen, FileDialog | FileMenu)
-        assert entries(app)[-4:] == [
+        assert entries(app)[-5:] == [
             ("warning", "rig.busk is importing: start a new show once it ends"),
             ("warning", "rig.busk is importing: open another show once it ends"),
             ("warning", "rig.busk is importing: open another show once it ends"),
             ("warning", "rig.busk is importing: import another script once it ends"),
+            ("warning", "rig.busk is importing: close the show once it ends"),
         ]
         app._open(tmp_path / "b.show")  # a show read or made before the import started
+        app._open(parent.CLOSE)  # a close confirmed, its save waited for, meanwhile
         await pilot.pause()
         assert app.is_running
         assert app.next_show is None
+        assert entries(app)[-1] == ("warning", "rig.busk is importing: close the show once it ends")
         ((ticket, _),) = bridge.scripts
         bridge.events += script_events(ticket, path)
         await settle(pilot, app)
