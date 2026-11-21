@@ -15,7 +15,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-from hypothesis import given, settings
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
 from busk.compiler.effects import compile_wave
@@ -59,7 +59,10 @@ def _curve(points: list[tuple[float, float]], p: float) -> float:
         + [(x + 1, y) for x, y in points if x + 1 not in xs]
     )
     lower = max(point for point in periodic if point[0] <= p)
-    upper = min(point for point in periodic if point[0] > p)
+    above = [point for point in periodic if point[0] > p]
+    if not above:  # p = 1.0 (a phase a hair below a whole cycle) on the last point
+        return lower[1]
+    upper = min(above)
     (x0, y0), (x1, y1) = lower, upper
     return y0 + (y1 - y0) * (p - x0) / (x1 - x0)
 
@@ -262,6 +265,7 @@ lanes = st.lists(
 
 @settings(max_examples=500, deadline=None)
 @given(wave=waves, lanes=lanes)
+@example(wave={"kind": "curve", "points": [[0.0, 0.0]]}, lanes=[(-1.4540178456010085e-106, 0)])
 def test_vectorised_equals_the_scalar_transcription(
     wave: Wave, lanes: list[tuple[float, int]]
 ) -> None:

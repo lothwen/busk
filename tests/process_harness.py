@@ -208,6 +208,9 @@ class Collector:
     def settle(self, quiet: float = 0.5, timeout: float = 10.0) -> bytes:
         """The data once it has not changed for ``quiet`` seconds."""
         deadline = time.monotonic() + timeout
+        while not self.packets:  # the line that says a look is on can come first
+            assert time.monotonic() < deadline, "no packet came"
+            time.sleep(0.02)
         while True:
             data, since = self.latest(), time.monotonic()
             while time.monotonic() - since < quiet:

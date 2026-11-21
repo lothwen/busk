@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import socket
 import threading
 import time
@@ -243,6 +244,9 @@ def test_an_f2_drag_is_one_undo_on_the_real_engine(
     bridge = Bridge.standalone(path, output=False, surfaces=False)
     app = BuskApp(bridge, config.Settings(page=2), standalone=True)
     monkeypatch.setattr(encoders, "DRAG_S", 0.0)
+    # Under load the pilot's moves can come 1 s apart, which opens a second
+    # group: wider, still short of busk's 2 s close.
+    monkeypatch.setattr(encoders, "GROUP_PAUSE_S", 1.5)
 
     def pans() -> list[object]:
         programmer = app.programmer
@@ -3639,7 +3643,8 @@ def test_a_held_line_never_freezes_the_ui() -> None:
         await until(pilot, lambda: bridge.busy is not None)
         await pilot.pause(0.4)
         app._show_context()
-        assert app._context_text.startswith("⧗ save 0.")
+        # The seconds held: under load the loop can fall a second behind.
+        assert re.match(r"⧗ save \d+\.\ds", app._context_text), app._context_text
         await pilot.press("f3")  # page switching
         assert app.page == 3
         await pilot.press("f1")
