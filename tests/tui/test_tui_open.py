@@ -21,6 +21,7 @@ from busk_tui.widgets.file_menu import ITEMS
 from busk_tui.widgets.file_picker import FileDialog
 from busk_tui.widgets.log import LogView
 from busk_tui.widgets.show_dialogs import (
+    ROWS,
     NewShowDialog,
     OpenDialog,
     RecentDialog,
@@ -462,14 +463,15 @@ def test_open_recent_lists_the_recent_shows_but_the_one_that_runs(tmp_path: Path
         await choose(pilot, "open_recent")
         dialog = app.screen
         assert isinstance(dialog, RecentDialog)
-        assert [show.title for show in dialog.list.shows] == ["Festival", "Gone"]
-        assert dialog.list.missing == (False, True)
-        rows = [str(dialog.list.get_option_at_index(i).prompt) for i in range(2)]
+        assert dialog.recent.size.height == ROWS
+        assert [show.title for show in dialog.recent.list.shows] == ["Festival", "Gone"]
+        assert dialog.recent.list.missing == (False, True)
+        rows = [str(dialog.recent.list.get_option_at_index(i).prompt) for i in range(2)]
         assert rows[1].split() == ["Gone", "missing", str(folder / "gone.show")]
-        await until(pilot, lambda: "Festival" in str(dialog.preview.content))
-        assert "0 fixtures · 0 cue lists · 0 playbacks" in str(dialog.preview.content)
+        await until(pilot, lambda: "Festival" in str(dialog.recent.preview.content))
+        assert "0 fixtures · 0 cue lists · 0 playbacks" in str(dialog.recent.preview.content)
         await pilot.press("down")
-        assert str(dialog.preview.content) == f"{folder / 'gone.show'} is gone"
+        assert str(dialog.recent.preview.content) == f"{folder / 'gone.show'} is gone"
         await pilot.press("enter")
         await pilot.pause()
         assert app.screen is dialog  # a missing one cannot be opened

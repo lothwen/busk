@@ -454,6 +454,45 @@ Bravo, quit with 0; with `--standalone`, Ctrl+N, a click on the badge, Open rece
     - a pty run: `busk-tui` with no show, choose a recent one, open another from the menu, quit.
 16. **Docs.** The guide's "Start", the README's `busk-tui` lines, CHANGELOG.
 
+**Done** 2026-11-21, on fc84ee2. Code: `src/busk_tui/launcher.py` (new: `Launcher`,
+`LauncherScreen`); in `app.py`, `main` runs it when `options.show` is `None` and puts its choice
+in `options.show`; `config.parse_arguments`' `show` is `nargs="?"`; `RecentShows` in
+`widgets/show_dialogs.py` (new: the list, the preview and the reading, taken out of
+`RecentDialog`, which now shows one), and `OpenDialog`'s `running`. Tests:
+`tests/tui/test_tui_launcher.py` (new), the launcher in `test_tui_host.py` (busk run, quitting, a
+crash, `--standalone`), `test_tui_config.py`, `test_tui_boundary.py`, and Open recent's height in
+`test_tui_open.py`. What differs from the steps above, or goes beyond them:
+
+- **The launcher's choice is the show given**, so `--values` and `--script` apply to it (call 10
+  says "the show given on the command line"; without one, the launcher's stands in for it).
+- **Its choices read `[n New show…]  [o Open…]  [q Quit]`**, the dialogs' `Choice`, with their
+  keys, and clicks work. Its badge is ` busk `, without `▾`: it has no menu.
+- **Ctrl+C quits it too**, beside `q` and Esc, since nothing runs (Textual's own Ctrl+Q also
+  does).
+- **New show in the launcher** asks no confirmation (nothing runs) and runs `busk new` with
+  `--state-dir`; when `busk new` refuses, its words show in red under the choices.
+- **A show that does not load** gets Phase 3's dialog with busk's errors, without "The show that
+  runs now goes on.".
+- **Enter reads the show again**, as Open recent… does, even when the preview has read it.
+- **It runs in busk-tui's own process**, the parent, which now imports busk (through
+  `bridge.show_read`) and Textual before it starts `busk run`. A pty run checked the hand-over:
+  the launcher pops the kitty keyboard mode it pushed, turns the mouse off and leaves the
+  alternate screen before the run's TUI takes the terminal, and nothing is written between them.
+- **The debug log is set up once** (`_debug_log`), as the launcher and then `--standalone` each
+  set it up.
+- **The empty launcher** says "No recent shows: busk-tui lists the shows it opens." and drops the
+  `↑ ↓` note.
+
+Checks: the whole suite (`-n 6`, 9:28) 7,234 passed, 1 skipped, 2 failed: Phase 2's
+`test_waveforms.py::test_vectorised_equals_the_scalar_transcription`, and
+`test_tui_program.py::test_a_drag_that_pauses_opens_a_new_undo_group_when_it_moves_on`, F2's drag
+under load (two hovers took longer than its 0.5 s pause; it passes alone, three times). Both are
+untouched here. Then `tests/tui` again on the final sources, 1,879 passed. 20 mutations, 19
+caught; the one missed, the list's `focus()`, is Textual's auto-focus doing the same. ruff,
+format and mypy clean. Pty runs: under `busk run`, the launcher, Enter on Club Night, Ctrl+O
+Festival, quit with 0; with `--standalone`, `n` "Late Night", a click on the badge, Open recent
+Club Night, quit with 0; the launcher at 80×24, empty, and `q` with 0.
+
 ### Phase 5: the user's check
 
 17. **On the rig.**

@@ -7,6 +7,7 @@ the show a real run hands over (file-menu plan Phase 3)."""
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -61,6 +62,54 @@ def test_colors_set_textuals_colour_system_for_busk_run_too(
     assert environment["TEXTUAL_COLOR_SYSTEM"] == "standard"
 
 
+def test_without_a_show_busk_run_runs_the_one_the_launcher_chose(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The launcher's choice is the show given, with the options given
+    (``--script`` too); quitting it runs nothing, and a launcher that
+    crashed ends ``busk-tui`` with its code."""
+    from busk_tui.launcher import Launcher
+
+    chosen: list[Path | None] = [Path("/s/club.show")]
+    ran: list[list[str]] = []
+
+    def launch(self: Launcher) -> Path | None:
+        return chosen[0]
+
+    def run(first: list[str], then: Any, environment: dict[str, str]) -> int:
+        ran.append(first)
+        return 0
+
+    monkeypatch.setattr(Launcher, "run", launch)
+    monkeypatch.setattr(parent, "run", run)
+    assert app.main(["--script", "x.busk", "--threads"]) == 0
+    (first,) = ran
+    assert first[3:5] == ["run", "/s/club.show"]
+    assert first[-3:] == ["--threads", "--script", "x.busk"]
+    ran.clear()
+    chosen[0] = None
+    assert app.main([]) == 0
+    assert ran == []
+
+    def crash(self: Launcher) -> None:
+        self._return_code = 1  # as Textual leaves it after an exception
+
+    monkeypatch.setattr(Launcher, "run", crash)
+    assert app.main([]) == 1
+    assert ran == []
+
+
+def test_the_debug_log_is_set_up_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The launcher sets it up, then ``--standalone``: one handler, not two."""
+    logger = logging.getLogger("busk_tui")
+    for name in ("handlers", "level", "propagate"):
+        monkeypatch.setattr(logger, name, getattr(logger, name))
+    logger.handlers = []
+    app._debug_log()
+    app._debug_log()
+    assert len(logger.handlers) == 1
+
+
 def test_standalone_says_why_a_show_does_not_load_and_exits_2(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -76,8 +125,9 @@ def test_standalone_says_why_a_show_does_not_load_and_exits_2(
 def test_standalone_runs_the_next_show_the_tui_opens(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """A new bridge and a new app on each show the app ends with; a next
-    show that does not load ends it with 2, as the first would."""
+    """A new bridge and a new app on each show the app ends with, the
+    first the launcher's when no show is given; a next show that does not
+    load ends it with 2, as the first would."""
     shows = {name: tmp_path / f"{name}.show" for name in ("a", "b")}
     for name, path in shows.items():
         busk.save_show(busk.new_show(name.upper()), path, backups=False)
@@ -102,6 +152,13 @@ def test_standalone_runs_the_next_show_the_tui_opens(
     options = ["--standalone", "--no-output", "--no-surfaces"]
     assert app.main([str(shows["a"]), *options]) == 0
     assert opened == [shows["a"], shows["b"]]
+    from busk_tui.launcher import Launcher
+
+    monkeypatch.setattr(Launcher, "run", lambda self: shows["b"])
+    opened.clear()
+    nexts = [None]
+    assert app.main(options) == 0  # no show: the launcher's
+    assert opened == [shows["b"]]
     nexts = [broken]
     assert app.main([str(shows["a"]), *options]) == 2
     assert "busk-tui: " in capsys.readouterr().err

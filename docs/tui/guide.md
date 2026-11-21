@@ -30,6 +30,7 @@ uv add path/to/busk --extra tui        # or: pip install "path/to/busk[tui]"
 
 ```bash
 busk-tui club.show                     # or: python -m busk_tui club.show
+busk-tui                               # the launcher: choose a show
 ```
 
 `busk-tui SHOW` runs `busk run SHOW --frontend busk_tui.app:frontend` and waits for it: it
@@ -50,6 +51,37 @@ from the TUI ends the run and starts the next, with the same options
 
 `busk run`'s `--console`, `--no-console` and `--duration` make no sense with a full-screen
 front end and are not offered.
+
+### The launcher: `busk-tui` without a show
+
+Without a show, with or without other options, `busk-tui` opens the launcher:
+
+```
+ busk
+┌─ RECENT SHOWS ───────────────────────────────────────────────────────────────┐
+│ Club Night            ~/shows/club.show         │ Club Night                 │
+│ Festival Main Stage   ~/shows/festival.show     │ ~/shows/club.show          │
+│ Old rig               missing  ~/old/rig.show   │ 7 fixtures · 3 cue lists · │
+│                                                 │ 12 playbacks               │
+│                                                 │ saved 2026-11-19 22:14     │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+ [n New show…]  [o Open…]  [q Quit]
+
+ ↑ ↓: move · Enter: open
+```
+
+It lists the shows busk-tui ran last, newest first, with the preview Open recent… has
+([Opening another show](#opening-another-show)): what busk reads in the file the cursor is on.
+↑ ↓ move and Enter opens it. A show whose file is gone is dimmed and marked `missing`, and
+cannot be opened. **n** asks for a new show's title and file, in the folder busk-tui runs in, as
+New… does, and writes it with `busk new`. **o** opens the file picker on the show files of that
+folder. **q**, Esc or Ctrl+C quits, with nothing run.
+
+Before it opens a show, busk loads and compiles it, as `busk run` would. One that does not load
+is refused in a dialog that says why, and the launcher stays. The show chosen then runs as if it
+had been given: under `busk run`, or with `--standalone`, with the options given, `--values` and
+`--script` included. Quitting the TUI ends `busk-tui`; it does not go back to the launcher.
 
 ### `--standalone`: for development and rehearsal
 
@@ -1535,7 +1567,7 @@ edits were kept) lands on the terminal behind the TUI: you see it after the last
 | File | |
 |---|---|
 | `$XDG_CONFIG_HOME/busk-tui/config.toml` | Defaults and F2's quick lines, read only (`--config` names another). |
-| `$XDG_STATE_HOME/busk-tui/state.json` | The last page and layout, and the shows run last (`recent`: newest first, at most 10, each with its path, title and when it was opened), the copies Save as made included. |
+| `$XDG_STATE_HOME/busk-tui/state.json` | The last page and layout, and the shows run last (`recent`: newest first, at most 10, each with its path, title and when it was opened), the copies Save as made included, which the launcher and Open recent… list. |
 | `$XDG_STATE_HOME/busk-tui/debug.log` | Tracebacks the TUI caught, for a bug report. |
 
 `config.toml`:

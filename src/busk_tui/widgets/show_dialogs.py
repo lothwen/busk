@@ -1,7 +1,7 @@
 """The dialogs of opening another show (file-menu plan Phase 3): the
 confirmation before the show changes (:class:`OpenDialog`), the new show's
 form (:class:`NewShowDialog`), and the recent shows (:class:`RecentDialog`,
-on a :class:`RecentList`).
+on :class:`RecentShows`, which the launcher shows too).
 
 None of them sends anything: each closes with what was chosen, and the app
 opens the show.
@@ -41,6 +41,8 @@ TITLE: Final = 20
 
 ROWS: Final = 12
 
+NO_RECENT: Final = "No recent shows: busk-tui lists the shows it opens."
+
 
 class OpenDialog(ModalScreen[OpenChoice]):
     """Before the show changes, for New, Open and Open recent (file-menu plan
@@ -49,7 +51,8 @@ class OpenDialog(ModalScreen[OpenChoice]):
     saving; without them, Open. The names of the routes that send
     (``sending``) say that the output stops while the next show starts.
 
-    With ``problems``, the show cannot be opened: it says why, and closes."""
+    With ``problems``, the show cannot be opened: it says why, and closes;
+    ``running``: a show runs, and goes on (not in the launcher)."""
 
     DEFAULT_CSS = dialog_css("OpenDialog")
     BINDINGS: ClassVar[list[BindingType]] = [
@@ -65,6 +68,7 @@ class OpenDialog(ModalScreen[OpenChoice]):
         dirty: bool | None = False,
         sending: Sequence[str] = (),
         problems: Sequence[str] = (),
+        running: bool = True,
     ) -> None:
         super().__init__()
         self.title_text = title
@@ -72,6 +76,7 @@ class OpenDialog(ModalScreen[OpenChoice]):
         self.dirty = dirty
         self.sending = tuple(sending)
         self.problems = tuple(problems)
+        self.running = running
 
     def compose(self) -> ComposeResult:
         with Vertical() as box:
@@ -102,7 +107,8 @@ class OpenDialog(ModalScreen[OpenChoice]):
         if len(self.problems) > PROBLEMS:
             shown.append(f"… and {len(self.problems) - PROBLEMS} more")
         yield Static(Text("\n".join(shown), colors.RED), classes="question")
-        yield Static("The show that runs now goes on.", classes="note")
+        if self.running:
+            yield Static("The show that runs now goes on.", classes="note")
         with Horizontal():
             yield Choice("c", "Close", "cancel", colors.MID)
 
@@ -207,32 +213,25 @@ class RecentList(OptionList):
         return self.highlighted if self.shows else None
 
 
-class RecentDialog(ModalScreen[Path | None]):
-    """Open recent…: the recent shows (but the one that runs), and a preview
-    of the one the cursor is on, from busk's reading of it
+class RecentShows(Horizontal):
+    """The recent shows (:class:`RecentList`), the cursor on the first, and
+    a preview of the one it is on, from busk's reading of it
     (:class:`~busk_tui.widgets.controls.ReadShow`, one at a time, each once).
-    ↑ ↓ move, Enter opens it (not a missing one), Esc cancels. Closes with
-    its file, or ``None``."""
+    Whoever shows it opens the show chosen (``OptionList.OptionSelected``,
+    :meth:`chosen`)."""
 
-    DEFAULT_CSS = (
-        dialog_css("RecentDialog")
-        + f"""
-    RecentDialog > Vertical {{ width: 110; max-width: 100%; }}
-    RecentDialog Horizontal.columns {{ width: 100%; height: {ROWS}; margin-top: 0; }}
-    RecentDialog RecentList, RecentDialog RecentList:focus {{
-        width: 3fr; height: {ROWS}; margin-right: 1; padding: 0; border: none;
+    DEFAULT_CSS = f"""
+    RecentShows {{ width: 100%; height: {ROWS}; }}
+    RecentShows RecentList, RecentShows RecentList:focus {{
+        width: 3fr; height: 100%; margin-right: 1; padding: 0; border: none;
         background: {colors.BG}; scrollbar-size-vertical: 1;
         text-wrap: nowrap; text-overflow: ellipsis;
     }}
-    RecentDialog RecentList > .option-list--option-highlighted {{
+    RecentShows RecentList > .option-list--option-highlighted {{
         background: {colors.SEL}; text-style: none;
     }}
-    RecentDialog .preview {{ width: 2fr; height: {ROWS}; }}
+    RecentShows .preview {{ width: 2fr; height: 100%; }}
     """
-    )
-    BINDINGS: ClassVar[list[BindingType]] = [
-        Binding("escape", "cancel", "Cancel", show=False),
-    ]
 
     def __init__(self, shows: Sequence[RecentShow]) -> None:
         super().__init__()
@@ -242,31 +241,21 @@ class RecentDialog(ModalScreen[Path | None]):
         self.reading: Path | None = None  # the file busk is reading now
 
     def compose(self) -> ComposeResult:
-        with Vertical() as box:
-            box.border_title = "OPEN RECENT"
-            if not self.list.shows:
-                none = "No recent shows: busk-tui lists the shows it opens."
-                yield Static(none, classes="question")
-                yield Static("Esc: close", classes="note")
-                return
-            with Horizontal(classes="columns"):
-                yield self.list
-                yield self.preview
-            yield Static("↑ ↓: move · Enter: open · Esc: cancel", classes="note")
+        yield self.list
+        yield self.preview
 
     def on_mount(self) -> None:
         if self.list.shows:
             self.list.highlighted = 0
             self.list.focus()
 
+    def chosen(self, index: int) -> Path | None:
+        """The file of row ``index``; ``None`` if it is gone."""
+        return None if self.list.missing[index] else self.list.shows[index].path
+
     def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
         event.stop()
         self._preview()
-
-    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-        event.stop()
-        if not self.list.missing[event.option_index]:
-            self.dismiss(self.list.shows[event.option_index].path)
 
     def _preview(self) -> None:
         index = self.list.current()
@@ -291,6 +280,43 @@ class RecentDialog(ModalScreen[Path | None]):
         if path is not None:
             self.read[path] = found
         self._preview()
+
+
+class RecentDialog(ModalScreen[Path | None]):
+    """Open recent…: the recent shows (but the one that runs), with a
+    preview (:class:`RecentShows`). ↑ ↓ move, Enter opens it (not a missing
+    one), Esc cancels. Closes with its file, or ``None``."""
+
+    DEFAULT_CSS = (
+        dialog_css("RecentDialog")
+        + f"""
+    RecentDialog > Vertical {{ width: 110; max-width: 100%; }}
+    RecentDialog RecentShows {{ width: 100%; height: {ROWS}; margin-top: 0; }}
+    """
+    )
+    BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("escape", "cancel", "Cancel", show=False),
+    ]
+
+    def __init__(self, shows: Sequence[RecentShow]) -> None:
+        super().__init__()
+        self.recent = RecentShows(shows)
+
+    def compose(self) -> ComposeResult:
+        with Vertical() as box:
+            box.border_title = "OPEN RECENT"
+            if not self.recent.list.shows:
+                yield Static(NO_RECENT, classes="question")
+                yield Static("Esc: close", classes="note")
+                return
+            yield self.recent
+            yield Static("↑ ↓: move · Enter: open · Esc: cancel", classes="note")
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        event.stop()
+        path = self.recent.chosen(event.option_index)
+        if path is not None:
+            self.dismiss(path)
 
     def action_cancel(self) -> None:
         self.dismiss(None)

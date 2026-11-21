@@ -3,7 +3,8 @@
 ``busk-tui SHOW`` runs ``busk run SHOW --frontend busk_tui.app:frontend``
 with the ``busk run`` options it was given, and the same on each show opened
 from the TUI after it, without ``--values`` and ``--script``, which are the
-given show's (:func:`busk_run_command`, file-menu plan call 10). busk hands
+given show's (:func:`busk_run_command`, file-menu plan call 10). Without
+``SHOW``, the launcher chooses it, and it is the given show. busk hands
 the frontend only the show, so the TUI's own options, and ``--state-dir``,
 travel in the environment, as JSON in ``BUSK_TUI_OPTIONS``
 (:func:`to_environment`, :func:`from_environment`).
@@ -64,7 +65,7 @@ class Options:
     """What ``busk-tui`` was asked to do. ``layout``, ``faders`` and ``colors``
     are ``None`` when not given: the config file and the state decide."""
 
-    show: Path | None = None  # None under busk run, which has it
+    show: Path | None = None  # None: not given (the launcher chooses), or under busk run
     standalone: bool = False
     no_output: bool = False
     no_surfaces: bool = False
@@ -99,10 +100,15 @@ def parse_arguments(argv: Sequence[str] | None = None) -> Options:
     parser = argparse.ArgumentParser(
         prog="busk-tui",
         description="Terminal UI for busk. Runs SHOW under busk run, or by itself "
-        "with --standalone.",
+        "with --standalone. Without SHOW, it lists the shows it ran last, to choose one.",
     )
     parser.add_argument("--version", action="version", version=f"busk-tui {__version__}")
-    parser.add_argument("show", type=Path, help="path to a .show or .json show file")
+    parser.add_argument(
+        "show",
+        type=Path,
+        nargs="?",
+        help="path to a .show or .json show file (none: choose one in the launcher)",
+    )
     tui = parser.add_argument_group("the TUI")
     tui.add_argument("--layout", choices=LAYOUTS, help="the F1 layout (default: the last one, B)")
     tui.add_argument("--faders", type=_faders, metavar="N", help="playbacks shown on F1, 4-20")

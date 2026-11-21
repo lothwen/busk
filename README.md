@@ -67,7 +67,8 @@ uv add path/to/busk --extra midi        # or: pip install "path/to/busk[midi]"
 ```
 
 **The terminal UI**, `busk-tui`, is the optional extra `busk[tui]` (a development checkout
-has it): see [the terminal UI](docs/tui/guide.md).
+has it): `busk-tui SHOW` runs a show, and `busk-tui` alone lists the shows it ran last, to open
+one or make a new one. See [the terminal UI](docs/tui/guide.md).
 
 **MIDI** is the optional extra `busk[midi]` ([`mido`](https://mido.readthedocs.io/) with
 `python-rtmidi`). python-rtmidi has wheels up to Python 3.12. On 3.13 and later it builds
@@ -170,7 +171,7 @@ busk> fader 1 1                               # or the console does
 | [Output](docs/output.md) | sACN, Art-Net and DMX-USB routes, choosing the network interface, reconnects. |
 | [Safety and panic](docs/safety.md) | Park, limits, the strobe cap, highlight, `release all`, `output off`. |
 | [Fixture profiles](docs/profiles.md) | The built-in library, OFL and GDTF import, how values become DMX. |
-| [The terminal UI](docs/tui/guide.md) | `busk-tui`: the screen, its keys, its pages F1–F9, `--standalone`. |
+| [The terminal UI](docs/tui/guide.md) | `busk-tui`: the launcher, the screen, its keys, its pages F1–F9, `--standalone`. |
 | [busk as a library](docs/library.md) | Installing, examples, the reference of the public API, stability. |
 | [The spec](docs/busking-console-architecture-python.md) | The architecture busk implements, and the show file schema. |
 

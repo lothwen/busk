@@ -32,13 +32,17 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   file. Import script opens it on the `.busk` scripts, with each one's first lines as its
   preview, and runs the one chosen with `source`.
 - The TUI keeps the shows it ran last, the copies Save as made included, in its `state.json`
-  (`recent`: newest first, at most 10), for Open recent… and the launcher to come.
+  (`recent`: newest first, at most 10), for Open recent… and the launcher.
 - The TUI's File menu opens another show: New… (Ctrl+N) asks for a title and a file and writes
   the show with `busk new`, Open… (Ctrl+O) opens the file picker on show files, with a preview of
   each one's title, size and save time, and Open recent… lists the shows it ran last. busk loads
   and compiles a show before it opens it, and refuses one that does not load, saying why. With
   unsaved edits it offers Save and open, Open without saving and Cancel; while a route sends, it
   says that the output stops while the next show starts.
+- `busk-tui` with no show opens a launcher: the shows it ran last, newest first, with the same
+  preview as Open recent…, a new show (n) and a show from a file (o). busk reads the show chosen
+  first and refuses one that does not load. The show chosen runs as the show given, with the
+  options given.
 
 ### Changed
 

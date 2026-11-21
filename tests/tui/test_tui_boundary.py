@@ -75,3 +75,4 @@ def test_app_imports_the_textual_side_only_inside_functions() -> None:
     top = {module for module, _ in imports(PACKAGE / "app.py", top_only=True)}
     assert "busk_tui.shell" not in top
     assert "busk_tui.bridge" not in top
+    assert "busk_tui.launcher" not in top

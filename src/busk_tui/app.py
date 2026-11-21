@@ -6,7 +6,9 @@
   ``BUSK_TUI_OPTIONS``, and stays as its parent (:mod:`busk_tui.parent`): when
   the TUI opens another show, the run ends and the parent starts the next.
   With ``--standalone`` it runs the show in this process instead, and stops
-  it when the TUI ends, or starts the next show the TUI opens.
+  it when the TUI ends, or starts the next show the TUI opens. Given no
+  show, it runs the launcher first (:mod:`busk_tui.launcher`), and the show
+  chosen there is the show given.
 * :func:`frontend` is what ``busk run`` calls, on its console process's main
   thread, with the run's show, already started. The run ends when it returns,
   after it has handed the next show, if any, to the parent.
@@ -22,6 +24,7 @@ import logging
 import os
 import sys
 from collections.abc import Sequence
+from dataclasses import replace
 
 from busk_tui import config, parent
 
@@ -36,6 +39,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     system = config.color_system(settings.colors)
     if system is not None:
         os.environ["TEXTUAL_COLOR_SYSTEM"] = system
+    if options.show is None:  # the launcher chooses it (file-menu plan call 15)
+        from busk_tui.bridge import show_read
+        from busk_tui.launcher import Launcher
+
+        _debug_log()
+        launcher = Launcher(show_read, state_dir=options.state_dir)
+        show = launcher.run()
+        if show is None:  # quit, or it crashed
+            return launcher.return_code or 0
+        options = replace(options, show=show)
     if options.standalone:
         return _standalone(options, settings)
     command, environment = run_command(options)
@@ -117,6 +130,9 @@ def _standalone(options: config.Options, settings: config.Settings) -> int:
 def _debug_log() -> None:
     """Tracebacks the TUI catches go to ``$XDG_STATE_HOME/busk-tui/debug.log``
     (nowhere, if it cannot be written)."""
+    logger = logging.getLogger("busk_tui")
+    if logger.handlers:  # the launcher's, then --standalone's
+        return
     path = config.state_path().with_name("debug.log")
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -124,7 +140,6 @@ def _debug_log() -> None:
     except OSError:
         return
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
-    logger = logging.getLogger("busk_tui")
     logger.addHandler(handler)
     logger.setLevel(logging.WARNING)
     logger.propagate = False

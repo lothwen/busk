@@ -18,6 +18,18 @@ def test_the_defaults() -> None:
     assert options == Options(show=Path("show.show"))
 
 
+def test_without_a_show_the_launcher_chooses_it_with_the_options_given() -> None:
+    assert config.parse_arguments([]) == Options()
+    options = config.parse_arguments(["--layout", "A", "--threads", "--script", "s.busk"])
+    assert options.show is None
+    assert (options.layout, options.run, options.first) == (
+        "A",
+        ("--threads",),
+        ("--script", "s.busk"),
+    )
+    assert config.parse_arguments(["--standalone", "--no-output"]).show is None
+
+
 def test_busk_run_gets_the_show_and_its_own_options() -> None:
     options = config.parse_arguments(
         ["s.show", "--state-dir", "st", "--library", "a", "--library", "b", "--threads",
