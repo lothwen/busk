@@ -733,6 +733,18 @@ class ShowRead:
 
 
 @dataclass(frozen=True, slots=True)
+class Recovery:
+    """What ``busk run`` would recover of a show whose last run did not end
+    cleanly (busk's ``pending_recovery``, GAP-58; file-menu plan call 24):
+    when that run last wrote what it is recovered from (``written``, in
+    UTC), and whether the show's unsaved edits come back with the programmer
+    (``edits``)."""
+
+    written: datetime
+    edits: bool
+
+
+@dataclass(frozen=True, slots=True)
 class ProfileInfo:
     """A fixture profile: the attributes its modes take, as ``set`` names
     them (``intensity``, ``pan``, ``color``, ``color.w`` with a white

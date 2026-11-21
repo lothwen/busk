@@ -804,6 +804,53 @@ mid-import (0.68 s, exit 0); the import under `--standalone`, quit with 0.
       quit, and the mark is gone.
 27. **Docs.** The guide's launcher and Open recent…, CHANGELOG.
 
+**Done** 2026-11-21, on fefb602. Code: `config.forget_show` and `Options.recovers`
+(`src/busk_tui/config.py`), `no_recover` in `BUSK_TUI_OPTIONS`; `bridge.recovery_read`,
+`model.Recovery`, `controls.ReadRecovery`; in `widgets/show_dialogs.py`, `recovery_text`,
+`recent_text`'s mark, `RecentList.index`, `mark` and `forget`, and in `RecentShows` the Delete
+and `d` binding (`action_forget`), the reading (`_recovers`), the preview's line and
+`RecentShows.Emptied`; `on_read_recovery` and `recovery` in `Launcher` and `BuskApp`;
+`app.recovery`. Tests: forget and the mark in `test_tui_launcher.py` and `test_tui_open.py`,
+`forget_show` and `recovers` in `test_tui_config.py`, `recovery_read` in `test_tui_bridge.py` on
+a state dir a crash left (`tui_fakes.crashed`), the readers `main` and `frontend` give in
+`test_tui_host.py`. What differs from the steps above, or goes beyond them:
+
+- **No mark under `--standalone`** (vetoable): it loads the file and recovers nothing, so a mark
+  would promise what does not happen, as with `--no-recover` (call 24 names only that).
+  `Options.recovers` says both.
+- **`--no-recover` travels in `BUSK_TUI_OPTIONS`** (`no_recover`), as `--state-dir` does: the
+  TUI under `busk run` needs both for Open recent…'s marks.
+- **The apps read, not the bridge.** `RecentShows` asks once (`ReadRecovery`, the rows whose
+  file is there), and the launcher and `BuskApp` read the rows on one worker, in order, with the
+  reader `app.py` gives them (`app.recovery`: `recovery_read` with the state dir given, or
+  `None`, which reads nothing). The bridge does not know `--state-dir`, and the tests on
+  `FakeBridge` read nothing unless given a reader.
+- **The preview's line** comes after what busk reads in the file, after a blank line, in amber.
+  A mark that comes after the preview is drawn is added to it.
+- **Forgetting** writes `state.json` from `RecentShows`, which the launcher and Open recent…
+  share. A file that cannot be written is ignored, as the rest of `state.json` is; the row goes
+  anyway. A missing show can be forgotten too. On the last row, the cursor moves up.
+- **The last row forgotten:** the launcher says "No recent shows…" and drops its note; Open
+  recent… says it too, and its note becomes `Esc: close` (`RecentShows.Emptied`).
+- **A test renamed:** `test_it_only_reads_the_recent_shows` is now
+  `test_opening_a_recent_show_leaves_the_state_file_as_it_was`, since the launcher writes on a
+  forget.
+- **Seen in a pty, not changed:** after a recovery, a row's title is the recovered show's
+  (`Club Edit`, the unsaved rename) while its preview reads the file's (`Club Night`): the row
+  keeps the title the status bar had when the show ran (Phase 2).
+
+Checks: the whole suite (`-n 6`, 11:49) 7,318 passed, 1 skipped, 1 failed: Phase 2's
+`test_waveforms.py::test_vectorised_equals_the_scalar_transcription`, untouched here. An earlier
+`tests/tui` run also failed `test_tui_e2e.py::test_an_f2_drag_is_one_undo_on_the_real_engine`
+under load (it passes alone, three times; Phase 7 saw it too). 34 mutations, all caught; three
+were caught only after tests were added (a `None` reading passed on, a mark for a row forgotten
+meanwhile, a second forget before the list is taken away). ruff, format and mypy clean. Pty runs,
+with `kill -9` of `busk run` after an unsaved rename and its autosave (exit 137): under `busk
+run`, Open recent… marks the crashed Festival in amber with the preview's line; the launcher
+marks both shows; Enter on Club Night recovers its rename, Quit without saving exits 0, and the
+launcher no longer marks it; `--no-recover` and `--standalone` mark nothing; Delete, then `d`,
+empty the list, "No recent shows" shows, `state.json` keeps `recent: []`, and both files stay.
+
 ### Phase 9: Close
 
 28. **Close** (call 25): `FileMenu`, `shell.close_show`, the close hand-off (`parent.hand_off`,

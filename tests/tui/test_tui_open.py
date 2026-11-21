@@ -6,6 +6,7 @@ ending with the show to start next (``BuskApp.next_show``)."""
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -15,12 +16,20 @@ from tui_fakes import FakeBridge, Reply, drive, settle
 
 import busk
 from busk_tui import config
-from busk_tui.model import CommandDone, RoutesChanged, RouteView, SessionChanged, SessionState
+from busk_tui.model import (
+    CommandDone,
+    Recovery,
+    RoutesChanged,
+    RouteView,
+    SessionChanged,
+    SessionState,
+)
 from busk_tui.shell import BuskApp
 from busk_tui.widgets.file_menu import ITEMS
 from busk_tui.widgets.file_picker import FileDialog
 from busk_tui.widgets.log import LogView
 from busk_tui.widgets.show_dialogs import (
+    NO_RECENT,
     ROWS,
     NewShowDialog,
     OpenDialog,
@@ -480,6 +489,83 @@ def test_open_recent_lists_the_recent_shows_but_the_one_that_runs(tmp_path: Path
 
     drive(app, body)
     assert app.next_show == folder / "fest.show"
+
+
+def test_open_recent_marks_the_shows_busk_would_recover_and_forgets_one_on_d(
+    tmp_path: Path,
+) -> None:
+    folder = folder_of_shows(tmp_path)
+    show_at(folder / "late.show", "Late Night")
+    state = config.state_path()
+    for name, title in (("late", "Late Night"), ("fest", "Festival"), ("club", "Club Night")):
+        config.remember_show(state, folder / f"{name}.show", title)
+    asked: list[Path] = []
+    written = datetime(2026, 11, 20, 21, 14, tzinfo=UTC)
+
+    def recovery(path: Path) -> Recovery | None:
+        asked.append(path)
+        return Recovery(written, edits=True) if path.name == "fest.show" else None
+
+    bridge = FakeBridge()
+    app = make(bridge, recovery=recovery)
+
+    async def body(pilot: Pilot[int]) -> None:
+        bridge.events.append(at(folder / "club.show"))
+        await settle(pilot, app)
+        await choose(pilot, "open_recent")
+        dialog = app.screen
+        assert isinstance(dialog, RecentDialog)
+        recent = dialog.recent
+        note = "↑ ↓: move · Enter: open · Delete: forget · Esc: cancel"
+        assert note in texts(app)
+        await until(pilot, lambda: "did not end cleanly" in str(recent.preview.content))
+        assert asked == [folder / "fest.show", folder / "late.show"]  # not the one that runs
+        row = str(recent.list.get_option_at_index(0).prompt)
+        assert row.split() == ["Festival", "recovers", str(folder / "fest.show")]
+        await until(pilot, lambda: len(asked) == 2)
+        await pilot.pause(0.1)
+        row = str(recent.list.get_option_at_index(1).prompt)
+        assert row.split() == ["Late", "Night", str(folder / "late.show")]  # not recovered
+        assert str(recent.preview.content).endswith(
+            "busk recovers the programmer and its unsaved edits."
+        )
+        await pilot.press("d")
+        await until(pilot, lambda: "Late Night" in str(recent.preview.content))
+        assert [show.title for show in recent.list.shows] == ["Late Night"]
+        kept = [show.path.name for show in config.recent_shows(state)]
+        assert kept == ["club.show", "late.show"]  # the one that runs, remembered as it runs
+        await pilot.press("delete")
+        await pilot.pause()
+        assert NO_RECENT in texts(app)
+        assert "Esc: close" in texts(app)
+        assert note not in texts(app)
+        assert [show.path.name for show in config.recent_shows(state)] == ["club.show"]
+        await pilot.press("escape")
+        await pilot.pause()
+        assert not isinstance(app.screen, RecentDialog)
+
+    drive(app, body)
+    assert app.next_show is None
+    assert (folder / "fest.show").is_file()
+
+
+def test_open_recent_marks_nothing_when_the_shows_opened_recover_nothing(
+    tmp_path: Path,
+) -> None:
+    folder = folder_of_shows(tmp_path)
+    config.remember_show(config.state_path(), folder / "fest.show", "Festival")
+    app = make(FakeBridge())  # no recovery reading: --no-recover, --standalone
+
+    async def body(pilot: Pilot[int]) -> None:
+        await choose(pilot, "open_recent")
+        dialog = app.screen
+        assert isinstance(dialog, RecentDialog)
+        await until(pilot, lambda: "Festival" in str(dialog.recent.preview.content))
+        await pilot.pause(0.1)
+        assert "recovers" not in str(dialog.recent.list.get_option_at_index(0).prompt)
+        assert "did not end cleanly" not in str(dialog.recent.preview.content)
+
+    drive(app, body)
 
 
 def test_open_recent_without_recent_shows_says_so(tmp_path: Path) -> None:

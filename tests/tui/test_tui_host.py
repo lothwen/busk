@@ -99,6 +99,46 @@ def test_without_a_show_busk_run_runs_the_one_the_launcher_chose(
     assert ran == []
 
 
+def test_the_recent_shows_are_marked_only_where_the_show_opened_recovers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The launcher, and the TUI under busk run, read what busk would recover
+    in the state directory given (file-menu plan call 24); with
+    ``--no-recover`` or ``--standalone``, nothing is read."""
+    from tui_fakes import FakeBridge, crashed
+
+    from busk_tui.launcher import Launcher
+    from busk_tui.shell import BuskApp
+
+    club = tmp_path / "club.show"
+    busk.save_show(busk.new_show("Club Night"), club, backups=False)
+    state = tmp_path / "st"
+    crashed(club, state)
+    readers: list[Any] = []
+
+    def launch(self: Launcher) -> None:
+        readers.append(self.recovery)
+
+    def run(self: BuskApp) -> int:
+        readers.append(self.recovery)
+        return 0
+
+    monkeypatch.setattr(Launcher, "run", launch)
+    monkeypatch.setattr(BuskApp, "run", run)
+    monkeypatch.setattr(Bridge, "attached", lambda show: FakeBridge())
+    for argv in ([], ["--no-recover"], ["--standalone"]):
+        assert app.main(["--state-dir", str(state), *argv]) == 0
+        options = config.parse_arguments(["s.show", "--state-dir", str(state), *argv])
+        if not options.standalone:
+            monkeypatch.setenv(config.ENVIRONMENT, config.to_environment(options))
+            app.frontend(object())
+    launcher, tui, *others = readers
+    assert launcher(club) is not None
+    assert tui(club) is not None
+    assert launcher(tmp_path / "other.show") is None
+    assert others == [None, None, None]
+
+
 def test_the_debug_log_is_set_up_once(monkeypatch: pytest.MonkeyPatch) -> None:
     """The launcher sets it up, then ``--standalone``: one handler, not two."""
     logger = logging.getLogger("busk_tui")

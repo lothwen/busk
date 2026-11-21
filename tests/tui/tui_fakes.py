@@ -14,6 +14,9 @@ from __future__ import annotations
 
 import asyncio
 import itertools
+import json
+import os
+import shutil
 import threading
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
@@ -423,3 +426,25 @@ class Stub:
         self.stops += 1
         if self.stop_hangs:
             self.released.wait(STUB_WAIT_S)
+
+
+def crashed(show: Path, state_dir: Path, *, edits: bool = False) -> Path:
+    """Leave in busk's ``state_dir`` what a ``busk run`` of the show file
+    ``show`` leaves when it is killed: a ``session.json`` saying that the run
+    did not end cleanly; with ``edits``, an autosave of the show newer than
+    the file. Returns the ``session.json``."""
+    from busk.persistence.autosave import SESSION_FILE
+    from busk.persistence.paths import autosave_directory
+
+    document, _ = busk.load_show(show)
+    folder = autosave_directory(state_dir, document["meta"]["id"])
+    folder.mkdir(parents=True)
+    session: dict[str, object] = {"cleanExit": False, "showPath": str(show)}
+    if edits:
+        autosave = folder / "show-1.show"
+        shutil.copy(show, autosave)
+        os.utime(show, (1, 1))  # older than the autosave
+        session["showAutosave"] = str(autosave)
+    written = folder / SESSION_FILE
+    written.write_text(json.dumps(session))
+    return written

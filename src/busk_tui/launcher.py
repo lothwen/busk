@@ -1,11 +1,12 @@
 """The launcher (file-menu plan call 15): what ``busk-tui`` shows when it is
 given no show. A Textual app of its own, with no show running behind it.
 
-It lists the shows busk-tui ran last (``recent`` in ``state.json``, only
-read), with a preview of the one the cursor is on (:class:`RecentShows`),
-and offers a new show and a show from a file. ↑ ↓ move, Enter opens a recent
-show (not a missing one), ``n`` makes a new show, ``o`` opens the file
-picker, ``q`` or Esc quits. A show chosen is read first, as the TUI's
+It lists the shows busk-tui ran last (``recent`` in ``state.json``), with a
+preview of the one the cursor is on (:class:`RecentShows`), the ones busk
+would recover marked (file-menu plan call 24), and offers a new show and a
+show from a file. ↑ ↓ move, Enter opens a recent show (not a missing one),
+Delete or ``d`` forgets one (call 23), ``n`` makes a new show, ``o`` opens
+the file picker, ``q`` or Esc quits. A show chosen is read first, as the TUI's
 Open… reads it (file-menu plan call 13): one that busk cannot open is
 refused, with why. A new show is written by ``busk new`` in the folder
 busk-tui runs in.
@@ -34,8 +35,8 @@ from textual.worker import get_current_worker
 
 from busk_tui import colors, config
 from busk_tui.config import RecentShow
-from busk_tui.model import ShowRead
-from busk_tui.widgets.controls import ReadShow
+from busk_tui.model import Recovery, ShowRead
+from busk_tui.widgets.controls import ReadRecovery, ReadShow
 from busk_tui.widgets.dialogs import Choice
 from busk_tui.widgets.file_picker import FileDialog, home_text
 from busk_tui.widgets.panel import Panel
@@ -90,7 +91,14 @@ class LauncherScreen(Screen[None]):
             yield Choice("q", "Quit", "quit", colors.MID)
         yield self.message
         if self.recent.list.shows:
-            yield Static("↑ ↓: move · Enter: open", classes="note")
+            yield Static("↑ ↓: move · Enter: open · Delete: forget", classes="note")
+
+    def on_recent_shows_emptied(self, event: RecentShows.Emptied) -> None:
+        """The last one forgotten: the launcher says there is none."""
+        event.stop()
+        self.query_one(Panel).mount(Static(NO_RECENT, classes="none"))
+        self.query_one(".note").remove()
+        self.recent.remove()
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         event.stop()
@@ -105,17 +113,25 @@ class LauncherScreen(Screen[None]):
 class Launcher(App[Path]):
     """The launcher (see the module docs). ``read``: busk's reading of a
     show file (:func:`busk_tui.bridge.show_read`), called on a worker
-    thread. ``state_dir``: busk's state directory, for ``busk new``'s sACN
-    CID."""
+    thread; ``recovery``: what busk would recover of one, the same way
+    (``None``: the shows it opens recover nothing, so none is marked).
+    ``state_dir``: busk's state directory, for ``busk new``'s sACN CID."""
 
     CSS_PATH = "busk.tcss"
     TITLE = "busk"
     ENABLE_COMMAND_PALETTE = False
     home: LauncherScreen
 
-    def __init__(self, read: Callable[[Path], ShowRead], *, state_dir: Path | None = None) -> None:
+    def __init__(
+        self,
+        read: Callable[[Path], ShowRead],
+        *,
+        recovery: Callable[[Path], Recovery | None] | None = None,
+        state_dir: Path | None = None,
+    ) -> None:
         super().__init__()
         self.read = read
+        self.recovery = recovery
         self.state_dir = state_dir
 
     def get_default_screen(self) -> LauncherScreen:
@@ -137,6 +153,24 @@ class Launcher(App[Path]):
                 self.call_from_thread(then, found)
 
         self.run_worker(work, thread=True, group="read-show")
+
+    def on_read_recovery(self, message: ReadRecovery) -> None:
+        """Recent shows to mark: busk tells, on a worker thread, which it
+        would recover, and ``then`` gets each."""
+        message.stop()
+        recovery, paths, then = self.recovery, message.paths, message.then
+        if recovery is None:
+            return
+
+        def work() -> None:
+            for path in paths:
+                found = recovery(path)
+                if get_current_worker().is_cancelled:
+                    return
+                if found is not None:
+                    self.call_from_thread(then, path, found)
+
+        self.run_worker(work, thread=True, group="read-recovery")
 
     def action_new_show(self) -> None:
         """``n``: a form for the title and the file, in the folder busk-tui

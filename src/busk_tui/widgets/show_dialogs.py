@@ -4,7 +4,9 @@ form (:class:`NewShowDialog`), and the recent shows (:class:`RecentDialog`,
 on :class:`RecentShows`, which the launcher shows too).
 
 None of them sends anything: each closes with what was chosen, and the app
-opens the show.
+opens the show. The recent shows forget one at the operator's word
+(``state.json``, file-menu plan call 23), and mark the ones busk would
+recover, as the app reads them (call 24).
 """
 
 from __future__ import annotations
@@ -19,14 +21,15 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical
+from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import Input, OptionList, Static
 from textual.widgets.option_list import Option
 
-from busk_tui import colors
+from busk_tui import colors, config
 from busk_tui.config import RecentShow
-from busk_tui.model import ShowRead
-from busk_tui.widgets.controls import ReadShow
+from busk_tui.model import Recovery, ShowRead
+from busk_tui.widgets.controls import ReadRecovery, ReadShow
 from busk_tui.widgets.dialogs import Choice, FormDialog, dialog_css
 from busk_tui.widgets.file_picker import home_text, save_name, show_text
 from busk_tui.widgets.group_panel import plural
@@ -186,15 +189,26 @@ class NewShowDialog(FormDialog):
             file.value = self.made
 
 
-def recent_text(show: RecentShow, missing: bool) -> Text:
+def recent_text(show: RecentShow, missing: bool, recovers: bool = False) -> Text:
     """A recent show's row: its title, ``missing`` if its file is gone (the
-    row dimmed), and its file."""
+    row dimmed) or ``recovers`` in amber if busk would recover it, and its
+    file."""
     title = show.title if len(show.title) <= TITLE else show.title[: TITLE - 1] + "…"
     text = Text(f"{title:<{TITLE}}  ", style=colors.DIM if missing else colors.FG)
     if missing:
         text.append("missing  ", style=colors.DIM)
+    elif recovers:
+        text.append("recovers  ", style=colors.AMBER)
     text.append(home_text(show.path), style=colors.DIM if missing else colors.MID)
     return text
+
+
+def recovery_text(recovery: Recovery) -> Text:
+    """What busk would recover of a recent show, in its preview (file-menu
+    plan call 24)."""
+    when = f"{recovery.written.astimezone():%Y-%m-%d %H:%M}"
+    what = "the programmer and its unsaved edits" if recovery.edits else "the programmer"
+    return Text(f"Its last run did not end cleanly ({when}): busk recovers {what}.", colors.AMBER)
 
 
 class RecentList(OptionList):
@@ -212,13 +226,35 @@ class RecentList(OptionList):
         """The row the cursor is on."""
         return self.highlighted if self.shows else None
 
+    def index(self, path: Path) -> int | None:
+        """The row of the show at ``path``; ``None`` if none is."""
+        return next((i for i, show in enumerate(self.shows) if show.path == path), None)
+
+    def mark(self, index: int) -> None:
+        """Mark row ``index`` as a show busk would recover."""
+        self.replace_option_prompt_at_index(index, recent_text(self.shows[index], False, True))
+
+    def forget(self, index: int) -> None:
+        """Take row ``index`` off the list; the cursor stays on the row it
+        was on (the next one), or on the last."""
+        self.shows = self.shows[:index] + self.shows[index + 1 :]
+        self.missing = self.missing[:index] + self.missing[index + 1 :]
+        self.remove_option_at_index(index)
+
 
 class RecentShows(Horizontal):
     """The recent shows (:class:`RecentList`), the cursor on the first, and
     a preview of the one it is on, from busk's reading of it
     (:class:`~busk_tui.widgets.controls.ReadShow`, one at a time, each once).
+    The rows of the shows busk would recover are marked as the app tells
+    (:class:`~busk_tui.widgets.controls.ReadRecovery`, asked once). Delete
+    or ``d`` forgets the show the cursor is on, at once (:meth:`action_forget`).
     Whoever shows it opens the show chosen (``OptionList.OptionSelected``,
-    :meth:`chosen`)."""
+    :meth:`chosen`), and says there is none once the last is forgotten
+    (:class:`Emptied`)."""
+
+    class Emptied(Message):
+        """The last recent show was forgotten."""
 
     DEFAULT_CSS = f"""
     RecentShows {{ width: 100%; height: {ROWS}; }}
@@ -232,6 +268,9 @@ class RecentShows(Horizontal):
     }}
     RecentShows .preview {{ width: 2fr; height: 100%; }}
     """
+    BINDINGS: ClassVar[list[BindingType]] = [
+        Binding("delete,d", "forget", "Forget", show=False),
+    ]
 
     def __init__(self, shows: Sequence[RecentShow]) -> None:
         super().__init__()
@@ -239,6 +278,7 @@ class RecentShows(Horizontal):
         self.preview = Static("", classes="preview")
         self.read: dict[Path, ShowRead] = {}  # what busk found in each file read
         self.reading: Path | None = None  # the file busk is reading now
+        self.recoveries: dict[Path, Recovery] = {}  # the shows busk would recover
 
     def compose(self) -> ComposeResult:
         yield self.list
@@ -248,10 +288,38 @@ class RecentShows(Horizontal):
         if self.list.shows:
             self.list.highlighted = 0
             self.list.focus()
+        rows = zip(self.list.shows, self.list.missing, strict=True)
+        there = [show.path for show, gone in rows if not gone]
+        if there:
+            self.post_message(ReadRecovery(there, self._recovers))
 
     def chosen(self, index: int) -> Path | None:
         """The file of row ``index``; ``None`` if it is gone."""
         return None if self.list.missing[index] else self.list.shows[index].path
+
+    def action_forget(self) -> None:
+        """Delete or ``d``: take the show the cursor is on off the recent
+        shows (file-menu plan call 23), without a question; its file is not
+        touched."""
+        index = self.list.current()
+        if index is None:
+            return
+        config.forget_show(config.state_path(), self.list.shows[index].path)
+        self.list.forget(index)
+        self._preview()
+        if not self.list.shows:
+            self.post_message(self.Emptied())
+
+    def _recovers(self, path: Path, recovery: Recovery) -> None:
+        """busk would recover the show at ``path``: its row is marked, and
+        its preview says what comes back."""
+        self.recoveries[path] = recovery
+        index = self.list.index(path)
+        if index is None:  # forgotten meanwhile
+            return
+        self.list.mark(index)
+        if index == self.list.current():
+            self._preview()
 
     def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
         event.stop()
@@ -266,7 +334,10 @@ class RecentShows(Horizontal):
         if self.list.missing[index]:
             self.preview.update(Text(f"{home_text(path)} is gone", style=colors.DIM))
         elif (found := self.read.get(path)) is not None:
-            self.preview.update(show_text(found))
+            text = show_text(found)
+            if (recovery := self.recoveries.get(path)) is not None:
+                text.append("\n\n").append_text(recovery_text(recovery))
+            self.preview.update(text)
         else:
             self.preview.update(Text("reading…", style=colors.DIM))
             if self.reading is None:
@@ -285,7 +356,8 @@ class RecentShows(Horizontal):
 class RecentDialog(ModalScreen[Path | None]):
     """Open recent…: the recent shows (but the one that runs), with a
     preview (:class:`RecentShows`). ↑ ↓ move, Enter opens it (not a missing
-    one), Esc cancels. Closes with its file, or ``None``."""
+    one), Delete or ``d`` forgets it, Esc cancels. Closes with its file, or
+    ``None``."""
 
     DEFAULT_CSS = (
         dialog_css("RecentDialog")
@@ -310,7 +382,15 @@ class RecentDialog(ModalScreen[Path | None]):
                 yield Static("Esc: close", classes="note")
                 return
             yield self.recent
-            yield Static("↑ ↓: move · Enter: open · Esc: cancel", classes="note")
+            yield Static("↑ ↓: move · Enter: open · Delete: forget · Esc: cancel", classes="note")
+
+    def on_recent_shows_emptied(self, event: RecentShows.Emptied) -> None:
+        """The last one forgotten: the dialog says there is none."""
+        event.stop()
+        note = self.query_one(".note", Static)
+        note.update("Esc: close")
+        self.query_one(Vertical).mount(Static(NO_RECENT, classes="question"), before=note)
+        self.recent.remove()
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         event.stop()

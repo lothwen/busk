@@ -59,24 +59,38 @@ Without a show, with or without other options, `busk-tui` opens the launcher:
 ```
  busk
 ┌─ RECENT SHOWS ───────────────────────────────────────────────────────────────┐
-│ Club Night            ~/shows/club.show         │ Club Night                 │
-│ Festival Main Stage   ~/shows/festival.show     │ ~/shows/club.show          │
-│ Old rig               missing  ~/old/rig.show   │ 7 fixtures · 3 cue lists · │
-│                                                 │ 12 playbacks               │
-│                                                 │ saved 2026-11-19 22:14     │
+│ Club Night            recovers  ~/shows/club.show  │ Club Night              │
+│ Festival Main Stage   ~/shows/festival.show        │ ~/shows/club.show       │
+│ Old rig               missing  ~/old/rig.show      │ 7 fixtures · 3 cue      │
+│                                                    │ lists · 12 playbacks    │
+│                                                    │ saved 2026-11-19 22:14  │
+│                                                    │                         │
+│                                                    │ Its last run did not    │
+│                                                    │ end cleanly (2026-11-20 │
+│                                                    │ 22:14): busk recovers   │
+│                                                    │ the programmer and its  │
+│                                                    │ unsaved edits.          │
 └──────────────────────────────────────────────────────────────────────────────┘
 
  [n New show…]  [o Open…]  [q Quit]
 
- ↑ ↓: move · Enter: open
+ ↑ ↓: move · Enter: open · Delete: forget
 ```
 
 It lists the shows busk-tui ran last, newest first, with the preview Open recent… has
 ([Opening another show](#opening-another-show)): what busk reads in the file the cursor is on.
 ↑ ↓ move and Enter opens it. A show whose file is gone is dimmed and marked `missing`, and
-cannot be opened. **n** asks for a new show's title and file, in the folder busk-tui runs in, as
-New… does, and writes it with `busk new`. **o** opens the file picker on the show files of that
-folder. **q**, Esc or Ctrl+C quits, with nothing run.
+cannot be opened. **Delete** or **d** forgets the show the cursor is on: it leaves the list at
+once, without a question, and its file is not touched. **n** asks for a new show's title and
+file, in the folder busk-tui runs in, as New… does, and writes it with `busk new`. **o** opens
+the file picker on the show files of that folder. **q**, Esc or Ctrl+C quits, with nothing run.
+
+A show whose last run did not end cleanly (it crashed, was killed, or runs still in another
+`busk run`) is marked `recovers` in amber: opening it brings back what that run left, as `busk
+run` does after a crash ([Autosave and recovery](../running.md#autosave-and-recovery)): the
+programmer, the master levels and the page, and the unsaved edits when an autosave is newer
+than the file. The preview says when that run last wrote them, and whether the edits come back.
+With `--no-recover`, or with `--standalone`, which recovers nothing, no show is marked.
 
 Before it opens a show, busk loads and compiles it, as `busk run` would. One that does not load
 is refused in a dialog that says why, and the launcher stays. The show chosen then runs as if it
@@ -1561,7 +1575,9 @@ the show's folder, on its file. The preview of a show file is what busk reads in
 its file, how many fixtures, cue lists and playbacks it has, and when it was saved, or, in
 red, why busk cannot open it. **Open recent…** lists the shows busk-tui ran last, newest first,
 but the one that runs, with the same preview: ↑ ↓ move, Enter opens, Esc cancels. A show whose
-file is gone is dimmed, marked `missing`, and cannot be opened.
+file is gone is dimmed, marked `missing`, and cannot be opened. As in the
+[launcher](#the-launcher-busk-tui-without-a-show), Delete or **d** forgets a show, and a show
+busk would recover is marked `recovers`.
 
 Before it opens a show, busk loads and compiles it as `busk run` would. One that does not load
 is refused in a dialog that says why, and the show that runs goes on.
@@ -1598,7 +1614,7 @@ edits were kept) lands on the terminal behind the TUI: you see it after the last
 | File | |
 |---|---|
 | `$XDG_CONFIG_HOME/busk-tui/config.toml` | Defaults and F2's quick lines, read only (`--config` names another). |
-| `$XDG_STATE_HOME/busk-tui/state.json` | The last page and layout, and the shows run last (`recent`: newest first, at most 10, each with its path, title and when it was opened), the copies Save as made included, which the launcher and Open recent… list. |
+| `$XDG_STATE_HOME/busk-tui/state.json` | The last page and layout, and the shows run last (`recent`: newest first, at most 10, each with its path, title and when it was opened), the copies Save as made included, which the launcher and Open recent… list, less the ones forgotten there. |
 | `$XDG_STATE_HOME/busk-tui/debug.log` | Tracebacks the TUI caught, for a bug report. |
 
 `config.toml`:

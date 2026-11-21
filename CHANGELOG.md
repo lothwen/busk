@@ -49,6 +49,10 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   preview as Open recent…, a new show (n) and a show from a file (o). busk reads the show chosen
   first and refuses one that does not load. The show chosen runs as the show given, with the
   options given.
+- In the launcher and in Open recent…, Delete or `d` forgets a recent show at once (its file is
+  not touched), and a show whose last run did not end cleanly is marked `recovers`, in amber:
+  its preview says when that run last wrote what comes back, and whether its unsaved edits come
+  back with the programmer. With `--no-recover`, or `--standalone`, no show is marked.
 - `run_script(path, each=…)` on `OfflineShow` and `LiveShow` calls `each(number, total, line,
   reply)` after each line of the script has run, before the next one: the line's number, the
   file's number of lines, the line and its `Reply`, so a display can follow a long script as

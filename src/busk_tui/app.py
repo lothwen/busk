@@ -20,13 +20,19 @@ only module that imports busk, and Textual must be imported after
 
 from __future__ import annotations
 
+import functools
 import logging
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import replace
+from pathlib import Path
+from typing import TYPE_CHECKING
 
 from busk_tui import config, parent
+
+if TYPE_CHECKING:
+    from busk_tui.model import Recovery
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -44,7 +50,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         from busk_tui.launcher import Launcher
 
         _debug_log()
-        launcher = Launcher(show_read, state_dir=options.state_dir)
+        launcher = Launcher(show_read, recovery=recovery(options), state_dir=options.state_dir)
         show = launcher.run()
         if show is None:  # quit, or it crashed
             return launcher.return_code or 0
@@ -79,7 +85,9 @@ def frontend(show: object) -> None:
     )
     bridge = Bridge.attached(show)
     opens = parent.NEXT in os.environ  # busk-tui is the parent
-    app = BuskApp(bridge, settings, opens=opens, state_dir=options.state_dir)
+    app = BuskApp(
+        bridge, settings, opens=opens, state_dir=options.state_dir, recovery=recovery(options)
+    )
     try:
         app.run()
     finally:
@@ -87,6 +95,18 @@ def frontend(show: object) -> None:
         config.write_state(config.state_path(), page=app.page, layout=app.view.layout)
     if app.next_show is not None and not parent.hand_off(app.next_show):
         print(f"busk-tui: cannot hand {app.next_show} over to open it", file=sys.stderr)
+
+
+def recovery(options: config.Options) -> Callable[[Path], Recovery | None] | None:
+    """busk's reading of what ``busk run`` would recover of a show, with the
+    state directory given, for the recent shows' marks (file-menu plan call
+    24); ``None`` when the shows opened recover nothing (``--no-recover``,
+    ``--standalone``)."""
+    if not options.recovers:
+        return None
+    from busk_tui.bridge import recovery_read
+
+    return functools.partial(recovery_read, state_dir=options.state_dir)
 
 
 def _standalone(options: config.Options, settings: config.Settings) -> int:

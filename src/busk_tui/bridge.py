@@ -71,6 +71,7 @@ from busk import (
     TrackedCue,
     UnsupportedFeature,
     load_show,
+    pending_recovery,
     read_profile,
 )
 from busk_tui import attributes, commands
@@ -130,6 +131,7 @@ from busk_tui.model import (
     ProfileRead,
     ProgrammerChanged,
     ProgrammerModel,
+    Recovery,
     Rgb,
     RoutesChanged,
     RouteView,
@@ -1247,6 +1249,19 @@ def show_read(path: Path) -> ShowRead:
         _debug.exception("compiling %r raised", str(path))
         return replace(found, errors=(str(exc) or type(exc).__name__,))
     return found
+
+
+def recovery_read(path: Path, state_dir: Path | None = None) -> Recovery | None:
+    """What ``busk run`` would recover of the show at ``path``, with
+    ``state_dir`` as its ``--state-dir`` (file-menu plan call 24); ``None``:
+    it would start clean. It reads the file's id: off the UI thread. Raises
+    nothing."""
+    try:
+        found = pending_recovery(path, state_dir=state_dir)
+    except Exception:
+        _debug.exception("pending_recovery(%r) raised", str(path))
+        return None
+    return None if found is None else Recovery(found.written, found.edits)
 
 
 def _errors(issues: Sequence[Issue]) -> tuple[str, ...]:

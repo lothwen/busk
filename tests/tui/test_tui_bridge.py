@@ -4,17 +4,19 @@ stub has what the bridge reads; its ``execute`` can be held, fail or raise."""
 
 from __future__ import annotations
 
+import json
+import os
 import threading
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import replace
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
 import pytest
-from tui_fakes import Stub
+from tui_fakes import Stub, crashed
 from tui_fakes import stub_health as health
 from tui_fakes import stub_programmer as programmer
 from tui_fakes import stub_session as session_status
@@ -22,7 +24,7 @@ from tui_fakes import stub_snapshot as snapshot
 
 import busk
 from busk_tui import bridge as bridge_module
-from busk_tui.bridge import Bridge, session_state, show_read
+from busk_tui.bridge import Bridge, recovery_read, session_state, show_read
 from busk_tui.model import (
     BridgeEvent,
     Busy,
@@ -39,6 +41,7 @@ from busk_tui.model import (
     LiveChanged,
     OutputChanged,
     ProgrammerChanged,
+    Recovery,
     ScriptDone,
     ScriptLine,
     SessionChanged,
@@ -902,6 +905,38 @@ def test_a_show_that_does_not_compile_cannot_be_opened(club_path: Path, tmp_path
     assert found.title == "Club Night"  # it loads
     (error,) = found.errors
     assert error.startswith("busk cannot run it yet: fixtures[0].elementPatch")
+
+
+def test_a_show_whose_run_was_killed_is_recovered_with_its_edits_or_without(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state"
+    club = tmp_path / "club.show"
+    busk.save_show(busk.new_show("Club Night"), club, backups=False)
+    assert recovery_read(club, state) is None  # never ran
+    session = crashed(club, state)
+    os.utime(session, (1_700_000_000, 1_700_000_000))
+    written = datetime.fromtimestamp(1_700_000_000, UTC)
+    assert recovery_read(club, state) == Recovery(written, edits=False)
+    fest = tmp_path / "fest.show"
+    busk.save_show(busk.new_show("Festival"), fest, backups=False)
+    crashed(fest, state, edits=True)
+    found = recovery_read(fest, state)
+    assert found is not None
+    assert found.edits
+    session.write_text(json.dumps({"cleanExit": True}))
+    assert recovery_read(club, state) is None  # it ended cleanly
+    assert recovery_read(tmp_path / "gone.show", state) is None
+
+
+def test_the_recovery_read_follows_busk_runs_state_directory(
+    tmp_path: Path, state_directory: Path
+) -> None:
+    club = tmp_path / "club.show"
+    busk.save_show(busk.new_show("Club Night"), club, backups=False)
+    crashed(club, state_directory)  # $XDG_STATE_HOME/busk
+    assert recovery_read(club) is not None
+    assert recovery_read(club, tmp_path / "other") is None
 
 
 def test_a_file_that_is_no_show_or_none_cannot_be_opened(tmp_path: Path) -> None:

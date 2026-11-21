@@ -5,8 +5,8 @@ with the ``busk run`` options it was given, and the same on each show opened
 from the TUI after it, without ``--values`` and ``--script``, which are the
 given show's (:func:`busk_run_command`, file-menu plan call 10). Without
 ``SHOW``, the launcher chooses it, and it is the given show. busk hands
-the frontend only the show, so the TUI's own options, and ``--state-dir``,
-travel in the environment, as JSON in ``BUSK_TUI_OPTIONS``
+the frontend only the show, so the TUI's own options, ``--state-dir`` and
+``--no-recover`` travel in the environment, as JSON in ``BUSK_TUI_OPTIONS``
 (:func:`to_environment`, :func:`from_environment`).
 ``--standalone`` runs the show in the TUI's own process instead, and takes
 ``--no-output`` and ``--no-surfaces``, which ``busk run`` lacks.
@@ -14,8 +14,8 @@ travel in the environment, as JSON in ``BUSK_TUI_OPTIONS``
 ``$XDG_CONFIG_HOME/busk-tui/config.toml`` (or ``--config FILE``) holds
 defaults (``[defaults]``) and F2's quick lines (``[program] quick``); it is
 only read. ``$XDG_STATE_HOME/busk-tui/state.json`` remembers
-the last page and layout, and the shows opened last (``recent``); a state
-file that cannot be read or written is ignored.
+the last page and layout, and the shows opened last (``recent``), less the
+ones forgotten; a state file that cannot be read or written is ignored.
 """
 
 from __future__ import annotations
@@ -77,6 +77,13 @@ class Options:
     faders: int | None = None
     colors: Colors | None = None
     config: Path | None = None
+
+    @property
+    def recovers(self) -> bool:
+        """Whether a show busk-tui opens recovers what its last run left, if
+        that run did not end cleanly: under ``busk run``, without
+        ``--no-recover``. ``--standalone`` recovers nothing."""
+        return not self.standalone and "--no-recover" not in self.run
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -204,13 +211,15 @@ def busk_new_command(show: Path, title: str, state_dir: Path | None) -> list[str
 
 
 def to_environment(options: Options) -> str:
-    """The TUI's own options, and ``--state-dir`` (for ``busk new``), for
-    ``BUSK_TUI_OPTIONS``. Paths are made absolute: ``busk run`` keeps the
-    working directory, but a restarted console must find the same files."""
+    """The TUI's own options, ``--state-dir`` (for ``busk new`` and the
+    recent shows' recovery) and ``--no-recover``, for ``BUSK_TUI_OPTIONS``.
+    Paths are made absolute: ``busk run`` keeps the working directory, but a
+    restarted console must find the same files."""
     config = None if options.config is None else str(options.config.absolute())
     state = None if options.state_dir is None else str(options.state_dir.absolute())
     given = {"layout": options.layout, "faders": options.faders, "colors": options.colors}
-    return json.dumps({**given, "config": config, "state_dir": state})
+    no_recover = "--no-recover" in options.run
+    return json.dumps({**given, "config": config, "state_dir": state, "no_recover": no_recover})
 
 
 def from_environment(environ: dict[str, str] | None = None) -> Options:
@@ -234,6 +243,7 @@ def from_environment(environ: dict[str, str] | None = None) -> Options:
         colors=colors if colors in COLORS else None,
         config=Path(config) if isinstance(config, str) else None,
         state_dir=Path(state) if isinstance(state, str) else None,
+        run=("--no-recover",) if given.get("no_recover") is True else (),
     )
 
 
@@ -337,6 +347,15 @@ def remember_show(path: Path, show: Path, title: str, opened: datetime | None = 
     entry = {"path": str(show), "title": title, "opened": when}
     recent = [entry, *(kept for kept in _recent(state) if kept["path"] != entry["path"])]
     return _write_state(path, {**state, "recent": recent[:RECENT]})
+
+
+def forget_show(path: Path, show: Path) -> bool:
+    """Take ``show`` off ``recent`` (file-menu plan call 23), keeping the
+    rest of the file; the show's file is not touched. ``False`` if it cannot
+    be written."""
+    state = read_state(path)
+    recent = [entry for entry in _recent(state) if entry["path"] != str(show)]
+    return _write_state(path, {**state, "recent": recent})
 
 
 @dataclass(frozen=True, slots=True)

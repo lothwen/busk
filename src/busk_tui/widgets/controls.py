@@ -24,7 +24,7 @@ from textual.widgets import Static
 
 from busk_tui import colors
 from busk_tui.commands import Line
-from busk_tui.model import Origin, ProfileRead, ShowRead
+from busk_tui.model import Origin, ProfileRead, Recovery, ShowRead
 
 type Intent = Literal["go", "neutral", "record", "tempo", "danger", "off"]
 
@@ -89,6 +89,19 @@ class ReadShow(Message):
     def __init__(self, path: Path, then: Callable[[ShowRead], None]) -> None:
         super().__init__()
         self.path = path
+        self.then = then
+
+
+class ReadRecovery(Message):
+    """Have busk tell which of the show files ``paths`` ``busk run`` would
+    recover (file-menu plan call 24), and call ``then`` with each of those
+    and what it would recover, on the UI thread, as each is known. The app
+    reads them on a worker thread, and none when the shows it opens recover
+    nothing (``--no-recover``, ``--standalone``)."""
+
+    def __init__(self, paths: Sequence[Path], then: Callable[[Path, Recovery], None]) -> None:
+        super().__init__()
+        self.paths = tuple(paths)
         self.then = then
 
 

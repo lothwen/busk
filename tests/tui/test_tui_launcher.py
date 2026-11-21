@@ -1,25 +1,34 @@
 """The launcher (file-menu plan call 15): ``busk-tui`` with no show lists the
 shows it ran last, with a preview, and offers a new show and a show from a
-file; the app ends with the show chosen, read first, or with nothing."""
+file; the app ends with the show chosen, read first, or with nothing. A show
+can be forgotten (call 23), and the ones busk would recover are marked
+(call 24)."""
 
 from __future__ import annotations
 
 import asyncio
 import json
 import sys
+import threading
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from rich.text import Text
 from textual.pilot import Pilot
 from textual.widgets import Static
 
 import busk
-from busk_tui import config
+from busk_tui import colors, config
 from busk_tui.bridge import show_read
 from busk_tui.launcher import Launcher, LauncherScreen
+from busk_tui.model import Recovery
 from busk_tui.widgets.file_picker import FileDialog
 from busk_tui.widgets.show_dialogs import NO_RECENT, NewShowDialog, OpenDialog
+
+NOTE = "↑ ↓: move · Enter: open · Delete: forget"
+WRITTEN = datetime(2026, 11, 20, 21, 14, tzinfo=UTC)
 
 
 def show_at(path: Path, title: str) -> Path:
@@ -61,6 +70,27 @@ def texts(app: Launcher) -> list[str]:
     return [str(widget.content) for widget in app.screen.query(Static)]
 
 
+def rows(app: Launcher) -> list[str]:
+    shown = home(app).recent.list
+    return [str(shown.get_option_at_index(i).prompt) for i in range(shown.option_count)]
+
+
+def style_of(text: Text, word: str) -> str:
+    """The style of ``word`` in ``text``."""
+    start = text.plain.index(word)
+    return next(str(span.style) for span in text.spans if span.start <= start < span.end)
+
+
+def recovering(marks: dict[Path, Recovery], asked: list[Path]) -> Callable[[Path], Recovery | None]:
+    """A recovery reading: what ``marks`` say, each file asked noted."""
+
+    def read(path: Path) -> Recovery | None:
+        asked.append(path)
+        return marks.get(path)
+
+    return read
+
+
 def test_without_recent_shows_it_says_so_and_offers_a_new_show_and_a_file() -> None:
     app = Launcher(show_read)
 
@@ -70,7 +100,7 @@ def test_without_recent_shows_it_says_so_and_offers_a_new_show_and_a_file() -> N
         assert "[n New show…]" in texts(app)
         assert "[o Open…]" in texts(app)
         assert "[q Quit]" in texts(app)
-        assert "↑ ↓: move · Enter: open" not in texts(app)
+        assert NOTE not in texts(app)
         assert not screen.recent.is_attached
         await pilot.press("enter")
         await pilot.pause()
@@ -98,7 +128,7 @@ def test_it_lists_the_recent_shows_with_a_preview_and_opens_the_one_chosen(
         row = str(recent.list.get_option_at_index(1).prompt)
         assert row.split() == ["Gone", "missing", str(gone)]
         assert recent.list.has_focus
-        assert "↑ ↓: move · Enter: open" in texts(app)
+        assert NOTE in texts(app)
         await until(pilot, lambda: "Club Night" in str(recent.preview.content))
         assert "0 fixtures · 0 cue lists · 0 playbacks" in str(recent.preview.content)
         await pilot.press("down")
@@ -239,7 +269,7 @@ def test_the_choices_are_clicks_too(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     assert app.return_value is None
 
 
-def test_it_only_reads_the_recent_shows(tmp_path: Path) -> None:
+def test_opening_a_recent_show_leaves_the_state_file_as_it_was(tmp_path: Path) -> None:
     club = show_at(tmp_path / "club.show", "Club Night")
     remember((club, "Club Night"))
     before = config.state_path().read_text()
@@ -253,3 +283,168 @@ def test_it_only_reads_the_recent_shows(tmp_path: Path) -> None:
     assert app.return_value == club
     assert config.state_path().read_text() == before
     assert json.loads(before)["recent"][0]["path"] == str(club)
+
+
+# ------------------------------------------------------------------ forget
+
+
+@pytest.mark.parametrize("key", ["delete", "d"])
+def test_delete_and_d_forget_the_show_the_cursor_is_on_and_leave_its_file(
+    tmp_path: Path, key: str
+) -> None:
+    club = show_at(tmp_path / "club.show", "Club Night")
+    fest = show_at(tmp_path / "fest.show", "Festival")
+    late = show_at(tmp_path / "late.show", "Late Night")
+    remember((club, "Club Night"), (fest, "Festival"), (late, "Late Night"))
+    config.write_state(config.state_path(), page=4, layout="C")
+    app = Launcher(show_read)
+
+    async def body(pilot: Pilot[Path]) -> None:
+        recent = home(app).recent
+        await pilot.press("down", key)
+        await pilot.pause()
+        assert [show.title for show in recent.list.shows] == ["Club Night", "Late Night"]
+        assert [row.split()[:2] for row in rows(app)] == [["Club", "Night"], ["Late", "Night"]]
+        assert recent.list.highlighted == 1  # the cursor stays: on the next one
+        await until(pilot, lambda: "Late Night" in str(recent.preview.content))
+        assert config.recent_shows(config.state_path()) == (
+            config.RecentShow(club, "Club Night"),
+            config.RecentShow(late, "Late Night"),
+        )
+        await pilot.press(key)  # the last row: the cursor goes up
+        await until(pilot, lambda: "Club Night" in str(recent.preview.content))
+        assert [show.title for show in recent.list.shows] == ["Club Night"]
+        assert recent.list.highlighted == 0
+        await pilot.press("enter")
+        await until(pilot, lambda: not app.is_running)
+
+    drive(app, body)
+    assert app.return_value == club
+    assert fest.is_file()  # not touched
+    assert late.is_file()
+    remembered = config.read_state(config.state_path())
+    assert (remembered["page"], remembered["layout"]) == (4, "C")
+    assert [entry["path"] for entry in remembered["recent"]] == [str(club)]
+
+
+def test_a_missing_show_is_forgotten_too(tmp_path: Path) -> None:
+    gone = tmp_path / "gone.show"
+    club = show_at(tmp_path / "club.show", "Club Night")
+    remember((gone, "Gone"), (club, "Club Night"))
+    app = Launcher(show_read)
+
+    async def body(pilot: Pilot[Path]) -> None:
+        recent = home(app).recent
+        await pilot.press("d")
+        await until(pilot, lambda: "Club Night" in str(recent.preview.content))
+        assert recent.list.missing == (False,)
+
+    drive(app, body)
+    assert config.recent_shows(config.state_path()) == (config.RecentShow(club, "Club Night"),)
+
+
+def test_forgetting_the_last_recent_show_says_there_is_none(tmp_path: Path) -> None:
+    club = show_at(tmp_path / "club.show", "Club Night")
+    remember((club, "Club Night"))
+    app = Launcher(show_read)
+
+    async def body(pilot: Pilot[Path]) -> None:
+        recent = home(app).recent
+        recent.action_forget()
+        recent.action_forget()  # a second d before the launcher has taken the list away
+        await pilot.pause()
+        assert NO_RECENT in texts(app)
+        assert NOTE not in texts(app)
+        assert not home(app).recent.is_attached
+        await pilot.press("d", "enter")  # nothing to forget or open
+        await pilot.pause()
+        assert app.is_running
+        await pilot.press("q")
+        await until(pilot, lambda: not app.is_running)
+
+    drive(app, body)
+    assert app.return_value is None
+    assert config.recent_shows(config.state_path()) == ()
+
+
+# ------------------------------------------------------------------ recovery
+
+
+def test_the_shows_busk_would_recover_are_marked_and_say_what_comes_back(
+    tmp_path: Path,
+) -> None:
+    club = show_at(tmp_path / "club.show", "Club Night")
+    fest = show_at(tmp_path / "fest.show", "Festival")
+    late = show_at(tmp_path / "late.show", "Late Night")
+    gone = tmp_path / "gone.show"
+    remember((club, "Club Night"), (gone, "Gone"), (fest, "Festival"), (late, "Late Night"))
+    asked: list[Path] = []
+    marks = {club: Recovery(WRITTEN, edits=True), fest: Recovery(WRITTEN, edits=False)}
+    app = Launcher(show_read, recovery=recovering(marks, asked))
+    when = f"{WRITTEN.astimezone():%Y-%m-%d %H:%M}"
+
+    async def body(pilot: Pilot[Path]) -> None:
+        recent = home(app).recent
+        await until(pilot, lambda: "recovers" in rows(app)[2])
+        assert asked == [club, fest, late]  # once each, not the missing one
+        shown = rows(app)
+        assert shown[0].split() == ["Club", "Night", "recovers", str(club)]
+        assert shown[1].split() == ["Gone", "missing", str(gone)]
+        assert shown[3].split() == ["Late", "Night", str(late)]
+        prompt = recent.list.get_option_at_index(0).prompt
+        assert isinstance(prompt, Text)
+        assert style_of(prompt, "recovers") == colors.AMBER
+        await until(pilot, lambda: "did not end cleanly" in str(recent.preview.content))
+        preview = str(recent.preview.content)
+        assert preview.startswith("Club Night\n")  # after what busk reads in the file
+        assert preview.endswith(
+            f"\n\nIts last run did not end cleanly ({when}): "
+            "busk recovers the programmer and its unsaved edits."
+        )
+        await pilot.press("down", "down")
+        await until(pilot, lambda: "Festival" in str(recent.preview.content))
+        assert str(recent.preview.content).endswith("busk recovers the programmer.")
+        await pilot.press("down")
+        await until(pilot, lambda: "Late Night" in str(recent.preview.content))
+        assert "did not end cleanly" not in str(recent.preview.content)
+        await pilot.press("up", "d")  # forgetting keeps the other marks
+        await pilot.pause()
+        assert rows(app)[0].split() == ["Club", "Night", "recovers", str(club)]
+        assert rows(app)[1].split() == ["Gone", "missing", str(gone)]
+        assert rows(app)[2].split() == ["Late", "Night", str(late)]
+        await pilot.press("up", "up", "d")
+        await pilot.pause()
+        assert rows(app)[0].split() == ["Gone", "missing", str(gone)]
+
+    drive(app, body)
+    assert asked == [club, fest, late]
+
+
+def test_a_mark_that_comes_after_the_preview_is_added_to_it(tmp_path: Path) -> None:
+    club = show_at(tmp_path / "club.show", "Club Night")
+    fest = show_at(tmp_path / "fest.show", "Festival")
+    remember((club, "Club Night"), (fest, "Festival"))
+    asked, answer = threading.Event(), threading.Event()
+
+    def slow(path: Path) -> Recovery | None:
+        asked.set()
+        answer.wait(5)
+        return Recovery(WRITTEN, edits=False)
+
+    app = Launcher(show_read, recovery=slow)
+
+    async def body(pilot: Pilot[Path]) -> None:
+        recent = home(app).recent
+        await until(pilot, lambda: "Club Night" in str(recent.preview.content))
+        assert asked.is_set()
+        await pilot.press("down")
+        await until(pilot, lambda: "Festival" in str(recent.preview.content))
+        assert "did not end cleanly" not in str(recent.preview.content)
+        await pilot.press("up", "d")  # Club Night, forgotten before its mark comes
+        await until(pilot, lambda: "Festival" in str(recent.preview.content))
+        answer.set()
+        await until(pilot, lambda: "did not end cleanly" in str(recent.preview.content))
+        assert rows(app)[0].split() == ["Festival", "recovers", str(fest)]
+        assert app.is_running
+
+    drive(app, body)

@@ -84,6 +84,18 @@ def test_the_tuis_options_travel_in_the_environment(tmp_path: Path) -> None:
     assert back.state_dir == Path("st").absolute()  # busk new's, for the installation's CID
 
 
+def test_a_show_opened_recovers_under_busk_run_without_no_recover() -> None:
+    assert config.parse_arguments(["s.show"]).recovers
+    assert config.parse_arguments([]).recovers  # the launcher's show too
+    assert not config.parse_arguments(["s.show", "--no-recover"]).recovers
+    assert not config.parse_arguments(["s.show", "--standalone"]).recovers  # loads the file only
+    for argv, recovers in ((["s.show"], True), (["s.show", "--no-recover", "--threads"], False)):
+        text = config.to_environment(config.parse_arguments(argv))
+        back = config.from_environment({config.ENVIRONMENT: text})
+        assert back.recovers is recovers  # the TUI under busk run marks its recent shows by it
+    assert config.from_environment({config.ENVIRONMENT: '{"no_recover": 1}'}).recovers
+
+
 def test_unreadable_options_in_the_environment_are_the_defaults() -> None:
     for text in ("", "not json", "[1]", '{"layout": "Z", "faders": 99, "colors": 7}'):
         assert config.from_environment({config.ENVIRONMENT: text}) == Options()
@@ -293,3 +305,28 @@ def test_the_recent_shows_read_back_newest_first(tmp_path: Path) -> None:
         config.RecentShow(Path("/s/b.show"), "B"),
         config.RecentShow(Path("/s/a.show"), "A"),
     )
+
+
+def test_a_show_forgotten_goes_from_the_recent_shows_and_the_rest_stays(tmp_path: Path) -> None:
+    state = tmp_path / "state.json"
+    assert config.write_state(state, page=4, layout="C")
+    for name in ("a", "b", "c"):
+        config.remember_show(state, Path(f"/s/{name}.show"), name.upper(), OPENED)
+    before = config.read_state(state)["recent"]
+    assert config.forget_show(state, Path("/s/b.show"))
+    remembered = config.read_state(state)
+    assert remembered["recent"] == [before[0], before[2]]  # each as it was
+    assert (remembered["page"], remembered["layout"]) == (4, "C")
+    assert config.forget_show(state, Path("/s/b.show"))  # not in the list: nothing changes
+    assert config.read_state(state) == remembered
+    assert config.forget_show(state, Path("/s/a.show"))
+    assert config.forget_show(state, Path("/s/c.show"))
+    assert config.recent_shows(state) == ()
+
+
+def test_a_show_forgotten_in_a_state_file_that_cannot_be_written_is_ignored(
+    tmp_path: Path,
+) -> None:
+    blocked = tmp_path / "file"
+    blocked.write_text("")
+    assert not config.forget_show(blocked / "state.json", Path("/s/a.show"))

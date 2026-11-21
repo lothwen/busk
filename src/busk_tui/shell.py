@@ -74,6 +74,7 @@ from busk_tui.model import (
     OutputChanged,
     ProgrammerChanged,
     ProgrammerModel,
+    Recovery,
     RoutesChanged,
     ScriptDone,
     ScriptLine,
@@ -95,7 +96,14 @@ from busk_tui.pages.patch import PatchPage
 from busk_tui.pages.presets import PresetsPage
 from busk_tui.pages.program import ProgramPage
 from busk_tui.pages.surfaces import SurfacesPage
-from busk_tui.widgets.controls import FillPrompt, ReadProfile, ReadShow, RunLine, ShowHint
+from busk_tui.widgets.controls import (
+    FillPrompt,
+    ReadProfile,
+    ReadRecovery,
+    ReadShow,
+    RunLine,
+    ShowHint,
+)
 from busk_tui.widgets.dialogs import (
     ConfirmDialog,
     QuitChoice,
@@ -187,7 +195,10 @@ class Importing:
 class BuskApp(App[int]):
     """The TUI on one show (see the module docs). ``opens``: whoever runs it
     starts :attr:`next_show` once it ends, so New… and Open… can work.
-    ``state_dir``: busk's state directory, for ``busk new``'s sACN CID."""
+    ``state_dir``: busk's state directory, for ``busk new``'s sACN CID.
+    ``recovery``: what busk would recover of a show file, for Open recent…'s
+    marks, called on a worker thread (``None``: the shows opened recover
+    nothing, so none is marked)."""
 
     CSS_PATH = "busk.tcss"
     TITLE = "busk"
@@ -209,6 +220,7 @@ class BuskApp(App[int]):
         standalone: bool = False,
         opens: bool = True,
         state_dir: Path | None = None,
+        recovery: Callable[[Path], Recovery | None] | None = None,
     ) -> None:
         super().__init__()
         self.bridge = bridge
@@ -216,6 +228,7 @@ class BuskApp(App[int]):
         self.standalone = standalone
         self.opens = opens
         self.state_dir = state_dir
+        self.recovery = recovery
         self.next_show: Path | None = None  # the show to start once the app ends
         self.page = settings.page
         self.view = View(faders=settings.faders, quick=settings.quick, layout=settings.layout)
@@ -618,6 +631,24 @@ class BuskApp(App[int]):
                 self.call_from_thread(then, found)
 
         self.run_worker(read, thread=True, group="read-show")
+
+    def on_read_recovery(self, message: ReadRecovery) -> None:
+        """Recent shows to mark (Open recent…): busk tells, on a worker
+        thread, which it would recover, and ``then`` gets each."""
+        message.stop()
+        recovery, paths, then = self.recovery, message.paths, message.then
+        if recovery is None:
+            return
+
+        def read() -> None:
+            for path in paths:
+                found = recovery(path)
+                if get_current_worker().is_cancelled:
+                    return
+                if found is not None:
+                    self.call_from_thread(then, path, found)
+
+        self.run_worker(read, thread=True, group="read-recovery")
 
     def on_fill_prompt(self, message: FillPrompt) -> None:
         """A pre-fill from a page: the text goes in the prompt, to finish."""
