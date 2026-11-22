@@ -520,7 +520,7 @@ type TargetKey = str
 
 Patch validation (performed on every patch edit): footprint fits in the universe (`address + footprint − 1 ≤ 512`), no overlaps (warn, allow — double-patching is legitimate for some setups), profile revision present.
 
-A fixture imported from an MVR plot (`rig import`, [plots](plots.md)) keeps the plot fixture's uuid as `mvrUuid`, so that importing the plot again can find it. Two fixtures with the same `mvrUuid` are an error.
+A fixture imported from an MVR plot (`rig import`, [plots](plots.md)) keeps the plot fixture's uuid as `mvrUuid`, so that importing the plot again can find it. That import updates the fixture's patch, profile and mode, location, name and inverts, never its number, and removes a fixture whose `mvrUuid` the plot no longer has; it never touches a fixture without one. Two fixtures with the same `mvrUuid` are an error.
 
 ### 5.7 Groups
 

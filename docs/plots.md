@@ -3,12 +3,15 @@
 A **plot** is an MVR file (My Virtual Rig, DIN SPEC 15801): the rig as a lighting designer
 draws it in Vectorworks, grandMA3, Capture, Depence and other CAD. busk builds the rig from
 it: the profiles, the universes, the fixtures with their numbers, names, patch and positions,
-and a group for each hanging position. It never touches programming.
+and a group for each hanging position. When the designer sends the plot again, the same line
+brings the rig up to date. It adds no programming and keeps yours: only a fixture the plot
+removes leaves the presets and cues that use it.
 
 - [Importing a plot](#importing-a-plot)
 - [Where the stage is](#where-the-stage-is)
 - [What each fixture becomes](#what-each-fixture-becomes)
 - [Groups](#groups)
+- [When the plot changes](#when-the-plot-changes)
 - [What busk leaves out](#what-busk-leaves-out)
 - [What the show keeps](#what-the-show-keeps)
 
@@ -38,10 +41,7 @@ fixtures span x -7.5…7.5 m, y -9.0…1.5 m, z 0.0…8.0 m
 
 From then on it is an ordinary show: add routes, record presets and cues. `undo` takes the
 whole import back. The path is read from where busk runs, as `profile import` reads its own.
-
-For now a plot builds a rig once: a show that already has fixtures from a plot refuses
-another `rig check` or `rig import`. `undo` the import, or delete those fixtures (`delete
-fixture N thru M cascade`), to start again.
+When the plot changes, import it again ([below](#when-the-plot-changes)).
 
 ## Where the stage is
 
@@ -88,6 +88,64 @@ group named after it, numbered after the show's highest group. Its fixtures are 
 left to right as the audience sees them, stage right first, so fans and effects run across
 the stage.
 
+Only the first import makes groups. From then on they are yours: a later import makes none
+and changes none, and says where its new fixtures hang, so you can add them by hand.
+
+## When the plot changes
+
+A week later the designer sends `club-v2.mvr`. Check it, then import it:
+
+```
+busk> rig check "plots/club-v2.mvr"
+the plot has 52 fixtures, 6 profiles and 3 universes; the show has 47 of them
+  add 4: 601–604
+  move 12: 201–212
+  repatch 8: 301–308
+  change 1: 205 mode 8ch → 16ch
+  remove 2: 309, 310: used by 1 group, 3 presets and 1 cue, add cascade
+  note: 601–604 hang on "LX3", a new position: no group made
+fixtures span x -7.5…7.5 m, y -9.0…1.5 m, z 0.0…8.0 m
+busk> rig import "plots/club-v2.mvr" cascade
+note: 601–604 hang on "LX3", a new position: no group made
+updated the rig from club-v2.mvr: added 4 fixtures; moved 12, repatched 8, changed 1, removed 2 (left 1 group, 3 presets and 1 cue)
+fixtures span x -7.5…7.5 m, y -9.0…1.5 m, z 0.0…8.0 m
+```
+
+busk finds each fixture by the plot's own id for it, a uuid it keeps from the first import, so
+a fixture keeps its number, and every preset and cue that uses it, whatever the plot changes.
+Each line of the check is one kind of change:
+
+| Line | What it does to the fixture |
+|---|---|
+| `add` | A fixture new to the plot is added, as the first import adds one. |
+| `move` | Its location follows the plot. |
+| `repatch` | Its patch follows the plot: a fixture the plot no longer patches is unpatched. |
+| `change` | It takes the plot's mode, or another profile and mode. |
+| `rename` | It takes the plot's name. A fixture the plot gives no name keeps yours. |
+| `invert` | Its invert pan or tilt follows the plot, where the plot says. |
+| `remove` | A fixture the plot no longer has is removed. |
+
+The plot owns the patch, the profile and mode, the location, the name and the inverts. You
+own the rest: the number, swap pan and tilt, the offsets, limits, park and groups. A fixture
+the plot numbers otherwise keeps its number, and a note says so. A fixture you added by hand
+is never touched, and a new fixture may take the number of one the plot removed.
+
+Two things stop the line:
+
+- **A removed fixture in use.** A fixture the plot removes goes with what uses it, as `delete
+  fixture N cascade` takes it: out of groups, presets, cues, park and bindings. While anything
+  uses it, `rig import` is refused until you add `cascade`. A fixture in a group the first
+  import made is in use.
+- **A mode that loses cells in use.** A new mode or profile with fewer cells than a group, a
+  preset or a cue uses is refused, as `fixture N mode` is, even with `cascade`. `rig check`
+  lists it first, as `blocked:`. Change what uses the lost cells first, then import again.
+
+A word on the line (`audience`, `origin`) moves every fixture from the plot, and the show
+keeps the new frame. A fixture of the show that busk cannot read in the new plot (its GDTF is
+missing, say) is left as it is, and a note says so: it is not removed. When nothing changes,
+`rig check` says `nothing to change` and `rig import` is refused; when only the file changed
+(the set, say), `no fixture changes`, and the import keeps the new file's hash.
+
 ## What busk leaves out
 
 Each of these is a note, in `rig check` and in `rig import`'s reply:
@@ -116,4 +174,5 @@ unpacks to more than 4 GB, is refused, and so is a scene larger than 64 MB. A GD
 
 The show keeps where the plot was (relative to the show file's folder when the show has a
 file), a hash of it and the frame, and each fixture keeps the uuid of the plot fixture it
-came from. A show built from a plot runs anywhere: its profiles are in it, as always.
+came from, which is how a later import finds it. A show built from a plot runs anywhere: its
+profiles are in it, as always.

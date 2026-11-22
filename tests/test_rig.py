@@ -1,4 +1,5 @@
-"""``rig check`` and ``rig import``: a plot becomes the rig (MVR plan Phase 2, step 5).
+"""``rig check`` and ``rig import``: a plot becomes the rig (MVR plan Phase 2,
+step 5), and keeps it up to date (Phase 3, step 7).
 
 ``rig import "<path>"`` reads an MVR plot and adds, in one undo step, the
 profiles of its GDTF files, the universes its addresses need, its fixtures
@@ -6,6 +7,11 @@ profiles of its GDTF files, the universes its addresses need, its fixtures
 hanging position, and the show's ``stage``: the plot's file, hash and frame.
 ``rig check`` says what it would do and changes nothing. The club plot below
 hangs three spots on LX1 and two on LX2, drawn with the audience at −Y.
+
+Imported again, the plot updates the fixtures it has (matched by
+``mvrUuid``), adds its new ones and removes those it lost, ``cascade``
+taking them from what uses them; it never touches a fixture added by hand,
+nor numbers, groups or what else busk owns (MVR plan Q2, Q3).
 """
 
 from __future__ import annotations
@@ -18,6 +24,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from xml.etree import ElementTree as ET
 
 import pytest
 
@@ -38,6 +45,7 @@ from mvr_builder import (
     gdtf,
     layer,
     matrix,
+    model,
     plot,
     position,
     scene,
@@ -47,32 +55,56 @@ from mvr_builder import (
 
 PROFILE_ID = f"gdtf-{TYPE_ID.lower()}"
 
+LX1: dict[str, dict[str, Any]] = {  # on a truss at Y −2000, Z 6000
+    "f101": {"name": "Spot 1", "numeric": 101, "addresses": [("0", "1.1")],
+             "at": matrix(o=(2000, 0, 0)), "position": "P1"},
+    "f102": {"name": "Spot 2", "numeric": 102, "addresses": [("0", "1.4")],
+             "position": "P1", "invert_pan": "true"},
+    "f103": {"name": "Spot 3", "numeric": 103, "addresses": [("0", "1.7")],
+             "at": matrix(o=(-2000, 0, 0)), "position": "P1"},
+}  # fmt: skip
+LX2: dict[str, dict[str, Any]] = {  # on a truss at Z 7000
+    "f201": {"name": "Wash 1", "fixture_id": "201", "numeric": 0, "gdtf_mode": "1ch",
+             "addresses": [("0", "2.1")], "at": matrix(o=(-1000, 0, 0)), "position": "P2"},
+    "f202": {"name": "", "fixture_id": "202", "gdtf_mode": "1ch", "addresses": [("0", "514")],
+             "at": matrix(o=(1000, 0, 0)), "position": "P2"},
+}  # fmt: skip
 
-def club_scene(*extra: Any) -> bytes:
-    lx1 = scenery("Truss", "t1", "LX1", at=matrix(o=(0, -2000, 6000)), children=[
-        fixture("f101", "Spot 1", numeric=101, addresses=[("0", "1.1")],
-                at=matrix(o=(2000, 0, 0)), position="P1"),
-        fixture("f102", "Spot 2", numeric=102, addresses=[("0", "1.4")],
-                position="P1", invert_pan="true"),
-        fixture("f103", "Spot 3", numeric=103, addresses=[("0", "1.7")],
-                at=matrix(o=(-2000, 0, 0)), position="P1"),
-    ])  # fmt: skip
-    lx2 = scenery("Truss", "t2", "LX2", at=matrix(o=(0, 0, 7000)), children=[
-        fixture("f201", "Wash 1", fixture_id="201", numeric=0, gdtf_mode="1ch",
-                addresses=[("0", "2.1")], at=matrix(o=(-1000, 0, 0)), position="P2"),
-        fixture("f202", "", fixture_id="202", gdtf_mode="1ch", addresses=[("0", "514")],
-                at=matrix(o=(1000, 0, 0)), position="P2"),
-    ])  # fmt: skip
+type Changes = dict[str, dict[str, Any] | None]
+"""What a later plot changes in a club fixture, by uuid; ``None`` removes it."""
+
+
+def club_scene(
+    *extra: ET.Element, changes: Changes | None = None, aux: tuple[ET.Element, ...] = ()
+) -> bytes:
+    """The club plot, ``changes`` made, with ``extra`` objects in its layer
+    and ``aux`` in its ``AUXData``."""
+
+    def hung(fixtures: dict[str, dict[str, Any]]) -> list[ET.Element]:
+        found = []
+        for uuid, fields in fixtures.items():
+            change = (changes or {}).get(uuid, {})
+            if change is not None:
+                found.append(fixture(uuid, **{**fields, **change}))
+        return found
+
+    lx1 = scenery("Truss", "t1", "LX1", at=matrix(o=(0, -2000, 6000)), children=hung(LX1))
+    lx2 = scenery("Truss", "t2", "LX2", at=matrix(o=(0, 0, 7000)), children=hung(LX2))
     return scene(
         layer("L1", "Lights", lx1, lx2, *extra),
-        aux=[position("P1", "LX1"), position("P2", "LX2"), position("P3", "Floor")],
+        aux=[position("P1", "LX1"), position("P2", "LX2"), position("P3", "Floor"), *aux],
     )
 
 
-def club(tmp_path: Path, data: bytes | None = None, files: dict[str, bytes] | None = None) -> Path:
+def club(
+    tmp_path: Path,
+    data: bytes | None = None,
+    files: dict[str, bytes] | None = None,
+    name: str = "club.mvr",
+) -> Path:
     folder = tmp_path / "plots"
     folder.mkdir(exist_ok=True)
-    return plot(folder / "club.mvr", data if data is not None else club_scene(), files)
+    return plot(folder / name, data if data is not None else club_scene(), files)
 
 
 def offline(**kwargs: Any) -> OfflineShow:
@@ -443,19 +475,386 @@ def test_an_imported_rig_is_saved_and_loaded(tmp_path: Path) -> None:
                                                              "F202"]  # fmt: skip
 
 
-# ------------------------------------------------------------------ refusals
+# ------------------------------------------------------------------ importing again
 
 
-def test_a_show_with_fixtures_from_a_plot_is_refused(tmp_path: Path) -> None:
+def imported(tmp_path: Path, *lines: str) -> OfflineShow:
+    """A show with the club plot imported, then ``lines`` run."""
     show = offline()
     run(show, f'rig import "{club(tmp_path)}"')
+    for line in lines:
+        run(show, line)
+    return show
+
+
+def again(
+    tmp_path: Path,
+    *extra: ET.Element,
+    changes: Changes | None = None,
+    aux: tuple[ET.Element, ...] = (),
+    files: dict[str, bytes] | None = None,
+) -> Path:
+    """The club plot as the designer sends it again, ``club-v2.mvr``."""
+    data = club_scene(*extra, changes=changes, aux=aux)
+    return club(tmp_path, data, files, name="club-v2.mvr")  # fmt: skip
+
+
+def lines_of(show: OfflineShow, line: str) -> list[str]:
+    return run(show, line).splitlines()
+
+
+AGAIN_CHECK = """\
+the plot has 6 fixtures, 1 profile and 3 universes; the show has 4 of them
+  add 2: 104, 301
+  move 1: 101
+  repatch 2: 102, 201
+  change 1: 202 mode 1ch → 3ch
+  rename 1: 102
+  invert 1: 201
+  remove 1: 103: used by 1 group, add cascade
+  universes to add: 3
+  note: 201 has another number in the plot (211): number kept
+  note: 104 is new on "LX1": no group changed
+  note: 301 hangs on "LX3", a new position: no group made
+fixtures span x -2.5…1.0, y -3.0…2.0, z 6.0…8.0 m"""
+
+AGAIN_IMPORTED = """\
+note: 201 has another number in the plot (211): number kept
+note: 104 is new on "LX1": no group changed
+note: 301 hangs on "LX3", a new position: no group made
+updated the rig from club-v2.mvr: added 2 fixtures and 1 universe; moved 1, repatched 2, \
+changed 1, renamed 1, inverted 1, removed 1 (left 1 group)
+fixtures span x -2.5…1.0, y -3.0…2.0, z 6.0…8.0 m"""
+
+
+def test_a_plot_imported_again_brings_its_fixtures_to_it(tmp_path: Path) -> None:
+    show = imported(tmp_path,
+        'fixture add 1 "RGB Par 3ch" mode 3ch at 1.30',  # by hand: never touched
+        "fixture 101 orientation.swapPanTilt true", "fixture 101 limits tilt -90 10",
+        "fixture 101 orientation.invertTilt true",  # the plot never says: kept
+        'rename fixture 202 "Mine"',  # the plot names it not: kept
+        "fixture 201 patch 2.40",  # the plot owns the patch: back to 2.1
+    )  # fmt: skip
     before = copy.deepcopy(show.show)
-    for verb in ("check", "import"):
-        reply = show.execute(f'rig {verb} "{club(tmp_path)}"')
-        assert (reply.ok, reply.text) == (False, "error: the show has fixtures from a plot "
-                                                 "already: importing a plot again is not "
-                                                 "supported yet")  # fmt: skip
+    path = again(
+        tmp_path,
+        fixture("f104", "Spot 4", numeric=104, addresses=[("0", "1.20")], position="P1",
+                at=matrix(o=(0, -2000, 6000))),
+        fixture("f301", "Spot 5", numeric=301, addresses=[("0", "3.1")], position="P4",
+                at=matrix(o=(0, 3000, 8000))),
+        changes={
+            "f101": {"at": matrix(o=(2500, 0, 0))},
+            "f102": {"name": "Spot L", "addresses": [("0", "1.10")]},
+            "f201": {"invert_tilt": "true", "fixture_id": "211"},
+            "f202": {"gdtf_mode": "3ch"},
+            "f103": None,
+        },
+        aux=(position("P4", "LX3"),),
+    )  # fmt: skip
+    assert run(show, f'rig check "{path}"') == AGAIN_CHECK
     assert show.show == before
+    assert run(show, f'rig import "{path}" cascade') == AGAIN_IMPORTED
+    was, now = by_number(before), by_number(show.show)
+    assert list(now) == [101, 102, 201, 202, 1, 104, 301]
+    assert now[1] == was[1]
+    universes = {u["number"]: u["id"] for u in show.show["universes"]}
+    assert now[101] == {**was[101], "location": {**was[101]["location"], "x": -2.5}}
+    assert now[101]["orientation"]["swapPanTilt"] is True
+    assert now[102] == {**was[102], "name": "Spot L",
+                        "patch": {"universeId": universes[1], "address": 10}}  # fmt: skip
+    assert now[201]["orientation"] == {**was[201]["orientation"], "invertTilt": True}
+    assert now[201]["patch"] == {"universeId": universes[2], "address": 1}
+    assert now[201]["number"] == 201
+    modes = {m["name"]: m["id"] for m in show.show["profiles"][0]["modes"]}
+    assert now[202] == {**was[202], "modeId": modes["3ch"]}
+    assert now[202]["name"] == "Mine"
+    assert (now[104]["mvrUuid"], now[301]["patch"]) == (
+        "F104", {"universeId": universes[3], "address": 1},
+    )  # fmt: skip
+    groups = [(g["name"], [m["fixtureId"] for m in g["members"]]) for g in show.show["groups"]]
+    # the removal took 103 from LX1; stage right first, as ever
+    assert groups == [("LX1", [was[102]["id"], was[101]["id"]]),
+                      ("LX2", [was[201]["id"], was[202]["id"]])]  # fmt: skip
+    assert show.show["stage"]["plot"] == str(path.absolute())
+    assert show.show["stage"]["plotHash"] == hashlib.sha256(path.read_bytes()).hexdigest()
+    assert run(show, "undo").startswith("undid: updated the rig from club-v2.mvr: added 2")
+    assert show.show == before
+
+
+@pytest.mark.parametrize(
+    ("changes", "line"),
+    [
+        ({"f101": {"at": matrix(o=(2500, 0, 0))}}, "  move 1: 101"),
+        ({"f101": {"at": matrix(u=(0, 1, 0), v=(-1, 0, 0), o=(2000, 0, 0))}}, "  move 1: 101"),
+        ({"f101": {"addresses": [("0", "1.20")]}}, "  repatch 1: 101"),
+        ({"f101": {"addresses": []}}, "  repatch 1: 101"),  # the plot unpatches it
+        ({"f201": {"gdtf_mode": "3ch"}}, "  change 1: 201 mode 1ch → 3ch"),
+        ({"f101": {"name": "Front"}}, "  rename 1: 101"),
+        ({"f101": {"invert_tilt": "true"}}, "  invert 1: 101"),
+        ({"f102": {"invert_pan": "false"}}, "  invert 1: 102"),
+        ({"f201": {"gdtf_mode": "3ch"}, "f202": {"gdtf_mode": "3CH"}},
+         "  change 2: 201, 202 mode 1ch → 3ch"),
+        ({"f103": None}, "  remove 1: 103: used by 1 group, add cascade"),
+    ],
+)  # fmt: skip
+def test_each_change_alone(tmp_path: Path, changes: Changes, line: str) -> None:
+    show = imported(tmp_path)
+    before = copy.deepcopy(show.show)
+    path = again(tmp_path, changes=changes)
+    check = lines_of(show, f'rig check "{path}"')
+    assert check[1:-1] == [line]
+    reply = run(show, f'rig import "{path}" cascade').splitlines()
+    assert reply[0].startswith("updated the rig from club-v2.mvr: ")
+    assert run(show, "undo") == f"undid: {reply[0]}"
+    assert show.show == before
+
+
+def test_what_the_plot_does_not_say_is_not_changed(tmp_path: Path) -> None:
+    """No name, no invert: the fixture keeps busk's."""
+    show = imported(tmp_path, 'rename fixture 101 "Mine"', "fixture 101 orientation.invertPan true")
+    unnamed = again(tmp_path, changes={"f101": {"name": ""}})
+    assert lines_of(show, f'rig check "{unnamed}"')[1:-1] == ["  no fixture changes"]
+    # the first plot names it "Spot 1", and says nothing of its inverts
+    assert lines_of(show, f'rig check "{club(tmp_path)}"')[1:-1] == ["  rename 1: 101"]
+
+
+def test_another_profile(tmp_path: Path) -> None:
+    wash = gdtf(spot("Wash", "11111111-2222-3333-4444-555555555555"))
+    files = {SPOT: gdtf(), "Acme@Wash.gdtf": wash}
+    show = imported(tmp_path)
+    path = again(tmp_path, changes={"f101": {"gdtf": "Acme@Wash.gdtf", "gdtf_mode": "1ch"}},
+                 files=files)  # fmt: skip
+    assert lines_of(show, f'rig check "{path}"')[1:-1] == [
+        '  change 1: 101 "Acme Spot", 3ch → "Acme Wash", 1ch',
+        '  profiles to add: "Acme Wash"',
+    ]
+    assert run(show, f'rig import "{path}"').splitlines()[0] == (
+        "updated the rig from club-v2.mvr: added 1 profile; changed 1"
+    )
+    wash = show.show["profiles"][1]
+    spot_1 = by_number(show.show)[101]
+    assert (spot_1["profileId"], spot_1["profileRevision"], spot_1["modeId"]) == (
+        wash["id"], wash["revision"], wash["modes"][1]["id"],
+    )  # fmt: skip
+
+
+def test_programming_on_a_moved_repatched_fixture_outputs_as_before(tmp_path: Path) -> None:
+    show = imported(tmp_path,
+        "sel fixture 101", "set pan 45", 'record preset position 1 "Side"', "clear",
+        "sel fixture 101", "set intensity 50%", "set tilt -30", "record cue 1/1", "clear",
+        "sel fixture 101", "set pan preset position 1", "record cue 1/1 merge", "clear",
+        "playback add 1 cuelist 1", "go 1",
+    )  # fmt: skip
+    before = show.tick(1.0).universes[1]
+    assert before[:3] != bytes(3)
+    path = again(tmp_path, changes={"f101": {"at": matrix(o=(3000, 0, 0)),
+                                             "addresses": [("0", "1.20")]}})  # fmt: skip
+    assert lines_of(show, f'rig check "{path}"')[1:-1] == ["  move 1: 101", "  repatch 1: 101"]
+    run(show, f'rig import "{path}"')
+    after = show.tick(1.0).universes[1]
+    assert after[19:22] == before[:3]
+    assert after[:3] == bytes(3)
+    assert after[3:9] == before[3:9]  # 102 and 103
+
+
+def test_a_removal_is_refused_without_cascade_and_goes_as_delete_takes_it(tmp_path: Path) -> None:
+    lines = ("sel fixture 103", "set intensity 50%", "record preset intensity 1 target",
+             "record cue 1/1", "clear", "park fixture 103 intensity 0")  # fmt: skip
+    show = imported(tmp_path, *lines)
+    before = copy.deepcopy(show.show)
+    path = again(tmp_path, changes={"f103": None})
+    uses = "1 group, 1 preset, 1 cue and 1 parked value"
+    assert lines_of(show, f'rig check "{path}"')[1:-1] == [
+        f"  remove 1: 103: used by {uses}, add cascade"
+    ]
+    reply = show.execute(f'rig import "{path}"')
+    assert (reply.ok, reply.text) == (
+        False, f"error: fixture 103 is gone from the plot and used by {uses}: add cascade",
+    )  # fmt: skip
+    assert show.show == before
+    assert run(show, f'rig import "{path}" cascade').splitlines()[0] == (
+        f"updated the rig from club-v2.mvr: removed 1 (left {uses})"
+    )
+    by_hand = imported(tmp_path, *lines, "delete fixture 103 cascade")
+    for key in ("fixtures", "groups", "presets", "cueLists", "park", "bindings"):
+        assert show.show[key] == by_hand.show[key]
+
+
+def test_a_show_whose_plot_fixtures_are_gone_starts_again(tmp_path: Path) -> None:
+    """With no fixture from a plot left, the next import is a first one: it
+    makes groups, though the show keeps its stage."""
+    show = imported(tmp_path, "delete fixture 101 thru 202 cascade")
+    assert "stage" in show.show
+    check = lines_of(show, f'rig check "{club(tmp_path)}"')
+    assert check[0] == "the plot has 5 fixtures, 1 profile and 2 universes"
+    assert '  groups to add: "LX1", "LX2"' in check
+
+
+def test_fixtures_nothing_uses_go_without_cascade(tmp_path: Path) -> None:
+    show = imported(tmp_path, "delete group 1 cascade", "delete group 2 cascade")
+    path = again(tmp_path, changes={"f103": None, "f202": None})
+    assert lines_of(show, f'rig check "{path}"')[1:-1] == ["  remove 2: 103, 202"]
+    assert run(show, f'rig import "{path}"').splitlines()[0] == (
+        "updated the rig from club-v2.mvr: removed 2"
+    )
+    assert list(by_number(show.show)) == [101, 102, 201]
+
+
+def two_cells(tmp_path: Path) -> OfflineShow:
+    """The club plot imported over a profile the show holds by the GDTF's id,
+    whose mode ``3ch`` has two cells and ``1ch`` one: group 1, LX1, holds both
+    cells of 101 to 103."""
+    cells = [channel(0, "intensity", element=0), channel(1, "intensity", element=1),
+             channel(2, "pan"), channel(3, "tilt")]  # fmt: skip
+    modes = (mode(cells, mode_id="3ch", elements=2), mode([channel(0, "intensity")], mode_id="1ch"))
+    held = {**profile(PROFILE_ID, *modes), "name": "Acme Spot", "revision": "mine"}
+    file = tmp_path / "held.json"
+    file.write_text(json.dumps(held))
+    show = offline()
+    run(show, f'profile import "{file}"')
+    run(show, f'rig import "{club(tmp_path)}"')
+    return show
+
+
+def test_a_mode_that_loses_elements_in_use_is_refused_even_with_cascade(tmp_path: Path) -> None:
+    show = two_cells(tmp_path)
+    run(show, "sel fixture 101.2")
+    run(show, 'record group 7 "Second"')
+    before = copy.deepcopy(show.show)
+    path = again(tmp_path, changes={"f101": {"gdtf_mode": "1ch"}, "f102": {"gdtf_mode": "1ch"},
+                                    "f103": None})  # fmt: skip
+    blocked = "fixtures 101, 102 cannot run 1ch: groups 1, 7 use elements they would lose"
+    check = lines_of(show, f'rig check "{path}"')
+    assert check[1:5] == [
+        f"  blocked: {blocked}",
+        "  change 2: 101, 102 mode 3ch → 1ch",
+        "  remove 1: 103: used by 1 group, add cascade",
+        "  note: the show holds \"Acme Spot\" at revision 'mine'; "
+        f"the plot's {import_gdtf(spot()).profile['revision']!r} is not taken",
+    ]
+    for cascade in ("", " cascade"):
+        reply = show.execute(f'rig import "{path}"{cascade}')
+        assert not reply.ok
+        assert reply.text.splitlines()[0] == f"error: {blocked}"
+    assert reply.text.splitlines()[1:] == []
+    assert show.execute(f'rig import "{path}"').text.splitlines()[1] == (
+        "error: fixture 103 is gone from the plot and used by 1 group: add cascade"
+    )
+    assert show.show == before
+    one = again(tmp_path, changes={"f103": {"gdtf_mode": "1ch"}})  # 103 alone is in group 1 only
+    assert lines_of(show, f'rig check "{one}"')[1] == (
+        "  blocked: fixture 103 cannot run 1ch: group 1 uses elements it would lose"
+    )
+    run(show, "delete group 1 cascade")
+    assert lines_of(show, f'rig check "{one}"')[1] == "  change 1: 103 mode 3ch → 1ch"
+
+
+def test_numbers_stay_and_a_removed_fixture_s_number_is_free(tmp_path: Path) -> None:
+    show = imported(tmp_path)
+    ids = {f["number"]: f["id"] for f in show.show["fixtures"]}
+    # the designer drew 103 again, with a new uuid, and renumbered 101
+    path = again(tmp_path, fixture("g103", "Spot 3", numeric=103, addresses=[("0", "1.7")]),
+                 changes={"f103": None, "f101": {"numeric": 105}})  # fmt: skip
+    assert lines_of(show, f'rig check "{path}"')[1:-1] == [
+        "  add 1: 103",
+        "  remove 1: 103: used by 1 group, add cascade",
+        "  note: 101 has another number in the plot (105): number kept",
+    ]
+    run(show, f'rig import "{path}" cascade')
+    fixtures = by_number(show.show)
+    assert fixtures[101]["id"] == ids[101]
+    assert (fixtures[103]["mvrUuid"], fixtures[103]["id"] == ids[103]) == ("G103", False)
+
+
+def test_a_frame_on_the_line_moves_every_fixture_from_the_plot(tmp_path: Path) -> None:
+    show = imported(
+        tmp_path,
+        'fixture add 1 "RGB Par 3ch" mode 3ch',
+        'fixture 1 location {"x": 1, "y": 0, "z": 0, "rx": 0, "ry": 0, "rz": 0}',
+    )
+    hand = by_number(show.show)[1]
+    path = club(tmp_path)  # the same plot
+    assert lines_of(show, f'rig check "{path}" audience +y')[1:] == [
+        "  move 5: 101–103, 201, 202",
+        "fixtures span x -2.0…2.0, y -2.0…0.0, z 6.0…7.0 m",
+    ]
+    run(show, f'rig import "{path}" audience +y')
+    assert show.show["stage"]["frame"] == {"origin": (0.0, 0.0, 0.0), "audience": "+y"}
+    assert by_number(show.show)[101]["location"] == {
+        "x": 2.0, "y": -2.0, "z": 6.0, "rx": 180.0, "ry": 0.0, "rz": 0.0,
+    }  # fmt: skip
+    assert by_number(show.show)[1] == hand
+    assert lines_of(show, f'rig check "{path}"')[1] == "  nothing to change"  # the frame kept
+
+
+def test_a_fixture_of_the_show_the_plot_cannot_place_is_not_changed(tmp_path: Path) -> None:
+    show = imported(tmp_path)
+    before = copy.deepcopy(show.show)
+    path = again(tmp_path, changes={
+        "f101": {"gdtf_mode": "16ch", "at": matrix(o=(3000, 0, 0))},
+        "f102": {"gdtf": None},
+        "f201": {"multipatch": "F202"},
+    })  # fmt: skip
+    assert lines_of(show, f'rig check "{path}"')[1:-1] == [
+        "  no fixture changes",
+        '  note: "Acme Spot" has no mode "16ch": 101 not changed',
+        "  note: no GDTF in the plot: 102 not changed",
+        "  note: multipatch copies of other fixtures: 201 not changed",
+    ]
+    assert run(show, f'rig import "{path}"').splitlines()[-2:] == [
+        "updated the rig from club-v2.mvr: no fixture changes",
+        "fixtures span x -1.0…2.0, y 0.0…2.0, z 6.0…7.0 m",  # 103 and 202
+    ]
+    assert show.show["fixtures"] == before["fixtures"]
+    assert show.show["stage"]["plot"].endswith("club-v2.mvr")
+
+
+NOTHING = """\
+the plot has 5 fixtures, 1 profile and 2 universes; the show has 5 of them
+  nothing to change
+fixtures span x -2.0…2.0, y 0.0…2.0, z 6.0…7.0 m"""
+
+
+def test_a_plot_that_changes_nothing(tmp_path: Path) -> None:
+    show = imported(tmp_path)
+    path = club(tmp_path)
+    assert run(show, f'rig check "{path}"') == NOTHING
+    reply = show.execute(f'rig import "{path}"')
+    assert (reply.ok, reply.text) == (False, "error: the rig is already as club.mvr has it")
+    truss = scenery("Truss", "t9", "LX9", model("truss.glb"))
+    changed = club(tmp_path, club_scene(truss), files={SPOT: gdtf(), "truss.glb": b"glTF"})
+    assert lines_of(show, f'rig check "{changed}"')[1] == "  no fixture changes"
+    assert run(show, f'rig import "{changed}"').splitlines()[0] == (
+        "updated the rig from club.mvr: no fixture changes"
+    )
+    assert show.show["stage"]["plotHash"] == hashlib.sha256(changed.read_bytes()).hexdigest()
+
+
+def test_on_a_live_show_an_import_again_reaches_the_engine(tmp_path: Path) -> None:
+    path = club(tmp_path)
+    v2 = again(tmp_path, fixture("f301", "New", numeric=301), changes={"f103": None})
+    with LiveShow(new_show("Club"), output=False) as live:
+        run(live, f'rig import "{path}"')
+
+        def seen() -> set[int]:
+            output = live.output
+            return set() if output is None else {f.number for f in output.fixtures}
+
+        eventually(lambda: seen() == {101, 102, 103, 201, 202})
+        assert run(live, f'rig check "{v2}"').splitlines()[1:3] == [
+            "  add 1: 301", "  remove 1: 103: used by 1 group, add cascade",
+        ]  # fmt: skip
+        reply = live.execute(f'rig import "{v2}"')
+        assert (reply.ok, reply.text) == (
+            False, "error: fixture 103 is gone from the plot and used by 1 group: add cascade",
+        )  # fmt: skip
+        run(live, f'rig import "{v2}" cascade')
+        eventually(lambda: seen() == {101, 102, 201, 202, 301})
+        assert run(live, "undo").startswith("undid: updated the rig from club-v2.mvr")
+        eventually(lambda: seen() == {101, 102, 103, 201, 202})
+
+
+# ------------------------------------------------------------------ refusals
 
 
 @pytest.mark.parametrize(
@@ -502,6 +901,7 @@ def context() -> Context:
         ('RIG IMPORT "a b.mvr" AUDIENCE +X', ImportRig(Path("a b.mvr"), False, "+x")),
         ('rig import x.mvr origin -1.5 +2 .5 audience -x',
          ImportRig(Path("x.mvr"), False, "-x", (-1.5, 2.0, 0.5))),
+        ('rig import x.mvr CASCADE audience +y', ImportRig(Path("x.mvr"), False, "+y", None, True)),
     ],
 )  # fmt: skip
 def test_the_parser_names_the_file_and_the_frame(line: str, action: ImportRig) -> None:
@@ -517,6 +917,8 @@ def test_the_parser_names_the_file_and_the_frame(line: str, action: ImportRig) -
         ('rig check "a.mvr" origin 1 "2" 3', "expected a distance in mm, got '2'"),
         ('rig check "a.mvr" audience -y audience +y', "expected origin, got 'audience'"),
         ('rig check "a.mvr" audience -y origin 0 0 0 cascade', "unexpected 'cascade'"),
+        ('rig check "a.mvr" cascade', "expected audience or origin, got 'cascade'"),
+        ('rig import "a.mvr" cascade cascade', "expected audience or origin, got 'cascade'"),
         ('rig check "a.mvr" frame', "expected audience or origin, got 'frame'"),
         ("rig load", "expected check or import, got 'load'"),
     ],
@@ -532,11 +934,13 @@ def test_the_parser_refuses_what_is_not_a_rig_line(line: str, error: str) -> Non
     [
         ("rig ", ("check", "import"), (), False),
         ("rig import ", (), ('a path in quotes, e.g. "plots/club.mvr"',), False),
-        ('rig import "a.mvr" ', ("audience", "origin"), (), True),
+        ('rig check "a.mvr" ', ("audience", "origin"), (), True),
+        ('rig import "a.mvr" ', ("audience", "origin", "cascade"), (), True),
         ('rig import "a.mvr" audience ', ("-y", "+y", "-x", "+x"), (), False),
-        ('rig import "a.mvr" audience +y ', ("origin",), (), True),
+        ('rig import "a.mvr" audience +y ', ("origin", "cascade"), (), True),
         ('rig import "a.mvr" origin ', (), ("a distance in mm",), False),
-        ('rig import "a.mvr" origin 0 0 0 audience +y ', (), (), True),
+        ('rig import "a.mvr" origin 0 0 0 audience +y ', ("cascade",), (), True),
+        ('rig import "a.mvr" cascade origin 0 0 0 audience +y ', (), (), True),
     ],
 )
 def test_completion(

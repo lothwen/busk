@@ -82,7 +82,7 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
         <category> = par | spot | wash | beam | pixel | strobe | blinder | dimmer
                    | effect | fog | other
     rig check "<path>" [audience -y|+y|-x|+x] [origin <x> <y> <z>]
-    rig import "<path>" [audience -y|+y|-x|+x] [origin <x> <y> <z>]
+    rig import "<path>" [audience -y|+y|-x|+x] [origin <x> <y> <z>] [cascade]
         (an MVR plot; origin: busk's origin in the plot, in mm)
     tap ["<master>"] | bpm ["<master>"] <bpm>
         (without a name: the show's only speed master)
@@ -402,8 +402,15 @@ default), and ``audience`` the side of the plot the audience is on (``-y`` by
 default). The show keeps the frame and the plot's file and hash; a later line
 starts from the frame it keeps. The parser only names the file, and
 :class:`Console <busk.console.console.Console>` reads it, as for ``profile
-import``; :mod:`busk.console.rig` says what each fixture becomes. A show that
-has fixtures from a plot is refused: importing one again is not supported yet.
+import``; :mod:`busk.console.rig` says what each fixture becomes.
+
+Importing a plot again (MVR plan Phase 3). The same line updates the fixtures
+the plot gave the show (found by ``mvrUuid``): their patch, mode or profile,
+location, name and inverts, never their numbers; it adds the plot's new
+fixtures and removes those it lost. A removal that something uses needs
+``cascade``, and goes as ``delete fixture N cascade`` takes it. A new mode or
+profile that lacks an element something names refuses the line, even with
+``cascade``. Neither line asks first: ``rig check`` is the preview.
 
 Undo groups (GAP-06). ``undo group "<label>"`` opens a group, and the
 programmer steps after it are one undo step, labelled ``<label>``, holding
@@ -526,12 +533,14 @@ class ImportRig:
     """Read the plot (an MVR file) at ``path`` and import its rig (``rig
     import``), or say what that would do (``rig check``: ``check``), through
     the frame of ``audience`` and ``origin`` (in the plot's millimetres) where
-    the line gives them."""
+    the line gives them. ``cascade`` lets an import remove fixtures that
+    something uses."""
 
     path: Path
     check: bool
     audience: Audience | None = None
     origin: tuple[float, float, float] | None = None
+    cascade: bool = False
 
 
 @dataclass(frozen=True)
@@ -3660,17 +3669,21 @@ class _Parser:
         return Submit(_labelled(label, command))
 
     def _cmd_rig(self) -> Action:
-        """``rig check|import "<path>" [audience …] [origin <x> <y> <z>]`` (MVR
-        plan Phase 2): the parser names the file and the frame, each option
-        once, in any order, and the console reads the file."""
+        """``rig check|import "<path>" [audience …] [origin <x> <y> <z>]
+        [cascade]`` (MVR plan Phases 2 and 3; ``cascade`` on ``import``
+        only): the parser names the file, the frame and the cascade, each
+        option once, in any order, and the console reads the file."""
         check = self.expect("check", "import") == "check"
         token = self.take('a path in quotes, e.g. "plots/club.mvr"')
         audience: Audience | None = None
         origin: tuple[float, float, float] | None = None
+        cascade = False
         while True:
-            left = [o for o, given in (("audience", audience), ("origin", origin)) if given is None]
+            options = [("audience", audience is None), ("origin", origin is None),
+                       ("cascade", not check and not cascade)]  # fmt: skip
+            left = [option for option, free in options if free]
             if self.ending(*left):
-                return ImportRig(Path(token.text), check, audience, origin)
+                return ImportRig(Path(token.text), check, audience, origin, cascade)
             word = cast(Token, self.peek()).text
             option = self.keyword(*left)
             if option is None:
@@ -3678,8 +3691,10 @@ class _Parser:
                                  else f"unexpected {word!r}")  # fmt: skip
             if option == "audience":
                 audience = cast(Audience, self.expect(*_AUDIENCES))
-            else:
+            elif option == "origin":
                 origin = (self._millimetres(), self._millimetres(), self._millimetres())
+            else:
+                cascade = True
 
     def _millimetres(self) -> float:
         """A distance in millimetres, signed, without ``%``."""

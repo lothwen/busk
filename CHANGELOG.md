@@ -19,8 +19,12 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   lists. `origin` and `audience` place the plot on busk's stage; the last line
   of each reply is the fixtures' span in metres, which shows a wrong frame at once. The show
   keeps the plot's file and hash and the frame (`stage`), and each fixture the uuid of the
-  plot fixture it came from (`mvrUuid`). Importing a plot again is not supported yet. See
-  [Plots](docs/plots.md).
+  plot fixture it came from (`mvrUuid`). Imported again, a plot brings the rig up to date in
+  one undo step: the fixtures it gave the show follow its patch, mode or profile, location,
+  name and inverts and keep their numbers and programming, its new fixtures are added, and
+  those it lost are removed, as `delete fixture N cascade` takes them (`rig import … cascade`
+  while anything uses them). A new mode that loses cells in use is refused. Fixtures added by
+  hand and groups are never touched. See [Plots](docs/plots.md).
 - `OfflineShow.session` and `LiveShow.session` say whether the show has unsaved edits, the file
   `save` writes (an absolute path), what `undo` and `redo` would take back (how many steps, and
   the next one's label as `undo` prints it) and the counters that grow with each change to the

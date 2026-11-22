@@ -411,6 +411,69 @@ Saved locations, the web view and `examples/festival.busk` are unchanged.
    - `undo`.
 8. **Docs.** The guide's "when the plot changes" section.
 
+**Done** 2026-11-22, on f280bb4, with the recommended answers (Q2 a, Q3 a).
+- **Planner** (`src/busk/console/rig.py`). `plan_rig` matches the plot's fixtures to the show's
+  by `mvrUuid`: it adds the new ones as Phase 2 did, updates the ones the show has (`_Item.old`,
+  `_Planner.update`) and removes the show's fixtures whose uuid the plot lost, through
+  `fixture_cascade`. `RigPlan` names each kind of change by fixture number (`added`, `moved`,
+  `repatched`, `changed`, `renamed`, `inverted`, `removed`), what uses those removed (`uses`)
+  and what stops the line even with `cascade` (`blocked`, from `element_users`, as
+  `fixture N mode` refuses). `refusals(cascade)` gives the console's error lines; `command` is
+  `None` when there is nothing to do. One `BATCH`: profiles, universes, the removal's cascade,
+  the updates, the fixtures added, groups (a first import only), the stage.
+- **Cascade** (`src/busk/console/cascade.py`). `Cascade.uses`: a fixture cascade's users,
+  counted as its refusal says them, so the rig's lines say them as `delete fixture` does.
+- **Lines.** `rig import "<path>" … [cascade]` (parser `_cmd_rig`, `ImportRig.cascade`;
+  `rig check` takes no `cascade`). `Console._rig` no longer refuses a show with fixtures from
+  a plot.
+- **Tests.** `tests/test_rig.py` went from 40 to 67. The new ones: all the kinds of change
+  together, each alone (10 cases), what the plot does not say, another profile, a preset and a
+  cue on a moved and repatched fixture outputting as before, a removal refused without
+  `cascade` and leaving the show as `delete fixture 103 cascade` does, removals nothing uses, a
+  show whose plot fixtures are gone starting again, a mode that loses cells refused even with
+  `cascade`, numbers, the frame, fixtures busk cannot read, a plot that changes nothing or
+  only its file, a `LiveShow` transcript, and the parser and completion. Fifteen mutations
+  were each caught: freeing removed numbers, the empty name, unsaid inverts, the refusal, the
+  blockers, the stage compare, the position notes, location, patch, the renumber note,
+  first-only groups, the profile change, the cascade's edits, keeping unreadable fixtures, and
+  what counts as a first import.
+- **By hand:** the real `Demostage_MVR.mvr` (119 fixtures) imported, then checked again:
+  `nothing to change`, and `rig import` refused, so every location comes out the same from
+  the same plot. `audience +y` then moved all 119, and `undo` took it back.
+- **Calls made while building**, open to veto:
+  1. A fixture of the show that busk cannot read in the new plot (no GDTF, a missing mode, a
+     multipatch copy, a name clash) is left as it is and noted (`… not changed`), not
+     removed.
+  2. A fixture the new plot gives no name keeps busk's name. The patch follows the plot
+     whole, so a fixture the plot does not patch is unpatched and a patch made by hand is
+     undone (`rig check` lists both under `repatch`). An exporter that writes no addresses
+     would unpatch every fixture on each import.
+  3. A group counts as a use, as for `delete fixture`, so removing a fixture the first import
+     put on a hanging position always needs `cascade`.
+  4. `rig import … cascade` asks no question at a prompt (`confirmation` only parses the
+     line, and cannot read the file); `rig check` is the preview.
+  5. A refused import says one `error:` line per reason, the mode blockers first, and no
+     notes. A blocker names the fixtures by the mode they would run: `fixtures 101, 102
+     cannot run 1ch: groups 1, 7 use elements they would lose`. The removal's: `fixture 103
+     is gone from the plot and used by 1 group: add cascade`.
+  6. New fixtures on a hanging position are noted as `104 is new on "LX1": no group changed`
+     when a fixture of the plot the show has hangs there, else as `301 hangs on "LX3", a new
+     position: no group made`.
+  7. A first import is one into a show with no fixture holding `mvrUuid`, whatever its
+     `stage`: after `delete fixture … cascade` of them all, the next import makes groups.
+  8. A new fixture may take the number of one the same import removes.
+  9. Nothing to change: `rig check` says `nothing to change` and `rig import` is refused
+     (`the rig is already as club.mvr has it`). A plot whose file changed but none of its
+     fixtures (its set, or its path) imports, saying `no fixture changes`, so the show keeps
+     the new hash for Phase 5.
+  10. The span covers every fixture the plot places, those updated too, not only those added.
+  11. The renumber note (`201 has another number in the plot (211): number kept`) comes on
+      every import while the numbers differ, including for a fixture numbered otherwise at the
+      first import because its number was taken.
+  12. A later import's summary adds `; the show has N of them`. Its label reads `updated the
+      rig from club-v2.mvr: added 2 fixtures and 1 universe; moved 1, repatched 2, changed 1,
+      renamed 1, inverted 1, removed 1 (left 1 group)`.
+
 ### Phase 4: F3
 
 9. **F3's `[import plot…]`.** It asks for a path (offering the stored plot), and for `audience`

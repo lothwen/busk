@@ -76,6 +76,10 @@ class Cascade:
     """What a plain ``delete`` says, ``None`` when nothing uses it."""
     blocked: str | None = None
     """Why not even the cascade can run, ``None`` when it can."""
+    uses: str = ""
+    """What uses the fixtures of a fixture's cascade, counted, as its refusal
+    says it (``2 groups, 1 preset and 3 cues``); empty when nothing does, and
+    for every other cascade."""
 
 
 def fixture_cascade(show: Show, fixtures: Sequence[_Doc], programmer: Programmer) -> Cascade:
@@ -114,7 +118,11 @@ def fixture_cascade(show: Show, fixtures: Sequence[_Doc], programmer: Programmer
     if count:
         question += f" The programmer holds {f'{count} of them' if several else 'it'}."
     return Cascade(
-        tuple(commands), _reply(subject, "left ", counted), question, _refused(subject, counted)
+        tuple(commands),
+        _reply(subject, "left ", counted),
+        question,
+        _refused(subject, counted),
+        uses=_joined(counted, ", "),
     )
 
 

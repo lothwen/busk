@@ -553,17 +553,12 @@ class Console:
         return _join(*(f"note: {note}" for note in notes), render_result(result), ok=result.ok)
 
     def _rig(self, action: ImportRig) -> Reply:
-        """``rig check`` and ``rig import`` (MVR plan Phase 2): the plot is read
-        here, as ``profile import`` reads its file, and :func:`plan_rig` says
-        what becomes of it. ``check`` takes ids of its own, so it uses none of
-        the session's."""
+        """``rig check`` and ``rig import`` (MVR plan Phases 2 and 3): the plot
+        is read here, as ``profile import`` reads its file, and
+        :func:`plan_rig` says what becomes of it. ``check`` takes ids of its
+        own, so it uses none of the session's. An import that cannot run whole
+        is refused, a line for each reason, and changes nothing."""
         show = self.session.show
-        if any("mvrUuid" in fixture for fixture in show["fixtures"]):
-            return Reply(
-                "error: the show has fixtures from a plot already: "
-                "importing a plot again is not supported yet",
-                ok=False,
-            )
         try:
             plot = read_plot(action.path)
         except ImportFailed as exc:
@@ -582,9 +577,12 @@ class Console:
         plan = plan_rig(show, plot, stage, ids, action.path.name)
         if action.check:
             return Reply(plan.check())
+        refusals = plan.refusals(action.cascade)
+        if refusals:
+            return _join(*(f"error: {refusal}" for refusal in refusals), ok=False)
         notes = [f"note: {note}" for note in plan.said()]
-        if not plan.fixtures:
-            return _join(*notes, f"error: {plan.file} has no fixture busk can add", ok=False)
+        if plan.command is None:
+            return _join(*notes, f"error: {plan.nothing()}", ok=False)
         result = self.session.submit(plan.command)
         span = plan.span if result.ok else None
         return _join(*notes, render_result(result), span or "", ok=result.ok)
