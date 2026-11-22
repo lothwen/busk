@@ -1,9 +1,10 @@
 # MVR plots: implementation plan
 
 > Source: the user's request of 2026-11-17: bring MVR (My Virtual Rig, DIN SPEC 15801) into
-> busk. The user-side design came first, in conversation (§4 is it), then this plan. Nothing is
-> answered yet. §6's questions are open, each with a recommendation. §7's calls are the plan's,
-> open to veto. Checked on 2026-11-17 at 615dbd6, with Phase 33 uncommitted on top.
+> busk. The user-side design came first, in conversation (§4 is it), then this plan. On
+> 2026-11-22 the user took the recommended answer to each of §6's questions: (a) for Q1 to Q4.
+> §7's calls are the plan's, open to veto. Checked on 2026-11-17 at 615dbd6, with Phase 33
+> uncommitted on top.
 
 In this plan a **plot** is an MVR file: the rig as a lighting designer draws it in CAD
 (Vectorworks, grandMA3, Capture, Depence, …). Importing a plot builds or updates busk's rig.
@@ -189,7 +190,7 @@ Why not take MVR's frame whole (Q1 c):
 
 The translation is one function, tested once.
 
-## 6. Questions (open)
+## 6. Questions (answered 2026-11-22: (a) for each)
 
 **Q1. Coordinates.**
 - (a) *(recommended)* Keep busk's frame: metres, origin at downstage centre, x to stage right,
@@ -291,6 +292,16 @@ One conversation per phase, as in the pending plan. The engine comes first.
    Verify: a fixture at x 3 is on the same side in both views (a test on `stage_rows`, one on
    the page's `world()`). Under (b), an old show's locations migrate and save.
 
+**Done** 2026-11-22, on 2dca222, under Q1 (a). F1 C's stage draws the largest x on the left:
+`stage_rows` orders a row from stage right to stage left, and `StagePlot.draw` places each
+fixture at `high − x` (`src/busk_tui/pages/busk_stage.py`). The spec's §5.1 says which way x
+points, under the units table. Tests: `test_stage_right_comes_first_in_a_row` and
+`test_the_stage_plot` (`tests/tui/test_tui_layouts.py`), and
+`test_stage_right_is_on_the_left_from_the_front_of_house` (`tests/test_web_stage.py`), which
+runs the page's own stage group, `world()` and front-of-house camera in node, and is skipped
+without node. The TUI guide's layout C drawing and the `Location` docstring say stage right.
+Saved locations, the web view and `examples/festival.busk` are unchanged.
+
 ### Phase 2: first import
 
 2. **Model.** `Fixture.mvrUuid` (optional) and `Show.stage` (optional): `plot` (a path),
@@ -389,7 +400,7 @@ One conversation per phase, as in the pending plan. The engine comes first.
 - **Large plots.** The models of a whole venue can run to hundreds of megabytes, which tests the
   caps and the stage view's frame rate.
 
-## 11. Found while planning (busk, not fixed here)
+## 11. Found while planning
 
 - **The two stage views disagree on x.**
   - `static/stage.html` maps busk to three.js with `world(x, y, z) = (x, z, −y)` and looks from
@@ -399,7 +410,8 @@ One conversation per phase, as in the pending plan. The engine comes first.
     stage left.
 
   The TUI plan's "x right" (implementation-plan §3, item 6) can be read either way. A show with
-  locations draws mirrored in one of the two views. Phase 1 settles it.
+  locations draws mirrored in one of the two views. Fixed in Phase 1: F1 C now draws it as the
+  web view does.
 
 ## 12. After this
 

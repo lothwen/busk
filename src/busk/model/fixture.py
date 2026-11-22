@@ -55,7 +55,7 @@ class FixtureLimits(TypedDict, total=False):
 
 @with_config(STRICT)
 class Location(TypedDict):
-    """Stage position in metres (x right, y downstage, z up) and rotation."""
+    """Stage position in metres (x to stage right, y downstage, z up) and rotation."""
 
     x: float
     y: float

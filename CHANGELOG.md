@@ -92,6 +92,9 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Fixed
 
+- The TUI's stage (F1 layout C) drew the rig mirrored: stage right (positive x) was on the
+  right. It is now on the left, as the audience sees it and as the web remote's stage view
+  draws it. Saved locations are unchanged.
 - An edit made less than half a second after a save, under `busk run`, was taken as saved: it
   was not autosaved, and quitting did not keep it in an autosave.
 - `save "<path>"` reads the escapes of a quoted path (`\"`, `\\`) as `source` and `profile

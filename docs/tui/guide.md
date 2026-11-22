@@ -432,11 +432,11 @@ The selected playback has a cyan border. Below 100 columns PROGRAMMER goes under
 
  ┌─ STAGE · click selects, Shift-click adds ────────────────────────────────────────────────────────────────┐┌─ PLAYBACKS ──────────────────────────┐
  │ y -1.0    ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄   ◆   ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄   ◆   ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ││ P1  Warm         ███████▎░  80  [TG] │
- │ z 5.0                       101                                                    102                   ││ P2  Cool         ░░░░░░░░░   0  [TG] │
- │                            ↑ 10°                                                  ↑ 1°                   ││ P3  Blue         ░░░░░░░░░   0  [TG] │
+ │ z 5.0                       102                                                    101                   ││ P2  Cool         ░░░░░░░░░   0  [TG] │
+ │                            ↑ 1°                                                   ↑ 10°                  ││ P3  Blue         ░░░░░░░░░   0  [TG] │
  │                                                                                                          ││ P4  Red          ░░░░░░░░░   0  [TG] │
  │ y 1.0     ┄┄┄┄ ■ ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ■ ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ■ ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ■ ┄┄┄┄┄ ││ P5  Green        ░░░░░░░░░   0  [TG] │
- │ z 4.0         201                         202                        203                        204      ││ P6  Audience     ░░░░░░░░░   0  [TG] │
+ │ z 4.0         204                         203                        202                        201      ││ P6  Audience     ░░░░░░░░░   0  [TG] │
  │                                                                                                          ││ P7  Centre       ░░░░░░░░░   0  [TG] │
  │           · · · · · · · · · · · · · · · · · · · · ·  AUDIENCE  · · · · · · · · · · · · · · · · · · · · · ││ P8  Panic no fa… ░░░░░░░░░   —  [TG] │
  │                                                                                                          ││ P9  Song         ░░░░░░░░░   0  [GO] │
@@ -456,11 +456,13 @@ The selected playback has a cyan border. Below 100 columns PROGRAMMER goes under
 
 **STAGE** draws the fixtures where they hang, from above, with the audience at the bottom.
 busk places a fixture with its `location` (`fixture 101 location {"x": -2, "y": -1, "z": 5,
-"rx": 0, "ry": 0, "rz": 0}`, in metres: x to the right, y towards the audience, z up). A row
+"rx": 0, "ry": 0, "rz": 0}`, in metres: x to stage right, y towards the audience, z up). A row
 is the fixtures at one depth and height (to 0.1 m), labelled `y` over `z`: upstage at the
 top, and the higher first at the same depth (a truss above the floor). Along a row each
 fixture is at its x, on one scale for every row, so fixtures one above the other on stage
-are one above the other here; fixtures too close to fit are pushed apart, in order.
+are one above the other here; fixtures too close to fit are pushed apart, in order. Stage
+right is on the left, as the audience sees it and as the web remote's stage view draws it:
+101, at x -2, is on the right.
 
 A fixture is its type's glyph (`■` par, `◆` spot, `●` wash, `▲` strobe, `◇` others) in its
 live colour and intensity, or a `█` per element, its number under it (cyan while selected).

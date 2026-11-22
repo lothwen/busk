@@ -10,11 +10,17 @@ from __future__ import annotations
 
 import copy
 import json
+import re
+import shutil
+import subprocess
+
+import pytest
 
 from builders import APPENDIX_A, load_doc, show_of
 from busk.compiler.compile import compile_show
 from busk.engine.loop import Frame
 from busk.model.show import Show
+from busk.web.server import stage_page
 from busk.web.stage import StageFeed, build_rig
 
 PAN, TILT, ZOOM, SHUTTER, HZ = range(3, 8)  # a one-cell look's fields after r, g, b
@@ -119,3 +125,47 @@ def test_the_deck_is_sized_to_the_rig() -> None:
     show = show_of(doc)
     stage = json.loads(StageFeed().update(show, None)[0] or "")["stage"]
     assert stage == {"width": 20.0, "depth": 9.5, "height": 1.2}
+
+
+CAMERA = """
+class Vector3 {
+  constructor(x = 0, y = 0, z = 0) { this.x = x; this.y = y; this.z = z; }
+  copy(v) { this.x = v.x; this.y = v.y; this.z = v.z; return this; }
+}
+const THREE = { Vector3, Group: class { constructor() { this.rotation = {}; } } };
+const scene = { add() {} };
+const camera = { position: new Vector3() };
+const controls = { target: new Vector3(), update() {} };
+const D = 8;
+%s
+// The stage group's turn about x, which places the fixtures, is world()'s.
+const a = stage.rotation.x, p = world(1, 2, 3);
+const same = [p.x - 1, p.y - (2 * Math.cos(a) - 3 * Math.sin(a)),
+              p.z - (2 * Math.sin(a) + 3 * Math.cos(a))].every((d) => Math.abs(d) < 1e-9);
+// three.js's lookAt, y up, puts the screen's right along (target - camera) × up.
+const eye = camera.position, at = controls.target;
+const right = [-(at.z - eye.z), 0, at.x - eye.x];
+const across = (x) => {  // how far right of the screen's middle a fixture at x is
+  const q = world(x, -2, 6);
+  return (q.x - eye.x) * right[0] + (q.z - eye.z) * right[2];
+};
+console.log(JSON.stringify({ same, stageRight: across(3), stageLeft: across(-3) }));
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="needs node to run the page's script")
+def test_stage_right_is_on_the_left_from_the_front_of_house() -> None:
+    """The page's own ``world()``, stage group and front-of-house camera, run
+    in node: a fixture at x 3 (stage right) is on the screen's left, as F1
+    C's stage draws it (``test_stage_right_comes_first_in_a_row``)."""
+    page = stage_page().decode()
+    block = re.search(
+        r"^const stage = new THREE\.Group\(\);$.*?^frontOfHouse\(\);$", page, re.M | re.S
+    )
+    assert block is not None
+    script = CAMERA % block.group(0)
+    done = subprocess.run(["node", "-e", script], capture_output=True, text=True, timeout=30)
+    assert done.returncode == 0, done.stderr
+    seen = json.loads(done.stdout)
+    assert seen["same"]
+    assert seen["stageRight"] < 0 < seen["stageLeft"]  # x 3 on the screen's left, x -3 right

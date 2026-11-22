@@ -393,12 +393,22 @@ def test_a_show_without_a_speed_master_has_only_blackout_in_the_tempo_row() -> N
 def test_stage_rows_by_depth_and_height_upstage_first() -> None:
     rows, unplaced = stage_rows(FIXTURES)
     assert [(row.y, row.z, [f.number for _, f in row.fixtures]) for row in rows] == [
-        (-1.0, 5.0, [101, 102]),  # 102 at -1.04: the same depth to 0.1 m
-        (1.0, 4.0, [201, 202]),
+        (-1.0, 5.0, [102, 101]),  # 102 at -1.04: the same depth to 0.1 m
+        (1.0, 4.0, [202, 201]),
         (1.0, 0.0, [203]),  # the same depth, lower: under the truss
     ]
     assert [f.number for f in unplaced] == [301, 401]
     assert stage_rows(()) == ([], [])
+
+
+def test_stage_right_comes_first_in_a_row() -> None:
+    """x 3 is stage right, on the left as the audience sees it: first in its
+    row, as the web stage view draws it (test_web_stage's camera test)."""
+    rows, _ = stage_rows((WASH_A, WASH_B, FLOOR))
+    assert [x for x, _ in rows[0].fixtures] == [3.0, -3.0]
+    tie = FixtureInfo(204, 1, "Wash 4", "Wash", location=(3.0, 1.0, 4.0, 0, 0, 0))
+    rows, _ = stage_rows((tie, WASH_A, WASH_B))
+    assert [f.number for _, f in rows[0].fixtures] == [202, 204, 201]  # by number at one x
 
 
 def test_places_keep_their_order_and_a_cell_between_two() -> None:
@@ -438,11 +448,11 @@ def test_the_stage_plot() -> None:
         assert lines[0].startswith("y -1.0")
         assert "◆" in lines[0]
         assert "┄" in lines[0]
-        assert lines[1].split() == ["z", "5.0", "101", "102"]
-        assert lines[2].split() == ["→", "30°", "↖", "-10°"]  # the movers' pan and tilt
+        assert lines[1].split() == ["z", "5.0", "102", "101"]
+        assert lines[2].split() == ["↖", "-10°", "→", "30°"]  # the movers' pan and tilt
         assert lines[4].startswith("y 1.0")
         assert lines[4].count("■") == 2
-        assert lines[5].split() == ["z", "4.0", "201", "202"]
+        assert lines[5].split() == ["z", "4.0", "202", "201"]
         assert lines[7].startswith("y 1.0")
         assert lines[8].split() == ["z", "0.0", "203"]
         audience = lines.index(next(line for line in lines if "AUDIENCE" in line))
@@ -451,10 +461,10 @@ def test_the_stage_plot() -> None:
         assert "█" * 12 in lines[12]
         assert "◇" in lines[12]
         spots = {spot.number: spot for spot in plot.spots}
-        assert [spot.number for spot in plot.spots] == [101, 102, 201, 202, 203, 301, 401]
-        assert spots[101].x < spots[102].x
-        assert spots[201].x < spots[203].x < spots[202].x
-        assert spots[201].x < spots[101].x  # x = -3 is left of x = -2, on every row
+        assert [spot.number for spot in plot.spots] == [102, 101, 202, 201, 203, 301, 401]
+        assert spots[102].x < spots[101].x
+        assert spots[202].x < spots[203].x < spots[201].x  # x 3 (stage right) on the left
+        assert spots[101].x < spots[201].x  # x = -3 is right of x = -2, on every row
         assert spots[101].height == 3
         assert spots[201].height == 2
         wash = spots[201]

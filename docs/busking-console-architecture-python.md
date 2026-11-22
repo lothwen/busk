@@ -217,7 +217,11 @@ class EntityBase(TypedDict, Generic[TId]):
 | Rates | Hz | or BPM-relative (see `Rate`) |
 | Times | seconds (float) | |
 | Phase | degrees | 0 – 360 |
-| Stage positions | metres | x right, y downstage, z up |
+| Stage positions | metres | x to stage right, y downstage, z up |
+
+**Stage positions** are measured from the middle of the stage's downstage edge, at deck height.
+x points to stage right: the performers' right as they face the audience, which is house left,
+the left of the stage as the audience sees it. Every view of the stage draws it that way round.
 
 **Schema version.** The show root carries `schemaVersion`; every structural change ships with a migration (§17).
 

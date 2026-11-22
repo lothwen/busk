@@ -1,15 +1,16 @@
 """F1 layout C, the stage (spec §8.1, plan Phase 5).
 
 STAGE, left: the rig from above, the audience at the bottom. Fixtures are
-placed by their ``location`` (plan §3, 6: x right, y downstage, z up, in
+placed by their ``location`` (x to stage right, y downstage, z up, in
 metres): a row per height and depth (rounded to 0.1 m), upstage at the top
 and, at the same depth, the higher first, labelled ``y 2.0`` over ``z
 5.0``; along the row, each fixture at its x, on one scale for all rows, on
-a dashed line. A fixture is its type's glyph (``■`` par, ``◆`` spot, ``●``
-wash, ``▲`` strobe; one ``█`` per element for a fixture of several) in its
-live output colour and intensity, its number under it, and on a fixture
-with pan or tilt the pan as an arrow (``↑`` at 0°, clockwise) and the tilt
-(``↗ 30°``). Fixtures without a place are in a row of their own, under
+a dashed line. Stage right is on the left, as the audience sees it and as
+the web remote's stage view draws it. A fixture is its type's glyph (``■``
+par, ``◆`` spot, ``●`` wash, ``▲`` strobe; one ``█`` per element for a
+fixture of several) in its live output colour and intensity, its number
+under it, and on a fixture with pan or tilt the pan as an arrow (``↑`` at
+0°, clockwise) and the tilt (``↗ 30°``). Fixtures without a place are in a row of their own, under
 AUDIENCE, and ``[location…]`` opens the form of the six values for the first
 selected fixture (else the first without a place), as F3's FIXTURE panel
 does. A click selects, a Shift-click adds or takes out.
@@ -76,17 +77,18 @@ NO_PLACES: Final = "no fixture has a place on stage: select one, then [location�
 
 @dataclass(frozen=True, slots=True)
 class StageRow:
-    """Fixtures at depth ``y`` and height ``z`` (metres, to 0.1), by x."""
+    """Fixtures at depth ``y`` and height ``z`` (metres, to 0.1), as the
+    audience sees them from left to right: stage right (the largest x) first."""
 
     y: float
     z: float
-    fixtures: tuple[tuple[float, FixtureInfo], ...]  # (x, fixture), by x
+    fixtures: tuple[tuple[float, FixtureInfo], ...]  # (x, fixture), the largest x first
 
 
 def stage_rows(fixtures: Sequence[FixtureInfo]) -> tuple[list[StageRow], list[FixtureInfo]]:
     """The rows of the fixtures with a place, upstage first (the smallest
-    y), the higher first at the same depth; and the fixtures without one,
-    in show order."""
+    y), the higher first at the same depth, each from stage right to stage
+    left; and the fixtures without one, in show order."""
     rows: dict[tuple[float, float], list[tuple[float, FixtureInfo]]] = {}
     unplaced = []
     for fixture in fixtures:
@@ -97,7 +99,7 @@ def stage_rows(fixtures: Sequence[FixtureInfo]) -> tuple[list[StageRow], list[Fi
         rows.setdefault((round(y, 1), round(z, 1)), []).append((x, fixture))
     ordered = sorted(rows.items(), key=lambda item: (item[0][0], -item[0][1]))
     return [
-        StageRow(y, z, tuple(sorted(placed, key=lambda pair: (pair[0], pair[1].number))))
+        StageRow(y, z, tuple(sorted(placed, key=lambda pair: (-pair[0], pair[1].number))))
         for (y, z), placed in ordered
     ], unplaced
 
@@ -228,8 +230,8 @@ class StagePlot(FixturePalette):
                 lines.append(Text())
             items = [self.items[fixture.number] for _, fixture in row.fixtures]
             span = max(1, room - widest)
-            centres = [
-                room / 2 if high == low else widest / 2 + (x - low) / (high - low) * span
+            centres = [  # stage right (the largest x) on the left
+                room / 2 if high == low else widest / 2 + (high - x) / (high - low) * span
                 for x, _ in row.fixtures
             ]
             for part, placed in enumerate(place([i.width for i in items], centres, room)):
