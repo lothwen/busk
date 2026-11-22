@@ -528,3 +528,54 @@ def test_safety_is_strict(appendix_a: dict[str, Any], safety: Any, path: str) ->
     show, issues = validate_show(json.dumps(appendix_a))
     assert show is None
     assert [(issue.severity, issue.path) for issue in issues] == [("error", path)]
+
+
+# ------------------------------------------------------- MVR plan Phase 2
+
+STAGE: dict[str, Any] = {
+    "plot": "plots/club.mvr",
+    "plotHash": "ab12",
+    "frame": {"origin": [0, -1500, 0], "audience": "-y"},
+}
+
+
+def test_stage_and_mvr_uuid_are_optional_and_accepted(appendix_a: dict[str, Any]) -> None:
+    appendix_a["stage"] = STAGE
+    appendix_a["fixtures"][0]["mvrUuid"] = "6E3A1F52-0D4B-4C3B-9F51-1A2B3C4D5E6F"
+    show, issues = validate_show(json.dumps(appendix_a))
+    assert show is not None
+    assert issues == []
+    assert show["stage"]["frame"]["origin"] == (0.0, -1500.0, 0.0)
+    assert json.loads(SHOW_ADAPTER.dump_json(show)) == appendix_a  # nothing added
+
+
+@pytest.mark.parametrize(
+    ("mutation", "path"),
+    [
+        (lambda s: s["stage"]["frame"].update(audience="down"), "stage.frame.audience"),
+        (lambda s: s["stage"]["frame"].update(origin=[0, 0]), "stage.frame.origin[2]"),
+        (lambda s: s["stage"]["frame"].update(origin=[0, "1", 0]), "stage.frame.origin[1]"),
+        (lambda s: s["stage"].pop("plotHash"), "stage.plotHash"),
+        (lambda s: s["stage"].update(models=[]), "stage.models"),
+        (lambda s: s["fixtures"][0].update(mvrUuid=5), "fixtures[0].mvrUuid"),
+    ],
+)
+def test_stage_and_mvr_uuid_are_strict(
+    appendix_a: dict[str, Any], mutation: Mutation, path: str
+) -> None:
+    appendix_a["stage"] = json.loads(json.dumps(STAGE))
+    mutation(appendix_a)
+    show, issues = validate_show(json.dumps(appendix_a))
+    assert show is None
+    assert [(issue.severity, issue.path) for issue in issues] == [("error", path)]
+
+
+def test_a_repeated_mvr_uuid_is_an_error(appendix_a: dict[str, Any]) -> None:
+    """A plot imported again finds its fixtures by it (MVR plan §7, call 7)."""
+    for fixture in appendix_a["fixtures"]:
+        fixture["mvrUuid"] = "AB12"
+    _, issues = validate_show(json.dumps(appendix_a))
+    assert [(i.severity, i.path, i.message) for i in issues] == [
+        ("error", f"fixtures[{k}].mvrUuid", "Duplicate MVR uuid 'AB12' (first used at fixtures[0])")
+        for k in range(1, len(appendix_a["fixtures"]))
+    ]

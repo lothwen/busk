@@ -81,6 +81,9 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
     profile import "<path>"            (an OFL .json, a .gdtf or a busk profile)
         <category> = par | spot | wash | beam | pixel | strobe | blinder | dimmer
                    | effect | fog | other
+    rig check "<path>" [audience -y|+y|-x|+x] [origin <x> <y> <z>]
+    rig import "<path>" [audience -y|+y|-x|+x] [origin <x> <y> <z>]
+        (an MVR plot; origin: busk's origin in the plot, in mm)
     tap ["<master>"] | bpm ["<master>"] <bpm>
         (without a name: the show's only speed master)
     master add speed "<name>" [bpm <x>] [steps <a>, <b>…]
@@ -387,6 +390,21 @@ directory does. The parser only names the file, and :class:`Console
 <busk.console.console.Console>` reads it, as it reads a ``source`` file. A profile
 the show holds by id or by name is refused.
 
+Importing a plot (MVR plan Phase 2). ``rig import "<path>"`` builds the rig
+from an MVR file, as a lighting designer draws it in CAD: the profiles from
+its GDTF files, the universes its addresses need, each fixture with its
+number, name, patch, inverts and location, and a group for each hanging
+position, in one undo step; ``rig check`` says what it would do and changes
+nothing. Each ends with the fixtures' extent in busk's metres. The plot is
+placed through a frame: ``origin`` is where busk's origin (the middle of the
+downstage edge, at deck height) is in the plot, in millimetres (``0 0 0`` by
+default), and ``audience`` the side of the plot the audience is on (``-y`` by
+default). The show keeps the frame and the plot's file and hash; a later line
+starts from the frame it keeps. The parser only names the file, and
+:class:`Console <busk.console.console.Console>` reads it, as for ``profile
+import``; :mod:`busk.console.rig` says what each fixture becomes. A show that
+has fixtures from a plot is refused: importing one again is not supported yet.
+
 Undo groups (GAP-06). ``undo group "<label>"`` opens a group, and the
 programmer steps after it are one undo step, labelled ``<label>``, holding
 the programmer as it was before the first and after the last; ``undo group
@@ -440,7 +458,7 @@ from busk.model.effect import EffectDefaults, EffectInstance, EffectTemplate
 from busk.model.entry import TargetSpec, same_targets
 from busk.model.master import MAX_BPM
 from busk.model.profile import PROFILE_CATEGORIES, FixtureProfile, option_capabilities
-from busk.model.show import Show
+from busk.model.show import Audience, Show
 from busk.model.validate import COLOR_COMPONENTS, loc_to_path, validate_effect
 from busk.session.ids import IdFactory, RandomIds
 from busk.session.library import EffectLibrary, ProfileLibrary, builtin_effects
@@ -504,6 +522,19 @@ class ImportProfile:
 
 
 @dataclass(frozen=True)
+class ImportRig:
+    """Read the plot (an MVR file) at ``path`` and import its rig (``rig
+    import``), or say what that would do (``rig check``: ``check``), through
+    the frame of ``audience`` and ``origin`` (in the plot's millimetres) where
+    the line gives them."""
+
+    path: Path
+    check: bool
+    audience: Audience | None = None
+    origin: tuple[float, float, float] | None = None
+
+
+@dataclass(frozen=True)
 class Quit:
     pass
 
@@ -513,7 +544,9 @@ class Nothing:
     """A blank line or a comment."""
 
 
-type Action = Submit | SubmitAll | Query | Save | Source | ImportProfile | Quit | Nothing
+type Action = (
+    Submit | SubmitAll | Query | Save | Source | ImportProfile | ImportRig | Quit | Nothing
+)
 
 
 class ParseError(Exception):
@@ -770,6 +803,7 @@ _DEFAULT_SCOPE: Final = {
 }
 _ATTRIBUTE_NAMES: Final = {attribute.lower(): attribute for attribute in ATTRIBUTES}
 _COMPONENT_WORDS: Final = tuple(f"color.{component}" for component in COLOR_COMPONENTS)
+_AUDIENCES: Final = ("-y", "+y", "-x", "+x")
 _ORIENTATION_KEYS: Final = ("invertPan", "invertTilt", "swapPanTilt", "panOffset", "tiltOffset")
 _ORIENTATION_WORDS: Final = tuple(f"orientation.{key}" for key in _ORIENTATION_KEYS)
 _ORIENTATION_NAMES: Final = {f"orientation.{key.lower()}": key for key in _ORIENTATION_KEYS}
@@ -3624,6 +3658,35 @@ class _Parser:
         command = {"type": "SET", "path": path, "value": category}
         label = f"set the category of profile {profile['name']!r} to {category}"
         return Submit(_labelled(label, command))
+
+    def _cmd_rig(self) -> Action:
+        """``rig check|import "<path>" [audience …] [origin <x> <y> <z>]`` (MVR
+        plan Phase 2): the parser names the file and the frame, each option
+        once, in any order, and the console reads the file."""
+        check = self.expect("check", "import") == "check"
+        token = self.take('a path in quotes, e.g. "plots/club.mvr"')
+        audience: Audience | None = None
+        origin: tuple[float, float, float] | None = None
+        while True:
+            left = [o for o, given in (("audience", audience), ("origin", origin)) if given is None]
+            if self.ending(*left):
+                return ImportRig(Path(token.text), check, audience, origin)
+            word = cast(Token, self.peek()).text
+            option = self.keyword(*left)
+            if option is None:
+                raise ParseError(f"expected {' or '.join(left)}, got {word!r}" if left
+                                 else f"unexpected {word!r}")  # fmt: skip
+            if option == "audience":
+                audience = cast(Audience, self.expect(*_AUDIENCES))
+            else:
+                origin = (self._millimetres(), self._millimetres(), self._millimetres())
+
+    def _millimetres(self) -> float:
+        """A distance in millimetres, signed, without ``%``."""
+        token = self.take("a distance in mm")
+        if token.quoted or token.text.endswith("%") or _NUMBER.fullmatch(token.text) is None:
+            raise ParseError(f"expected a distance in mm, got {token.text!r}")
+        return float(token.text)
 
     # session
 

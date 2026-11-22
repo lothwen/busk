@@ -38,7 +38,7 @@ busk is a command (`busk`) and a Python library.
   crashed console comes back against the running engine. Edits are autosaved and
   recovered after a crash, and remotes are rate-limited.
 - **Fixture profiles.** A built-in library, plus imports from Open Fixture Library and
-  GDTF files.
+  GDTF files. A whole rig comes from an MVR plot, as a lighting designer draws it in CAD.
 - **Event log and replay.** Every run logs what the engine applied and why. `busk replay`
   rebuilds the run, frame for frame.
 - **A library.** Load, validate and save shows, render frames on a clock you drive, or run
@@ -171,6 +171,7 @@ busk> fader 1 1                               # or the console does
 | [Output](docs/output.md) | sACN, Art-Net and DMX-USB routes, choosing the network interface, reconnects. |
 | [Safety and panic](docs/safety.md) | Park, limits, the strobe cap, highlight, `release all`, `output off`. |
 | [Fixture profiles](docs/profiles.md) | The built-in library, OFL and GDTF import, how values become DMX. |
+| [Plots](docs/plots.md) | Building the rig from an MVR plot: `rig check`, `rig import`, where the stage is. |
 | [The terminal UI](docs/tui/guide.md) | `busk-tui`: the launcher, the screen, its keys, its pages F1–F9, `--standalone`. |
 | [busk as a library](docs/library.md) | Installing, examples, the reference of the public API, stability. |
 | [The spec](docs/busking-console-architecture-python.md) | The architecture busk implements, and the show file schema. |

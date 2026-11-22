@@ -324,6 +324,8 @@ It leaves out what the rig, the controller or a script cannot show:
 - A colour palette entry that names a preset: the template's JSON takes the preset's id,
   which a script cannot know either.
 - `profile update` and mode changes: each TupperDMX profile has one revision and one mode.
+- `rig check` and `rig import`: the rig is patched by the script's lines, not drawn in a CAD
+  plot.
 - Lines that work on a running show rather than build it: the tour below shows them.
 
 ### A tour of the festival show

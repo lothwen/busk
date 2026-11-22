@@ -10,6 +10,17 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- `rig import "<path>"` builds the rig from an MVR plot (My Virtual Rig, DIN SPEC 15801), as a
+  lighting designer draws it in Vectorworks, grandMA3 or other CAD, in one undo step: the
+  profiles of its GDTF files, the universes it patches into, each fixture with its number,
+  name, mode, patch, invert pan and tilt and location, and a group for each hanging position,
+  its fixtures stage right first. `rig check` says what it would do and what it leaves out,
+  and changes nothing, counting the GDTF import's notes on each profile, which `rig import`
+  lists. `origin` and `audience` place the plot on busk's stage; the last line
+  of each reply is the fixtures' span in metres, which shows a wrong frame at once. The show
+  keeps the plot's file and hash and the frame (`stage`), and each fixture the uuid of the
+  plot fixture it came from (`mvrUuid`). Importing a plot again is not supported yet. See
+  [Plots](docs/plots.md).
 - `OfflineShow.session` and `LiveShow.session` say whether the show has unsaved edits, the file
   `save` writes (an absolute path), what `undo` and `redo` would take back (how many steps, and
   the next one's label as `undo` prints it) and the counters that grow with each change to the
@@ -92,6 +103,10 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Fixed
 
+- A GDTF file whose `description.xml` ends in NUL bytes after its last element, as some
+  exporters write it, is read: `profile import` and a profile library refused it as not
+  well-formed XML. So is an MVR plot from the same exporters. A NUL anywhere else is still
+  refused.
 - The TUI's stage (F1 layout C) drew the rig mirrored: stage right (positive x) was on the
   right. It is now on the left, as the audience sees it and as the web remote's stage view
   draws it. Saved locations are unchanged.

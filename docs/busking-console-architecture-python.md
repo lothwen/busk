@@ -500,6 +500,7 @@ class Fixture(EntityBase[FixtureId]):
     orientation: Orientation
     limits: NotRequired[FixtureLimits]
     location: NotRequired[Location]
+    mvrUuid: NotRequired[str]                 # the plot fixture it came from (`rig import`), upper case
 
 class PatchAddress(TypedDict):
     universeId: UniverseId
@@ -518,6 +519,8 @@ type TargetKey = str
 ```
 
 Patch validation (performed on every patch edit): footprint fits in the universe (`address + footprint − 1 ≤ 512`), no overlaps (warn, allow — double-patching is legitimate for some setups), profile revision present.
+
+A fixture imported from an MVR plot (`rig import`, [plots](plots.md)) keeps the plot fixture's uuid as `mvrUuid`, so that importing the plot again can find it. Two fixtures with the same `mvrUuid` are an error.
 
 ### 5.7 Groups
 
@@ -1035,6 +1038,15 @@ class ParkEntry(TypedDict):
     slot: ParkSlot
     value: AttributeValue
 
+class StageFrame(TypedDict):
+    origin: tuple[float, float, float]        # busk's origin in the plot, in the plot's millimetres
+    audience: Literal["-y", "+y", "-x", "+x"] # the side of the plot the audience is on
+
+class StageSettings(TypedDict):
+    plot: str                                 # the plot file: relative to the show file's folder, else absolute
+    plotHash: str                             # SHA-256 of the plot file, hex
+    frame: StageFrame
+
 class Show(TypedDict):
     schemaVersion: int
     meta: ShowMeta
@@ -1052,7 +1064,10 @@ class Show(TypedDict):
     bindings: list[Binding]
     output: OutputSettings
     park: list[ParkEntry]
+    stage: NotRequired[StageSettings]         # the plot the rig came from (`rig import`)
 ```
+
+`stage` is set by `rig import`, which builds the rig from an MVR plot ([plots](plots.md)). Its `frame` places the plot in busk's stage positions (§5.1): the plot is right-handed, Z up, in millimetres, with an origin and an audience side of its own. Taking `origin` away, turning the plot about z so that its audience side is busk's +y (`-y` turns it 180°, `+y` not at all, `-x` −90°, `+x` 90°) and dividing by 1000 gives busk's metres. A GDTF fixture at the plot's identity hangs with its beam down and its front to −Y, so it comes in at `rx` 180 and `rz` the turn. Without `stage` a show has no plot.
 
 A complete example is in [Appendix A](#appendix-a--example-show-file).
 

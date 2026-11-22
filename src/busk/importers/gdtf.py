@@ -8,7 +8,9 @@ imports a subset of it and reports, in the import notes, what it leaves out.
 **Reading.** Only ``description.xml`` is read, at most
 :data:`DESCRIPTION_CAP` bytes uncompressed. It is parsed by expat with a
 ``DOCTYPE`` refused outright, so no entity can be declared, let alone
-expanded (no "billion laughs", no external entities).
+expanded (no "billion laughs", no external entities). NUL bytes after its
+last element, which some exporters write, are dropped
+(:func:`parse_description`).
 
 **What is read**: the ``FixtureType`` (``Name``, ``Manufacturer``,
 ``FixtureTypeID``, the newest ``Revision``), its ``Wheels``, the
@@ -332,14 +334,23 @@ def import_gdtf(description: bytes, *, manufacturer: str | None = None) -> Impor
     return ImportReport(profile=profile, notes=fixture.notes)
 
 
-def parse_description(data: bytes) -> ET.Element:
-    """``description.xml`` as an element tree. A ``DOCTYPE`` is refused
-    before anything in it is read, so the file cannot declare entities."""
+def parse_description(data: bytes, file: str = "description.xml") -> ET.Element:
+    """``description.xml`` (or the XML ``file`` of another archive) as an
+    element tree. A ``DOCTYPE`` is refused before anything in it is read, so
+    the file cannot declare entities.
+
+    NUL bytes that end the file, after its last element, are dropped: some
+    exporters write the C string's terminator with the text. XML allows no
+    NUL, so one anywhere else is still refused. A file whose first bytes hold
+    a NUL is UTF-16 or UTF-32, whose last character may end in one: it is
+    read as it is."""
+    if b"\x00" not in data[:4]:
+        data = data.rstrip(b"\x00\t\n\r ")
     builder = ET.TreeBuilder()
     parser = expat.ParserCreate()
 
     def doctype(*_: object) -> None:
-        raise ImportFailed("description.xml declares a DOCTYPE, which busk refuses")
+        raise ImportFailed(f"{file} declares a DOCTYPE, which busk refuses")
 
     parser.StartDoctypeDeclHandler = doctype
     parser.StartElementHandler = builder.start
@@ -348,7 +359,7 @@ def parse_description(data: bytes) -> ET.Element:
     try:
         parser.Parse(data, True)
     except expat.ExpatError as exc:
-        raise ImportFailed(f"description.xml is not well-formed XML: {exc}") from exc
+        raise ImportFailed(f"{file} is not well-formed XML: {exc}") from exc
     return builder.close()
 
 

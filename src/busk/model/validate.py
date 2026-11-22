@@ -1044,8 +1044,16 @@ class _SemanticPass:
         self._unique_ids_and_numbers("fixtures", fixtures)
         # universe id → [(first channel, last channel, fixture index)]
         spans: dict[str, list[tuple[int, int, int]]] = {}
+        plotted: dict[str, int] = {}  # mvrUuid → the first fixture with it
         for f, fixture in enumerate(fixtures):
             path = f"fixtures[{f}]"
+            uuid = fixture.get("mvrUuid")
+            if uuid is not None and plotted.setdefault(uuid, f) != f:
+                # A plot imported again finds its fixtures by it (MVR plan §7, call 7).
+                self._error(
+                    f"{path}.mvrUuid",
+                    f"Duplicate MVR uuid {uuid!r} (first used at fixtures[{plotted[uuid]}])",
+                )
             if fixture["number"] < 1:
                 self._warning(
                     f"{path}.number", f"Fixtures are numbered from 1, got {fixture['number']}"

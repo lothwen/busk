@@ -4,13 +4,14 @@ A show file is one :class:`Show` document. ``schemaVersion`` is an integer;
 every structural change of the schema ships with a migration (§17), and the
 attribute registry is part of the schema.
 
-Phase 7 adds the optional ``safety`` object (phase-7-plan decision 13). A
-show without it is unchanged, so ``schemaVersion`` stays 1.
+Phase 7 adds the optional ``safety`` object (phase-7-plan decision 13), and
+the MVR plan's Phase 2 the optional ``stage`` object. A show without them is
+unchanged, so ``schemaVersion`` stays 1.
 """
 
 from __future__ import annotations
 
-from typing import Annotated, Final, NotRequired, TypedDict
+from typing import Annotated, Final, Literal, NotRequired, TypedDict
 
 from pydantic import Field, with_config
 
@@ -70,6 +71,31 @@ class SafetySettings(TypedDict):
     strobeMaxHz: NotRequired[Annotated[float, Field(gt=0)]]
 
 
+type Audience = Literal["-y", "+y", "-x", "+x"]
+"""The side of a plot the audience is on, along the plot's own axes."""
+
+
+@with_config(STRICT)
+class StageFrame(TypedDict):
+    """Where busk's stage is in a plot (MVR plan §5). ``origin`` is busk's
+    origin, the middle of the downstage edge at deck height, in the plot's
+    millimetres; ``audience`` turns the plot's axes to busk's."""
+
+    origin: tuple[float, float, float]
+    audience: Audience
+
+
+@with_config(STRICT)
+class StageSettings(TypedDict):
+    """The plot the rig came from (``rig import``, MVR plan Q4): its file,
+    relative to the show file's folder when the show had one, else absolute;
+    the SHA-256 of its bytes, in hex; and the frame that placed it."""
+
+    plot: str
+    plotHash: str
+    frame: StageFrame
+
+
 @with_config(STRICT)
 class Show(TypedDict):
     """A complete show document."""
@@ -91,3 +117,4 @@ class Show(TypedDict):
     output: OutputSettings
     park: list[ParkEntry]
     safety: NotRequired[SafetySettings]  # Phase 7
+    stage: NotRequired[StageSettings]  # MVR plan Phase 2

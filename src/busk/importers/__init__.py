@@ -8,6 +8,10 @@ could not carry over or had to guess:
 * :mod:`busk.importers.gdtf`: GDTF (DIN SPEC 15800) ``.gdtf`` archives, a
   subset (it shares the OFL import's modelling rules where both apply).
 
+:mod:`busk.importers.mvr` reads a whole rig, an MVR (DIN SPEC 15801) plot, for
+``rig check`` and ``rig import``: its fixtures, their GDTF files through the
+GDTF import, and their places on stage.
+
 ``busk import ofl|gdtf`` writes the profiles as files; a ``--library``
 directory imports them on the fly
 (:class:`~busk.session.library.ProfileLibrary`).

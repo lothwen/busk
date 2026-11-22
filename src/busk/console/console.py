@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import signal
 import threading
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
@@ -70,6 +71,7 @@ from busk.console.parser import (
     Context,
     Expected,
     ImportProfile,
+    ImportRig,
     Nothing,
     ParseError,
     Query,
@@ -88,16 +90,18 @@ from busk.console.parser import (
     template_defaults,
 )
 from busk.console.prompt import PROMPT, Editing, hints, split
+from busk.console.rig import plan_rig
 from busk.engine.loop import Frame
 from busk.engine.snapshot import EngineSnapshot
 from busk.importers import ImportFailed
+from busk.importers.mvr import read_plot
 from busk.io.osc import feedback_target
 from busk.model.attributes import ATTRIBUTES
 from busk.model.common import TargetRef
 from busk.model.effect import ColorLayer, EffectDefaults, EffectInstance, EffectLayer
 from busk.model.entry import TargetSpec
 from busk.model.fixture import Fixture
-from busk.model.show import Show
+from busk.model.show import Show, StageFrame, StageSettings
 from busk.session.ids import RandomIds
 from busk.session.library import (
     EffectLibrary,
@@ -439,6 +443,8 @@ class Console:
             return self._source(action.path)
         if isinstance(action, ImportProfile):
             return self._import_profile(action.path)
+        if isinstance(action, ImportRig):
+            return self._rig(action)
         if isinstance(action, Quit):
             self.quit_requested = True
             return Reply("", quit=True)
@@ -545,6 +551,53 @@ class Console:
         }
         result = self.session.submit(cast(Command, command))
         return _join(*(f"note: {note}" for note in notes), render_result(result), ok=result.ok)
+
+    def _rig(self, action: ImportRig) -> Reply:
+        """``rig check`` and ``rig import`` (MVR plan Phase 2): the plot is read
+        here, as ``profile import`` reads its file, and :func:`plan_rig` says
+        what becomes of it. ``check`` takes ids of its own, so it uses none of
+        the session's."""
+        show = self.session.show
+        if any("mvrUuid" in fixture for fixture in show["fixtures"]):
+            return Reply(
+                "error: the show has fixtures from a plot already: "
+                "importing a plot again is not supported yet",
+                ok=False,
+            )
+        try:
+            plot = read_plot(action.path)
+        except ImportFailed as exc:
+            return Reply(f"error: cannot import {str(action.path)!r}: {exc}", ok=False)
+        kept = show.get("stage")
+        frame = kept["frame"] if kept is not None else None
+        stage = StageSettings(
+            plot=self._plot_path(action.path),
+            plotHash=plot.sha256,
+            frame=StageFrame(
+                origin=action.origin or (frame["origin"] if frame else (0.0, 0.0, 0.0)),
+                audience=action.audience or (frame["audience"] if frame else "-y"),
+            ),
+        )
+        ids = RandomIds() if action.check else self.session.ids
+        plan = plan_rig(show, plot, stage, ids, action.path.name)
+        if action.check:
+            return Reply(plan.check())
+        notes = [f"note: {note}" for note in plan.said()]
+        if not plan.fixtures:
+            return _join(*notes, f"error: {plan.file} has no fixture busk can add", ok=False)
+        result = self.session.submit(plan.command)
+        span = plan.span if result.ok else None
+        return _join(*notes, render_result(result), span or "", ok=result.ok)
+
+    def _plot_path(self, path: Path) -> str:
+        """``path`` as the show keeps it (MVR plan Q4): relative to the show
+        file's folder when the show has a file, else absolute."""
+        plot = os.path.abspath(path)
+        show = self.session.path
+        if show is not None:
+            with contextlib.suppress(ValueError):  # another drive
+                return os.path.relpath(plot, os.path.dirname(os.path.abspath(show)))
+        return plot
 
     # ------------------------------------------------------------ queries
 

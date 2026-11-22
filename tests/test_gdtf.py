@@ -10,7 +10,7 @@ The files are synthetic (:mod:`gdtf_builder`, from DIN SPEC 15800):
 * what is reported and not imported: mode masters, a second DMX break,
   virtual channels, DMX profiles, relations and macros;
 * what is refused: a ``DOCTYPE``, a 40 MB ``description.xml``, files that are
-  not GDTF;
+  not GDTF, a NUL byte, except those an exporter wrote after the last element;
 * the library loads ``.gdtf`` files; ``busk import gdtf``.
 """
 
@@ -955,6 +955,29 @@ def test_a_doctype_is_refused(tmp_path: Path) -> None:
         import_gdtf(bomb)
     with pytest.raises(ImportFailed, match="DOCTYPE"):
         read_gdtf(archive(tmp_path / "bomb.gdtf", bomb))
+
+
+@pytest.mark.parametrize("end", [b"\x00", b"\n\x00", b"\x00\n", b"\x00\x00\x00"])
+def test_nul_bytes_after_the_last_element_are_dropped(tmp_path: Path, end: bytes) -> None:
+    """Some exporters write the C string's terminator with the text."""
+    data = description(mode("1ch", dimmer()))
+    report = read_gdtf(archive(tmp_path / "nul.gdtf", data + end))
+    assert report.profile["modes"] == import_gdtf(data).profile["modes"]
+
+
+def test_a_nul_inside_is_refused() -> None:
+    data = description(mode("1ch", dimmer())).replace(b"</GDTF>", b"\x00</GDTF>")
+    with pytest.raises(ImportFailed, match="not well-formed"):
+        import_gdtf(data)
+
+
+def test_a_utf_16_description_is_read_as_it_is() -> None:
+    """Its last character ends in a NUL byte, which is not dropped."""
+    data = description(mode("1ch", dimmer()))
+    text = data.decode().replace('encoding="UTF-8"', 'encoding="UTF-16"')
+    wide = text.encode("utf-16")  # with its byte order mark
+    assert wide.endswith(b">\x00")
+    assert import_gdtf(wide).profile["modes"] == import_gdtf(data).profile["modes"]
 
 
 def test_a_40_mb_description_is_refused(tmp_path: Path) -> None:

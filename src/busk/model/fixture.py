@@ -78,6 +78,7 @@ class Fixture(EntityBase[FixtureId]):
     orientation: Orientation
     limits: NotRequired[FixtureLimits]
     location: NotRequired[Location]
+    mvrUuid: NotRequired[str]  # the plot fixture it came from (``rig import``), upper case
 
 
 @with_config(STRICT)

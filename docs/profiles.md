@@ -112,7 +112,7 @@ stays `control`); `Effects1Rate`, `Effects1Fade`, `Effects1Adjust1` and `Effects
 rescaled, the larger value the faster or longer), and `Effects1PosRotate` is
 `effectRotation` in °/s, its index a dead band. Mode masters, DMX breaks after the first and virtual channels
 are reported, not imported. The XML is read with no `DOCTYPE` allowed, and the archive's `description.xml`
-is capped at 32 MB. The tests use synthetic GDTF files; real ones (the 5,733
+is capped at 32 MB. NUL bytes after its last element, which some exporters write, are dropped. The tests use synthetic GDTF files; real ones (the 5,733
 descriptions of the OpenGDTFLibrary, GDTF 1.0 and 1.1) have only been checked to import.
 
 ## Updating a show's profiles

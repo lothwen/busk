@@ -530,6 +530,7 @@
       "profiles": "list[FixtureProfile]",
       "safety": "NotRequired[SafetySettings]",
       "schemaVersion": "int",
+      "stage": "NotRequired[StageSettings]",
       "surfaces": "list[ControlSurface]",
       "universes": "list[Universe]"
     },

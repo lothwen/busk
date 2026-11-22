@@ -341,6 +341,63 @@ Saved locations, the web view and `examples/festival.busk` are unchanged.
    - a profile the show already holds, and a name clash.
 6. **Docs.** A short guide (`docs/plots.md`), `docs/console.md`, the spec, CHANGELOG.
 
+**Done** 2026-11-22, on 5c2c1c1, with the recommended answers.
+- **Model** (`src/busk/model/fixture.py`, `show.py`). `Fixture.mvrUuid`, and `Show.stage`, a
+  `StageSettings` of `plot`, `plotHash` (SHA-256, hex) and `frame`, a `StageFrame` of `origin`
+  (mm) and `audience` (`Audience`). A repeated `mvrUuid` is an error. Spec §5.6 and §5.17; the
+  API golden gained the one `stage` line.
+- **Reader** (`src/busk/importers/mvr.py`). `read_plot(path)` returns a `Plot`: fixtures
+  (`PlotFixture`, with the composed `Matrix`), the GDTF types (`PlotType`: report or problem),
+  positions by uuid, scenery (`Scenery`: kind, name, model file, matrix), notes and the
+  file's SHA-256. The caps: 50,000 members, 4 GB unpacked by declared size, a 64 MB scene, a
+  256 MB GDTF, symbols 16 deep and 100,000 models and symbols (a fan-out of symbols would
+  otherwise expand without end). `gdtf.parse_description` takes the file's name for its
+  errors. Test builder: `tests/mvr_builder.py`.
+- **Frame** (same module). `plot_location` and `location_matrix`, with `Matrix` composing as
+  columns u, v, w and offset o.
+- **Lines.** Parser `_cmd_rig` → `ImportRig`; `Console._rig` reads the file and works out the
+  frame (the line's words, else the stored frame, else `0 0 0` and `-y`); the pure planner is
+  `src/busk/console/rig.py` (`plan_rig` → `RigPlan`).
+- **Tests.** `tests/test_mvr.py` (reader and frame, 95, one a Hypothesis round trip),
+  `tests/test_rig.py` (40: transcripts on `OfflineShow` and `LiveShow`, undo, DMX equal to a
+  fixture added by hand, numbers and names, held profiles, clashes, patch, frame, paths,
+  refusals, the line and its completion), `tests/test_schema.py` (8). Mutations of the
+  turn, the gimbal case, matrix composition, addresses, the frame's inverse, group order,
+  numbering, the patch, held profiles, check's ids, the stored frame, the refusal and the
+  relative path were each caught.
+- **Calls made while building**, open to veto:
+  1. A show with any fixture holding `mvrUuid` refuses both lines ("importing a plot again
+     is not supported yet") until Phase 3. `cascade` is not a word yet.
+  2. A line with nothing to add is refused after its notes; `rig check` says `nothing to
+     add`.
+  3. Notes group fixtures by reason, name three and count the rest. Numbering notes count
+     fixtures and list numbers. Number lists run from three numbers (`101–103, 201, 202`),
+     as `spec_words` runs `thru`.
+  4. The reader leaves out, with a note, a fixture with no uuid or another's. Uuids are
+     upper case. A GDTF named without `.gdtf` is found with it.
+  5. Locations are rounded to 0.1 mm and 0.001°, angles in (−180°, 180°]. A matrix's scale
+     is taken out; one with no turn is read as none, noted.
+  6. A profile is added with the first fixture that uses it. `rig check` counts its GDTF
+     import notes (`"…": 10 notes from its GDTF, listed by rig import`); `rig import` says
+     them, prefixed with the file. Two files of one fixture type add one profile, the first used.
+     A GDTF whose profile name another profile has, the show's or one this import adds, is
+     refused. A profile the show holds at another revision is noted once.
+  7. A universe is added only when a fixture is patched in it.
+  8. `stage.plot` is relative to the show file's folder (`os.path.relpath`, climbing with
+     `..`) when the session has a file, else absolute.
+  9. Groups come in the plot's order of positions; members at the same x go by number.
+- **By hand:** `busk run` with its processes, lines piped in: `rig check`, `rig import`, `list
+  groups`, `save`; the saved show keeps `stage.plot` as `plots/club.mvr`, beside it.
+- **A first real plot** (`Demostage_MVR.mvr`, MVR 1.5, 119 fixtures, 7 GDTFs, from an
+  exporter that does not name itself) was refused: its exporter ends every XML file, the
+  scene and each GDTF's `description.xml`, with a NUL byte after the last element, which XML
+  forbids. `gdtf.parse_description` now drops NUL bytes there (not in a UTF-16 file, whose
+  last character may end in one), so `profile import` reads such GDTF files too. The plot
+  then imports whole: 119 fixtures, 7 profiles, 28 universes, no groups (it has no
+  positions), span x −8.9…8.9, y −3.9…6.6, z 1.1…9.3 m. Its GDTF notes ran to 70 lines, so
+  `rig check` counts them (call 6). Its `GDTFSpec`s have no `.gdtf`, which the reader
+  already allows. Phase 6's check with the user's own CAD is still to come.
+
 ### Phase 3: importing again
 
 7. **Matching and changes.** Fixtures are matched by `mvrUuid`. The line adds, moves, repatches,
@@ -412,6 +469,11 @@ Saved locations, the web view and `examples/festival.busk` are unchanged.
   The TUI plan's "x right" (implementation-plan §3, item 6) can be read either way. A show with
   locations draws mirrored in one of the two views. Fixed in Phase 1: F1 C now draws it as the
   web view does.
+- **A saved copy elsewhere loses the plot** (Phase 2). `stage.plot` is relative to the show
+  file's folder, so Save as into another folder leaves it pointing at the wrong place. Before
+  Phase 5 reads it, Save as should rewrite it, or the show should keep the absolute path too.
+- **The spec's §5.17 never listed `safety`** (Phase 7's optional root key); Phase 2 added
+  `stage` there and left `safety` alone.
 
 ## 12. After this
 

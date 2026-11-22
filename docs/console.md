@@ -68,6 +68,7 @@ session, as the web remote's commands do. `help` prints the grammar.
 | Perform | `go 9`, `back 9`, `goto 9 4`, `release 3 [2]`, `fader 3 75%`, `flash 3 on\|off`, `toggle 3`, `button 3 2 on\|off`, `gm 0.5`, `master "Speed 1" 0.75`, `tap ["Speed 1"]`, `bpm ["Speed 1"] 128`, `blackout on\|off` |
 | Safety, panic | `park fixture 204 intensity 0`, `park group 2 color 1 0 0`, `unpark fixture 204 [intensity]`, `unpark all`, `fixture 101 thru 102 limits tilt -90 10`, `fixture 301 limits intensity 50%`, `fixture 101 limits tilt none`, `fixture 101 limits none`, `safety strobe 3\|off`, `highlight on\|off`, `release all [2]`, `output on\|off` |
 | Profiles | `profile update "Generic Spot 16ch"` (to the library's other revision), `profile "Generic Spot 16ch" category wash\|none`, `profile import "fixtures/spot.gdtf"`, `list profiles` |
+| Plots | `rig check "plots/club.mvr" [audience -y\|+y\|-x\|+x] [origin 0 -1500 0]` (what an import would do), `rig import "plots/club.mvr" [audience …] [origin …]` |
 | Session | `undo`, `redo`, `undo group "pan drag"`, `undo group end`, `save [PATH]`, `list fixtures\|groups\|presets\|cuelists\|playbacks\|pages\|universes\|routes\|surfaces\|bindings\|masters\|profiles\|effects\|park`, `list cues 9`, `list cue 9/2`, `list dmx 1 [17 [thru 32]]`, `list dmx fixture 101`, `library`, `info`, `status`, `source FILE`, `quit` |
 
 ## Notes
@@ -345,6 +346,15 @@ session, as the web remote's commands do. `help` prints the grammar.
   "<path>"` embeds the profile of an OFL `.json`, a `.gdtf` or a busk profile file in the show,
   in one undo step, and says what the importer could not map. It is refused if the show holds
   the profile by id, or a profile by that name, in any case.
+* **Importing a plot** (see [Plots](plots.md)). `rig import "<path>"` builds the rig from an
+  MVR plot, in one undo step: the profiles of its GDTF files, the universes it patches into,
+  its fixtures with their numbers, names, patch, inverts and locations, and a group for each
+  hanging position. `rig check` says what it would do, and the notes on what it leaves out,
+  and changes nothing; it counts the notes of the GDTF import on each profile, which `rig
+  import` lists. Both end with the fixtures' span in metres. `origin` (busk's origin in
+  the plot, in millimetres) and `audience` (the side of the plot the audience is on) place the
+  plot; the show keeps them for the next line. A show with fixtures from a plot refuses both
+  lines, for now.
 * **Deletes that cascade.** A plain `delete` is refused while anything uses what it deletes,
   and says what does: `fixture 101 is used by 2 groups, 2 presets and 14 cues: add cascade`.
   With `cascade` it goes, with what names it, in one undo step. The prompt always asks first
