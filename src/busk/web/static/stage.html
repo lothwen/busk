@@ -10,7 +10,8 @@
   "stage"} and gets a "rig", then a "look" each time a fixture's look
   changes, besides the remote's "state" (for OUTPUT OFF). A new rig reloads
   the page. The phone page shows it in a frame; small, it hides the key help
-  and the haze panel.
+  and the haze panel. A rig from a plot brings the plot's scenery, which the
+  page loads from busk (/stage/scenery/<file>) and draws in place of the deck.
 
   It loads three.js from jsDelivr: the browser needs the internet the first
   time (it caches it after that). It draws with WebGPU, or with WebGL 2 in a
@@ -61,6 +62,8 @@ import { float, mix, normalView, pass, perspectiveDepthToViewZ, cameraFar, camer
          screenCoordinate, screenUV, smoothstep, step, texture3D, time, triNoise3D, uniform, uv,
          vec3, vec4, vertexStage } from 'three/tsl';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { TDSLoader } from 'three/addons/loaders/TDSLoader.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
@@ -102,8 +105,62 @@ function connect() {
 connect();
 document.getElementById('hud').textContent = 'waiting for busk…';
 const rig = await rigReady;
-const W = rig.stage.width, D = rig.stage.depth, H = rig.stage.height;
+const W = rig.stage.width, D = rig.stage.depth;
 const rad = (degrees) => degrees * Math.PI / 180;
+
+// ---------------------------------------------------------------- scenery
+// A rig from a plot brings the plot's trusses and set: each model file once,
+// loaded through busk (behind the key, as is every file a model names), with
+// where it stands in busk's metres (`at`: its x, y and z axes, then its
+// origin). glTF is in metres with y up, 3DS in millimetres with z up (MVR
+// 1.6), and a 3DS file's own master scale is not taken. Each mesh is drawn
+// once for all the places its model stands. With scenery busk draws no deck,
+// backcloth or truss of its own, and the audience's floor is the scenery's
+// lowest point, or busk's 0 when the scenery is all above it.
+const manager = new THREE.LoadingManager();
+manager.setURLModifier((url) => /^(blob|data):/.test(url) ? url
+  : url + (url.includes('?') ? '&' : '?') + location.search.slice(1));
+const LOADERS = { gltf: new GLTFLoader(manager), '3ds': new TDSLoader(manager) };
+const UPRIGHT = {   // a model's own units and axes to busk's
+  gltf: new THREE.Matrix4().makeRotationX(Math.PI / 2),
+  '3ds': new THREE.Matrix4().makeScale(0.001, 0.001, 0.001),
+};
+async function sceneryOf(models) {
+  const group = new THREE.Group();
+  let failed = 0;
+  await Promise.all(models.map(async ({ file, format, at }) => {
+    let model;
+    try {
+      const url = '/stage/scenery/' + file.split('/').map(encodeURIComponent).join('/');
+      const loaded = await LOADERS[format].loadAsync(url);
+      model = format === 'gltf' ? loaded.scene : loaded;
+    } catch {
+      failed++;
+      return;
+    }
+    if (format === '3ds') model.scale.setScalar(1);
+    model.updateMatrixWorld(true);
+    const places = at.map(([ux, uy, uz, vx, vy, vz, wx, wy, wz, ox, oy, oz]) =>
+      new THREE.Matrix4().set(ux, vx, wx, ox, uy, vy, wy, oy, uz, vz, wz, oz, 0, 0, 0, 1)
+        .multiply(UPRIGHT[format]));
+    model.traverse((part) => {
+      if (!part.isMesh) return;
+      part.geometry.computeBoundingBox();   // for the pools that land on it
+      const mesh = new THREE.InstancedMesh(part.geometry, part.material, places.length);
+      places.forEach((m, i) => mesh.setMatrixAt(i, m.clone().multiply(part.matrixWorld)));
+      group.add(mesh);
+    });
+  }));
+  return { group, failed };
+}
+let scenery = null;
+if (rig.scenery.length) {
+  document.getElementById('hud').textContent = 'loading the plot’s scenery…';
+  scenery = await sceneryOf(rig.scenery);
+}
+const plotted = scenery !== null && scenery.group.children.length > 0;
+const H = plotted ? Math.max(0, -new THREE.Box3().setFromObject(scenery.group).min.z)
+                  : rig.stage.height;   // the audience's floor is H below busk's 0
 
 // --------------------------------------------------------------- renderer
 // WebGPU where the browser has it, WebGL 2 where it does not. No multisampling:
@@ -174,9 +231,12 @@ const FLOOR = -H;                                   // the audience's floor
 const HALF = Math.max(24, W / 2 + 15), BACK = 42;   // the arena's floor: |x| < HALF, y < BACK
 const BARRIER = 2.2, FOH = 26;                      // the crowd barrier, the mix position
 
-const deck = new THREE.Mesh(new THREE.BoxGeometry(W, D, H), surface(0x2a241f));
-deck.position.set(0, -D / 2, -H / 2);
-stage.add(deck);
+if (plotted) stage.add(scenery.group);
+else {   // the deck
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(W, D, H), surface(0x2a241f));
+  deck.position.set(0, -D / 2, -H / 2);
+  stage.add(deck);
+}
 // The ground, under the arena and out to the horizon, where the fog takes it.
 // It glows a little of its own, or the dim house would leave it black.
 const GROUND = 1000;
@@ -185,10 +245,12 @@ add(new THREE.PlaneGeometry(GROUND, GROUND), surface(0x2a2c31, 0.95), 0, 0, FLOO
 scene.fog = new THREE.Fog(scene.background, 60, 300);
 
 // The backcloth, on a pipe behind the deck.
-add(new THREE.PlaneGeometry(W + 4, 12).rotateX(-Math.PI / 2), surface(0x2c2e35, 1), 0, -D - 0.3, 6)
-  .material.side = THREE.DoubleSide;
-add(new THREE.CylinderGeometry(0.03, 0.03, W + 4.4, 8).rotateZ(Math.PI / 2), METAL,
-    0, -D - 0.3, 12);
+if (!plotted) {
+  add(new THREE.PlaneGeometry(W + 4, 12).rotateX(-Math.PI / 2), surface(0x2c2e35, 1), 0, -D - 0.3, 6)
+    .material.side = THREE.DoubleSide;
+  add(new THREE.CylinderGeometry(0.03, 0.03, W + 4.4, 8).rotateZ(Math.PI / 2), METAL,
+      0, -D - 0.3, 12);
+}
 
 // The crowd barrier, closing the pit in front of the stage, and the mix
 // position: a riser with two desks.
@@ -303,9 +365,10 @@ crowd.forEach((where, handsUp) => {
   stage.add(mesh);
 });
 
-// A truss over every row of fixtures hung at the same depth and height.
+// A truss over every row of fixtures hung at the same depth and height (with
+// scenery, the plot's own).
 const rows = new Map();
-for (const f of rig.fixtures) {
+for (const f of plotted ? [] : rig.fixtures) {
   if (f.loc.z < 1.5) continue;
   const key = `${f.loc.y.toFixed(1)}|${f.loc.z.toFixed(1)}`;
   const row = rows.get(key) || { y: f.loc.y, z: f.loc.z, min: Infinity, max: -Infinity };
@@ -367,8 +430,10 @@ const BEAM_LENGTH = 20;
 const cone = new THREE.ConeGeometry(BEAM_LENGTH, BEAM_LENGTH, 64, 48, true)
   .translate(0, -BEAM_LENGTH / 2, 0).rotateX(-Math.PI / 2);   // apex at 0, along +z, 45°
 const onStage = vec3(positionWorld.x, positionWorld.z.negate(), positionWorld.y);   // metres
-// Nothing of a beam shows behind the backcloth, in the deck or under the floor.
-const open = step(-D - 0.3, onStage.y).mul(step(FLOOR, onStage.z))
+// Nothing of a beam shows behind the backcloth, in the deck or under the floor
+// (with scenery, under the floor).
+const open = plotted ? step(FLOOR, onStage.z) : step(-D - 0.3, onStage.y)
+  .mul(step(FLOOR, onStage.z))
   .mul(step(0, onStage.z).max(step(onStage.y, -D)).max(step(0, onStage.y))
          .max(step(W / 2, onStage.x.abs())));
 
@@ -404,7 +469,7 @@ function beam(parent, z) {
   pool.matrixAutoUpdate = false;
   pool.visible = false;
   stage.add(pool);
-  return { mesh, glow, pool, paint };
+  return { mesh, glow, pool, paint, waited: 0 };
 }
 
 const cylinder = (radius, length) =>
@@ -538,7 +603,7 @@ function drift(dt) {
     puff.at.addScaledVector(puff.v, dt).addScaledVector(WIND_ON_STAGE, dt);
     puff.at.z += 0.06 * dt;
     puff.radius = 0.3 + 1.8 * (1 - Math.exp(-puff.age / 1.5)) + 0.1 * puff.age;
-    const overDeck = Math.abs(puff.at.x) < W / 2 && puff.at.y > -D && puff.at.y < 0;
+    const overDeck = !plotted && Math.abs(puff.at.x) < W / 2 && puff.at.y > -D && puff.at.y < 0;
     puff.at.z = Math.max(puff.at.z, (overDeck ? 0 : FLOOR) + 0.3 * puff.radius);
   }
   for (let i = puffs.length - 1; i >= 0; i--) if (puffs[i].age > SMOKE.life) puffs.splice(i, 1);
@@ -577,9 +642,11 @@ function splat(puff) {   // into the cells within its radius, the grid's edge ce
 // ------------------------------------------------------------------- live
 let hazeBase = 0.35, hazeBoost = 0;
 const LENS_GAIN = 6, BEAM_GAIN = 0.02, POOL_GAIN = 3;
+const RAYCASTS = 24;   // beams a frame that look again where they land on scenery, ~0.1 ms each
+let raycasts = 0;
 const WORK_GLOW = 0.4, SPILL = 3;   // how much the fog glows with the work light, the stage
 const UP = new THREE.Vector3(0, 0, 1), DOWNSTAGE = new THREE.Vector3(0, 1, 0);
-const apex = new THREE.Vector3(), ahead = new THREE.Vector3();
+const apex = new THREE.Vector3(), ahead = new THREE.Vector3(), lands = new THREE.Vector3();
 const u = new THREE.Vector3(), w = new THREE.Vector3();
 
 function shutter(code, hz, t, seed) {
@@ -595,17 +662,32 @@ function shutter(code, hz, t, seed) {
 }
 
 // Where a beam from `o` along `d` first lands: the deck, the audience's
-// floor or the back drape (stage metres).
+// floor or the back drape, or with scenery, the floor or the scenery (stage
+// metres).
 const box3 = (x0, y0, z0, x1, y1, z1) =>
   new THREE.Box3(new THREE.Vector3(x0, y0, z0), new THREE.Vector3(x1, y1, z1));
 const SURFACES = [   // [normal, the plane's distance along it, its extent]
-  [UP, 0, box3(-W / 2, -D, -0.1, W / 2, 0, 0.1)],                         // the deck
   [UP, FLOOR, box3(-GROUND / 2, -GROUND / 2, FLOOR - 0.1,
                    GROUND / 2, GROUND / 2, FLOOR + 0.1)],                  // the ground
-  [DOWNSTAGE, -D - 0.3, box3(-W / 2 - 2, -D - 0.4, 0, W / 2 + 2, -D - 0.2, 12)],   // the drape
 ];
+if (!plotted) SURFACES.push(
+  [UP, 0, box3(-W / 2, -D, -0.1, W / 2, 0, 0.1)],                         // the deck
+  [DOWNSTAGE, -D - 0.3, box3(-W / 2 - 2, -D - 0.4, 0, W / 2 + 2, -D - 0.2, 12)]);   // the drape
+const ray = new THREE.Raycaster(), held = new THREE.Matrix4(), normals = new THREE.Matrix3();
+ray.near = 0.05;
+ray.far = BEAM_LENGTH;
+function onScenery(o, d) {   // the scenery stands at the stage's 0: its places are stage metres
+  ray.set(stage.localToWorld(o.clone()), d.clone().transformDirection(stage.matrixWorld));
+  const hit = ray.intersectObject(scenery.group, true)[0];
+  if (!hit) return null;
+  hit.object.getMatrixAt(hit.instanceId, held);
+  const normal = hit.face.normal.clone().applyNormalMatrix(normals.getNormalMatrix(held));
+  if (normal.dot(d) > 0) normal.negate();
+  const extent = hit.object.geometry.boundingBox.clone().applyMatrix4(held).expandByScalar(0.05);
+  return { t: hit.distance, p: stage.worldToLocal(hit.point), normal, extent };
+}
 function landing(o, d) {
-  let best = null;
+  let best = plotted ? onScenery(o, d) : null;
   for (const [normal, offset, extent] of SURFACES) {
     const along = d.dot(normal);
     if (Math.abs(along) < 1e-6) continue;
@@ -623,7 +705,12 @@ function pool(b, level, color, half) {
   b.mesh.localToWorld(ahead);
   stage.worldToLocal(apex);
   stage.worldToLocal(ahead).sub(apex).normalize();
-  const hit = landing(apex, ahead);
+  // A beam lands where it did until it moves, and then looks again if this
+  // frame has raycasts left (frame() offers them to those waiting longest).
+  if (!b.from || (!(b.from.equals(apex) && b.to.equals(ahead)) && raycasts-- > 0))
+    Object.assign(b, { from: apex.clone(), to: ahead.clone(), hit: landing(apex, ahead), waited: 0 });
+  else b.waited++;
+  const hit = b.hit;
   if (!hit) { b.pool.visible = false; return; }
   const cos = Math.abs(ahead.dot(hit.normal));
   const radius = hit.t * Math.tan(half), stretch = 1 / Math.max(cos, 0.3);
@@ -632,7 +719,7 @@ function pool(b, level, color, half) {
   u.normalize();
   w.crossVectors(hit.normal, u);
   b.pool.matrix.makeBasis(u.multiplyScalar(radius * stretch), w.multiplyScalar(radius), hit.normal)
-    .setPosition(hit.p.addScaledVector(hit.normal, 0.01));
+    .setPosition(lands.copy(hit.p).addScaledVector(hit.normal, 0.01));
   b.pool.matrixWorldNeedsUpdate = true;
   // A narrower beam, nearer, square on, lands brighter.
   const solid = 2 * Math.PI * (1 - Math.cos(half));
@@ -702,6 +789,8 @@ function frame(now) {
     } else f.beam.pool.visible = false;
   }
   stage.updateMatrixWorld(true);
+  raycasts = plotted ? RAYCASTS : Infinity;
+  lit.sort(([a], [b]) => b.waited - a.waited);
   for (const [b, level, hue, half] of lit) pool(b, level, hue, half);
   workGlow.value.set(0x9aa4b8).multiplyScalar(work.intensity * WORK_GLOW);
   stageGlow.value.copy(spill).multiplyScalar(SPILL / Math.max(1, beams));
@@ -712,12 +801,16 @@ renderer.setAnimationLoop(frame);
 
 // -------------------------------------------------------------------- hud
 const hud = document.getElementById('hud');
+const escape = (text) => text.replace(/[&<>]/g, (c) => `&#${c.charCodeAt(0)};`);
+const notes = [...rig.notes];   // of the plot: busk's, and the models that did not load
+if (scenery?.failed)
+  notes.push(`${scenery.failed} of ${rig.scenery.length} model files of the plot did not load`);
 function drawHud() {
   const warn = (text) => `<span class="warn">${text}</span>`;
-  const title = rig.title.replace(/[&<>]/g, (c) => `&#${c.charCodeAt(0)};`);
-  const lines = [`<b>${title}</b> · ${rig.fixtures.length} fixtures`];
+  const lines = [`<b>${escape(rig.title)}</b> · ${rig.fixtures.length} fixtures`];
   if (!connected) lines.push(warn('lost busk: reconnecting…'));
   else if (!outputOn) lines.push(warn('OUTPUT OFF: the rig is dark; this is what busk would send'));
+  for (const note of notes) lines.push(warn(escape(note)));
   hud.innerHTML = lines.join('<br>');
 }
 redraw = drawHud;

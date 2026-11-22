@@ -1250,6 +1250,7 @@ class LiveShow(_Facade):
             key=self._web_key(),
             show=lambda: session.snapshot.show,
             frame=frame,
+            path=lambda: session.snapshot.path,
         )
         surfaces = SurfaceManager(resolver.handle, web, say=self._say, warn=self._warn)
         surfaces.reconcile(compiled)

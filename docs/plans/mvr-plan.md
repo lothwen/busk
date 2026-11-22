@@ -559,6 +559,78 @@ that day: Import plot… in the File menu as well, and the file picker to choose
     - a missing plot draws the deck, and a changed plot gets a note;
     - the frame rate with a real plot's models.
 
+**Done** 2026-11-22, on 0c2876c, with the recommended answers (Q1 a, Q4 a).
+- **Reader** (`src/busk/importers/mvr.py`). `scenery_matrix(matrix, frame)`: a model's axes
+  turned by θ, their scale kept, and its offset in busk's metres, as `plot_location` places a
+  fixture there without the R_x(180°). `read_plot(path, types=False)` imports no GDTF.
+  `plot_file(path, name)` reads one file of the archive, by name only, under `MODEL_CAP`
+  (256 MB) and `MEMBER_CAP`.
+- **Feed** (`src/busk/web/stage.py`). The `rig` message gained `scenery` (each model file once:
+  `file`, `format`, `at`, the twelve numbers of each place) and `notes`. `StageFeed.update(show,
+  frame, path, opened=)` resolves `stage.plot` against the show's file (`WebLink.path`, the
+  runner's `session.snapshot.path`) and reads it at each show change and each page that opens
+  (`WebApi._watch`), again only when its path, mtime or size changed. `scenery_file` and
+  `FILE_TYPES` say what `/stage/scenery/` serves.
+- **Server** (`src/busk/web/server.py`). `GET /stage/scenery/<file>?k=` behind the key, from the
+  plot the rig's scenery came from (`WebApi.scenery_file`, read outside the API's lock), with
+  `nosniff` and `Content-Security-Policy: sandbox`.
+- **Page** (`static/stage.html`). three.js's `GLTFLoader` and `TDSLoader` through one
+  `LoadingManager` whose URL modifier adds the key (not to `blob:` and `data:`). glTF is turned
+  from y up to z up; 3DS is scaled from millimetres, its own master scale reset. Each mesh is an
+  `InstancedMesh` over its model's places. The floor is the scenery's lowest point (busk's 0
+  when the scenery is all above it). Pools land on the scenery by raycast. The HUD shows the
+  notes, and how many model files did not load.
+- **Session** (`src/busk/session/session.py`, §11's finding). A Save as, or a show's first
+  save, rewrites `stage.plot` relative to the new file's folder (`_plot_moved`), as it rewrites
+  `meta.id`: not an undo step.
+- **Tests.** `tests/test_mvr.py` (+4: scenery where a fixture at its matrix hangs, for each
+  audience; its scale; no GDTF imported; a file looked up in the archive only, and the caps),
+  `tests/test_web_stage.py` (+11: scenery from a plot beside the show, none without a plot, an
+  absolute plot, a model once with all its places and a 3DS without extension, missing,
+  unreadable, changed, other formats, read again only when the file changed, an import undone
+  served no more, what is served),
+  `tests/test_web_api.py` (+2: the route with and without the key, an encoded name, 404 for the
+  scene, a GDTF and `..`; a `LiveShow` end to end: the plot beside the show, a page that opens
+  reading a changed plot, the open page getting the new rig), `tests/test_save_as.py` (+3).
+  The whole suite: 7,564 passed. 26 mutations, each caught; one (the feed keeping the path of a
+  plot that is gone) needed a test.
+- **By hand**, in headless Chromium (WebGPU, 1600×900; the machine was busy, so frame rates
+  are rough), through `LiveShow` with a web surface:
+  - `Demostage_MVR.mvr` with `origin 0 -4000 1100` (its deck's downstage edge and top): 69
+    models in 48 files, 29k triangles, all loaded. The deck, walls and trusses stand where the
+    fixtures hang, and the floor units stand on the deck. Its models name a texture
+    (`vsBlkSatinTexture.png`) that the archive does not hold: drawn without it.
+  - Frame rates, with all 119 fixtures lit: still, 61–63 fps with the scenery against 50–52
+    with busk's deck; 85 heads circling, 38–45 against 43–50. Before the two calls below on
+    pools: 38 still and 32–33 circling. A profile showed the pools' raycasts (about 0.1 ms a
+    beam) at 30% of the page's JavaScript.
+  - `Circle_Stage.mvr`, default frame: 46 models, 88–113 fps; seen from above, the pools fill
+    its risers' tops.
+  - The plot moved away: the deck and the note. The plot rewritten: the note. WebGL 2 (WebGPU
+    hidden, as on a phone over the LAN): the scenery draws.
+- **Calls made while building**, open to veto:
+  1. Files are served by name (`/stage/scenery/<file>`), not by number, so a `.gltf`'s buffers
+     and textures resolve as MVR places them, beside it at the archive's root. Only models,
+     `.bin` and images are served (`FILE_TYPES`), never a page or an SVG, since a plot is
+     untrusted.
+  2. With scenery, busk draws no deck, and no backcloth and no trusses of its own either: the
+     plot has its own. The house (crowd, stands, PA, barrier, mix position) stays, on the
+     scenery's floor.
+  3. Pools land on the scenery (a raycast on its meshes) or the floor. A beam keeps its landing
+     until it moves, and at most 24 moving beams a frame look again, those waiting longest
+     first, so a pool may trail a fast beam by a few frames.
+  4. glTF is read y up, as glTF says; both real plots stand their fixtures on their decks only
+     that way. A 3DS file's own master scale is not taken, since MVR fixes 1 unit at 1 mm.
+  5. The notes: `the plot … is not there`, `cannot be read (…)`, `has changed since the rig was
+     imported`, `N models of the plot in a format busk does not draw`, and from the page `N of
+     M model files of the plot did not load`. The plot is named as the show keeps it.
+  6. A model is served only once a page has asked for the stage: until then the feed has not
+     looked for the plot, and `/stage/scenery/` is 404.
+  7. Models go out `no-store`, as every route: a page that reloads for a new rig fetches them
+     again.
+  8. A Save as rewrites `stage.plot` (call: the §11 finding's first remedy); an absolute path on
+     another drive stays. A save to the show's own file never changes it.
+
 ### Phase 6: the user's check
 
 11. **A real plot** from the user's CAD: import it, look at both stage views, change the plot,
@@ -599,6 +671,12 @@ that day: Import plot… in the File menu as well, and the file picker to choose
 - **A saved copy elsewhere loses the plot** (Phase 2). `stage.plot` is relative to the show
   file's folder, so Save as into another folder leaves it pointing at the wrong place. Before
   Phase 5 reads it, Save as should rewrite it, or the show should keep the absolute path too.
+  Fixed in Phase 5: Save as rewrites it.
+- **Undo across a Save as restores an old relative plot** (Phase 5). Undo is op-based, so
+  undoing a later `rig import` made before a Save as into another folder sets `stage` back to
+  the earlier import's, whose `plot` is relative to the old folder: the stage view says the
+  plot is not there, and F3's picker opens elsewhere. Checked in a script. The next `rig
+  import` mends it. Not fixed.
 - **The spec's §5.17 never listed `safety`** (Phase 7's optional root key); Phase 2 added
   `stage` there and left `safety` alone.
 - **A GDTF mode whose name ends in a space is never found** (Phase 4, on `Circle_Stage.mvr`: 8

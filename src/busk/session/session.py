@@ -710,7 +710,8 @@ class Session:
         and ``meta.created`` is now, so its autosaves and crash recovery are
         its own. The two paths are compared resolved. A show without a file
         keeps its id on its first save. The show's file is ``path`` from now
-        on."""
+        on. The copy, or a first save, keeps the plot the rig came from
+        relative to its own folder (``stage.plot``, MVR plan §11)."""
         with self._lock:
             target = path if path is not None else self._path
             if target is None:
@@ -726,6 +727,10 @@ class Session:
                     Op("replace", ("meta", "id"), self._ids.new("show", taken)),
                     Op("replace", ("meta", "created"), stamp),
                 ]
+            first = original is None
+            plot = _plot_moved(self._state.show, original, target) if copy or first else None
+            if plot is not None:
+                ops.append(Op("replace", ("stage", "plot"), plot))
             show, _ = apply(self._state.show, ops)
             try:
                 save_show(show, target, now=now)
@@ -766,6 +771,26 @@ class Session:
             nextUndo=None if undo is None else undo.label,
             nextRedo=None if redo is None else redo.label,
         )
+
+
+def _plot_moved(show: Show, original: Path | None, target: Path) -> str | None:
+    """``show``'s ``stage.plot`` as a save from ``original`` to ``target``
+    keeps it: relative to ``target``'s folder when it can be, as ``rig
+    import`` keeps it (MVR plan Q4). ``None`` when it stays as it is, or the
+    show has no plot."""
+    stage = show.get("stage")
+    if stage is None:
+        return None
+    plot = stage["plot"]
+    if not os.path.isabs(plot):
+        if original is None:
+            return None  # relative to no file busk knows
+        plot = os.path.join(os.path.dirname(os.path.abspath(original)), plot)
+    try:
+        moved = os.path.relpath(plot, os.path.dirname(os.path.abspath(target)))
+    except ValueError:  # another drive
+        return None
+    return None if moved == stage["plot"] else moved
 
 
 def _closed(group: Group) -> str:

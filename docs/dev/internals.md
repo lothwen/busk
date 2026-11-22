@@ -429,7 +429,15 @@ fixture's colour per cell, pan, tilt, zoom, shutter and strobe rate) whenever on
 at most 30 times a second. The broadcaster decodes the looks from the engine's frames
 through each fixture's profile mode, only while a client watches; the first one asks the
 engine for its frames (`EngineLink.watch`). The page is three.js, from jsDelivr; the phone
-page shows it in a frame that exists only while the view is open.
+page shows it in a frame that exists only while the view is open. A show with a plot
+(`stage.plot`, relative to `WebLink.path`, the session's file) has its scenery in the `rig`
+too: each model file once, with the places it stands through the frame
+(`mvr.scenery_matrix`), and notes when the plot is missing, unreadable or changed. The feed
+reads the plot without importing its GDTFs (`read_plot(types=False)`), again only when its
+file changed, at each show change and each page that opens. The page loads each model from
+`/stage/scenery/<file>` behind the key (`WebApi.scenery_file`, read outside the lock): only
+models and the buffers and textures they name, from the archive, with `nosniff` and a
+sandbox, since a plot is untrusted.
 
 **Output** (`busk.output`). At start-up `build_routes` creates and opens one sender per
 enabled route (`SacnSender`, `ArtNetSender`, `EnttecSender`); routes that are disabled,

@@ -531,3 +531,58 @@ def test_a_location_turned_back_is_the_plot_s_matrix() -> None:
     """busk → plot → busk, at a fixture the frame places by hand."""
     hung = location(x=-1, y=2, z=6.5, rx=180, rz=180)
     assert same(location_matrix(hung, frame("-y")), Matrix(o=(1000, -2000, 6500)))
+
+
+# ------------------------------------------------------------------ the stage view's scenery
+
+_HUNG = Matrix((1, 0, 0), (0, -1, 0), (0, 0, -1))  # R_x(180°)
+
+
+@pytest.mark.parametrize("audience", AUDIENCES)
+def test_scenery_stands_where_a_fixture_at_its_matrix_hangs(audience: Audience) -> None:
+    """The fixture's transform, without the turn from GDTF's zero (MVR plan §5)."""
+    turned = Matrix(u=(0, 1, 0), v=(-1, 0, 0), w=(0, 0, 1), o=(1500, -2500, 6000))
+    here = frame(audience, (500, 500, 1000))
+    placed = mvr.scenery_matrix(turned, here)
+    hung = plot_location(turned, here)
+    assert close(placed.o, (hung["x"], hung["y"], hung["z"]))
+    assert same(Matrix(placed.u, placed.v, placed.w) @ _HUNG, busk_turn(hung), turn=1e-6)
+
+
+def test_scenery_keeps_its_scale() -> None:
+    stretched = Matrix(u=(2, 0, 0), v=(0, 3, 0), w=(0, 0, 4), o=(1000, 0, 0))
+    placed = mvr.scenery_matrix(stretched, frame("-y"))
+    assert same(placed, Matrix((-2, 0, 0), (0, -3, 0), (0, 0, 4), (-1, 0, 0)))
+
+
+def test_a_plot_read_without_types_imports_no_gdtf(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse(data: bytes) -> object:
+        raise AssertionError("imported a GDTF")
+
+    data = one_layer(fixture("F1"), scenery("Truss", "T1", "LX1", model("truss.glb")))
+    path = plot(tmp_path / "club.mvr", data, {SPOT: gdtf(), "truss.glb": b"glTF"})
+    monkeypatch.setattr(mvr, "import_gdtf", refuse)
+    read = read_plot(path, types=False)
+    assert read.types == {}
+    assert [f.uuid for f in read.fixtures] == ["F1"]
+    assert [s.model for s in read.scenery] == ["truss.glb"]
+
+
+def test_a_file_of_the_plot_is_looked_up_in_it_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = plot(tmp_path / "club.mvr", one_layer(), {"truss.glb": b"glTF", "big.glb": b"x" * 100})
+    (tmp_path / "beside.glb").write_bytes(b"on disk")
+    assert mvr.plot_file(path, "truss.glb") == b"glTF"
+    for name in ("missing.glb", "../beside.glb", str(tmp_path / "beside.glb")):
+        assert mvr.plot_file(path, name) is None
+    assert mvr.plot_file(tmp_path / "nowhere.mvr", "truss.glb") is None
+    (tmp_path / "text.mvr").write_text("not a zip")
+    assert mvr.plot_file(tmp_path / "text.mvr", "truss.glb") is None
+    monkeypatch.setattr(mvr, "MODEL_CAP", 99)
+    assert mvr.plot_file(path, "big.glb") is None
+    assert mvr.plot_file(path, "truss.glb") == b"glTF"
+    monkeypatch.setattr(mvr, "MEMBER_CAP", 2)  # it holds three
+    assert mvr.plot_file(path, "truss.glb") is None

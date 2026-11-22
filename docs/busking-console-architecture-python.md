@@ -1067,7 +1067,7 @@ class Show(TypedDict):
     stage: NotRequired[StageSettings]         # the plot the rig came from (`rig import`)
 ```
 
-`stage` is set by `rig import`, which builds the rig from an MVR plot ([plots](plots.md)). Its `frame` places the plot in busk's stage positions (§5.1): the plot is right-handed, Z up, in millimetres, with an origin and an audience side of its own. Taking `origin` away, turning the plot about z so that its audience side is busk's +y (`-y` turns it 180°, `+y` not at all, `-x` −90°, `+x` 90°) and dividing by 1000 gives busk's metres. A GDTF fixture at the plot's identity hangs with its beam down and its front to −Y, so it comes in at `rx` 180 and `rz` the turn. Without `stage` a show has no plot.
+`stage` is set by `rig import`, which builds the rig from an MVR plot ([plots](plots.md)). Its `frame` places the plot in busk's stage positions (§5.1): the plot is right-handed, Z up, in millimetres, with an origin and an audience side of its own. Taking `origin` away, turning the plot about z so that its audience side is busk's +y (`-y` turns it 180°, `+y` not at all, `-x` −90°, `+x` 90°) and dividing by 1000 gives busk's metres. A GDTF fixture at the plot's identity hangs with its beam down and its front to −Y, so it comes in at `rx` 180 and `rz` the turn. The web stage view reads the plot's scenery from `plot` and places it through the same frame, without that turn; a save into another folder rewrites a relative `plot` against the new file's folder. Without `stage` a show has no plot.
 
 A complete example is in [Appendix A](#appendix-a--example-show-file).
 

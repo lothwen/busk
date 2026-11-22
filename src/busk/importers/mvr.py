@@ -59,7 +59,9 @@ and which side the audience is on, which turns the plot by θ about z:
 :func:`plot_location` gives a fixture's busk location: ``R_z(θ) · (o −
 origin) / 1000``, turned ``R_z(θ) · R · R_x(180°)`` and read as busk's ``rx``,
 ``ry``, ``rz`` (``R_z · R_y · R_x``; ``rx`` 0 where ``ry`` is ±90°).
-:func:`location_matrix` turns a location back into the plot.
+:func:`location_matrix` turns a location back into the plot. Scenery is placed
+the same way, without the ``R_x(180°)`` (:func:`scenery_matrix`), and the stage
+view loads its models from the plot (:func:`plot_file`).
 """
 
 from __future__ import annotations
@@ -98,6 +100,9 @@ SYMBOL_DEPTH: Final = 16
 """How deeply symbols may nest in symbols."""
 GEOMETRY_CAP: Final = 100_000
 """The most models and symbols a plot's scenery may expand to."""
+MODEL_CAP: Final = 256 * _MB
+"""The largest file of a plot the stage view loads (a model, or a file a
+model names), uncompressed, in bytes."""
 
 SCENERY: Final = frozenset({"Truss", "Support", "SceneObject", "VideoScreen", "Projector"})
 """The objects whose geometry is scenery."""
@@ -257,6 +262,19 @@ def location_matrix(location: Location, frame: StageFrame) -> Matrix:
     return Matrix(r.u, r.v, r.w, _add(offset, frame["origin"]))
 
 
+def scenery_matrix(matrix: Matrix, frame: StageFrame) -> Matrix:
+    """Where a model of the plot's scenery at ``matrix`` (composed, in the
+    plot) is in busk: its axes turned by θ, their scale kept, and its offset
+    in busk's metres, as :func:`plot_location` places a fixture there, without
+    the turn from GDTF's zero to busk's. A point ``p`` of the model, in
+    metres, is at ``u·p.x + v·p.y + w·p.z + o``."""
+    cos, sin = TURNS[frame["audience"]]
+    turn = _about_z(cos, sin)
+    axes = turn @ Matrix(matrix.u, matrix.v, matrix.w)
+    offset = turn.turn(_times(_add(matrix.o, _times(frame["origin"], -1)), 1 / 1000))
+    return Matrix(axes.u, axes.v, axes.w, offset)
+
+
 def _round(value: float, digits: int) -> float:
     return round(value, digits) + 0.0  # never -0.0
 
@@ -346,22 +364,38 @@ class Plot:
     sha256: str
 
 
-def read_plot(path: str | os.PathLike[str]) -> Plot:
+def read_plot(path: str | os.PathLike[str], *, types: bool = True) -> Plot:
     """Read the MVR file at ``path``. Raises :class:`ImportFailed`, saying
     why, for a file that cannot be read, is not an MVR file or is past the
-    caps."""
+    caps. With ``types`` false the GDTF files are not imported and
+    :attr:`Plot.types` is empty: the stage view reads only the scenery."""
     try:
         with open(path, "rb") as file:
             sha256 = hashlib.file_digest(file, "sha256").hexdigest()
             file.seek(0)
             with zipfile.ZipFile(file) as archive:
-                return _Reader(archive).plot(sha256)
+                return _Reader(archive).plot(sha256, types)
     except ImportFailed:
         raise
     except (zipfile.BadZipFile, zlib.error, EOFError, RuntimeError, NotImplementedError) as exc:
         raise ImportFailed(f"not an MVR file: {exc}") from exc
     except OSError as exc:
         raise ImportFailed(str(exc)) from exc
+
+
+def plot_file(path: str | os.PathLike[str], name: str) -> bytes | None:
+    """The file ``name`` of the plot at ``path``, for the stage view to load
+    its scenery; ``None`` when the plot cannot be read, is past the caps, has
+    no file of that name, or that file is larger than :data:`MODEL_CAP`. The
+    name is only looked up in the archive."""
+    try:
+        with zipfile.ZipFile(path) as archive:
+            if len(archive.infolist()) > MEMBER_CAP:
+                return None
+            return _member(archive, name, MODEL_CAP)
+    except (KeyError, _TooBig, OSError, zipfile.BadZipFile, zlib.error, EOFError, RuntimeError,
+            NotImplementedError):  # fmt: skip
+        return None
 
 
 class _TooBig(Exception):
@@ -389,7 +423,7 @@ class _Reader:
     def note(self, text: str) -> None:
         self.notes[text] = None
 
-    def plot(self, sha256: str) -> Plot:
+    def plot(self, sha256: str, types: bool) -> Plot:
         if SCENE not in self.names:
             raise ImportFailed(f"not an MVR file: it has no {SCENE}")
         try:
@@ -418,13 +452,13 @@ class _Reader:
                     for geometry in node.iterfind("Geometries/*"):
                         self.geometry(node, geometry, here, 0)
                 stack += [(child, here) for child in reversed(_children(node))]
-        types: dict[str, PlotType] = {}
-        for fixture in self.fixtures.values():
-            if fixture.gdtf is not None and fixture.gdtf not in types:
-                types[fixture.gdtf] = self.fixture_type(fixture.gdtf)
+        imported: dict[str, PlotType] = {}
+        for fixture in self.fixtures.values() if types else ():
+            if fixture.gdtf is not None and fixture.gdtf not in imported:
+                imported[fixture.gdtf] = self.fixture_type(fixture.gdtf)
         return Plot(
             fixtures=tuple(self.fixtures.values()),
-            types=types,
+            types=imported,
             positions=self.positions,
             scenery=tuple(self.scenery),
             notes=tuple(self.notes),

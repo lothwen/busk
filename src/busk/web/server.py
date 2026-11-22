@@ -5,12 +5,17 @@ Routes
 * ``GET /`` and ``GET /index.html`` serve the phone page;
 * ``GET /stage`` serves the 3D stage view (:mod:`busk.web.stage`), which
   the phone page also shows in a frame;
+* ``GET /stage/scenery/<file>`` serves a file of the show's plot that the
+  stage view loads (a model, or a file a model names), or 404: the server's
+  ``scenery``, :meth:`~busk.web.api.WebApi.scenery_file` in a surface;
 * ``GET /ws`` upgrades to a WebSocket (:mod:`busk.web.websocket`);
 * anything else is 404, and a method other than ``GET`` is 501.
 
 No path ever reaches the file system: each page is one file read from the
 package with :mod:`importlib.resources` (:func:`index_page`,
-:func:`stage_page`).
+:func:`stage_page`), and a scenery file is looked up only in the plot's
+archive. It goes out with ``nosniff`` and a sandbox, so a file of a plot
+never runs as a page of busk's.
 
 Access
 ------
@@ -43,7 +48,7 @@ import threading
 from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler
 from typing import Final, Protocol
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from busk.web.websocket import (
     LINGER,
@@ -59,7 +64,17 @@ from busk.web.websocket import (
 
 PAGE_PATHS: Final = ("/", "/index.html")
 STAGE_PATH: Final = "/stage"
+SCENERY_PATH: Final = "/stage/scenery/"
 SOCKET_PATH: Final = "/ws"
+
+type Files = Callable[[str], tuple[bytes, str] | None]
+"""A file by name: its bytes and type, or ``None`` when there is none."""
+
+SCENERY_HEADERS: Final = (
+    ("X-Content-Type-Options", "nosniff"),
+    ("Content-Security-Policy", "sandbox"),
+)
+"""What a scenery file goes out with: read as its type only, and never run."""
 
 HTTP_TIMEOUT: Final = 10.0
 """Seconds an HTTP connection may sit idle before it is dropped (not WebSockets)."""
@@ -107,6 +122,7 @@ class WebServer:
         page: bytes | None = None,
         stall: float = STALL_TIMEOUT,
         linger: float = LINGER,
+        scenery: Files | None = None,
     ) -> None:
         self.app = app
         self.host = host
@@ -114,6 +130,7 @@ class WebServer:
         self._port = port
         self.page = index_page() if page is None else page
         self.stage = stage_page()
+        self.scenery = scenery
         self.stall = stall
         self.linger = linger
         self.port: int | None = None
@@ -224,11 +241,20 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         url = urlsplit(self.path)
         web = self.server.web
-        if url.path not in (*PAGE_PATHS, STAGE_PATH, SOCKET_PATH):
+        scenery = url.path.startswith(SCENERY_PATH)
+        if url.path not in (*PAGE_PATHS, STAGE_PATH, SOCKET_PATH) and not scenery:
             self._respond(404, b"Not found.\n")
             return
         if not web.allows(parse_qs(url.query).get("k", [""])[0]):
             self._respond(403, KEY_HINT)
+            return
+        if scenery:
+            name = unquote(url.path.removeprefix(SCENERY_PATH))
+            found = None if web.scenery is None else web.scenery(name)
+            if found is None:
+                self._respond(404, b"Not found.\n")
+            else:
+                self._respond(200, found[0], found[1], headers=SCENERY_HEADERS)
             return
         if url.path != SOCKET_PATH:
             page = web.stage if url.path == STAGE_PATH else web.page

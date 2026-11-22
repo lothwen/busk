@@ -25,6 +25,10 @@ Server →    When
             second: every fixture's look
 ==========  =================================================================
 
+Each client that asks for the stage has the show's plot read again, if its
+file changed, and the stage page loads the plot's models from
+``/stage/scenery/<file>`` (:meth:`WebApi.scenery_file`).
+
 A client sends ``{"id": <its id>, "command": {…}}``, or ``{"type":
 "stage"}`` to get the ``rig`` and the ``look`` messages from then on (the
 stage view, ``static/stage.html``: a phone that never asks never gets them,
@@ -75,6 +79,7 @@ import socket
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Final, cast
 
 from busk.commands.classes import command_class
@@ -88,7 +93,7 @@ from busk.model.show import Show
 from busk.model.surface import ControlSurface
 from busk.output.netif import ipv4_addresses
 from busk.web.server import WebServer
-from busk.web.stage import StageFeed
+from busk.web.stage import StageFeed, scenery_file
 from busk.web.websocket import LINGER, STALL_TIMEOUT, WebSocket
 
 if TYPE_CHECKING:
@@ -114,6 +119,7 @@ class WebLink:
     key: str  # the access key (busk.persistence.paths.web_key)
     show: Callable[[], Show]  # the show the session holds, for the stage view's rig
     frame: Callable[[], Frame | None]  # the engine's newest frame (asks for frames at once)
+    path: Callable[[], Path | None] = lambda: None  # the show's file: its plot is relative to it
 
 
 def show_message(compiled: CompiledShow) -> Message:
@@ -293,16 +299,27 @@ class WebApi:
         return False
 
     def _watch(self, client: WebSocket) -> None:
-        """Send ``client`` the rig and the looks, now and from now on."""
+        """Send ``client`` the rig and the looks, now and from now on. A page
+        that opens has the show's plot read again, if its file changed."""
         with self._lock:
             if client not in self._clients:
                 return  # gone meanwhile
             self._watchers.add(client)
-            self._update_stage()
+            self._update_stage(opened=True)
             if self._stage.rig is not None:
                 client.publish("rig", self._stage.rig)
             if self._stage.look is not None:
                 client.publish("look", self._stage.look)
+
+    def scenery_file(self, name: str) -> tuple[bytes, str] | None:
+        """The file ``name`` of the plot the stage's scenery comes from, with
+        its type, for ``/stage/scenery/<name>``; ``None`` when there is no
+        such plot or file, or it is not one the page loads
+        (:func:`busk.web.stage.scenery_file`). The file is read outside the
+        lock, so a large model holds up no broadcast."""
+        with self._lock:
+            plot = self._stage.plot
+        return None if plot is None else scenery_file(plot, name)
 
     def _origin(self, client: WebSocket) -> CommandOrigin:
         return {"surfaceId": self.surface_id, "remote": client.remote}
@@ -325,11 +342,12 @@ class WebApi:
             if self._watchers:
                 self._update_stage()
 
-    def _update_stage(self) -> None:
+    def _update_stage(self, *, opened: bool = False) -> None:
         """Read the show and the frame into the stage feed, and hand a
         changed rig or look to every client that asked for the stage
         (under the lock)."""
-        rig, look = self._stage.update(self._link.show(), self._link.frame())
+        link = self._link
+        rig, look = self._stage.update(link.show(), link.frame(), link.path(), opened=opened)
         for client in self._watchers:
             if rig is not None:
                 client.publish("rig", rig)
@@ -384,6 +402,7 @@ class WebSurface:
             port=match.get("port", 0),
             stall=stall,
             linger=linger,
+            scenery=self.api.scenery_file,
         )
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None

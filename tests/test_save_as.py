@@ -10,6 +10,7 @@ as ``club.show``.
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -18,6 +19,7 @@ import pytest
 from busk.persistence.show_file import load_show, new_show, save_show
 from busk.runner import OfflineShow
 from busk.session.ids import CounterIds
+from test_web_stage import club_plot
 
 THEN = datetime(2026, 11, 1, 20, 0, 0, tzinfo=UTC)
 """When ``club.show`` was made."""
@@ -102,3 +104,48 @@ def test_a_failed_save_as_changes_nothing(club: Path, tmp_path: Path) -> None:
     assert show.show["meta"] == meta
     assert show.session.path == str(club)
     assert not (tmp_path / "copy.txt").exists()
+
+
+# ------------------------------------------------------------------ the plot the rig came from
+
+
+def with_a_plot(tmp_path: Path, path: Path | None) -> OfflineShow:
+    """A show (in ``path``, when given) with the club plot of ``plots/`` imported."""
+    show = OfflineShow(new_show("Club", now=THEN, ids=CounterIds()), path=path, ids=CounterIds(100))
+    assert show.execute(f'rig import "{club_plot(tmp_path)}"').ok
+    return show
+
+
+def test_a_copy_keeps_the_plot_relative_to_its_own_folder(tmp_path: Path) -> None:
+    """MVR plan §11: a copy in another folder would lose the plot otherwise."""
+    (tmp_path / "shows").mkdir()
+    show = with_a_plot(tmp_path, tmp_path / "shows" / "club.show")
+    assert show.show["stage"]["plot"] == os.path.join("..", "plots", "club.mvr")
+    (tmp_path / "tour" / "night").mkdir(parents=True)
+    copy = tmp_path / "tour" / "night" / "club.show"
+    assert show.execute(f"save {copy}").ok
+    moved = os.path.join("..", "..", "plots", "club.mvr")
+    assert show.show["stage"]["plot"] == moved
+    assert load_show(copy)[0]["stage"]["plot"] == moved
+    assert (copy.parent / moved).resolve() == (tmp_path / "plots" / "club.mvr").resolve()
+    assert show.execute(f"save {tmp_path / 'tour' / 'night' / 'late.show'}").ok  # same folder
+    assert show.show["stage"]["plot"] == moved
+    assert show.execute("undo").text.startswith("undid: imported 1 fixture")
+    assert "stage" not in show.show  # the import's step undoes whole
+
+
+def test_a_first_save_keeps_the_plot_relative_to_the_show(tmp_path: Path) -> None:
+    show = with_a_plot(tmp_path, None)
+    assert os.path.isabs(show.show["stage"]["plot"])
+    assert show.execute(f"save {tmp_path / 'club.show'}").ok
+    assert show.show["stage"]["plot"] == os.path.join("plots", "club.mvr")
+
+
+def test_a_save_to_its_own_file_leaves_the_plot_as_it_is(tmp_path: Path) -> None:
+    path = tmp_path / "club.show"
+    save_show(with_a_plot(tmp_path, None).show, path, backups=False)  # an absolute plot
+    show = opened(path)
+    kept = show.show["stage"]["plot"]
+    assert os.path.isabs(kept)
+    assert show.execute("save").ok
+    assert load_show(path)[0]["stage"]["plot"] == kept

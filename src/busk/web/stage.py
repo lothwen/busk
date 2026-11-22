@@ -37,29 +37,51 @@ pan, tilt and zoom (:meth:`StageFixture.decode`). Not drawn: gobos, prisms,
 frost, and the programs a fixture runs by itself. An unpatched fixture stays
 at its channels' defaults.
 
+The scenery
+-----------
+A show whose rig came from a plot (``rig import``, MVR plan Phase 5) draws the
+plot's trusses and set in place of the deck: the models of its ``Truss``,
+``Support``, ``SceneObject``, ``VideoScreen`` and ``Projector`` objects
+(:attr:`busk.importers.mvr.Plot.scenery`), each placed through the show's
+frame (:func:`busk.importers.mvr.scenery_matrix`). The plot is the show's
+``stage.plot``, relative to the show file's folder; :class:`StageFeed` reads
+it when the show changes or a page opens, and again only when the file has
+changed. The page loads each model at ``/stage/scenery/<file>`` (behind the
+key), which serves the plot's models and the files they name, and no other
+(:func:`scenery_file`). A plot that is not there or cannot be read draws the
+deck, and a note says so; one whose file changed since the import is drawn as
+it is now, with a note.
+
 Messages
 --------
 ``rig``: ``title``, ``stage`` (``width``, ``depth``, ``height``: the deck,
-sized to the rig) and ``fixtures`` (``number``, ``name``, ``kind``,
-``cells``, ``loc``), in show order. ``look``: ``looks``, one list per fixture
-in the rig's order: ``r, g, b`` of each cell with its intensity in, then
-pan, tilt, zoom (degrees), the shutter (:data:`SHUTTER`) and the strobe rate
-(Hz).
+sized to the rig), ``fixtures`` (``number``, ``name``, ``kind``, ``cells``,
+``loc``), in show order, ``scenery`` (each model file of the plot once:
+``file``, ``format``, :data:`MODEL_FORMATS`, and ``at``, a list of where it
+stands, each the twelve numbers of :func:`~busk.importers.mvr.scenery_matrix`'s
+``u``, ``v``, ``w`` and ``o``) and ``notes`` (what the page says of the
+plot). ``look``: ``looks``, one list per fixture in the rig's order: ``r, g,
+b`` of each cell with its intensity in, then pan, tilt, zoom (degrees), the
+shutter (:data:`SHUTTER`) and the strobe rate (Hz).
 """
 
 from __future__ import annotations
 
 import json
+import os
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Final
 
 from busk.engine.loop import Frame
+from busk.importers import ImportFailed
+from busk.importers.mvr import Plot, plot_file, read_plot, scenery_matrix
 from busk.model.common import UniverseId
 from busk.model.fixture import Location
 from busk.model.profile import Capability, FixtureMode, FixtureProfile
-from busk.model.show import Show
+from busk.model.show import Show, StageFrame
 
 type RGB = tuple[float, float, float]
 
@@ -96,6 +118,19 @@ ROWS: Final = {
 
 DECK_HEIGHT: Final = 1.2
 """Metres from the audience's floor to the stage's."""
+
+MODEL_FORMATS: Final = {".glb": "gltf", ".gltf": "gltf", ".3ds": "3ds", "": "3ds"}
+"""The loader the page reads a model with, by its file's extension in lower
+case: a file with none is 3DS (MVR 1.6). A model in any other is not drawn."""
+
+FILE_TYPES: Final = {
+    ".glb": "model/gltf-binary", ".gltf": "model/gltf+json", ".3ds": "application/octet-stream",
+    "": "application/octet-stream", ".bin": "application/octet-stream", ".png": "image/png",
+    ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".bmp": "image/bmp",
+}  # fmt: skip
+"""The files of a plot ``/stage/scenery/`` serves, by extension in lower case,
+and their types: the models, and the buffers and textures a model names. A
+plot is untrusted, so nothing a browser would run (a page, an SVG) is served."""
 
 
 # ==========================================================================
@@ -312,7 +347,12 @@ def place_the_rest(fixtures: list[StageFixture]) -> None:
             fixture.location = {"x": x, "y": y, "z": z, "rx": rx, "ry": 0.0, "rz": 0.0}
 
 
-def rig_message(show: Show, fixtures: list[StageFixture]) -> dict[str, object]:
+def rig_message(
+    show: Show,
+    fixtures: list[StageFixture],
+    scenery: Sequence[dict[str, object]] = (),
+    notes: Sequence[str] = (),
+) -> dict[str, object]:
     """What the page builds the stage from."""
     places = [f.location for f in fixtures if f.location is not None]
     xs = [abs(place["x"]) for place in places] or [0.0]
@@ -324,7 +364,42 @@ def rig_message(show: Show, fixtures: list[StageFixture]) -> dict[str, object]:
                   "height": DECK_HEIGHT},
         "fixtures": [{"number": f.number, "name": f.name, "kind": f.kind, "cells": f.elements,
                       "loc": f.location} for f in fixtures],
+        "scenery": list(scenery),
+        "notes": list(notes),
     }  # fmt: skip
+
+
+def scenery_models(plot: Plot, frame: StageFrame) -> tuple[list[dict[str, object]], int]:
+    """The ``rig`` message's ``scenery``: each model file of ``plot`` once,
+    in the plot's order, with every place it stands through ``frame``; and
+    how many of the plot's models are in no format the page reads."""
+    formats: dict[str, str] = {}
+    places: dict[str, list[list[float]]] = defaultdict(list)
+    unread = 0
+    for item in plot.scenery:
+        form = MODEL_FORMATS.get(os.path.splitext(item.model)[1].lower())
+        if form is None:
+            unread += 1
+            continue
+        formats[item.model] = form
+        at = scenery_matrix(item.matrix, frame)
+        axes = [round(x, 6) + 0.0 for axis in (at.u, at.v, at.w) for x in axis]
+        places[item.model].append(axes + [round(x, 4) + 0.0 for x in at.o])
+    models: list[dict[str, object]] = [
+        {"file": file, "format": form, "at": places[file]} for file, form in formats.items()
+    ]
+    return models, unread
+
+
+def scenery_file(plot: Path, name: str) -> tuple[bytes, str] | None:
+    """The file ``name`` of the plot at ``plot`` as ``/stage/scenery/``
+    serves it, with its type (:data:`FILE_TYPES`); ``None`` for a file it
+    does not serve, or the plot does not have."""
+    kind = FILE_TYPES.get(os.path.splitext(name)[1].lower())
+    if kind is None:
+        return None
+    data = plot_file(plot, name)
+    return None if data is None else (data, kind)
 
 
 def dumps(message: dict[str, object]) -> str:
@@ -345,30 +420,39 @@ class StageFeed:
 
     def __init__(self) -> None:
         self._show: Show | None = None
+        self._path: Path | None = None
         self._fixtures: list[StageFixture] = []
         self._looks: list[list[float]] = []
         self._frame: Frame | None = None
+        self._read: tuple[tuple[str, int, int], Plot | str] | None = None
+        """The plot read last: its file (path, modified, size), and the plot or why not."""
         self.rig: str | None = None
         """The ``rig`` message's text; ``None`` before the first :meth:`update`."""
         self.look: str | None = None
         """The ``look`` message's text; ``None`` before the first :meth:`update`."""
+        self.plot: Path | None = None
+        """The plot file the rig's scenery comes from; ``None`` when there is none."""
 
-    def update(self, show: Show, frame: Frame | None) -> tuple[str | None, str | None]:
-        """Read ``show`` (when it is not the one read last) and ``frame``;
-        return the texts of the ``rig`` and ``look`` messages that changed,
-        ``None`` for one that did not.
+    def update(
+        self, show: Show, frame: Frame | None, path: Path | None = None, *, opened: bool = False
+    ) -> tuple[str | None, str | None]:
+        """Read ``show`` (when it is not the one read last, or a page has
+        ``opened``), its plot and ``frame``; return the texts of the ``rig``
+        and ``look`` messages that changed, ``None`` for one that did not.
+        ``path`` is the show's file, which a relative plot is read from.
 
         Any show change rebuilds the rig (in milliseconds), but the ``rig``
         message changes only when what the page draws does: the page reloads
-        for a new one.
+        for a new one. The plot is read again only when its file has changed.
         """
         rig = look = None
-        rebuilt = show is not self._show
+        rebuilt = show is not self._show or path != self._path or opened
         if rebuilt:
-            self._show = show
+            self._show, self._path = show, path
             self._fixtures = build_rig(show)
             self._looks = [fixture.decode(fixture.resting()) for fixture in self._fixtures]
-            text = dumps(rig_message(show, self._fixtures))
+            scenery, notes = self._scenery(show, path)
+            text = dumps(rig_message(show, self._fixtures, scenery, notes))
             if text != self.rig:
                 self.rig = rig = text
         changed = rebuilt
@@ -390,3 +474,36 @@ class StageFeed:
             if text != self.look:
                 self.look = look = text
         return rig, look
+
+    def _scenery(self, show: Show, path: Path | None) -> tuple[list[dict[str, object]], list[str]]:
+        """The ``rig`` message's ``scenery`` and ``notes`` for ``show``'s plot,
+        read again only when its file has changed; sets :attr:`plot`."""
+        self.plot = None
+        stage = show.get("stage")
+        if stage is None:
+            return [], []
+        said = stage["plot"]
+        file = Path(said) if path is None else path.parent / said  # an absolute plot stays one
+        try:
+            status = file.stat()
+        except OSError:
+            return [], [f"the plot {said} is not there: the stage is drawn without its scenery"]
+        key = (str(file), status.st_mtime_ns, status.st_size)
+        if self._read is None or self._read[0] != key:
+            try:
+                self._read = key, read_plot(file, types=False)
+            except ImportFailed as exc:
+                self._read = key, str(exc)
+        read = self._read[1]
+        if isinstance(read, str):
+            return [], [f"the plot {said} cannot be read ({read}): the stage is drawn without "
+                        "its scenery"]  # fmt: skip
+        self.plot = file
+        models, unread = scenery_models(read, stage["frame"])
+        notes = []
+        if read.sha256 != stage["plotHash"]:
+            notes.append(f"the plot {said} has changed since the rig was imported")
+        if unread:
+            noun = "model" if unread == 1 else "models"
+            notes.append(f"{unread} {noun} of the plot in a format busk does not draw")
+        return models, notes

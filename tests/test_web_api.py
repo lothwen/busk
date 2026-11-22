@@ -15,13 +15,16 @@ import itertools
 import json
 import queue
 import re
+import socket
 import threading
 import time
+from pathlib import Path
 from typing import Any, cast
 
 import pytest
 
 from builders import APPENDIX_A, Doc, compile_doc, load_doc, show_of
+from busk import LiveShow, new_show
 from busk.commands.bus import CommandRejected
 from busk.commands.types import Command, CommandOrigin
 from busk.compiler.compile import CompiledShow, compile_show
@@ -35,7 +38,9 @@ from busk.web.api import PROTOCOL_VERSION, STATE_HZ, WebApi, WebLink, WebSurface
 from busk.web.server import index_page, stage_page
 from busk.web.websocket import WebSocket
 from harness import Harness
-from ws_client import WsClient, request
+from mvr_builder import SPOT, model, scenery
+from test_web_stage import PLOT, TRUSS, club_plot, imported
+from ws_client import Response, WsClient, request
 
 KEY = "Qx7f2LmA"
 REMOTE = "10.0.0.7:51234"
@@ -645,3 +650,91 @@ def test_a_stage_round_trip(surface: WebSurface) -> None:
     assert [m["type"] for m in messages] == ["rig", "look"]
     assert len(messages[1]["looks"]) == len(messages[0]["fixtures"]) == 3
     client.close()
+
+
+def get(port: int | None, path: str) -> Response:
+    assert port is not None
+    connection, response = request(port, path)
+    connection.close()
+    return response
+
+
+def watch(port: int | None, key: str = KEY) -> tuple[WsClient, dict[str, Any]]:
+    """A stage page that opens: its socket, and the rig it gets."""
+    assert port is not None
+    client = WsClient(port, key)
+    while json.loads(client.recv_text())["type"] != "state":
+        pass  # hello, show, state
+    client.send_text(json.dumps({"type": "stage"}))
+    while (message := json.loads(client.recv_text()))["type"] != "rig":
+        pass
+    return client, message
+
+
+def test_the_plot_s_models_are_served_with_the_key_only(link: Link, tmp_path: Path) -> None:
+    show = imported(tmp_path)
+    turned = dataclasses.replace(
+        link.link(), show=lambda: show.show, path=lambda: Path(show.session.path or "")
+    )
+    web = WebSurface(web_surface(), turned, stall=0.3, linger=0.3)
+    assert web.open() is None
+    try:
+        port = web.server.port
+        assert get(port, f"/stage/scenery/truss.glb?k={KEY}").status == 404  # no stage asked yet
+        odd = scenery("SceneObject", "S1", "Set", model("Truss Ø 1.glb"))
+        club_plot(tmp_path, odd, files={"Truss Ø 1.glb": b"glTF odd"})
+        client, rig = watch(port)
+        assert [m["file"] for m in rig["scenery"]] == ["truss.glb", "Truss Ø 1.glb"]
+        served = get(port, f"/stage/scenery/truss.glb?k={KEY}")
+        assert (served.status, served.body) == (200, TRUSS)
+        assert served.headers["content-type"] == "model/gltf-binary"
+        assert served.headers["x-content-type-options"] == "nosniff"
+        assert served.headers["content-security-policy"] == "sandbox"
+        assert get(port, f"/stage/scenery/Truss%20%C3%98%201.glb?k={KEY}").body == b"glTF odd"
+        assert get(port, "/stage/scenery/truss.glb").status == 403
+        assert get(port, f"/stage/scenery/truss.glb?k={KEY}x").status == 403
+        for name in ("GeneralSceneDescription.xml", SPOT, "gone.glb", "..%2Fplots%2Fclub.mvr"):
+            assert get(port, f"/stage/scenery/{name}?k={KEY}").status == 404, name
+        client.close()
+    finally:
+        web.close()
+
+
+def free_port() -> int:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return int(probe.getsockname()[1])
+
+
+def test_busk_run_s_stage_view_draws_the_plot_beside_its_show(tmp_path: Path) -> None:
+    """The runner gives the web surface the show's file, which the plot is
+    relative to; a page that opens reads a changed plot again."""
+    shows = tmp_path / "shows"
+    shows.mkdir()
+    port = free_port()
+    with LiveShow(new_show("Club"), path=shows / "club.show", output=False, surfaces=True,
+                  state_dir=tmp_path) as live:  # fmt: skip
+        assert live.execute(f'rig import "{club_plot(tmp_path)}"').ok
+        assert live.execute(f'surface add web "Phone" port {port} on 127.0.0.1').ok
+        key = (tmp_path / "web-key").read_text().strip()
+        deadline = time.monotonic() + WAIT
+        while True:  # the surface opens on the runner's next look round
+            try:
+                assert get(port, f"/?k={key}").status == 200
+                break
+            except ConnectionRefusedError:
+                assert time.monotonic() < deadline
+                time.sleep(0.05)
+        first, rig = watch(port, key)
+        assert rig["scenery"][0]["file"] == "truss.glb"
+        assert rig["notes"] == []
+        assert get(port, f"/stage/scenery/truss.glb?k={key}").body == TRUSS
+        riser = scenery("SceneObject", "S1", "Riser", model("truss.glb"))
+        club_plot(tmp_path, riser)
+        second, rig = watch(port, key)
+        assert len(rig["scenery"][0]["at"]) == 2
+        assert rig["notes"] == [f"the plot {PLOT} has changed since the rig was imported"]
+        while json.loads(first.recv_text())["type"] != "rig":
+            pass  # the page open before has the new rig too, and reloads
+        first.close()
+        second.close()

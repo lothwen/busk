@@ -13,6 +13,7 @@ removes leaves the presets and cues that use it.
 - [Groups](#groups)
 - [When the plot changes](#when-the-plot-changes)
 - [In the TUI](#in-the-tui)
+- [In the stage view](#in-the-stage-view)
 - [What busk leaves out](#what-busk-leaves-out)
 - [What the show keeps](#what-the-show-keeps)
 
@@ -156,6 +157,27 @@ frame on a first import (the audience's side, and the origin), `cascade` ticked 
 removes fixtures in use, and `[import]`, which sends the `rig import` line. See [the TUI
 guide](tui/guide.md#importing-a-plot).
 
+## In the stage view
+
+The web remote's stage view ([surfaces](surfaces.md#the-stage-view)) draws the plot's trusses,
+supports, set pieces, screens and projectors where the plot puts them, through the same frame
+as the fixtures, in place of busk's own deck, backcloth and trusses. Pools of light land on
+them. The audience's floor is the scenery's lowest point. A wrong frame shows here at once:
+the whole stage stands off to one side, turned, or out in the crowd.
+
+busk reads the scenery from the plot's file each time a view opens, so keep the plot where
+the show says it is (beside the show, as a rule). The show keeps only the plot's path, so it
+stays one small file and runs anywhere; without the plot the view draws busk's deck and says
+so:
+
+```
+the plot ../plots/club.mvr is not there: the stage is drawn without its scenery
+```
+
+When the plot's file has changed since the import, the view draws its scenery as it is now
+and says `the plot ../plots/club.mvr has changed since the rig was imported`: `rig check` it
+to see what else changed. F1's stage page draws no scenery.
+
 ## What busk leaves out
 
 Each of these is a note, in `rig check` and in `rig import`'s reply:
@@ -173,16 +195,20 @@ no attribute for, held at its default, and the like. These run long, so `rig che
 them for each profile (`"Martin Professional MAC Aura XB": 10 notes from its GDTF`) and `rig
 import` lists them, as `profile import` does.
 
-Focus points, gels, gobos and mappings are not read. Trusses, set pieces and screens are read
-but not drawn yet.
+Focus points, gels, gobos and mappings are not read. The fixtures' own 3D models are not
+drawn, and a model of the scenery in a format other than glTF and 3DS is not drawn either (the
+view says how many).
 
 A plot is checked before it is read: an archive of more than 50,000 files, or one that
 unpacks to more than 4 GB, is refused, and so is a scene larger than 64 MB. A GDTF file over
-256 MB is not imported.
+256 MB is not imported, and a model over 256 MB is not drawn. The stage view loads only the
+plot's models and the files they name: nothing else in it is served.
 
 ## What the show keeps
 
 The show keeps where the plot was (relative to the show file's folder when the show has a
 file), a hash of it and the frame, and each fixture keeps the uuid of the plot fixture it
-came from, which is how a later import finds it. A show built from a plot runs anywhere: its
-profiles are in it, as always.
+came from, which is how a later import finds it. Saving the show into another folder keeps
+the path relative to the new file, so the copy still finds the plot. A show built from a plot
+runs anywhere: its profiles are in it, as always, and only the stage view's scenery needs the
+plot.
