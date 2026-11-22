@@ -12,6 +12,7 @@ removes leaves the presets and cues that use it.
 - [What each fixture becomes](#what-each-fixture-becomes)
 - [Groups](#groups)
 - [When the plot changes](#when-the-plot-changes)
+- [In the TUI](#in-the-tui)
 - [What busk leaves out](#what-busk-leaves-out)
 - [What the show keeps](#what-the-show-keeps)
 
@@ -145,6 +146,15 @@ keeps the new frame. A fixture of the show that busk cannot read in the new plot
 missing, say) is left as it is, and a note says so: it is not removed. When nothing changes,
 `rig check` says `nothing to change` and `rig import` is refused; when only the file changed
 (the set, say), `no fixture changes`, and the import keeps the new file's hash.
+
+## In the TUI
+
+F3's `[import plot…]`, or Import plot… in the File menu, does the same without typing a path.
+The file picker opens on `.mvr` files, starting on the plot the rig came from, and the preview
+of each is what `rig check` says of it. Enter on one opens IMPORT PLOT: busk's check, with the
+frame on a first import (the audience's side, and the origin), `cascade` ticked when the import
+removes fixtures in use, and `[import]`, which sends the `rig import` line. See [the TUI
+guide](tui/guide.md#importing-a-plot).
 
 ## What busk leaves out
 

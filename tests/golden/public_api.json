@@ -311,6 +311,7 @@
       "inputs": "property: tuple[SurfaceInput, ...]",
       "output": "property: OutputSnapshot | None",
       "programmer": "property: ProgrammerStatus",
+      "rig_check": "(self, path: str | os.PathLike[str], *, audience: Audience | None = None, origin: tuple[float, float, float] | None = None) -> RigCheck",
       "routes": "property: tuple[RouteStatus, ...] | None",
       "run_script": "(self, path: str | os.PathLike[str], *, each: Callable[[int, int, str, Reply], object] | None = None) -> list[str]",
       "save": "(self, path: str | os.PathLike[str] | None = None) -> CommandResult",
@@ -338,6 +339,7 @@
       "fixture_profiles": "property: tuple[FixtureProfileInfo, ...]",
       "output": "property: OutputSnapshot",
       "programmer": "property: ProgrammerStatus",
+      "rig_check": "(self, path: str | os.PathLike[str], *, audience: Audience | None = None, origin: tuple[float, float, float] | None = None) -> RigCheck",
       "run_script": "(self, path: str | os.PathLike[str], *, each: Callable[[int, int, str, Reply], object] | None = None) -> list[str]",
       "save": "(self, path: str | os.PathLike[str] | None = None) -> CommandResult",
       "session": "property: SessionStatus",
@@ -465,6 +467,22 @@
       "__init__": "(self, text: str, ok: bool = True, quit: bool = False) -> None"
     },
     "module": "busk.console.console"
+  },
+  "RigCheck": {
+    "fields": [
+      "text: str",
+      "first: bool",
+      "audience: Audience",
+      "origin: tuple[float, float, float]",
+      "changes: bool",
+      "cascade: bool",
+      "blocked: tuple[str, ...]"
+    ],
+    "kind": "frozen dataclass",
+    "members": {
+      "__init__": "(self, *, text: str, first: bool, audience: Audience, origin: tuple[float, float, float], changes: bool, cascade: bool, blocked: tuple[str, ...]) -> None"
+    },
+    "module": "busk.console.rig"
   },
   "RouteStatus": {
     "fields": [

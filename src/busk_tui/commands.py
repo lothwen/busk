@@ -501,6 +501,27 @@ def profile_import(path: str) -> Line:
     return Line(f"profile import {quoted(path)}")
 
 
+def rig_import(
+    path: str,
+    audience: str | None = None,
+    origin: tuple[float, float, float] | None = None,
+    cascade: bool = False,
+) -> Line:
+    """``rig import "/home/me/plots/club.mvr" audience +y origin 0 -1500 0
+    cascade``: the plot's rig into the show, or brought up to date, as one
+    undo step (MVR plan); ``audience`` and ``origin`` (millimetres, every
+    digit) only where given, and ``cascade`` to remove fixtures that
+    something uses."""
+    words = [f"rig import {quoted(path)}"]
+    if audience is not None:
+        words.append(f"audience {audience}")
+    if origin is not None:
+        words.append("origin " + " ".join(exact(axis + 0.0) for axis in origin))  # no -0
+    if cascade:
+        words.append("cascade")
+    return Line(" ".join(words))
+
+
 def universe_add(universe: int, name: str | None = None) -> Line:
     """``universe add 2 "Balcony"``; without a name, busk names it (``Universe 2``)."""
     return Line(f"universe add {universe}" + ("" if name is None else f" {quoted(name)}"))

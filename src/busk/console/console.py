@@ -90,7 +90,7 @@ from busk.console.parser import (
     template_defaults,
 )
 from busk.console.prompt import PROMPT, Editing, hints, split
-from busk.console.rig import plan_rig
+from busk.console.rig import RigCheck, RigPlan, plan_rig
 from busk.engine.loop import Frame
 from busk.engine.snapshot import EngineSnapshot
 from busk.importers import ImportFailed
@@ -101,8 +101,8 @@ from busk.model.common import TargetRef
 from busk.model.effect import ColorLayer, EffectDefaults, EffectInstance, EffectLayer
 from busk.model.entry import TargetSpec
 from busk.model.fixture import Fixture
-from busk.model.show import Show, StageFrame, StageSettings
-from busk.session.ids import RandomIds
+from busk.model.show import Audience, Show, StageFrame, StageSettings
+from busk.session.ids import IdFactory, RandomIds
 from busk.session.library import (
     EffectLibrary,
     ProfileLibrary,
@@ -552,29 +552,61 @@ class Console:
         result = self.session.submit(cast(Command, command))
         return _join(*(f"note: {note}" for note in notes), render_result(result), ok=result.ok)
 
+    def rig_check(
+        self,
+        path: Path,
+        audience: Audience | None = None,
+        origin: tuple[float, float, float] | None = None,
+    ) -> RigCheck:
+        """``rig check "<path>"`` with the frame's words given, as a
+        :class:`RigCheck` (GAP-59). Like :meth:`confirmation`, it changes
+        nothing and uses none of the session's ids, and it reads the show
+        once, so a frontend may ask from its own thread. Raises
+        :class:`ImportFailed` for a plot busk cannot read."""
+        plan, frame = self._plan_rig(path, audience, origin, RandomIds())
+        x, y, z = frame["origin"]  # a stored one is a list; in millimetres, as the line reads them
+        return RigCheck(
+            text=plan.check(),
+            first=plan.first,
+            audience=frame["audience"],
+            origin=(float(x), float(y), float(z)),
+            changes=plan.command is not None,
+            cascade=bool(plan.uses),
+            blocked=plan.blocked,
+        )
+
+    def _plan_rig(
+        self,
+        path: Path,
+        audience: Audience | None,
+        origin: tuple[float, float, float] | None,
+        ids: IdFactory,
+    ) -> tuple[RigPlan, StageFrame]:
+        """What ``rig import`` of the plot at ``path`` does, through the frame
+        of the words given, else the show's, else ``0 0 0`` and ``-y``; and
+        that frame. Raises :class:`ImportFailed`."""
+        show = self.session.show  # one read: replaced, never changed, by an edit
+        plot = read_plot(path)
+        kept = show.get("stage")
+        held = kept["frame"] if kept is not None else None
+        frame = StageFrame(
+            origin=origin or (held["origin"] if held else (0.0, 0.0, 0.0)),
+            audience=audience or (held["audience"] if held else "-y"),
+        )
+        stage = StageSettings(plot=self._plot_path(path), plotHash=plot.sha256, frame=frame)
+        return plan_rig(show, plot, stage, ids, path.name), frame
+
     def _rig(self, action: ImportRig) -> Reply:
         """``rig check`` and ``rig import`` (MVR plan Phases 2 and 3): the plot
         is read here, as ``profile import`` reads its file, and
         :func:`plan_rig` says what becomes of it. ``check`` takes ids of its
         own, so it uses none of the session's. An import that cannot run whole
         is refused, a line for each reason, and changes nothing."""
-        show = self.session.show
+        ids = RandomIds() if action.check else self.session.ids
         try:
-            plot = read_plot(action.path)
+            plan, _ = self._plan_rig(action.path, action.audience, action.origin, ids)
         except ImportFailed as exc:
             return Reply(f"error: cannot import {str(action.path)!r}: {exc}", ok=False)
-        kept = show.get("stage")
-        frame = kept["frame"] if kept is not None else None
-        stage = StageSettings(
-            plot=self._plot_path(action.path),
-            plotHash=plot.sha256,
-            frame=StageFrame(
-                origin=action.origin or (frame["origin"] if frame else (0.0, 0.0, 0.0)),
-                audience=action.audience or (frame["audience"] if frame else "-y"),
-            ),
-        )
-        ids = RandomIds() if action.check else self.session.ids
-        plan = plan_rig(show, plot, stage, ids, action.path.name)
         if action.check:
             return Reply(plan.check())
         refusals = plan.refusals(action.cascade)

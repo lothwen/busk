@@ -97,6 +97,18 @@ def offline(directory: Path) -> bytes:
     stops: str | None = expected.error
     assert completed == ["route add 1 sacn "]
     assert (hint, stops, expected.runnable) is not None
+    try:
+        check: busk.RigCheck = show_.rig_check(
+            directory / "club.mvr", audience="+y", origin=(0.0, -1500.0, 0.0)
+        )
+    except busk.ImportFailed as exc:
+        print(exc)
+    else:
+        said: str = check.text
+        placed: tuple[str, tuple[float, float, float]] = (check.audience, check.origin)
+        runs: bool = check.changes and not check.blocked
+        needs: bool = check.first or check.cascade
+        assert (said, placed, runs, needs) is not None
     command: busk.Command = {"type": "BLACKOUT", "on": False}
     nudge: busk.Command = {"type": "ADJUST_ATTRIBUTE", "attribute": "color", "component": "r",
                            "delta": -0.1}  # fmt: skip

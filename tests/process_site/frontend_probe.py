@@ -164,6 +164,9 @@ def run(show: Any, plan: dict[str, Any], records: Records, report: dict[str, Any
     report["colors"] = [[p.number, p.color] for p in show.snapshot.playbacks]
     expected = show.expected("set gobo1 o")  # what the selection's gobos offer
     report["expected"] = [list(expected.words), expected.start]
+    if "plot" in plan:  # GAP-59: the console process reads the plot
+        check = show.rig_check(plan["plot"], audience="+y")
+        report["rig"] = [check.first, check.audience, check.changes, check.text.splitlines()[0]]
     if not wait("the engine's counts", lambda: show.health.ticks > 0):  # once a second
         return
     health = show.health

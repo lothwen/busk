@@ -37,7 +37,8 @@ The TUI runs a `busk.LiveShow` in its own process, or, since GAP-11, is run by `
   the show's file, the undo steps). Since GAP-54 `busk.read_profile(path)` reads a profile file as
   `profile import` would, without importing it, and since GAP-58 `busk.pending_recovery(path)`
   says whether `busk run` would recover a show. Since GAP-57 `run_script(path, each=…)` tells
-  each line of a script as it runs. Since GAP-16 a profile in `LiveShow.show`
+  each line of a script as it runs, and since GAP-59 `rig_check(path)` (`RigCheck`) what `rig
+  import` of a plot would do. Since GAP-16 a profile in `LiveShow.show`
   may have a `category`, and since GAP-17 a playback in the snapshot has the `color` of
   its current cue. The `busk.*` loggers feed the TUI's log pane.
 - **Text is not parsed.** `docs/library.md` says message text (`Reply.text`, CLI output, log
@@ -121,6 +122,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-56](#gap-56-a-script-is-one-undo-step) A script is one undo step | action | important | Import script | **done** 2026-11-21 |
 | [GAP-57](#gap-57-a-script-reports-each-line-as-it-runs) A script reports each line as it runs | read | nice-to-have | Import script | **done** 2026-11-21 |
 | [GAP-58](#gap-58-whether-busk-run-would-recover-a-show) Whether `busk run` would recover a show | read | nice-to-have | launcher, Open recent | **done** 2026-11-21 |
+| [GAP-59](#gap-59-what-rig-import-would-do) What `rig import` would do | read | important | F3, File menu | **done** 2026-11-22 |
 
 ---
 
@@ -3706,3 +3708,49 @@ without `--restarted`'s force.
   with the edits once autosaved, after `kill -9`; `busk run` recovers it, and after its clean
   quit nothing is pending), `tests/test_signatures.py`, `tests/test_public_api.py` and its
   golden, `tests/api_consumer.py`, the library guide's example.
+
+## GAP-59: What `rig import` would do
+
+**Status:** done 2026-11-22 (see **Done** at the end of this section).
+
+Found while building Phase 4 of the MVR plan (`docs/plans/mvr-plan.md`), whose step 9 shows
+`rig check`'s list in a dialog "with an `[import]` button, with `cascade` ticked when needed".
+
+**Needed by:** F3's `[import plot…]` and the File menu's Import plot…: IMPORT PLOT, and the file
+picker's preview of a plot.
+
+**Today:** `rig check "<path>"` says what `rig import` would do, as text. Whether the import
+needs `cascade` (`remove …: used by …, add cascade`), cannot run (`blocked: …`), has nothing to
+do (`nothing to change`), and whether it is a first one, which asks for the frame, are only in
+those words, which the TUI does not parse.
+
+**Engine should provide:** a read of what `rig check` finds, typed: `rig_check(path, *,
+audience=None, origin=None)` on both facades, returning the reply's text with those answers.
+
+**Priority:** important: without it the dialog could not tick `cascade` when it is needed, nor
+stop an import busk refuses.
+
+**TUI until then:** none (built with the gap).
+
+**Done** (2026-11-22). `OfflineShow.rig_check` and `LiveShow.rig_check` (`_Facade`, so `busk
+run`'s show has it too, reading the plot in the console process), and `RigCheck` in
+`src/busk/console/rig.py`, the 50th name of `busk.__all__`.
+
+- **It is `rig check`:** `Console.rig_check` and the line share `_plan_rig` (the plot read, the
+  frame of the words given, else the show's, else `0 0 0` and `-y`, and `plan_rig`), so `text`
+  is the line's reply, word for word.
+- **`RigCheck`:** `text`; `first` (the show has no fixture with `mvrUuid`); `audience` and
+  `origin`, the frame used (floats, a stored origin read from a list); `changes` (the `BATCH`
+  is not `None`: the import would change the show, else busk refuses it as having nothing to
+  do); `cascade` (fixtures removed that something uses); `blocked` (`RigPlan.blocked`, the
+  lines that refuse it even with `cascade`, as text).
+- **It changes nothing:** ids from a factory of its own, the show read once, no lock, so a
+  frontend asks from its own thread. It reads the whole plot, every GDTF imported (90 ms for a
+  plot of 119 fixtures and 7 GDTFs, 0.23 s for one of 74 and 5).
+- **It raises `ImportFailed`** for a plot busk cannot read, with the message the line says
+  after `cannot import '<path>': `. A relative path is read from the current directory, as the
+  line reads it.
+- Tests: `tests/test_rig.py` (the line's text, first and later imports, the frame given and
+  kept, `cascade`, `blocked`, nothing to do, files that fail, a relative path, a `LiveShow`
+  from another thread), `tests/test_frontend.py` (from `busk run`'s console process),
+  `tests/test_public_api.py` and its golden, `tests/api_consumer.py`; the library guide.

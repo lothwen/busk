@@ -22,7 +22,8 @@ It never touches programming.
   audience is on.
 - Groups from the plot's hanging positions (Q3).
 - The plot's truss and set drawn in the web stage view (Q4).
-- F3's `[import plot…]` and a review dialog.
+- F3's `[import plot…]` and a review dialog; on 2026-11-22 the user added Import plot… in the
+  File menu, and the file picker to choose the plot, always.
 - Settling busk's own x axis first: the web and TUI stage views disagree today (§11).
 
 **Out** (§12): export to MVR, MVR-xchange, focus points, multipatch fixtures, fixtures with
@@ -481,6 +482,69 @@ Saved locations, the web view and `examples/festival.busk` are unchanged.
    button, with `cascade` ticked when needed. Update the TUI guide.
    Verify: an e2e test; a pty run on a real show.
 
+**Done** 2026-11-22, on f97c2b4, with the recommended answers and the user's two additions of
+that day: Import plot… in the File menu as well, and the file picker to choose the plot, always.
+- **Engine: GAP-59** (`docs/dev/tui/engine-gaps.md`). The TUI never parses a reply, so whether
+  the import needs `cascade` or is blocked had no typed form. `OfflineShow.rig_check(path, *,
+  audience=None, origin=None)` and `LiveShow.rig_check` return a `RigCheck`: `text` (`rig
+  check`'s reply, word for word), `first`, the frame used (`audience`, `origin`), `changes`,
+  `cascade` and `blocked`. `Console.rig_check` and the line share `_plan_rig`. The 50th public
+  name; it raises `ImportFailed`.
+- **TUI.** The file picker's mode `plot` (`.mvr`; the preview is `plot_text`, the check through
+  the show's frame, read by `ReadPlot` on a worker). IMPORT PLOT is
+  `src/busk_tui/widgets/plot_dialog.py` (`PlotDialog`, `AudienceRow`). `BuskApp.import_plot`
+  opens the picker on `ShowModel.plot` (the show's `stage.plot`, relative to its folder), else
+  in the show's folder, and hands the preview's check to the dialog. It runs the line the
+  dialog closes with (`commands.rig_import`). `Bridge.read_plot` and `plot_read` make
+  `model.PlotRead`. F3's `[import plot…]` (`FixturesPage.ImportPlot`); the File menu's
+  `import_plot`.
+- **Tests.** `tests/tui/test_tui_plot.py` (20: the words, the picker and its preview, where it
+  starts, the dialog starting from the preview's check, a first import's frame and line, a
+  frame back where it started, a change while busk checks, a later import, `cascade`,
+  blocked, nothing to do, a file busk cannot read, the scroll, a small screen, a check that
+  comes back after the dialog closed, F3's button and stop, a script importing, the line busk
+  runs), one e2e test on the real engine
+  (`test_f3_imports_a_plot_and_imports_it_again_on_the_real_engine`), 8 in `tests/test_rig.py`
+  for `rig_check`, the `busk run --frontend` probe. Six F3 tests, the prompt's pane-cursor
+  test and the File menu's rows count the new control. 22 mutations: 19 caught at once, one
+  (the preview's check reused) needed a test, and two showed code that did nothing (an origin
+  turned to floats twice, a guard on `x`), removed.
+- **By hand**, in a pty under `busk run` and `--standalone`, at 150×48, 100×30 and 80×24, on
+  the real `Demostage_MVR.mvr` and `Circle_Stage.mvr` and on the tests' club plot: the
+  picker's preview, the chips and the origin form re-checking, a first import from the menu,
+  the picker on the stored plot from F3, a later import with nothing to change (grey), and
+  one that removes a fixture in a group: `cascade` ticked, unticked (grey, and why), ticked,
+  imported, `moved 1, removed 1 (left 1 group)` in the log.
+- **Calls made while building**, open to veto:
+  1. An engine gap (GAP-59) rather than reading `rig check`'s words.
+  2. The picker's preview of a plot is the whole check, through the show's frame, so moving
+     between two versions of a plot shows what each would change. The dialog starts from that
+     check instead of reading the plot again.
+  3. The picker starts on the plot the rig came from, else in the show's folder. Unlike
+     profiles, it does not remember the plot chosen last in the run.
+  4. The audience chips say where that side is, the plot drawn from above: `-y below`, `+y
+     above`, `-x left`, `+x right`. ← → step them, and wrap round.
+  5. The origin is set in a form of three fields (`[origin…]`, or `o`), not typed in the
+     dialog, so each change is one check.
+  6. A later import shows the frame the show keeps and offers no change to it (the plan asks
+     on the first import only); `rig import … audience …` at the prompt still changes it.
+  7. The line has `audience` and `origin` only where they moved from where they started (the
+     show's frame, else busk's): a plain import is `rig import "<path>"`. The origin is written
+     with every digit (`commands.exact`); the path is absolute, as the picker gives it.
+  8. `[cascade]` shows only when the import needs it, ticked. Unticked, `[import]` is grey and
+     the dialog says why. The key is `x`.
+  9. `[import]` and Enter do nothing, and a line says why, while busk checks, when the import
+     would change nothing, when it is blocked (in red, the `blocked` lines), and when busk
+     cannot read the plot. The dialog stays open: Esc leaves it.
+  10. The check scrolls in 16 rows at most, and fewer when the screen is small, so the buttons
+      show (8 at 80×24). The plot's path is one row, its start cut.
+  11. Import plot… waits while a script imports, as New… does, since its check would be of a
+      show still changing. Import profile… never waited.
+  12. `[import plot…]` is F3's first control, before `[+ add]`, and the pane cursor's first
+      stop.
+  13. Import plot… comes after Import profile… in the File menu, so Close and Quit are a row
+      lower.
+
 ### Phase 5: the stage view's scenery
 
 10. **Scenery.**
@@ -537,6 +601,15 @@ Saved locations, the web view and `examples/festival.busk` are unchanged.
   Phase 5 reads it, Save as should rewrite it, or the show should keep the absolute path too.
 - **The spec's §5.17 never listed `safety`** (Phase 7's optional root key); Phase 2 added
   `stage` there and left `safety` alone.
+- **A GDTF mode whose name ends in a space is never found** (Phase 4, on `Circle_Stage.mvr`: 8
+  Robe Spiiders left out, `"Robe Lighting Robin Spiider" has no mode "Mode 8 - Pixel RGBW"`).
+  The GDTF names the mode `Mode 8 - Pixel RGBW ` with a trailing space, which the GDTF importer
+  keeps. The MVR reader strips the plot's `GDTFMode` (`mvr._text`), so `rig._mode` compares a
+  stripped name with an unstripped one. Not fixed: comparing both stripped is one line.
+- **`--standalone` goes LATE while a plot is read** (Phase 4). The check runs on a worker
+  thread of the TUI, which is the engine's process under `--standalone`, and reading a plot
+  holds the GIL for about 0.1 s: the status bar showed `LATE`. A profile's preview does the
+  same. Under `busk run` the engine has a process of its own, and the walks showed none.
 
 ## 12. After this
 

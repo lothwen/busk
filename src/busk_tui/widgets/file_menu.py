@@ -1,5 +1,6 @@
 """The File menu, under the status bar's ``busk ▾`` badge (file-menu plan
-Phases 2, 3, 7 and 9): a click on the badge or Alt+F opens it. ↑ ↓ move,
+Phases 2, 3, 7 and 9; Import plot…, MVR plan Phase 4): a click on the badge
+or Alt+F opens it. ↑ ↓ move,
 Enter or a click chooses, and Esc, Alt+F or a click outside close it.
 
 It runs nothing: it closes with what was chosen (:data:`FileChoice`), or
@@ -28,6 +29,7 @@ type FileChoice = Literal[
     "save_as",
     "import_script",
     "import_profile",
+    "import_plot",
     "close",
     "quit",
 ]
@@ -40,6 +42,7 @@ ITEMS: Final[tuple[tuple[FileChoice, str, str], ...]] = (
     ("save_as", "Save as…", ""),
     ("import_script", "Import script…", ""),
     ("import_profile", "Import profile…", ""),
+    ("import_plot", "Import plot…", ""),
     ("close", "Close", ""),
     ("quit", "Quit", "Ctrl+Q"),
 )

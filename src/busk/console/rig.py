@@ -59,6 +59,11 @@ what a removal takes from them: the fixtures it adds on a hanging position
 are noted, by whether the show has others of it.
 
 **The stage** (Q4): the plot's file, its hash and the frame, set whole.
+
+**A frontend's preview** (GAP-59 of ``docs/dev/tui/engine-gaps.md``):
+:class:`RigCheck` is ``rig check``'s answer with what a frontend needs to
+offer ``rig import`` without reading the text, from
+:meth:`OfflineShow.rig_check <busk.runner.OfflineShow.rig_check>`.
 """
 
 from __future__ import annotations
@@ -73,13 +78,39 @@ from busk.console.cascade import element_users, fixture_cascade
 from busk.importers.mvr import Plot, PlotAddress, PlotFixture, plot_location
 from busk.model.fixture import Fixture, Location
 from busk.model.profile import FixtureMode, FixtureProfile
-from busk.model.show import Show, StageSettings
+from busk.model.show import Audience, Show, StageSettings
 from busk.session.ids import IdFactory
 from busk.session.programmer import EMPTY
 
 CHANNELS: Final = 512
 NAMED: Final = 3
 """How many fixtures a note names before it counts the rest."""
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class RigCheck:
+    """What ``rig import`` of a plot would do to the show, as ``rig check``
+    says it (GAP-59 of ``docs/dev/tui/engine-gaps.md``).
+
+    ``text`` is ``rig check``'s reply, to show as it is. ``first`` is whether
+    the show has no fixture from a plot yet: the import would be a first
+    one, which makes groups and settles the frame. ``audience`` and
+    ``origin`` (in the plot's millimetres) are the frame the plot was placed
+    through: those asked for, else the show's, else ``-y`` and ``0 0 0``.
+
+    ``changes`` is whether ``rig import`` would change the show; without
+    any, it is refused, having nothing to do. ``cascade`` is whether it
+    removes fixtures that something uses, so that it needs ``cascade``.
+    ``blocked`` says what refuses it even with ``cascade``, a line each, as
+    text to show as it is: with any, it cannot run."""
+
+    text: str
+    first: bool
+    audience: Audience
+    origin: tuple[float, float, float]
+    changes: bool
+    cascade: bool
+    blocked: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)

@@ -465,8 +465,23 @@ else:                                          # the frontend's own hint row
     hints.show(found.words, found.values, found.error)
 ```
 
+`rig_check(path)` says what `rig import "<path>"` of a plot would do, as `rig check` says
+it ([Plots](plots.md)), for a frontend that offers the import without reading the text:
+`text` is the reply, to show as it is; `first` says the import would be a first one, which
+settles the frame; `audience` and `origin` are the frame the plot was placed through (those
+given, else the show's, else `-y` and `0 0 0`); `changes` says it would change the show,
+`cascade` that it needs `cascade`, and `blocked` why it is refused even so, a line each, as
+text. Asking changes nothing, and it reads the whole plot, so not on a thread that must not
+wait:
+
+```python
+check = live.rig_check("plots/club-v2.mvr")
+if check.changes and not check.blocked:        # [import], ticking cascade when it is needed
+    line = 'rig import "plots/club-v2.mvr"' + (" cascade" if check.cascade else "")
+```
+
 **Several threads.** A `LiveShow` may be used from any number of threads at once:
-`execute`, `submit`, `save`, `run_script`, `confirmation`, `expected` and every read.
+`execute`, `submit`, `save`, `run_script`, `confirmation`, `expected`, `rig_check` and every read.
 Lines from different threads run as if one after the other: a line runs whole, and so does
 a script (`source FILE`, `run_script`), so no other thread's line lands in the middle of
 it. Lines from one thread run in the order it sends them. Performance lines are the
@@ -559,7 +574,7 @@ another thread edited was done 32–45 ms after it was due at the 99th percentil
 
 ## Reference
 
-The 49 names of `busk.__all__`. Each has a docstring with the details; path parameters
+The 50 names of `busk.__all__`. Each has a docstring with the details; path parameters
 take `str` or `os.PathLike`.
 
 | Name | What it is |
@@ -572,7 +587,7 @@ take `str` or `os.PathLike`.
 | `read_gdtf` | `read_gdtf(path, *, manufacturer=None) -> ImportReport`: convert a GDTF file |
 | `read_profile` | `read_profile(path) -> ImportReport`: read a GDTF, OFL or busk profile file, as `profile import` does |
 | `ProfileLibrary` | The built-in profiles plus directories of profiles, for `fixture add`: `get(id)`, `find(id or name)`, iteration, `problems` |
-| `OfflineShow` | A show on a clock you drive: `submit`, `execute`, `confirmation`, `expected`, `run_script` (one undo step; `each` follows it line by line), `save`, `tick`, `tracking`; `show`, `warnings`, `snapshot`, `output`, `effects`, `programmer`, `session`, `effect_templates`, `fixture_profiles`, `time` |
+| `OfflineShow` | A show on a clock you drive: `submit`, `execute`, `confirmation`, `expected`, `rig_check`, `run_script` (one undo step; `each` follows it line by line), `save`, `tick`, `tracking`; `show`, `warnings`, `snapshot`, `output`, `effects`, `programmer`, `session`, `effect_templates`, `fixture_profiles`, `time` |
 | `LiveShow` | A show in real time in your process: as `OfflineShow`, with `start`, `stop` and `with`, `frame` instead of `tick`, `routes`, `surfaces`, `inputs` and `health` |
 | `pending_recovery` | `pending_recovery(path, *, state_dir=None) -> PendingRecovery or None`: whether `busk run` would recover the show at `path` |
 | `DmxFrame` | One engine output: `seq`, `time`, and `universes`, a mapping of universe number to 512 bytes |
@@ -596,6 +611,7 @@ take `str` or `os.PathLike`.
 | `FixtureProfileInfo` | One fixture profile `fixture add` takes: `name` (as it takes it), `id`, `source` (`"show"` or `"library"`), `manufacturer`, `revision`, `library_revision` (`None` when the library has no such profile; where the two differ, `profile update` has work), `modes` |
 | `FixtureModeInfo` | One mode of it: `name` (as `fixture add` takes it), `footprint` (the channels it takes), `elements` (how many) |
 | `Expected` | What `expected(line)` returns, about the word being typed at the end of the line: `words` (the keywords and names that may come there and that it starts), `values` (anything else, described), `runnable` (the line before it runs as it is), `error` (the mistake that stops it, or `None`), `start` (where that word starts) |
+| `RigCheck` | What `rig_check(path, *, audience=None, origin=None)` returns, what `rig import` of a plot would do: `text` (what `rig check` prints), `first` (the show has no fixture from a plot yet), `audience` and `origin` (the frame the plot was placed through, in its millimetres), `changes` (the import changes the show), `cascade` (it needs `cascade`), `blocked` (why it is refused even so, a line each) |
 | `ProgrammerStatus` | The programmer: `version`, `selection` (`(number, element)` pairs), `blind`, `highlight`, `fadeTime`, `values`, `effects` (as the show file holds them), `stopped` (the ids of the stopped effects) |
 | `ProgrammerValue` | One value in it: `number`, `element`, `attribute`, `value` (in the show's units), `preset` (`(pool, number, name)`, or `None`) |
 | `SessionStatus` | The session: `dirty` (unsaved edits), `path` (the absolute path `save` writes, or `None`), `undoSteps`, `redoSteps`, `nextUndo` and `nextRedo` (the labels `undo` and `redo` would print, or `None`), `showVersion` and `programmerVersion` (each grows with a change) |
@@ -638,6 +654,7 @@ BuskError(Exception)
 | `submit`, `execute`, `save` | nothing: the result has `ok=False` |
 | `run_script` | `ScriptError`, `OSError`; whatever its `each` raises, which stops the script there |
 | `pending_recovery` | nothing: `None` also for a file it cannot read |
+| `rig_check` | `ImportFailed`, also for a file that cannot be read |
 | `OfflineShow.tick` | `ValueError` (time going back) |
 | `LiveShow.start` | `RuntimeError` (started before). Routes and surfaces that fail to open are logged and retried, as in `busk run` |
 

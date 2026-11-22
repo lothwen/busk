@@ -716,6 +716,33 @@ class ProfileRead:
 
 
 @dataclass(frozen=True, slots=True)
+class PlotRead:
+    """What ``rig import`` of the plot at ``path`` would do to the show, as
+    ``rig check`` says it (busk's ``rig_check``, GAP-59; MVR plan Phase 4):
+    ``text``, to show as it is; whether it is a ``first`` import, which
+    settles the frame; the frame it placed the plot through (``audience``
+    and ``origin``, in the plot's millimetres); whether the import
+    ``changes`` the show, needs ``cascade``, or is ``blocked`` (why, a line
+    each). ``problem``: why busk cannot read the plot."""
+
+    path: Path
+    text: str = ""
+    first: bool = True
+    audience: str = "-y"
+    origin: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    changes: bool = False
+    cascade: bool = False
+    blocked: tuple[str, ...] = ()
+    problem: str | None = None
+
+    @property
+    def runs(self) -> bool:
+        """Whether ``rig import`` can run: it changes the show, and nothing
+        but ``cascade`` stands in its way."""
+        return self.problem is None and self.changes and not self.blocked
+
+
+@dataclass(frozen=True, slots=True)
 class ShowRead:
     """What busk reads in a show file, loaded and compiled as ``busk run``
     does (file-menu plan call 13): its title (``None`` if busk could not
@@ -779,6 +806,7 @@ class ShowModel:
     choices: tuple[ProfileChoice, ...] = ()  # what fixture add takes
     park: tuple[Parked, ...] = ()  # in show order
     strobeMaxHz: float | None = None  # the strobe cap (safety strobe); None: off
+    plot: str | None = None  # the plot the rig came from, as the show keeps its path
 
     def group(self, number: int) -> GroupInfo | None:
         return next((info for info in self.groups if info.number == number), None)
@@ -1023,7 +1051,8 @@ def newest_only(events: list[BridgeEvent]) -> list[BridgeEvent]:
 class BridgeLike(Protocol):
     """What the UI calls (the real :class:`~busk_tui.bridge.Bridge`, and the
     tests' fake). Every member is safe on the UI thread and returns at once,
-    but the two that read files (``read_profile``, ``read_show``)."""
+    but the three that read files (``read_profile``, ``read_show``,
+    ``read_plot``)."""
 
     def start(self) -> None: ...
 
@@ -1070,4 +1099,15 @@ class BridgeLike(Protocol):
     def read_show(self, path: Path) -> ShowRead:
         """What busk reads in the show file at ``path``, and whether it can
         be opened. It reads and compiles the show: on a worker thread."""
+        ...
+
+    def read_plot(
+        self,
+        path: Path,
+        audience: str | None = None,
+        origin: tuple[float, float, float] | None = None,
+    ) -> PlotRead:
+        """What ``rig import`` of the plot at ``path`` would do, through
+        the frame given, else the show's. It reads the whole plot: on a
+        worker thread."""
         ...

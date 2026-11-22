@@ -22,6 +22,10 @@ the app with :attr:`BuskApp.next_show` set, and the one that started it
 starts that show next: ``busk-tui``'s parent process (:mod:`busk_tui.parent`),
 or ``--standalone``'s loop. Close (Phase 9) ends it with the launcher next.
 
+**Import plot…** and F3's ``[import plot…]`` (MVR plan Phase 4) choose a
+plot in the file picker and show what busk would do with it, in IMPORT
+PLOT, before its ``rig import`` line runs.
+
 **Import script…** (file-menu plan Phase 7) runs a script through the bridge:
 each line goes to the log as it runs, with its reply, and the hint row is a
 bar until it ends. Meanwhile the lines sent wait for it, and another show
@@ -72,6 +76,7 @@ from busk_tui.model import (
     LiveState,
     Origin,
     OutputChanged,
+    PlotRead,
     ProgrammerChanged,
     ProgrammerModel,
     Recovery,
@@ -98,6 +103,7 @@ from busk_tui.pages.program import ProgramPage
 from busk_tui.pages.surfaces import SurfacesPage
 from busk_tui.widgets.controls import (
     FillPrompt,
+    ReadPlot,
     ReadProfile,
     ReadRecovery,
     ReadShow,
@@ -117,6 +123,7 @@ from busk_tui.widgets.frame import PAGES, KeyLegend, StatusBar, TabBar
 from busk_tui.widgets.help import HelpOverlay
 from busk_tui.widgets.log import LogView
 from busk_tui.widgets.playbacks import PlaybackRow
+from busk_tui.widgets.plot_dialog import PlotDialog
 from busk_tui.widgets.profile_picker import ProfileDialog
 from busk_tui.widgets.prompt import HintRow, Prompt, PromptRow
 from busk_tui.widgets.show_dialogs import (
@@ -615,6 +622,21 @@ class BuskApp(App[int]):
 
         self.run_worker(read, thread=True, group="read-profile")
 
+    def on_read_plot(self, message: ReadPlot) -> None:
+        """A plot to check before it is imported (the file picker, IMPORT
+        PLOT): busk reads it on a worker thread, and ``then`` gets what
+        ``rig import`` would do."""
+        message.stop()
+        bridge, then = self.bridge, message.then
+        path, audience, origin = message.path, message.audience, message.origin
+
+        def read() -> None:
+            found = bridge.read_plot(path, audience, origin)
+            if not get_current_worker().is_cancelled:
+                self.call_from_thread(then, found)
+
+        self.run_worker(read, thread=True, group="read-plot")
+
     def on_read_show(self, message: ReadShow) -> None:
         """A show file to show before it is opened (the file picker, Open
         recent…): busk reads it on a worker thread, and ``then`` gets what it
@@ -863,6 +885,8 @@ class BuskApp(App[int]):
                 self.import_script()
             case "import_profile":
                 self.import_profile()
+            case "import_plot":
+                self.import_plot()
             case "close":
                 self.close_show()
             case "quit":
@@ -930,6 +954,41 @@ class BuskApp(App[int]):
                 self._run(commands.profile_import(str(path)))
 
         self.push_screen(files, chosen)
+
+    def import_plot(self) -> None:
+        """Import plot… and F3's ``[import plot…]`` (MVR plan Phase 4): the
+        file picker on plots, on the plot the rig came from if the show has
+        one, else in the show's folder; then IMPORT PLOT, which has busk
+        check it, and the ``rig import`` line it closes with. Not while a
+        script imports: its check would be of a show still changing."""
+        if self._held("import a plot"):
+            return
+        own = self._own_file()
+        home = Path.cwd() if own is None else own.parent
+        stored = None if self.view.show is None else self.view.show.plot
+        if stored is not None:
+            plot = home / stored  # relative to the show's folder, or absolute
+            files = FileDialog(plot.parent, plot.name, "plot")
+        else:
+            files = FileDialog(home, mode="plot")
+
+        def chosen(path: Path | None) -> None:
+            if path is None:
+                return
+            found = files.read.get(path)  # the preview's check, through the show's frame
+            self.push_screen(
+                PlotDialog(path, found if isinstance(found, PlotRead) else None), self._run_plot
+            )
+
+        self.push_screen(files, chosen)
+
+    def _run_plot(self, line: commands.Line | None) -> None:
+        if line is not None:
+            self.run_line(line.text, "ui")
+
+    def on_fixtures_page_import_plot(self, message: FixturesPage.ImportPlot) -> None:
+        message.stop()
+        self.import_plot()
 
     def _held(self, what: str) -> bool:
         """Whether a script imports, which ``what`` waits for: the log says

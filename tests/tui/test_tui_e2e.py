@@ -22,7 +22,8 @@
   place on its map; F7 makes a master of each kind, renames one, shows busk's
   refusal of one in use and deletes one a binding drives; F2's option chips set
   a gobo, F7 caps the strobe and takes the cap away, and the status bar's
-  title renames the show; a new show gets a rig from controls alone.
+  title renames the show; a new show gets a rig from controls alone, and
+  another from a plot, through F3's ``[import plot…]``, and again.
 * On a show with an OSC surface open (``--standalone``): F9's MONITOR shows
   what comes in, a fader's moves on one line, BINDINGS the last number its
   control sent, and learn mode binds a control that came in.
@@ -117,6 +118,7 @@ from busk_tui.widgets.playback_panel import (
     PlaybackPanel,
 )
 from busk_tui.widgets.playbacks import PlaybackRow
+from busk_tui.widgets.plot_dialog import PlotDialog
 from busk_tui.widgets.preset_panel import Chosen
 from busk_tui.widgets.profile_picker import ProfileDialog
 from busk_tui.widgets.programmer import ProgrammerTable
@@ -126,6 +128,9 @@ from busk_tui.widgets.template_panel import NewTemplateDialog, TemplatePanel
 from busk_tui.widgets.tiles import PresetTile
 from busk_tui.widgets.trackpanel import TrackTable
 from sacn_receiver import Receiver
+from test_rig import CHECK as RIG_CHECK
+from test_rig import again as rig_again
+from test_rig import club as rig_club
 
 WAIT_S = 15.0
 
@@ -1057,6 +1062,80 @@ def test_a_new_show_gets_its_rig_from_controls_on_the_real_engine(tmp_path: Path
         await until(pilot, lambda: [f.number for f in rig()] == [1, 2, 4])
         await pilot.press(*"undo", "enter")
         await until(pilot, lambda: [f.number for f in rig()] == [1, 2, 3, 4])
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def test_f3_imports_a_plot_and_imports_it_again_on_the_real_engine(tmp_path: Path) -> None:
+    """MVR plan Phase 4: F3's ``[import plot…]``, the file picker on plots
+    previewing busk's check, IMPORT PLOT with the frame turned, and the rig
+    on F3. The designer's next plot: the picker starts on the plot the rig
+    came from, the frame is the show's, the import needs ``cascade``,
+    ticked; one Ctrl+Z takes it back."""
+    path = tmp_path / "club.show"
+    busk.save_show(busk.new_show("Club"), path, backups=False)
+    plot = rig_club(tmp_path)
+    v2 = rig_again(tmp_path, changes={"f103": None})  # 103 is in group LX1
+    bridge = Bridge.standalone(path, output=False, surfaces=False)
+    app = BuskApp(bridge, config.Settings(page=3), standalone=True)
+
+    def numbers() -> list[int]:
+        show = app.view.show
+        return [] if show is None else sorted(f.number for f in show.fixtures)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await until(pilot, lambda: app.view.show is not None)
+        page = app.query_one(FixturesPage)
+        log = app.query_one(LogView)
+        await tap(pilot, page.plot_button)
+        await until(pilot, lambda: isinstance(app.screen, FileDialog))
+        files = app.screen
+        assert isinstance(files, FileDialog)
+        assert (files.mode, files.folder) == ("plot", tmp_path)
+        await pilot.press(*"plots", "right", *"club.mvr")
+        await until(pilot, lambda: plain_of(files.preview) == RIG_CHECK)
+        await pilot.press("enter")
+        await until(pilot, lambda: isinstance(app.screen, PlotDialog))
+        dialog = app.screen
+        assert isinstance(dialog, PlotDialog)
+        await until(pilot, lambda: dialog.found is not None)
+        assert (dialog.first, plain_of(dialog.check)) == (True, RIG_CHECK)
+        await pilot.press("right")  # audience +y
+        await until(pilot, lambda: not dialog.checking and not dialog.send.inert)
+        await pilot.press("enter")
+        await until(pilot, lambda: numbers() == [101, 102, 103, 201, 202])
+        assert ("ui", f'rig import "{plot}" audience +y') in log.entries
+        show = app.view.show
+        assert show is not None
+        assert show.plot == "plots/club.mvr"
+        assert [group.name for group in show.groups] == ["LX1", "LX2"]
+
+        await tap(pilot, page.plot_button)
+        await until(pilot, lambda: isinstance(app.screen, FileDialog))
+        files = app.screen
+        assert isinstance(files, FileDialog)
+        assert (files.folder, files.current()) == (plot.parent, Entry("club.mvr", False))
+        await pilot.press("up")  # club-v2.mvr
+        await until(pilot, lambda: "remove 1: 103" in plain_of(files.preview))
+        await pilot.press("enter")
+        await until(pilot, lambda: isinstance(app.screen, PlotDialog))
+        dialog = app.screen
+        assert isinstance(dialog, PlotDialog)
+        await until(pilot, lambda: dialog.found is not None)
+        assert not dialog.first
+        assert plain_of(dialog.frame) == (
+            "frame: audience +y · origin 0 0 0 mm, as the show keeps it"
+        )
+        assert dialog.cascade_row.display
+        assert dialog.tick.reverse
+        await pilot.press("enter")
+        await until(pilot, lambda: numbers() == [101, 102, 201, 202])
+        assert ("ui", f'rig import "{v2}" cascade') in log.entries
+        await pilot.press("ctrl+z")
+        await until(pilot, lambda: numbers() == [101, 102, 103, 201, 202])
 
     try:
         drive(app, body)

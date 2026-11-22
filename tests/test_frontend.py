@@ -74,6 +74,7 @@ from busk.process.wire import (
     send,
 )
 from busk.session.library import ProfileLibrary
+from mvr_builder import fixture, layer, plot, scene
 from process_harness import BuskRun
 from sacn_receiver import Receiver
 from test_links import Host, appendix, command, until
@@ -436,6 +437,7 @@ def test_busk_run_calls_the_frontend_with_its_show(
         colorOf=3,
         records=["universe 7"],  # the root's line for the new route
         routes=2,
+        plot=str(plot(tmp_path / "club.mvr", scene(layer("L1", "L", fixture("f1", "A"))))),
     )
     show = run_show(tmp_path)
     with BuskRun(show, *frontend(tmp_path, "--no-log"), sacn_port=receiver.port) as busk:
@@ -459,6 +461,8 @@ def test_busk_run_calls_the_frontend_with_its_show(
     assert report["categories"] == [["Generic Spot 16ch", None], ["RGB Par 3ch", "par"]]
     assert report["colors"] == [[1, None], [3, [0.0, 0.0, 1.0]], [6, None]]  # Blue; an effect
     assert report["expected"] == [["open"], 10]  # fixture 101's gobo1, in the console process
+    rig = [True, "+y", True, "the plot has 1 fixture, 1 profile and 0 universes"]
+    assert report["rig"] == rig
     assert report["health"] == ["running", True]
     said = [message for name, level, message in report["records"] if name == "busk.run"]
     assert any(message.startswith(f"sACN {route}: U1 Stage → universe 7") for message in said)

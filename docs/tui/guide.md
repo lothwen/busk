@@ -7,7 +7,7 @@ log, so what the UI does is what you could type.
 
 > **What it covers.** The frame (the status bar, the log, the prompt with hints and completion,
 > the help overlay, the dialogs and [the File menu](#the-file-menu): a new show, open another,
-> save, save as, import a script or a profile) and every page: [F1 Busk](#f1-busk), to play the show, in
+> save, save as, import a script, a profile or a plot) and every page: [F1 Busk](#f1-busk), to play the show, in
 > three layouts, A (console), B (stack) and C (stage), [F2 Program](#f2-program) and
 > [F6 Presets](#f6-presets), to build a look, [F4 Cues](#f4-cues) and [F5 Effects](#f5-effects),
 > [F7 Masters](#f7-masters), and the rig: [F3 Fixtures](#f3-fixtures), [F8 Patch](#f8-patch)
@@ -553,10 +553,11 @@ With the pane cursor (Tab on an empty prompt), a row's name puts its `set` in th
 ## F3 Fixtures
 
 Every fixture, with its patch and what it outputs now. `[edit]` opens the FIXTURE panel, which
-changes any of them, and `[+ add]` adds new ones.
+changes any of them, `[+ add]` adds new ones, and `[import plot…]` brings them from a plot
+([below](#importing-a-plot)).
 
 ```
- 7 fixtures · 2 selected · click selects, Shift-click adds                                                           [+ add] [edit]
+ 7 fixtures · 2 selected · click selects, Shift-click adds                                           [import plot…] [+ add] [edit]
 
  ┌─ FIXTURES ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
  │      # name                   profile                 type   mode      patch   intensity colour         pan  tilt zoom src     │
@@ -593,7 +594,8 @@ drives the value, as busk outputs it, and one parked element is enough for the f
 
 A click on a row selects the fixture (`sel fixture 101`); Shift-click adds it to the
 selection, or takes it out when it is in (`sel + fixture 101`, `sel - fixture 101`). The pane
-cursor stops on `[+ add]`, `[edit]` and each row (Enter selects it, and the cursor stays).
+cursor stops on `[import plot…]`, `[+ add]`, `[edit]` and each row (Enter selects it, and the
+cursor stays).
 
 ### Edit mode and the FIXTURE panel
 
@@ -605,7 +607,7 @@ fixture clicked last, whose number is lit: several selected rows look alike. The
 [GROUPS](#groups) panel is under the table.
 
 ```
- 7 fixtures · 2 selected · click chooses, Shift-click adds to the selection                                        [+ add] [edit ●]
+ 7 fixtures · 2 selected · click chooses, Shift-click adds to the selection                        [import plot…] [+ add] [edit ●]
 
  ┌─ FIXTURES ────────────────────────────────────────────────────────────────┐ ┌─ FIXTURE · 102 Spot 102 ─────────────────────────┐
  │      # name          profile         mode      patch   limits       place │ │ [rename…] [number…] [delete 101 thru 102]        │
@@ -781,6 +783,65 @@ other way round.
 The pane cursor stops on `[record…]`, each group, then the chosen group's controls, after the
 table's rows and before the FIXTURE panel. Below 100 columns the GROUPS panel comes between the
 table and the FIXTURE panel.
+
+### Importing a plot
+
+`[import plot…]`, in the header, or Import plot… in [the File menu](#the-file-menu), builds the
+rig from a plot, an MVR file a lighting designer draws in CAD, and brings it up to date when
+the designer sends the plot again. It runs `rig import`, which [Plots](../plots.md) explains:
+what each fixture becomes, the frame, groups and what busk leaves out.
+
+It opens the file picker (the profile picker's `[import…]`, above) on `.mvr` files, on the plot
+the rig came from if the show has one, else in the show's folder. Other files are dimmed. The
+preview of a plot is what `rig check` says of it: what the import would add, change and
+remove, its notes, and the fixtures' span in metres, or, in red, why busk cannot read it.
+Enter on a plot opens IMPORT PLOT:
+
+```
+┌─ IMPORT PLOT ────────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                                  │
+│  ~/shows/plots/club.mvr                                                                          │
+│                                                                                                  │
+│  audience  [-y below] [+y above] [-x left] [+x right]  where it is, the plot drawn from above    │
+│  origin    0 0 0 mm [origin…]  where busk's downstage centre is in the plot                      │
+│                                                                                                  │
+│  the plot has 5 fixtures, 1 profile and 2 universes                                              │
+│    add 5: 101–103, 201, 202                                                                      │
+│    profiles to add: "Acme Spot"                                                                  │
+│    universes to add: 1, 2                                                                        │
+│    groups to add: "LX1", "LX2"                                                                   │
+│  fixtures span x -2.0…2.0, y 0.0…2.0, z 6.0…7.0 m                                                │
+│                                                                                                  │
+│  busk> rig import "/home/me/shows/plots/club.mvr"                                                │
+│                                                                                                  │
+│  [import]  [cancel]                                                                              │
+│  ← →: audience · o: origin · Enter: import · Esc: cancel                                         │
+│                                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**The first import** asks for the frame that puts the plot on busk's stage ([Where the stage
+is](../plots.md#where-the-stage-is)): the side of the plot the audience is on, as the plot is
+drawn from above (+y up the page), and where busk's origin, the middle of the downstage edge at
+deck height, is in the plot, in millimetres (`[origin…]`, or `o`, opens a form of three). ← →
+move the audience. Each change has busk check the plot again, so the span line shows a frame
+that is wrong (the rig 20 m away, or behind the audience) before anything is imported. The line
+under the check gets `audience` and `origin` where you moved them.
+
+**A later import**, into a show with fixtures from a plot, shows the frame the show keeps
+(`frame: audience -y · origin 0 0 0 mm, as the show keeps it`): another frame moves every
+fixture of the plot, and is for the prompt (`rig import "…" audience +y`). When the import
+removes fixtures that something uses (`remove 1: 103: used by 1 group, add cascade`),
+`[cascade]` shows, ticked, and the line ends in `cascade`: those fixtures go as `delete fixture
+N cascade` takes them. `x` or a click unticks it, and then the import cannot run, as busk
+would refuse it.
+
+`[import]`, or Enter, sends the line, and busk's reply goes to the log, as one undo step. It
+is grey, and the dialog says why, while busk checks the frame shown, when the import would
+change nothing (`the rig is already as the plot has it`), and when busk refuses it even with
+`cascade` (a mode that loses cells in use: `blocked:` in the check). The check scrolls when it
+is longer than the screen leaves it room for. While a script imports, `[import plot…]` waits for
+it, as New… does.
 
 ## F4 Cues
 
@@ -1519,6 +1580,7 @@ A click on the `busk ▾` badge, or Alt+F, opens it under the badge:
 | Save as… | | The show to another file, as a new show (below). |
 | Import script… | | A console script, run as `source` runs it, each line in the log as it runs (below). |
 | Import profile… | | A fixture profile from a file, into the show (below). |
+| Import plot… | | The rig from a plot, an MVR file, as F3's `[import plot…]` ([Importing a plot](#importing-a-plot)). |
 | Close | | The show, and back to the [launcher](#the-launcher-busk-tui-without-a-show) ([Opening another show](#opening-another-show)). |
 | Quit | Ctrl+Q | The quit dialog. |
 
@@ -1559,8 +1621,8 @@ take about 8 s this way, and about 4.5 s with no display.
 
 While a script runs, the pages and the performance controls (faders, GO, flash, the masters)
 work, and what they show follows the show 4 times a second. Lines you type, and the edits the
-pages send, wait for it, and run once it ends, in order. New…, Open…, Open recent…, Close and another Import script… say in the log that it is
-importing, and do nothing. There is no stop: a script runs to its end or to the first line busk
+pages send, wait for it, and run once it ends, in order. New…, Open…, Open recent…, Close,
+Import plot… and another Import script… say in the log that it is importing, and do nothing. There is no stop: a script runs to its end or to the first line busk
 refuses. Quit's Save and quit saves once it has ended; Quit without saving stops it after the
 line it runs, and the lines that ran stay in the show (under `busk run`, in the newest
 autosave).
@@ -1569,6 +1631,9 @@ autosave).
 profile file chosen last, in either, until busk-tui ends, else in the show's folder. Choosing a
 file sends `profile import "/home/me/fixtures/spot.gdtf"`: the profile comes into the show, as
 one undo step, for `fixture add` and F3's profile picker. What busk answers goes to the log.
+
+**Import plot…** is F3's `[import plot…]`: the file picker on plots, then IMPORT PLOT, which
+shows what `rig import` would do and sends it ([Importing a plot](#importing-a-plot)).
 
 ## Opening another show
 

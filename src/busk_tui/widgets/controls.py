@@ -24,7 +24,7 @@ from textual.widgets import Static
 
 from busk_tui import colors
 from busk_tui.commands import Line
-from busk_tui.model import Origin, ProfileRead, Recovery, ShowRead
+from busk_tui.model import Origin, PlotRead, ProfileRead, Recovery, ShowRead
 
 type Intent = Literal["go", "neutral", "record", "tempo", "danger", "off"]
 
@@ -90,6 +90,26 @@ class ReadShow(Message):
         super().__init__()
         self.path = path
         self.then = then
+
+
+class ReadPlot(Message):
+    """Have busk say what ``rig import`` of the plot at ``path`` would do,
+    through the frame of ``audience`` and ``origin`` where they are given,
+    else the show's, and call ``then`` with it, on the UI thread. The app
+    reads it on a worker thread, as busk reads the whole plot."""
+
+    def __init__(
+        self,
+        path: Path,
+        then: Callable[[PlotRead], None],
+        audience: str | None = None,
+        origin: tuple[float, float, float] | None = None,
+    ) -> None:
+        super().__init__()
+        self.path = path
+        self.then = then
+        self.audience = audience
+        self.origin = origin
 
 
 class ReadRecovery(Message):

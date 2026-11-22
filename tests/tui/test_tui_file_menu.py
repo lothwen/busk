@@ -1,7 +1,8 @@
 """The File menu (``busk_tui.widgets.file_menu``) on the status bar's badge,
 what its items do (Save, Save as…, Import script…, Quit), Ctrl+S, and the
 recent shows the app keeps in ``state.json`` (file-menu plan Phase 2). How an
-import runs, and Import profile…, are in ``test_tui_import.py``."""
+import runs, and Import profile…, are in ``test_tui_import.py``; Import
+plot… is in ``test_tui_plot.py``."""
 
 from __future__ import annotations
 
@@ -73,6 +74,7 @@ def test_a_click_on_the_badge_opens_the_menu_under_it_and_esc_closes_it() -> Non
             "Save as…",
             "Import script…",
             "Import profile…",
+            "Import plot…",
             "Close",
             "Quit Ctrl+Q",
         ]

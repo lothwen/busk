@@ -2,13 +2,15 @@
 and a preview of what the cursor is on), to find a file instead of typing
 its path. It has a mode (:data:`Mode`) for each use: a profile file to
 import (the profile picker's ``[import…]``), a console script to run (the
-File menu's Import script…), the file to save the show as (Save as…), or a
-show to open (Open…).
+File menu's Import script…), the file to save the show as (Save as…), a
+show to open (Open…), or a plot to import (F3's ``[import plot…]`` and the
+File menu's Import plot…).
 
 It starts in a folder, on a name in it (the profile picker's: where
 busk-tui runs, or on the file chosen last). Every entry is listed, folders
 first; a file the mode cannot take (:data:`KINDS`: a profile is a ``.json``
-or a ``.gdtf``, a script a ``.busk``, a show a ``.show`` or a ``.json``) is
+or a ``.gdtf``, a script a ``.busk``, a show a ``.show`` or a ``.json``, a
+plot an ``.mvr``) is
 dimmed, and a hidden one (``.name``) shows only while the filter starts with
 a dot. The keys are the profile picker's: typing filters the folder, ↑ ↓
 PgUp PgDn move, → goes into a folder, ← (or Backspace on an empty filter)
@@ -20,9 +22,12 @@ be read says why.
 The preview of a folder is what it holds. Of a profile file, it is what busk
 reads in it: its maker, name and modes, or why busk cannot import it. Of a
 show file, it is its title, how many fixtures, cue lists and playbacks it
-has, and when it was saved, or why busk cannot open it. The app reads them
-on a worker thread (:class:`~busk_tui.widgets.controls.ReadProfile`,
-:class:`~busk_tui.widgets.controls.ReadShow`), one file at a time, each
+has, and when it was saved, or why busk cannot open it. Of a plot, it is
+what ``rig import`` would do to the show, as ``rig check`` says it, or why
+busk cannot read it. The app reads them on a worker thread
+(:class:`~busk_tui.widgets.controls.ReadProfile`,
+:class:`~busk_tui.widgets.controls.ReadShow`,
+:class:`~busk_tui.widgets.controls.ReadPlot`), one file at a time, each
 once. Of a script, it is its first lines, which are its comment as a rule.
 
 **Saving**, the field is the file's name, not a filter: it starts with
@@ -54,20 +59,21 @@ from textual.widgets import Input, OptionList, Static
 from textual.widgets.option_list import Option
 
 from busk_tui import colors
-from busk_tui.model import ProfileRead, ShowRead
-from busk_tui.widgets.controls import ReadProfile, ReadShow
+from busk_tui.model import PlotRead, ProfileRead, ShowRead
+from busk_tui.widgets.controls import ReadPlot, ReadProfile, ReadShow
 from busk_tui.widgets.dialogs import dialog_css
 from busk_tui.widgets.group_panel import plural
 
-type Mode = Literal["profile", "script", "save", "open"]
+type Mode = Literal["profile", "script", "save", "open", "plot"]
 """What the picker finds: a profile file to import, a script to run, the
-file to save the show as, or a show to open."""
+file to save the show as, a show to open, or a plot to import."""
 
 KINDS: Final[dict[Mode, tuple[str, ...]]] = {
     "profile": (".json", ".gdtf"),  # as ``profile import`` tells them apart
     "script": (".busk",),  # by convention: ``source`` runs any file
     "save": (".show", ".json"),  # what ``save`` writes
     "open": (".show", ".json"),  # what ``busk run`` loads
+    "plot": (".mvr",),  # what ``rig import`` reads
 }
 """The files each mode takes, by suffix."""
 FILES: Final = "an OFL .json, a .gdtf or a busk profile .json"
@@ -76,12 +82,14 @@ TITLES: Final[dict[Mode, str]] = {
     "script": "IMPORT SCRIPT",
     "save": "SAVE AS",
     "open": "OPEN SHOW",
+    "plot": "IMPORT PLOT",
 }
 NOTES: Final[dict[Mode, str]] = {
     "profile": f"busk imports {FILES}; other files are dimmed",
     "script": "busk runs a .busk script of console lines, as source does; other files are dimmed",
     "save": "busk saves a .show or a .json file; a name without either gets .show",
     "open": "busk opens a .show or a .json show file; other files are dimmed",
+    "plot": "busk imports an MVR plot (.mvr) as rig import does; other files are dimmed",
 }
 KEYS: Final[dict[Mode, str]] = {
     "profile": "type: filter (from . for hidden) · ↑ ↓: move · →: into · ←: up · "
@@ -92,12 +100,15 @@ KEYS: Final[dict[Mode, str]] = {
     "Enter: into a folder, else save · Esc: cancel",
     "open": "type: filter (from . for hidden) · ↑ ↓: move · →: into · ←: up · "
     "Enter: open · Esc: cancel",
+    "plot": "type: filter (from . for hidden) · ↑ ↓: move · →: into · ←: up · "
+    "Enter: choose · Esc: cancel",
 }
 WHAT: Final[dict[Mode, str]] = {
     "profile": "a profile file",
     "script": "a script",
     "save": "a show file",
     "open": "a show file",
+    "plot": "a plot",
 }
 ROWS: Final = 16
 PAGE: Final = ROWS - 1
@@ -214,6 +225,16 @@ def read_text(found: ProfileRead) -> Text:
     return text
 
 
+def plot_text(found: PlotRead) -> Text:
+    """The preview of a plot: what ``rig import`` would do, as ``rig check``
+    says it, or why busk cannot read it."""
+    if found.problem is not None:
+        text = Text("busk cannot import it:\n", style=colors.RED)
+        text.append(found.problem, style=colors.FG)
+        return text
+    return Text(found.text, style=colors.FG)
+
+
 def show_text(found: ShowRead) -> Text:
     """The preview of a show file: its title, file, size and when it was
     saved, as busk reads them; then why it cannot be opened, if it cannot."""
@@ -321,7 +342,7 @@ class FileDialog(ModalScreen[Path | None]):
         self.entries: tuple[Entry, ...] = ()  # the folder's
         self.shown: tuple[Entry, ...] = ()  # those the filter finds
         self.problem: str | None = None  # why the folder cannot be read
-        self.read: dict[Path, ProfileRead | ShowRead] = {}  # what busk found in each file read
+        self.read: dict[Path, ProfileRead | ShowRead | PlotRead] = {}  # what busk found in each
         self.reading: Path | None = None  # the file busk is reading now
         self.path = PathLine()
         placeholder = "the file's name" if self.saving else "type to filter"
@@ -440,19 +461,24 @@ class FileDialog(ModalScreen[Path | None]):
         elif self.mode == "script":
             self.preview.update(script_text(path))
         elif (found := self.read.get(path)) is not None:
-            self.preview.update(
-                show_text(found) if isinstance(found, ShowRead) else read_text(found)
-            )
+            if isinstance(found, ShowRead):
+                self.preview.update(show_text(found))
+            elif isinstance(found, PlotRead):
+                self.preview.update(plot_text(found))
+            else:
+                self.preview.update(read_text(found))
         else:
             self.preview.update(Text("reading…", style=colors.DIM))
             if self.reading is None:
                 self.reading = path
                 if self.mode == "open":
                     self.post_message(ReadShow(path, self._read))
+                elif self.mode == "plot":
+                    self.post_message(ReadPlot(path, self._read))
                 else:
                     self.post_message(ReadProfile(path, self._read))
 
-    def _read(self, found: ProfileRead | ShowRead) -> None:
+    def _read(self, found: ProfileRead | ShowRead | PlotRead) -> None:
         """What busk found in the file it read: shown if the cursor is on it,
         and the file the cursor is on now read next."""
         path, self.reading = self.reading, None

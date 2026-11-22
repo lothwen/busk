@@ -2,8 +2,10 @@
 fixture, by number, with its patch and its live output
 (:mod:`busk_tui.widgets.fixturetable`), and the FIXTURE panel of edit mode.
 
-A header gives the counts and has ``[+ add]``, which opens the new fixture form
-in edit mode, and the ``[edit]`` toggle. A click on a row
+A header gives the counts and has ``[import plot…]``, which imports a rig
+from a plot (MVR plan Phase 4: the app opens the file picker, then IMPORT
+PLOT), ``[+ add]``, which opens the new fixture form in edit mode, and the
+``[edit]`` toggle. A click on a row
 selects the fixture (``sel fixture 101``) and chooses it; a Shift-click adds
 it to the selection or takes it out (``sel + fixture 101``, ``sel - fixture
 101``) and chooses it. Selecting does not change the stage, so a click means
@@ -28,6 +30,7 @@ from rich.text import Text
 from textual import events
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
+from textual.message import Message
 from textual.widgets import Static
 
 from busk_tui import colors, commands
@@ -68,15 +71,20 @@ class FixturesPage(Page):
     DEFAULT_CSS = """
     FixturesPage #fixtures-head { height: 1; margin-bottom: 1; }
     FixturesPage #fixtures-header { width: 1fr; }
+    FixturesPage #fixtures-plot { margin-right: 1; }
     FixturesPage #fixtures-add { margin-right: 1; }
     FixturesPage #fixtures-body { height: auto; }
     FixturesPage #fixtures-left { width: 1fr; height: auto; }
     FixturesPage #fixtures-legend { margin-top: 1; }
     """
 
+    class ImportPlot(Message):
+        """``[import plot…]``: the app asks for a plot, then imports it."""
+
     def __init__(self, number: int, title: str) -> None:
         super().__init__(number, title)
         self.header = Static("", id="fixtures-header")
+        self.plot_button = ActionButton("import plot…", self.import_plot, id="fixtures-plot")
         self.add_button = ActionButton("+ add", self.add_fixture, id="fixtures-add")
         self.edit = ActionButton("edit", self.toggle_edit, id="fixtures-edit")
         empty = Text(NO_FIXTURES, style=colors.DIM)
@@ -99,6 +107,7 @@ class FixturesPage(Page):
     def compose(self) -> ComposeResult:
         with Horizontal(id="fixtures-head"):
             yield self.header
+            yield self.plot_button
             yield self.add_button
             yield self.edit
         with Horizontal(id="fixtures-body"):
@@ -205,6 +214,9 @@ class FixturesPage(Page):
         self._draw()
         self._draw_header()
 
+    def import_plot(self) -> None:
+        self.post_message(self.ImportPlot())
+
     def add_fixture(self, at: tuple[int, int] | None = None) -> None:
         """``[+ add]``, or F8's ``[add fixture here…]``: edit mode with the new
         fixture form, at ``at`` if given."""
@@ -250,9 +262,9 @@ class FixturesPage(Page):
     # ----------------------------------------------------- pane cursor
 
     def stops(self) -> list[Stop]:
-        """``[+ add]``, the edit toggle, each row, then the GROUPS panel's and the
-        FIXTURE panel's controls."""
-        stops: list[Stop] = []
+        """``[import plot…]``, ``[+ add]``, the edit toggle, each row, then the
+        GROUPS panel's and the FIXTURE panel's controls."""
+        stops = [Stop(Item("import plot…", action=self.import_plot), self.plot_button)]
         if not self.add_button.inert:
             stops.append(Stop(Item("+ add", action=self.add_fixture), self.add_button))
         stops.append(Stop(Item("edit", action=self.toggle_edit), self.edit))

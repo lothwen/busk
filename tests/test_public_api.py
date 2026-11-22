@@ -10,8 +10,9 @@
   (``FixtureProfileInfo``, ``FixtureModeInfo``), the three of GAP-46
   (``TrackedCue``, ``TrackedValue``, ``TrackedEffect``), the one of
   GAP-13 (``SurfaceInput``), the one of GAP-54 (``read_profile``), the
-  one of GAP-03 (``SessionStatus``) and the two of GAP-58
-  (``pending_recovery``, ``PendingRecovery``; ``docs/dev/tui/engine-gaps.md``).
+  one of GAP-03 (``SessionStatus``), the two of GAP-58
+  (``pending_recovery``, ``PendingRecovery``) and the one of GAP-59
+  (``RigCheck``; ``docs/dev/tui/engine-gaps.md``).
   Each resolves lazily from the module of the §5.1 table, and the type
   checkers' re-exports in ``busk/__init__.py`` are the same table.
 * Nothing else is an attribute of ``busk``.
@@ -95,6 +96,7 @@ PUBLIC = [
     "SurfaceInput",
     "SessionStatus",
     "PendingRecovery",
+    "RigCheck",
     "IdFactory",
     "CounterIds",
     # Errors
@@ -111,7 +113,7 @@ after it, GAP-09's two after that, GAP-15's one after them, GAP-20's
 one after it, GAP-21's one after that, GAP-27's two after it, GAP-46's
 three after them, GAP-13's one after those, GAP-03's one after it and
 GAP-58's two: ``pending_recovery`` after ``LiveShow``, ``PendingRecovery``
-after ``SessionStatus``."""
+after ``SessionStatus``; GAP-59's one after it."""
 
 DUNDERS = {"__init__", "__enter__", "__exit__", "__iter__", "__len__", "__str__"}
 """The special methods a public class documents; the rest come from Python."""
@@ -135,7 +137,7 @@ def run(script: str) -> str:
 
 
 def test_all_is_the_planned_list_sorted() -> None:
-    assert len(PUBLIC) == 49
+    assert len(PUBLIC) == 50
     assert busk.__all__ == sorted(PUBLIC)
 
 

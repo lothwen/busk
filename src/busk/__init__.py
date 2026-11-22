@@ -8,7 +8,7 @@ The public API
 ==============
 
 Every public name is importable from ``busk`` itself; ``__all__`` lists the
-49 of them. The library guide, ``docs/library.md``, has the examples and the
+50 of them. The library guide, ``docs/library.md``, has the examples and the
 reference.
 
 Show documents
@@ -32,9 +32,10 @@ Running a show
     templates ``effect add`` takes (:attr:`~OfflineShow.effect_templates`)
     and the fixture profiles
     ``fixture add`` takes (:attr:`~OfflineShow.fixture_profiles`), give a
-    cue list's tracked states (:meth:`~OfflineShow.tracking`), and say
+    cue list's tracked states (:meth:`~OfflineShow.tracking`), say
     what may come next in a line being typed
-    (:meth:`~OfflineShow.expected`); a
+    (:meth:`~OfflineShow.expected`) and what ``rig import`` of a plot would
+    do (:meth:`~OfflineShow.rig_check`); a
     :class:`LiveShow` also shows its output routes
     (:attr:`~LiveShow.routes`), control surfaces
     (:attr:`~LiveShow.surfaces`), what comes in from them
@@ -51,7 +52,7 @@ Data types
     :class:`OutputSnapshot` with :class:`FixtureOutput`;
     :class:`EffectSnapshot` with :class:`EffectStatus`;
     :class:`EffectTemplateInfo`; :class:`FixtureProfileInfo` with
-    :class:`FixtureModeInfo`; :class:`Expected`; :class:`ProgrammerStatus`
+    :class:`FixtureModeInfo`; :class:`Expected`; :class:`RigCheck`; :class:`ProgrammerStatus`
     with :class:`ProgrammerValue`; :class:`SessionStatus`; :class:`TrackedCue` with
     :class:`TrackedValue` and :class:`TrackedEffect`; :class:`RouteStatus`;
     :class:`SurfaceStatus`; :class:`SurfaceInput`; :class:`PendingRecovery`;
@@ -135,6 +136,7 @@ __all__ = [
     "ProgrammerStatus",
     "ProgrammerValue",
     "Reply",
+    "RigCheck",
     "RouteStatus",
     "ScriptError",
     "SessionStatus",
@@ -181,6 +183,7 @@ _EXPORTS: dict[str, str] = {
     "FixtureModeInfo": "busk.console.console",
     "FixtureProfileInfo": "busk.console.console",
     "Expected": "busk.console.parser",
+    "RigCheck": "busk.console.rig",
     "EngineSnapshot": "busk.engine.snapshot",
     "PlaybackStatus": "busk.engine.snapshot",
     "SpeedStatus": "busk.engine.snapshot",
@@ -219,6 +222,7 @@ if TYPE_CHECKING:  # what type checkers see: the same table, as explicit re-expo
     from busk.console.console import Reply as Reply
     from busk.console.inputs import SurfaceInput as SurfaceInput
     from busk.console.parser import Expected as Expected
+    from busk.console.rig import RigCheck as RigCheck
     from busk.engine.snapshot import EffectSnapshot as EffectSnapshot
     from busk.engine.snapshot import EffectStatus as EffectStatus
     from busk.engine.snapshot import EngineSnapshot as EngineSnapshot

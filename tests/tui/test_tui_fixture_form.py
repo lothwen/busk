@@ -1761,6 +1761,7 @@ def test_the_pane_cursor_stops_on_the_form_and_no_inert_control() -> None:
         rows = [f"fixture {f.number} {f.name}" for f in FIXTURES]
         labels = [item.label for item in page.items()]
         assert labels == [
+            "import plot…",
             "edit",
             *rows,
             "choose…",
@@ -1777,7 +1778,7 @@ def test_the_pane_cursor_stops_on_the_form_and_no_inert_control() -> None:
         await pick(pilot, app, form.choose, "rgb")
         await tap(pilot, form.more, app)
         labels = [item.label for item in page.items()]
-        assert labels[len(rows) + 1 : len(rows) + 3] == ["RGB Bar…", "[6ch · 6]"]
+        assert labels[len(rows) + 2 : len(rows) + 4] == ["RGB Bar…", "[6ch · 6]"]
         assert "count −" in labels
         assert labels[-2:] == ["add", "done"]
         assert len(labels) == len(set(labels))

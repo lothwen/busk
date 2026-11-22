@@ -108,6 +108,7 @@ from busk.console.console import (
 )
 from busk.console.inputs import InputLog, SurfaceInput
 from busk.console.parser import Expected
+from busk.console.rig import RigCheck
 from busk.engine.clock import SWITCH_INTERVAL, Clock, FakeClock, MonotonicClock
 from busk.engine.effect_status import EffectCapture, read_effects
 from busk.engine.install import Stamp
@@ -119,7 +120,7 @@ from busk.errors import ScriptError
 from busk.io.bindings import BindingResolver
 from busk.io.feedback import FeedbackWorker
 from busk.io.surfaces import SurfaceManager, SurfaceStatus
-from busk.model.show import Show
+from busk.model.show import Audience, Show
 from busk.model.validate import Issue, has_errors, validate_show
 from busk.output.artnet import ArtNetNetwork
 from busk.output.console import ConsoleOutput
@@ -436,6 +437,29 @@ class _Facade:
         own thread, on every key.
         """
         return self._console.expected(line)
+
+    def rig_check(
+        self,
+        path: str | os.PathLike[str],
+        *,
+        audience: Audience | None = None,
+        origin: tuple[float, float, float] | None = None,
+    ) -> RigCheck:
+        """What ``rig import`` of the plot (an MVR file) at ``path`` would
+        do to the show, as ``rig check "<path>"`` says it, with ``audience
+        …`` and ``origin <x> <y> <z>`` where they are given (GAP-59 of
+        ``docs/dev/tui/engine-gaps.md``): the text of its reply, and what a
+        frontend needs to offer the import without reading it (see
+        :class:`~busk.console.rig.RigCheck`).
+
+        A relative ``path`` is read from the current directory, as the
+        line reads it. Asking changes nothing (no id is used up), and it
+        reads the show once, so a frontend may ask from its own thread; it
+        reads the whole plot, every GDTF in it imported, so not on a thread
+        that must not wait. Raises :class:`~busk.importers.ImportFailed`,
+        saying why, for a file busk cannot read as a plot.
+        """
+        return self._console.rig_check(Path(path), audience, origin)
 
     def run_script(
         self,

@@ -27,7 +27,7 @@ from textual.pilot import Pilot
 
 import busk
 from busk_tui import config
-from busk_tui.bridge import profile_read, show_read
+from busk_tui.bridge import plot_read, profile_read, show_read
 from busk_tui.model import (
     BridgeEvent,
     Busy,
@@ -39,6 +39,7 @@ from busk_tui.model import (
     Origin,
     PageView,
     PlaybackView,
+    PlotRead,
     ProfileRead,
     ProgrammerModel,
     ScriptDone,
@@ -164,6 +165,16 @@ class FakeBridge:
 
     def read_show(self, path: Path) -> ShowRead:
         return show_read(path)
+
+    def read_plot(
+        self,
+        path: Path,
+        audience: str | None = None,
+        origin: tuple[float, float, float] | None = None,
+    ) -> PlotRead:
+        if self.show is None:
+            return PlotRead(path, problem="the show has not started yet")
+        return plot_read(self.show, path, audience, origin)  # busk's own check, of a real file
 
     def lines(self) -> list[str]:
         return [sent.line for sent in self.sent]

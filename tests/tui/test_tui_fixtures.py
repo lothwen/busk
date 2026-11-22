@@ -247,7 +247,7 @@ def test_the_rows_go_by_number_as_list_fixtures_has_them() -> None:
         assert column(page.table, "number") == ["3", "150", "901"]
         await pilot.click(page.table, offset=(20, 2))
         assert bridge.lines() == ["sel fixture 150"]
-        assert [item.line for item in page.items()[2:5]] == [
+        assert [item.line for item in page.items()[3:6]] == [
             "sel fixture 3", "sel fixture 150", "sel fixture 901",
         ]  # fmt: skip
 
@@ -261,11 +261,11 @@ def test_the_pane_cursor_stops_on_add_and_edit_then_the_rows() -> None:
     async def body(pilot: Pilot[int]) -> None:
         await settle(pilot, app)
         items = app.current_page.items()
-        assert [item.label for item in items[:2]] == ["+ add", "edit"]
-        assert [item.line for item in items[2:]] == [
+        assert [item.label for item in items[:3]] == ["import plot…", "+ add", "edit"]
+        assert [item.line for item in items[3:]] == [
             "sel fixture 101", "sel fixture 301", "sel fixture 302", "sel fixture 401"
         ]  # fmt: skip
-        await pilot.press("tab", *["down"] * 4, "enter")  # 302: selected, and chosen
+        await pilot.press("tab", *["down"] * 5, "enter")  # 302: selected, and chosen
         assert bridge.lines() == ["sel fixture 302"]
         assert app.query_one(FixturesPage).panel.chosen == 302
 
@@ -897,7 +897,7 @@ def test_the_pane_cursor_stops_on_every_control_and_no_inert_one() -> None:
         rows = [f"fixture {f.number} {f.name}" for f in FIXTURES]
         chips = [f'profile "Head" category {word}' for word in CATEGORIES if word != "spot"]
         assert labels == [
-            "+ add", "edit",
+            "import plot…", "+ add", "edit",
             *rows,
             "rename…", "number…", "delete", "profile…",
             *chips,
@@ -928,7 +928,7 @@ def test_the_pane_cursor_marks_the_table_that_shows() -> None:
 
     async def body(pilot: Pilot[int]) -> None:
         page = await enter(pilot, app)
-        await pilot.press("tab", "down", "down")
+        await pilot.press("tab", "down", "down", "down")
         line = page.rig.line(1, page.rig.size.width)
         assert MARKED in [str(span.style) for span in line.spans]
 
@@ -1757,18 +1757,18 @@ def test_the_pane_cursor_stops_on_the_groups() -> None:
         rows = [f"fixture {f.number} {f.name}" for f in (*FIXTURES, PIXELS)]
         labels = [item.label for item in page.items()]
         assert labels == [
-            "+ add", "edit", *rows,
+            "import plot…", "+ add", "edit", *rows,
             "record group…", "group 1 Heads", "group 2 Floor", "group 5 Empty",
             "done",
         ]  # fmt: skip
         page.groups.choose(1)
         await pilot.pause()
         labels = [item.label for item in page.items()]
-        assert labels[len(rows) + 6 : -1] == [
+        assert labels[len(rows) + 7 : -1] == [
             "group rename…", "group number…", "group delete", "group replace", "group remove",
         ]  # fmt: skip
         assert len(labels) == len(set(labels))
-        page.items()[len(rows) + 4].action()  # group 2
+        page.items()[len(rows) + 5].action()  # group 2
         await pilot.pause()
         assert page.groups.chosen == 2
 

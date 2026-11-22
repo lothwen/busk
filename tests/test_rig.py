@@ -20,6 +20,7 @@ import copy
 import hashlib
 import json
 import os
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -29,7 +30,7 @@ from xml.etree import ElementTree as ET
 import pytest
 
 from builders import channel, mode, profile
-from busk import CounterIds, LiveShow, OfflineShow, load_show, new_show
+from busk import CounterIds, ImportFailed, LiveShow, OfflineShow, RigCheck, load_show, new_show
 from busk.console.parser import Context, ImportRig, ParseError, parse
 from busk.importers.gdtf import import_gdtf
 from busk.model.show import Show
@@ -957,3 +958,107 @@ def test_rig_asks_nothing_and_has_help(tmp_path: Path) -> None:
     assert show.confirmation(f'rig import "{club(tmp_path)}"') is None
     assert "rig" in show.expected("").words
     assert any(line.lstrip().startswith("rig import") for line in run(show, "help").splitlines())
+
+
+# ------------------------------------------------------------------ a frontend's preview
+
+
+def test_rig_check_as_a_value_is_the_line_s_answer_and_changes_nothing(tmp_path: Path) -> None:
+    """GAP-59: ``rig_check`` says what ``rig check`` says, with what a
+    frontend needs to offer the import, and uses none of the session's ids."""
+    path = club(tmp_path)
+    show = offline()
+    before = copy.deepcopy(show.show)
+    check = show.rig_check(path)
+    assert check.text == CHECK == run(show, f'rig check "{path}"')
+    assert (check.first, check.audience, check.origin) == (True, "-y", (0.0, 0.0, 0.0))
+    assert (check.changes, check.cascade, check.blocked) == (True, False, ())
+    assert show.show == before
+    run(show, f'rig import "{path}"')
+    alone = offline()
+    run(alone, f'rig import "{path}"')
+    assert show.show["fixtures"] == alone.show["fixtures"]  # the check took none of the ids
+
+
+def test_rig_check_takes_the_frame_s_words_else_the_show_s(tmp_path: Path) -> None:
+    path = club(tmp_path)
+    show = offline()
+    check = show.rig_check(path, audience="+x", origin=(1000, -2000, 6000))
+    line = run(show, f'rig check "{path}" audience +x origin 1000 -2000 6000')
+    assert check.text == line
+    assert (check.audience, check.origin) == ("+x", (1000.0, -2000.0, 6000.0))
+    assert all(isinstance(axis, float) for axis in check.origin)
+    run(show, f'rig import "{path}" audience +x origin 1000 -2000 6000')
+    kept = show.rig_check(path)
+    assert (kept.first, kept.audience, kept.origin) == (False, "+x", (1000.0, -2000.0, 6000.0))
+    assert (kept.text, kept.changes) == (run(show, f'rig check "{path}"'), False)
+    turned = show.rig_check(path, audience="-y")
+    assert (turned.audience, turned.origin) == ("-y", (1000.0, -2000.0, 6000.0))
+    assert turned.changes
+    assert turned.text.splitlines()[1] == "  move 5: 101–103, 201, 202"
+
+
+def test_rig_check_says_when_the_import_needs_cascade_or_cannot_run(tmp_path: Path) -> None:
+    show = two_cells(tmp_path)
+    gone = again(tmp_path, changes={"f103": None})
+    check = show.rig_check(gone)
+    assert (check.changes, check.cascade, check.blocked) == (True, True, ())
+    assert check.text == run(show, f'rig check "{gone}"')
+    run(show, "sel fixture 101.2")
+    run(show, 'record group 7 "Second"')
+    lose = again(tmp_path, changes={"f101": {"gdtf_mode": "1ch"}, "f103": None})
+    check = show.rig_check(lose)
+    assert (check.changes, check.cascade) == (True, True)
+    assert check.blocked == ("fixture 101 cannot run 1ch: groups 1, 7 use elements it would lose",)
+    assert f"  blocked: {check.blocked[0]}" in check.text.splitlines()
+
+
+def test_rig_check_says_when_there_is_nothing_to_do(tmp_path: Path) -> None:
+    empty = club(tmp_path, scene(layer("L1", "L")), name="empty.mvr")
+    check = offline().rig_check(empty)
+    assert (check.first, check.changes) == (True, False)
+    assert check.text.splitlines()[-1] == "  nothing to add"
+    show = imported(tmp_path)
+    check = show.rig_check(club(tmp_path))
+    assert (check.first, check.changes, check.cascade, check.text) == (False, False, False, NOTHING)
+
+
+@pytest.mark.parametrize(
+    ("make", "says"),
+    [
+        (lambda p: None, "No such file or directory"),
+        (lambda p: p.write_bytes(b"nope"), "not an MVR file: File is not a zip file"),
+    ],
+)
+def test_rig_check_raises_import_failed_with_the_line_s_reason(
+    tmp_path: Path, make: Callable[[Path], object], says: str
+) -> None:
+    path = tmp_path / "club.mvr"
+    make(path)
+    show = offline()
+    with pytest.raises(ImportFailed) as raised:
+        show.rig_check(path)
+    assert says in str(raised.value)
+    assert show.execute(f'rig check "{path}"').text == (
+        f"error: cannot import {str(path)!r}: {raised.value}"
+    )
+
+
+def test_rig_check_reads_a_relative_path_as_the_line_does(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    club(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    show = offline()
+    assert show.rig_check("plots/club.mvr").text == run(show, 'rig check "plots/club.mvr"')
+
+
+def test_rig_check_on_a_live_show_from_another_thread(tmp_path: Path) -> None:
+    path = club(tmp_path)
+    with LiveShow(new_show("Club"), output=False) as live:
+        found: list[RigCheck] = []
+        reader = threading.Thread(target=lambda: found.append(live.rig_check(path)))
+        reader.start()
+        reader.join(5)
+        assert [check.text for check in found] == [CHECK]
+        assert live.show["fixtures"] == []

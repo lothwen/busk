@@ -124,6 +124,7 @@ from busk_tui.model import (
     Parked,
     PlaybackInfo,
     PlaybackView,
+    PlotRead,
     PresetEntry,
     PresetInfo,
     ProfileChoice,
@@ -555,6 +556,19 @@ class Bridge:
     def read_show(self, path: Path) -> ShowRead:
         """What busk reads in the show file at ``path`` (:func:`show_read`)."""
         return show_read(path)
+
+    def read_plot(
+        self,
+        path: Path,
+        audience: str | None = None,
+        origin: tuple[float, float, float] | None = None,
+    ) -> PlotRead:
+        """What ``rig import`` of the plot at ``path`` would do to the show
+        (:func:`plot_read`); before the show runs, that it does not yet."""
+        show = self._show
+        if show is None or not self._ready.is_set():
+            return PlotRead(path, problem="the show has not started yet")
+        return plot_read(show, path, audience, origin)
 
     # -------------------------------------------------------------- workers
 
@@ -1036,6 +1050,7 @@ def show_model(
             for entry in doc["park"]
         ),
         strobeMaxHz=doc.get("safety", {}).get("strobeMaxHz"),
+        plot=stage["plot"] if (stage := doc.get("stage")) is not None else None,
     )
 
 
@@ -1209,6 +1224,35 @@ def profile_read(path: Path) -> ProfileRead:
             ModeInfo(mode["name"], mode["footprint"], len(mode["elements"]))
             for mode in profile["modes"]
         ),
+    )
+
+
+def plot_read(
+    show: LiveShow | OfflineShow,
+    path: Path,
+    audience: str | None = None,
+    origin: tuple[float, float, float] | None = None,
+) -> PlotRead:
+    """What ``rig import "<path>"`` would do to ``show``, through the frame
+    of ``audience`` and ``origin`` where they are given, as ``rig check``
+    says it (busk's ``rig_check``, GAP-59); or why busk cannot read the plot.
+    It reads the whole plot: off the UI thread. Raises nothing."""
+    try:
+        check = show.rig_check(path, audience=cast(Any, audience), origin=origin)
+    except ImportFailed as exc:
+        return PlotRead(path, problem=str(exc))
+    except Exception as exc:
+        _debug.exception("rig_check(%r) raised", str(path))
+        return PlotRead(path, problem=str(exc) or type(exc).__name__)
+    return PlotRead(
+        path,
+        check.text,
+        check.first,
+        check.audience,
+        check.origin,
+        check.changes,
+        check.cascade,
+        check.blocked,
     )
 
 

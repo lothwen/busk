@@ -25,6 +25,18 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   those it lost are removed, as `delete fixture N cascade` takes them (`rig import … cascade`
   while anything uses them). A new mode that loses cells in use is refused. Fixtures added by
   hand and groups are never touched. See [Plots](docs/plots.md).
+- The TUI imports a plot: F3's `[import plot…]`, or Import plot… in the File menu, opens the file
+  picker on `.mvr` files, each previewed with what `rig check` says of it, starting on the plot
+  the rig came from. The plot chosen opens IMPORT PLOT: busk's check, the frame on a first
+  import (the audience's side as chips, the origin in a form, each change checked again),
+  `cascade` ticked when the import removes fixtures that something uses, and `[import]`, which
+  sends the `rig import` line. It does not run while the import would change nothing or busk
+  refuses it, and says why.
+- `OfflineShow.rig_check(path, *, audience=None, origin=None)` and `LiveShow.rig_check` say what
+  `rig import` of a plot would do, as a `RigCheck`: the text `rig check` prints, whether the
+  import is a first one, the frame it placed the plot through, and whether it changes the show,
+  needs `cascade` or is blocked, and why. It changes nothing, and raises `ImportFailed` for a
+  file busk cannot read as a plot. `busk run`'s show has it too.
 - `OfflineShow.session` and `LiveShow.session` say whether the show has unsaved edits, the file
   `save` writes (an absolute path), what `undo` and `redo` would take back (how many steps, and
   the next one's label as `undo` prints it) and the counters that grow with each change to the
