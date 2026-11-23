@@ -124,6 +124,7 @@ from busk_tui.widgets.profile_picker import ProfileDialog
 from busk_tui.widgets.programmer import ProgrammerTable
 from busk_tui.widgets.prompt import HintRow
 from busk_tui.widgets.route_dialog import RouteDialog
+from busk_tui.widgets.surface_dialog import SurfaceDialog
 from busk_tui.widgets.template_panel import NewTemplateDialog, TemplatePanel
 from busk_tui.widgets.tiles import PresetTile
 from busk_tui.widgets.trackpanel import TrackTable
@@ -3747,3 +3748,207 @@ def test_a_held_line_never_freezes_the_ui() -> None:
     finally:
         gate.set()
         bridge.stop(timeout=1.0)
+
+
+def free_port(kind: socket.SocketKind) -> int:
+    with socket.socket(socket.AF_INET, kind) as probe:
+        probe.bind(("127.0.0.1", 0))
+        port: int = probe.getsockname()[1]
+        return port
+
+
+def club_without_the_phone(
+    club_path: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Path:
+    """The club show without its web remote (no :8080 on the test's host),
+    and no MIDI port: its nanoKONTROL2 stays closed."""
+    from busk.io import midi
+
+    monkeypatch.setattr(midi, "input_names", list)
+    monkeypatch.setattr(midi, "output_names", list)
+    path = tmp_path / "club.show"
+    path.write_bytes(club_path.read_bytes())
+    show, _ = busk.load_show(path)
+    built = busk.OfflineShow(show, path=path)
+    phone = next(s["id"] for s in built.show["surfaces"] if s["kind"] == "web")
+    assert built.submit({"type": "DELETE", "path": ["surfaces", {"id": phone}]}).ok
+    assert built.save().ok
+    return path
+
+
+def surface_form(app: BuskApp) -> SurfaceDialog:
+    dialog = app.screen
+    assert isinstance(dialog, SurfaceDialog)
+    return dialog
+
+
+def test_f9_adds_moves_renames_and_deletes_an_osc_surface_on_the_real_engine(
+    club_path: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The pending plan's Phase 39 (busk's GAP-60, GAP-61): an OSC surface on
+    localhost added from the form, moved to another port while the show runs
+    (it listens there, and no longer on the old one), renamed, and deleted
+    with its binding after busk's question; ``undo`` brings both back."""
+    from busk.io.osc import encode
+
+    path = club_without_the_phone(club_path, tmp_path, monkeypatch)
+    first, second = free_port(socket.SOCK_DGRAM), free_port(socket.SOCK_DGRAM)
+    bridge = Bridge.standalone(path, output=False, surfaces=True, state_dir=tmp_path / "state")
+    app = BuskApp(bridge, config.Settings(page=9), standalone=True)
+    client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    def surface(name: str) -> Any:
+        return next((s for s in app.view.surfaces if s.name == name), None)
+
+    def heard() -> list[tuple[str, str]]:
+        table = app.query_one(MonitorTable)
+        return list(zip(column(table, "input"), column(table, "sent"), strict=True))
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = app.query_one(SurfacesPage)
+        strip = page.surface_edits
+        await until(pilot, lambda: surface("nanoKONTROL2") is not None)
+
+        await tap_button(pilot, strip, "+ surface…")
+        await until(pilot, lambda: isinstance(app.screen, SurfaceDialog))
+        await pilot.press("right")  # OSC
+        dialog = surface_form(app)
+        dialog.name_field.value = "Touch"
+        dialog.ports["osc"].value = str(first)
+        await pilot.press("enter")
+        await until(pilot, lambda: getattr(surface("Touch"), "state", None) == "ok")
+        assert surface("Touch").device == f"port {first}"
+        await until(pilot, lambda: page.surface == "Touch")  # the new one is chosen
+        app.prompt.focus()
+        app.prompt.value = 'bind "Touch" osc "/fader/1" fader 1'
+        await pilot.press("enter")
+        await until(pilot, lambda: 'osc "/fader/1"' in column(app.query_one(BindingTable), "input"))
+        client.sendto(encode("/fader/1", 0.4), ("127.0.0.1", first))
+        await until(pilot, lambda: ('osc "/fader/1"', "0.40") in heard())
+
+        await tap_button(pilot, strip, "edit…")
+        await until(pilot, lambda: isinstance(app.screen, SurfaceDialog))
+        dialog = surface_form(app)
+        assert dialog.ports["osc"].value == str(first)
+        dialog.ports["osc"].value = str(second)
+        await pilot.press("enter")
+        await until(pilot, lambda: surface("Touch").device == f"port {second}")
+        await until(pilot, lambda: surface("Touch").state == "ok")
+        for _ in range(40):  # heard once busk has reopened the surface there
+            client.sendto(encode("/fader/1", 0.7), ("127.0.0.1", second))
+            await pilot.pause(0.05)
+            if ('osc "/fader/1"', "0.70") in heard():
+                break
+        assert heard()[-1] == ('osc "/fader/1"', "0.70")
+        client.sendto(encode("/old", 0.2), ("127.0.0.1", first))  # its own line, if heard
+        client.sendto(encode("/fader/1", 0.6), ("127.0.0.1", second))
+        await until(pilot, lambda: heard()[-1] == ('osc "/fader/1"', "0.60"))
+        assert 'osc "/old"' not in [control for control, _ in heard()]  # the old port is closed
+
+        await tap_button(pilot, strip, "rename…")
+        await until(pilot, lambda: isinstance(app.screen, TextDialog))
+        app.screen.query_one(Input).value = "Desk"
+        await pilot.press("enter")
+        await until(pilot, lambda: surface("Desk") is not None)
+        await until(pilot, lambda: page.surface == "Desk")
+        assert "Desk" in column(app.query_one(BindingTable), "surface")
+
+        await tap_button(pilot, strip, "delete")
+        await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+        assert isinstance(app.screen, ConfirmDialog)
+        assert app.screen.question == 'Delete surface "Desk"? It leaves 1 binding.'
+        await pilot.press("y")
+        await until(pilot, lambda: surface("Desk") is None)
+        assert "Desk" not in column(app.query_one(BindingTable), "surface")
+        await pilot.press(*"undo", "enter")
+        await until(pilot, lambda: getattr(surface("Desk"), "state", None) == "ok")
+        await until(pilot, lambda: "Desk" in column(app.query_one(BindingTable), "surface"))
+        assert surface("Desk").device == f"port {second}"
+
+    try:
+        drive(app, body)
+    finally:
+        client.close()
+        bridge.stop()
+
+
+def test_f9_adds_changes_and_deletes_a_midi_surface_and_a_web_remote_on_the_real_engine(
+    club_path: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A MIDI surface from the device chips (the read stubbed: no device is
+    plugged in, so it waits for it), moved to another device and deleted; a
+    web remote on localhost added, moved to another port (it serves there)
+    and deleted."""
+    from busk_tui import bridge as bridge_module
+
+    path = club_without_the_phone(club_path, tmp_path, monkeypatch)
+    monkeypatch.setattr(bridge_module, "midi_devices", lambda: ("Phase39 Pad",))
+    first, second = free_port(socket.SOCK_STREAM), free_port(socket.SOCK_STREAM)
+    bridge = Bridge.standalone(path, output=False, surfaces=True, state_dir=tmp_path / "state")
+    app = BuskApp(bridge, config.Settings(page=9), standalone=True)
+
+    def surface(name: str) -> Any:
+        return next((s for s in app.view.surfaces if s.name == name), None)
+
+    def serves(port: int) -> bool:
+        return any(f"127.0.0.1:{port}/" in url for url in surface("Tablet").urls)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = app.query_one(SurfacesPage)
+        strip = page.surface_edits
+        await until(pilot, lambda: surface("nanoKONTROL2") is not None)
+
+        await tap_button(pilot, strip, "+ surface…")
+        await until(pilot, lambda: isinstance(app.screen, SurfaceDialog))
+        dialog = surface_form(app)
+        await until(pilot, lambda: dialog.chips.devices == ("Phase39 Pad",))
+        await tap_button(pilot, dialog.chips, "Phase39 Pad")
+        assert dialog.device.value == "Phase39 Pad"
+        await pilot.press("enter")
+        await until(pilot, lambda: getattr(surface("Phase39 Pad"), "state", None) == "failed")
+        await until(pilot, lambda: page.surface == "Phase39 Pad")
+
+        await tap_button(pilot, strip, "edit…")
+        await until(pilot, lambda: isinstance(app.screen, SurfaceDialog))
+        surface_form(app).device.value = "Other Pad"
+        await pilot.press("enter")
+        await until(pilot, lambda: surface("Phase39 Pad").device == '"Other Pad"')
+
+        await tap_button(pilot, strip, "delete")
+        await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+        await pilot.press("y")
+        await until(pilot, lambda: surface("Phase39 Pad") is None)
+
+        await tap_button(pilot, strip, "+ surface…")
+        await until(pilot, lambda: isinstance(app.screen, SurfaceDialog))
+        await pilot.press("left")  # round to web
+        dialog = surface_form(app)
+        dialog.name_field.value = "Tablet"
+        dialog.ports["web"].value = str(first)
+        dialog.wheres["web"].value = "127.0.0.1"
+        await pilot.press("enter")
+        await until(pilot, lambda: getattr(surface("Tablet"), "state", None) == "ok")
+        await until(
+            pilot, lambda: any(f"127.0.0.1:{first}/" in url for url in surface("Tablet").urls)
+        )
+
+        await tap_button(pilot, strip, "edit…")
+        await until(pilot, lambda: isinstance(app.screen, SurfaceDialog))
+        surface_form(app).ports["web"].value = str(second)
+        await pilot.press("enter")
+        await until(
+            pilot, lambda: any(f"127.0.0.1:{second}/" in url for url in surface("Tablet").urls)
+        )
+        assert surface("Tablet").state == "ok"
+        with socket.create_connection(("127.0.0.1", second), timeout=2):
+            pass  # it serves on the new port
+
+        await tap_button(pilot, strip, "delete")
+        await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+        await pilot.press("y")
+        await until(pilot, lambda: surface("Tablet") is None)
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()

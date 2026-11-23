@@ -94,6 +94,7 @@ class FakeBridge:
     tracking: int | None = None  # the cue list whose tracked states the UI asked for
     busy_line: Busy | None = None
     scripts: list[tuple[int, Path]] = field(default_factory=list)  # (ticket, path) run
+    devices: tuple[str, ...] = ()  # the MIDI devices "plugged in"
     _tickets: Any = field(default_factory=lambda: itertools.count(1))
 
     def start(self) -> None:
@@ -175,6 +176,9 @@ class FakeBridge:
         if self.show is None:
             return PlotRead(path, problem="the show has not started yet")
         return plot_read(self.show, path, audience, origin)  # busk's own check, of a real file
+
+    def midi_devices(self) -> tuple[str, ...]:
+        return self.devices
 
     def lines(self) -> list[str]:
         return [sent.line for sent in self.sent]

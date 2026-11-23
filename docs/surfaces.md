@@ -12,6 +12,8 @@ another port, `surface "nanoKONTROL2" change "X-Touch"` opens another device, an
 show reopens it at once. `rename surface "Touch" "Desk"` renames one, and `delete surface
 "Touch" cascade` deletes it with its bindings. [The library](library.md)'s
 `busk.midi_devices()` lists the MIDI devices plugged in, as `surface add midi` takes them.
+The terminal UI's F9 does all of this from controls, with those devices as chips
+([F9 Surfaces](tui/guide.md#f9-surfaces)).
 
 - [MIDI](#midi)
 - [OSC](#osc)

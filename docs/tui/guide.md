@@ -13,9 +13,9 @@ log, so what the UI does is what you could type.
 > [F7 Masters](#f7-masters), and the rig: [F3 Fixtures](#f3-fixtures), [F8 Patch](#f8-patch)
 > and [F9 Surfaces](#f9-surfaces). Their edit modes and panels build a show from controls: the
 > rig, groups and park, presets, cues and cue lists, effects and their templates, playbacks and
-> pages, masters, the strobe cap and the show's title. A few things are still typed at the
-> prompt: renumbering a page, and the options of an effect as it is added. F9 puts the start of a
-> binding's line in the prompt, and its learn mode the control you move.
+> pages, masters, the control surfaces, the strobe cap and the show's title. A few things are
+> still typed at the prompt: renumbering a page, and the options of an effect as it is added. F9
+> puts the start of a binding's line in the prompt, and its learn mode the control you move.
 
 ## Install
 
@@ -1464,7 +1464,7 @@ arms a place. Below 100 columns ROUTES goes under UNIVERSES.
 ## F9 Surfaces
 
 The control surfaces (MIDI controllers, OSC apps, the web remote), what comes in from them,
-and what each input is bound to.
+and what each input is bound to. Surfaces are added, changed, renamed and deleted here.
 
 ```
  ┌─ SURFACES · 2 ─────────────────────────────────────────┐┌─ BINDINGS · 52 ──────────────────────────────────────────────────────────────────────┐
@@ -1472,10 +1472,11 @@ and what each input is bound to.
  │ ● nanoKONTR… midi "nanoKONTROL2" soft      51 open     ││ nanoKONTROL2          cc 1 0              fader 1                           102  80% │
  │ ● Touch      osc  port 8000      jump       1 open     ││ nanoKONTROL2          cc 1 32             button 1 1             led          —    — │
  │                                                        ││ nanoKONTROL2          cc 1 23             master gm                           — 100% │
- │ edit "Touch" [bind…] [pickup…] [learn]                 ││ nanoKONTROL2          cc 1 46             tap                    led          —    — │
- └────────────────────────────────────────────────────────┘│ nanoKONTROL2          cc 1 60             release all                         —    — │
- ┌─ MONITOR ──────────────────────────────────────────────┐│ Touch                 osc "/fader/1"      fader 1                          0.80  80% │
- │ input             in drives            surface         ││ edit cc 1 32 on "nanoKONTROL2" [unbind…] [feedback…]                                 │
+ │ [+ surface…] "Touch" [soft] [jump] [edit…] [rename…]   ││ nanoKONTROL2          cc 1 46             tap                    led          —    — │
+ │ [delete] [bind…] [learn]                               ││ nanoKONTROL2          cc 1 60             release all                         —    — │
+ └────────────────────────────────────────────────────────┘│ Touch                 osc "/fader/1"      fader 1                          0.80  80% │
+ ┌─ MONITOR ──────────────────────────────────────────────┐│ edit cc 1 32 on "nanoKONTROL2" [unbind…] [feedback…]                                 │
+ │ input             in drives            surface         │└──────────────────────────────────────────────────────────────────────────────────────┘
  │ cc 1 0           102 → fader 1         nanoKONTROL2    │
  │ osc "/fader/1"  0.80 → fader 1         Touch           │
  │ osc "/fader/2"  0.30 → —               Touch           │
@@ -1507,10 +1508,36 @@ off`), its feedback (`led`, `motor`, `display`, with its own address when not th
 drives: the playback in its fader slot on the current page, its playback, its master. With
 soft pickup the two differ until the fader picks the level up.
 
-A click on a row chooses it, and the edits under each table act on it: `bind "Phone" ` and
-`surface "Phone" pickup ` for a surface; `unbind "nanoKONTROL2" cc 1 32` (a whole line: Enter
-runs it) and `feedback "nanoKONTROL2" cc 1 32 ` for a binding. The pane cursor stops on the
-surfaces, their edits, the bindings and their edits; Enter on a row chooses it. Below 132
+A click on a row chooses it, and the strip under each table acts on it. Under SURFACES:
+
+- `[+ surface…]`: a form for a new surface. Its kind's chips (MIDI, OSC, web), then the kind's
+  fields. MIDI: the MIDI devices plugged in to the console's computer, as chips (`· in use`, dim,
+  when another surface opens that device already); a click puts one in the device field, or type
+  the name of one that is not plugged in yet. busk names a MIDI surface after its device:
+  `surface add midi "nanoKONTROL2"`. OSC: a name, the port (8000) and where feedback goes (empty:
+  back to the sender; else a host, `host:port` or `:port`): `surface add osc "Touch" port 9000
+  feedback 10.0.0.2:9001`. Web: a name, the port (8080) and the address to listen on (empty:
+  every interface): `surface add web "Phone" port 8080`. The form says what is wrong in red and
+  stays open: an empty name, a name another surface has, a port outside 1 to 65535 or one
+  another surface of the kind listens on. The new surface is chosen once busk has it.
+- `[soft]` `[jump]`: the fader pickup, its own lit. A click on the other sends `surface "Touch"
+  pickup soft`.
+- `[edit…]`: the same form, filled in with how busk finds the surface, its kind fixed:
+  `surface "Touch" change port 9001`. On a running show the surface closes and opens again
+  there: a MIDI surface moved to a device that is not plugged in turns red and waits for it. A
+  form that changes nothing sends nothing.
+- `[rename…]`: `rename surface "Touch" "Desk"`, and the choice follows it. Bindings follow
+  their surface.
+- `[delete]`: `delete surface "Touch" cascade`, after busk's question, which counts the
+  bindings that go with it (`Delete surface "Touch"? It leaves 3 bindings.`). `undo` brings
+  both back.
+- `[bind…]` puts `bind "Touch" ` in the prompt, for the input and what it drives, and `[learn]`
+  is learn mode, below.
+
+A surface busk does not open (`hid`, `internal`, from a show file) has `[rename…]` and
+`[delete]` alone. Under BINDINGS, `unbind "nanoKONTROL2" cc 1 32` (a whole line: Enter runs
+it) and `feedback "nanoKONTROL2" cc 1 32 ` go in the prompt. The pane cursor stops on the
+surfaces, their strip, the bindings and their strip; Enter on a row chooses it. Below 132
 columns MONITOR goes under SURFACES, and BINDINGS under it.
 
 **Learn mode.** `[learn]` among the chosen surface's edits arms it, lit amber. Move a control
@@ -1524,18 +1551,18 @@ second click, choosing another surface or another page disarms it.
 ## Questions, dialogs and quitting
 
 A line busk asks about first, such as `output off`, opens a dialog with busk's question.
-The line runs only on **y**; **n**, Enter or Esc cancel it (`cancelled` in the log). F3's and
-F8's `[delete]`, F8's `[off]`, F4's `[delete]` of a list and F6's `[delete]` of a preset in use are
-such lines. F4's `[delete]` of a cue, `[replace]` and `[remove]`, and F6's `[delete]` of a preset
+The line runs only on **y**; **n**, Enter or Esc cancel it (`cancelled` in the log). F3's,
+F8's and F9's `[delete]`, F8's `[off]`, F4's `[delete]` of a list and F6's `[delete]` of a preset in
+use are such lines. F4's `[delete]` of a cue, `[replace]` and `[remove]`, and F6's `[delete]` of a preset
 nothing uses, `[replace]` and `[remove]`, ask the TUI's own question the same way.
 
 A name or a number (`[rename…]`, `[number…]`, `[address…]`, `[offset…]`, F4's `[follow…]`
 and `[wait…]`) is typed in a small dialog: Enter takes it, Esc cancels. What it refuses shows in red, and the dialog stays open. A form of several fields
 (`[limit…]`, `[location…]`, `[+ universe…]`, `[+ route…]` and a route's `[edit…]`, `[+ list…]`,
 `[record at…]`, `[copy…]`, `[release…]`, `[chase…]`, a cue's `[time…]`, `[delay…]` and
-`[curve…]`) works the same way: Tab moves between the fields, and Enter, in any of them, takes the
-form. In the route form, `[chase…]`, `[time…]` and `[curve…]`, Tab also reaches the chips, and ← →
-move them.
+`[curve…]`, `[+ surface…]` and a surface's `[edit…]`) works the same way: Tab moves between the
+fields, and Enter, in any of them, takes the form. In the route form, the surface form,
+`[chase…]`, `[time…]` and `[curve…]`, Tab also reaches the chips, and ← → move them.
 
 **The profile picker** (F3's `[profile…]` and `[choose…]`) lists what `fixture add` takes: the
 show's own profiles first, marked `●`, then the library's, with the maker, the name, and the modes

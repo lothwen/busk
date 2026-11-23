@@ -2,7 +2,9 @@
 their states, the web remote's address and busk's reasons; bindings of each
 input and action kind with the level of what they drive; the edits and the
 pane cursor. Since the pending plan's Phase 37 (busk's GAP-13): MONITOR, the
-last number each control sent, and learn mode. Headless, with a fake bridge."""
+last number each control sent, and learn mode. Since Phase 39: surfaces added,
+changed, renamed and deleted from controls, and their pickup. Headless, with a
+fake bridge."""
 
 from __future__ import annotations
 
@@ -10,8 +12,10 @@ from typing import Any
 
 from rich.text import Text
 from textual.pilot import Pilot
+from textual.widgets import Input
 from tui_fakes import (
     FakeBridge,
+    Reply,
     click_cell,
     column,
     drive,
@@ -22,6 +26,7 @@ from tui_fakes import (
     show_model,
 )
 
+import busk
 from busk_tui import colors
 from busk_tui.model import (
     BindingInfo,
@@ -52,13 +57,26 @@ from busk_tui.pages.surfaces import (
 )
 from busk_tui.shell import BuskApp
 from busk_tui.widgets.controls import ButtonStrip
+from busk_tui.widgets.dialogs import ConfirmDialog, TextDialog
+from busk_tui.widgets.options import LIT
 from busk_tui.widgets.prompt import HintRow
+from busk_tui.widgets.surface_dialog import (
+    NO_DEVICES,
+    SurfaceDialog,
+    check_feedback,
+    check_port,
+    check_surface_name,
+    finders,
+    found_by,
+)
 
 NANO = SurfaceView("nanoKONTROL2", "midi", '"nanoKONTROL2"', "soft", "failed",
-                   "unplugged; waiting for it", ())  # fmt: skip
-TOUCH = SurfaceView("TouchOSC", "osc", "port 8000 feedback 10.0.0.5:9000", "jump", "ok", "", ())
+                   "unplugged; waiting for it", (), midi="nanoKONTROL2")  # fmt: skip
+TOUCH = SurfaceView("TouchOSC", "osc", "port 8000 feedback 10.0.0.5:9000", "jump", "ok", "", (),
+                    port=8000, host="10.0.0.5", feedback_port=9000)  # fmt: skip
 PHONE = SurfaceView("Phone", "web", "port 8080", "jump", "ok", "",
-                    ("http://10.0.0.2:8080/?k=abc", "http://192.168.1.4:8080/?k=abc"))  # fmt: skip
+                    ("http://10.0.0.2:8080/?k=abc", "http://192.168.1.4:8080/?k=abc"),
+                    port=8080)  # fmt: skip
 PAD = SurfaceView("Pad", "hid", "", "jump", "ignored", "hid surfaces are not implemented", ())
 SURFACES = (NANO, TOUCH, PHONE, PAD)
 
@@ -166,14 +184,12 @@ def test_the_edits_act_on_the_chosen_surface_and_binding() -> None:
     async def body(pilot: Pilot[int]) -> None:
         await settle(pilot, app)
         page = app.query_one(SurfacesPage)
-        assert [b.prefill for b in page.surface_edits.buttons] == [
-            'bind "nanoKONTROL2" ',
-            'surface "nanoKONTROL2" pickup ',
-            None,  # [learn]
+        assert [b.prefill for b in page.surface_edits.buttons if b.prefill] == [
+            'bind "nanoKONTROL2" '
         ]
         assert page.binding_edits.buttons == ()  # no binding chosen yet
         await click_cell(pilot, app.query_one(SurfaceTable), 1, "name")
-        assert page.surface_edits.buttons[0].prefill == 'bind "TouchOSC" '
+        assert [b.prefill for b in page.surface_edits.buttons if b.prefill] == ['bind "TouchOSC" ']
         bindings = app.query_one(BindingTable)
         await click_cell(pilot, bindings, 7, "what")
         assert bindings.chosen == 7
@@ -196,12 +212,15 @@ def test_the_pane_cursor_stops_on_surfaces_edits_and_bindings() -> None:
     async def body(pilot: Pilot[int]) -> None:
         await settle(pilot, app)
         labels = [item.label for item in app.current_page.items()]
-        assert labels[:6] == [
-            "surface nanoKONTROL2", "surface TouchOSC", "surface Phone", "surface Pad",
-            'bind "nanoKONTROL2"', 'surface "nanoKONTROL2" pickup',
+        assert labels[:4] == [
+            "surface nanoKONTROL2", "surface TouchOSC", "surface Phone", "surface Pad"
         ]  # fmt: skip
-        assert labels[6:8] == ["[learn]", "binding nanoKONTROL2 cc 1 0 fader 1"]
-        await pilot.press("tab", *["down"] * 7, "enter")  # chooses the first binding
+        assert labels[4:12] == [
+            "[+ surface…]", 'surface "nanoKONTROL2" pickup jump',  # soft is lit: no stop
+            "[edit…]", "[rename…]", 'delete surface "nanoKONTROL2" cascade',
+            'bind "nanoKONTROL2"', "[learn]", "binding nanoKONTROL2 cc 1 0 fader 1",
+        ]  # fmt: skip
+        await pilot.press("tab", *["down"] * 11, "enter")  # chooses the first binding
         page = app.query_one(SurfacesPage)
         assert page.binding == 0
         await pilot.press(*["down"] * 11, "enter")  # its unbind: a whole line to run
@@ -461,3 +480,339 @@ def test_monitor_comes_between_surfaces_and_bindings() -> None:
         assert line.split() == ["cc", "1", "48", "102", "→", "fader", "1", "APC", "mini", "mk2"]
 
     drive(app, body)
+
+
+# ------------------------------------------------- surfaces set up (Phase 39)
+
+
+async def tap(pilot: Pilot[int], strip: ButtonStrip, label: str) -> None:
+    """A click on the button ``label`` (``[edit…]``) of ``strip``."""
+    lines = [line.plain for line in strip.lines(strip.size.width)]
+    y = next(y for y, line in enumerate(lines) if label in line)
+    await pilot.click(strip, offset=(lines[y].index(label) + 1, y))
+    await pilot.pause()
+
+
+def labels(strip: ButtonStrip) -> list[str]:
+    return [button.label.plain for button in strip.buttons]
+
+
+def form(app: BuskApp) -> SurfaceDialog:
+    dialog = app.screen
+    assert isinstance(dialog, SurfaceDialog)
+    return dialog
+
+
+async def open_form(pilot: Pilot[int], app: BuskApp, label: str = "[+ surface…]") -> SurfaceDialog:
+    """The form, from ``label`` of the chosen surface's strip, its devices read."""
+    await tap(pilot, app.query_one(SurfacesPage).surface_edits, label)
+    dialog = form(app)
+    if dialog.kind.chosen == "midi":
+        await until_read(pilot, dialog)
+    return dialog
+
+
+async def until_read(pilot: Pilot[int], dialog: SurfaceDialog) -> None:
+    for _ in range(100):  # the bridge is asked on a worker thread
+        if dialog.chips.devices is not None:
+            return
+        await pilot.pause(0.01)
+    raise AssertionError("the devices were never read")
+
+
+def test_the_chosen_surfaces_strip_by_kind() -> None:
+    bridge = FakeBridge()
+    app = on_f9(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await pilot.resize_terminal(99, 40)
+        await settle(pilot, app)
+        page = app.query_one(SurfacesPage)
+        strip = page.surface_edits
+        assert labels(strip) == [
+            "[+ surface…]", '"nanoKONTROL2"', "[soft]", "[jump]", "[edit…]", "[rename…]",
+            "[delete]", "[bind…]", "[learn]",
+        ]  # fmt: skip
+        assert len(strip.lines(strip.size.width)) == 1  # one line at 99 columns
+        soft, jump, delete = strip.buttons[2], strip.buttons[3], strip.buttons[6]
+        assert soft.note  # its own, lit: a click would change nothing
+        assert jump.line.text == 'surface "nanoKONTROL2" pickup jump'
+        assert delete.line.text == 'delete surface "nanoKONTROL2" cascade'
+        page.choose_surface("TouchOSC")
+        assert strip.buttons[2].line.text == 'surface "TouchOSC" pickup soft'
+        assert strip.buttons[3].note  # jump
+        page.choose_surface("Pad")  # hid: busk does not open it
+        assert labels(strip) == ["[+ surface…]", '"Pad"', "[rename…]", "[delete]"]
+        bridge.events.append(SurfacesChanged(()))
+        await settle(pilot, app)
+        assert labels(strip) == ["[+ surface…]"]
+        assert "[+ surface…]" in text(app.query_one(SurfaceTable))
+
+    drive(app, body)
+
+
+def test_a_pickup_chip_sends_its_line_and_the_lit_one_nothing() -> None:
+    bridge = FakeBridge()
+    app = on_f9(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        strip = app.query_one(SurfacesPage).surface_edits
+        await tap(pilot, strip, "[soft]")
+        assert bridge.sent == []
+        await tap(pilot, strip, "[jump]")
+        assert bridge.lines() == ['surface "nanoKONTROL2" pickup jump']
+
+    drive(app, body)
+
+
+def test_delete_asks_busks_question_counting_the_bindings(club: busk.OfflineShow) -> None:
+    bridge = FakeBridge(show=club)  # busk's own question
+    app = on_f9(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        strip = app.query_one(SurfacesPage).surface_edits
+        await tap(pilot, strip, "[delete]")
+        dialog = app.screen
+        assert isinstance(dialog, ConfirmDialog)
+        assert dialog.question == 'Delete surface "nanoKONTROL2"? It leaves 51 bindings.'
+        await pilot.press("n")
+        await settle(pilot, app)
+        assert bridge.sent == []
+        app.query_one(SurfacesPage).choose_surface("Phone")  # none: busk asks all the same
+        await tap(pilot, strip, "[delete]")
+        dialog = app.screen
+        assert isinstance(dialog, ConfirmDialog)
+        assert dialog.question == 'Delete surface "Phone"?'
+        await pilot.press("y")
+        await settle(pilot, app)
+        assert bridge.lines() == ['delete surface "Phone" cascade']
+
+    drive(app, body)
+
+
+def test_rename_sends_the_new_name_and_the_choice_follows() -> None:
+    bridge = FakeBridge()
+    app = on_f9(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        page = app.query_one(SurfacesPage)
+        page.choose_surface("TouchOSC")
+        await tap(pilot, page.surface_edits, "[rename…]")
+        dialog = app.screen
+        assert isinstance(dialog, TextDialog)
+        field = dialog.query_one(Input)
+        assert field.value == "TouchOSC"
+        await pilot.press("enter")  # the name it has: nothing
+        await settle(pilot, app)
+        assert bridge.sent == []
+        await tap(pilot, page.surface_edits, "[rename…]")
+        field = app.screen.query_one(Input)
+        field.value = "phone"  # another's, in another case
+        await pilot.press("enter")
+        assert 'a surface named "phone" exists' in text(app.screen.query_one(".error"))
+        bridge.replies['rename surface "TouchOSC" "Desk"'] = Reply(ok=False, text="error: …")
+        field.value = "Desk"
+        await pilot.press("enter")
+        await settle(pilot, app)
+        assert bridge.lines() == ['rename surface "TouchOSC" "Desk"']
+        assert page.surface == "TouchOSC"  # busk refused it: the choice stays
+        del bridge.replies['rename surface "TouchOSC" "Desk"']
+        await tap(pilot, page.surface_edits, "[rename…]")
+        app.screen.query_one(Input).value = "Desk"
+        await pilot.press("enter")
+        await settle(pilot, app)
+        assert page.surface == "Desk"  # once busk has it, it is the chosen one
+
+    drive(app, body)
+
+
+def test_a_new_midi_surface_from_the_devices_plugged_in() -> None:
+    bridge = FakeBridge(devices=("nanoKONTROL2", "APC mini mk2"))
+    app = on_f9(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        dialog = await open_form(pilot, app)
+        assert str(dialog.title_text) == "NEW SURFACE"
+        assert dialog.kind.chosen == "midi"
+        assert labels(dialog.chips) == ["[nanoKONTROL2 · in use]", "[APC mini mk2]"]
+        assert str(dialog.chips.buttons[0].label.spans[0].style) == colors.DIM
+        await pilot.press("enter")
+        assert text(dialog.error) == "a device, such as nanoKONTROL2"
+        await tap(pilot, dialog.chips, "[nanoKONTROL2")
+        assert dialog.device.value == "nanoKONTROL2"
+        assert dialog.found_note.display
+        assert text(dialog.found_note) == 'surface "nanoKONTROL2" finds it already'
+        await pilot.press("enter")
+        assert text(dialog.error) == 'a surface named "nanoKONTROL2" exists'
+        await tap(pilot, dialog.chips, "[APC mini mk2]")
+        assert dialog.device.value == "APC mini mk2"
+        assert str(dialog.chips.buttons[1].label.spans[0].style) == LIT  # the one it holds
+        assert not dialog.found_note.display
+        await pilot.press("enter")
+        await settle(pilot, app)
+        assert bridge.lines() == ['surface add midi "APC mini mk2"']
+        assert app.query_one(SurfacesPage).surface == "APC mini mk2"  # chosen once busk has it
+
+    drive(app, body)
+
+
+def test_a_device_not_plugged_in_is_typed() -> None:
+    bridge = FakeBridge()  # no device plugged in
+    app = on_f9(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        dialog = await open_form(pilot, app)
+        assert labels(dialog.chips) == [NO_DEVICES]
+        dialog.device.focus()
+        await pilot.press(*"X-Touch", "enter")
+        await settle(pilot, app)
+        assert bridge.lines() == ['surface add midi "X-Touch"']
+
+    drive(app, body)
+
+
+def test_a_new_osc_and_web_surface_and_what_the_form_refuses() -> None:
+    bridge = FakeBridge()
+    app = on_f9(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        dialog = await open_form(pilot, app)
+        await pilot.press("right")  # the kind's chips have the keyboard
+        assert dialog.kind.chosen == "osc"
+        assert not dialog.midi.display
+        assert dialog.ports["osc"].value == "8000"
+        await pilot.press("enter")
+        assert text(dialog.error) == "a name cannot be empty"
+        dialog.name_field.value = "Touch 2"
+        await pilot.press("enter")
+        assert text(dialog.error) == 'port 8000 is in use by surface "TouchOSC"'
+        dialog.ports["osc"].value = "70000"
+        await pilot.press("enter")
+        assert text(dialog.error) == "a port from 1 to 65535"
+        dialog.ports["osc"].value = "9000"
+        dialog.wheres["osc"].value = ":"
+        await pilot.press("enter")
+        assert text(dialog.error) == "a host, host:port or :port, the port from 1 to 65535"
+        dialog.wheres["osc"].value = "10.0.0.2:9001"
+        await pilot.press("enter")
+        await settle(pilot, app)
+        assert bridge.lines() == ['surface add osc "Touch 2" port 9000 feedback 10.0.0.2:9001']
+
+        dialog = await open_form(pilot, app)
+        await pilot.press("left")  # round to web
+        assert dialog.kind.chosen == "web"
+        assert dialog.ports["web"].value == "8080"
+        dialog.name_field.value = "Tablet"
+        await pilot.press("enter")
+        assert text(dialog.error) == 'port 8080 is in use by surface "Phone"'
+        dialog.ports["web"].value = "8000"  # TouchOSC's, but not a web remote's
+        dialog.wheres["web"].value = "10.0.0.5"
+        await pilot.press("enter")
+        await settle(pilot, app)
+        assert bridge.lines()[-1] == 'surface add web "Tablet" port 8000 on 10.0.0.5'
+
+    drive(app, body)
+
+
+def test_the_keyboard_moves_through_the_kind_the_devices_and_the_fields() -> None:
+    bridge = FakeBridge(devices=("nanoKONTROL2", "APC mini mk2"))
+    app = on_f9(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        dialog = await open_form(pilot, app)
+        assert dialog.kind.has_focus
+        await pilot.press("tab")
+        assert dialog.chips.has_focus
+        await pilot.press("right")
+        assert dialog.device.value == "nanoKONTROL2"
+        await pilot.press("right")
+        assert dialog.device.value == "APC mini mk2"
+        await pilot.press("right")  # round to the first
+        assert dialog.device.value == "nanoKONTROL2"
+        await pilot.press("tab")
+        assert dialog.device.has_focus
+        await pilot.press("escape")
+        await settle(pilot, app)
+        assert not isinstance(app.screen, SurfaceDialog)
+        assert bridge.sent == []
+
+    drive(app, body)
+
+
+def test_edit_starts_at_the_surface_and_sends_only_a_change() -> None:
+    bridge = FakeBridge(devices=("nanoKONTROL2", "APC mini mk2"))
+    app = on_f9(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        page = app.query_one(SurfacesPage)
+        page.choose_surface("TouchOSC")
+        dialog = await open_form(pilot, app, "[edit…]")
+        assert str(dialog.title_text) == 'EDIT SURFACE "TouchOSC" · OSC'
+        assert not dialog.kind_row.is_attached  # its kind stays
+        assert not dialog.name_row.is_attached  # [rename…] renames it
+        assert (dialog.ports["osc"].value, dialog.wheres["osc"].value) == ("8000", "10.0.0.5:9000")
+        assert dialog.ports["osc"].has_focus
+        await pilot.press("enter")  # as it is: nothing
+        await settle(pilot, app)
+        assert bridge.sent == []
+        dialog = await open_form(pilot, app, "[edit…]")
+        dialog.ports["osc"].value = "8080"  # the web remote's: another kind
+        dialog.wheres["osc"].value = ""
+        await pilot.press("enter")
+        await settle(pilot, app)
+        assert bridge.lines() == ['surface "TouchOSC" change port 8080']
+
+        page.choose_surface("nanoKONTROL2")
+        dialog = await open_form(pilot, app, "[edit…]")
+        assert dialog.device.value == "nanoKONTROL2"
+        assert dialog.device.has_focus
+        assert labels(dialog.chips) == ["[nanoKONTROL2]", "[APC mini mk2]"]  # its own: not in use
+        dialog.device.value = "Phone"  # another's name: busk finds a surface by name first
+        await pilot.press("enter")
+        await settle(pilot, app)
+        assert bridge.lines()[-1] == 'surface "nanoKONTROL2" change "Phone"'
+        dialog = await open_form(pilot, app, "[edit…]")
+        await tap(pilot, dialog.chips, "[APC mini mk2]")
+        await pilot.press("enter")
+        await settle(pilot, app)
+        assert bridge.lines()[-1] == 'surface "nanoKONTROL2" change "APC mini mk2"'
+
+        page.choose_surface("Phone")
+        dialog = await open_form(pilot, app, "[edit…]")
+        assert (dialog.ports["web"].value, dialog.wheres["web"].value) == ("8080", "")
+        dialog.wheres["web"].value = "127.0.0.1"
+        await pilot.press("enter")
+        await settle(pilot, app)
+        assert bridge.lines()[-1] == 'surface "Phone" change port 8080 on 127.0.0.1'
+
+    drive(app, body)
+
+
+def test_the_forms_checks() -> None:
+    names = check_surface_name(["Touch", "nanoKONTROL2"], "Touch")
+    assert names("touch") is None  # its own, in another case
+    assert names("NANOkontrol2") == 'a surface named "NANOkontrol2" exists'
+    assert names("  ") == "a name cannot be empty"
+    ports = check_port(SURFACES, "osc", None)
+    assert [ports(t) for t in ("1", "65535", " 9000 ", "08001")] == [None] * 4
+    assert {ports(t) for t in ("0", "65536", "-1", "+9", "1.5", "", "²")} == {
+        "a port from 1 to 65535"
+    }
+    assert ports("8000") == 'port 8000 is in use by surface "TouchOSC"'
+    assert check_port(SURFACES, "osc", "TouchOSC")("8000") is None
+    ok = ("", "10.0.0.2", "10.0.0.2:9001", ":9001", "host:", "fe80::1")
+    assert [check_feedback(t) for t in ok] == [None] * len(ok)
+    assert all(check_feedback(t) for t in (":", "host:0", "host:65536", "host:x", ":-1"))
+    found = finders(SURFACES, None)
+    assert found == {"nanokontrol2": "nanoKONTROL2"}
+    assert found_by("NANOKONTROL2 MIDI 1", found) == "nanoKONTROL2"  # busk finds it in the name
+    assert found_by("APC mini mk2", found) is None
+    assert finders(SURFACES, "nanoKONTROL2") == {}

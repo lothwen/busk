@@ -1079,6 +1079,12 @@ def test_surfaces_in_the_words_of_surface_add(show: busk.OfflineShow) -> None:
     ]
     assert views[0].detail == "unplugged; waiting for it"
     assert views[1].urls == ("http://10.0.0.2:8080/?k=abc",)
+    assert [(v.midi, v.port, v.host, v.feedback_port, v.where) for v in views] == [
+        ("nanoKONTROL2", None, "", None, ""),  # what F9's form starts from
+        ("", 8080, "", None, ""),
+        ("", 8000, "10.0.0.5", 9000, "10.0.0.5:9000"),
+        ("", 8081, "127.0.0.1", None, "127.0.0.1"),
+    ]
 
 
 def test_bindings_in_the_words_of_bind(show: busk.OfflineShow) -> None:

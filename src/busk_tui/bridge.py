@@ -71,6 +71,7 @@ from busk import (
     TrackedCue,
     UnsupportedFeature,
     load_show,
+    midi_devices,
     pending_recovery,
     read_profile,
 )
@@ -569,6 +570,11 @@ class Bridge:
         if show is None or not self._ready.is_set():
             return PlotRead(path, problem="the show has not started yet")
         return plot_read(show, path, audience, origin)
+
+    def midi_devices(self) -> tuple[str, ...]:
+        """The MIDI input devices plugged in (busk's GAP-62): this process's
+        host, which under ``busk run`` is the console's."""
+        return midi_devices()
 
     # -------------------------------------------------------------- workers
 
@@ -1650,6 +1656,10 @@ def surface_views(doc: Show, status: tuple[SurfaceStatus, ...] | None) -> tuple[
                 state=None if found is None else found.state,
                 detail="" if found is None else found.detail,
                 urls=() if found is None else found.urls,
+                midi=surface["match"].get("deviceName", ""),
+                port=surface["match"].get("port"),
+                host=surface["match"].get("host", ""),
+                feedback_port=surface["match"].get("feedbackPort"),
             )
         )
     return tuple(views)

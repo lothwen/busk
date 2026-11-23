@@ -340,7 +340,9 @@ class RouteView:
 @dataclass(frozen=True, slots=True)
 class SurfaceView:
     """One control surface: from the show, with its status once the
-    surfaces are open.
+    surfaces are open, and the parts of its definition that F9's form
+    starts from (``midi``: the device; the others: what ``surface add``
+    takes after the name).
 
     ``state`` is ``None`` while no surface is open (``--no-surfaces``)."""
 
@@ -351,6 +353,16 @@ class SurfaceView:
     state: SurfaceState | None
     detail: str
     urls: tuple[str, ...]  # an open web remote's addresses, with its key
+    midi: str = ""  # a MIDI surface's device, unquoted: nanoKONTROL2
+    port: int | None = None  # the port an OSC surface or a web remote listens on
+    host: str = ""  # where OSC feedback goes, or the address a web remote listens on
+    feedback_port: int | None = None  # the port OSC feedback goes to; None: the sender's
+
+    @property
+    def where(self) -> str:
+        """OSC's feedback target as ``surface add`` takes it (``10.0.0.2:9001``,
+        ``:9001``, ``10.0.0.2``), or a web remote's address; ``""`` for none."""
+        return self.host if self.feedback_port is None else f"{self.host}:{self.feedback_port}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -1052,7 +1064,7 @@ class BridgeLike(Protocol):
     """What the UI calls (the real :class:`~busk_tui.bridge.Bridge`, and the
     tests' fake). Every member is safe on the UI thread and returns at once,
     but the three that read files (``read_profile``, ``read_show``,
-    ``read_plot``)."""
+    ``read_plot``) and ``midi_devices``, which asks the system."""
 
     def start(self) -> None: ...
 
@@ -1110,4 +1122,10 @@ class BridgeLike(Protocol):
         """What ``rig import`` of the plot at ``path`` would do, through
         the frame given, else the show's. It reads the whole plot: on a
         worker thread."""
+        ...
+
+    def midi_devices(self) -> tuple[str, ...]:
+        """The MIDI input devices plugged in to the console's host, as
+        ``surface add midi`` takes them (busk's GAP-62). It asks the system,
+        which takes a moment: on a worker thread."""
         ...

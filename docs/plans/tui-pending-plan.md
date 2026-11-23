@@ -4002,6 +4002,39 @@ deletes a surface, and sets its pickup in one click. TUI only. Code:
    the show tells it, each in words under its field: an empty name, a name another surface has in
    any case, a port outside 1 to 65535 or one another surface of the kind listens on. What only
    busk can tell is refused in the log, as for every control.
+
+   **Done** (2026-11-23). `SurfaceDialog` in the new `src/busk_tui/widgets/surface_dialog.py`, on
+   the route form's pattern (`PickRow` for the kinds, `row`), with `DeviceChips` (a focusable
+   `ButtonStrip`), `check_surface_name`, `check_device`, `check_port`, `check_feedback`,
+   `finders` and `found_by`. The devices come through a new message, `ReadDevices`, which the
+   shell answers on a worker thread from `Bridge.midi_devices()` (busk's `midi_devices()`), as
+   it answers `ReadProfile`; `BridgeLike` and the tests' fake have the member. `SurfaceView`
+   gained `midi`, `port`, `host` and `feedback_port`, and `where`, the feedback target or address
+   as the line takes it. The builders: `surface_add_midi`, `surface_add`, `surface_change_midi`,
+   `surface_change`, `surface_pickup`, `rename_surface`, `delete_surface`. The form says what is
+   wrong in one red line under the fields, as the route and master forms do, the first problem
+   from the top.
+
+   Calls the user may veto:
+   - **The devices are read on a worker thread as the form opens,** only when it opens on MIDI
+     (a new surface, MIDI first, or a MIDI surface's `[edit…]`): the chips say `reading the
+     devices plugged in…` for the 20 ms or so, and `no MIDI device is plugged in: type its name`
+     when there is none.
+   - **A chip puts its device in the field, and the field is what the line sends.** The chip of
+     the device the field holds is lit; ← → on the chips step through them. The chips go above
+     the field (`plugged in`, then `device`), whose placeholder says `click one above, or type
+     its name`.
+   - **`in use` is said in words, not only dim:** `[nanoKONTROL2 · in use]` where another MIDI
+     surface's device is contained in the chip's name, busk's own rule for finding a port. With
+     such a device in the field, a line under it names the surface (`surface "Left" finds it
+     already`). The chip still works: busk opens one device for two surfaces.
+   - **An empty device is refused,** though busk takes `surface add midi ""` and `change ""`,
+     which open nothing: the one place the form refuses what busk takes, said in the agreement
+     test.
+   - **A new MIDI surface's form says `busk names it after its device: [rename…] renames it`**
+     (§5, call 32).
+   - **The port goes as busk stores it** (`08001` is sent `8001`), and a feedback target or an
+     address as typed, bare or quoted by `commands.word`.
 2. **The chosen surface's edits.** The strip under SURFACES (`edit "Touch"`) becomes:
    - `[soft]` `[jump]`, the pickup, its own lit, giving way to `[pickup…]`: a click sends
      `surface "Touch" pickup soft` (§5, call 34);
@@ -4023,8 +4056,77 @@ deletes a surface, and sets its pickup in one click. TUI only. Code:
    agreeing with busk's refusals, as F7's tempo agreement test does; F9 at 99 columns; a real
    `busk run` under `busk-tui` with a virtual MIDI port among the device chips.
 
+   **Done** (2026-11-23). `_draw_surface_edits` in `src/busk_tui/pages/surfaces.py` builds the
+   strip: `[+ surface…]`, the chosen surface's name, its pickup through F3's `chips` (the lit one a
+   note), `[edit…]`, `[rename…]` (`TextDialog`, `RENAME SURFACE`, `check_surface_name` with its
+   own name free), `[delete]`, `[bind…]` and `[learn]`; `IGNORED` (`hid`, `internal`) leaves
+   `[rename…]` and `[delete]`. `ask_add`, `ask_edit` and `ask_name` open the dialogs, and
+   `_follow` chooses the surface a line named once busk took it. `commands.pickup_prefill` went
+   with `[pickup…]`. `NO_SURFACES` reads `no surfaces · [+ surface…]`. Tests: 10 new and 2
+   changed in `tests/tui/test_tui_surfaces.py`; in `tests/tui/test_tui_commands.py` 9 builders in
+   the contract test, the lines doing what they say, and the form and busk agreeing on a port (16
+   texts), a surface's own port, a feedback target (13) and a name (4); the new fields in
+   `tests/tui/test_tui_conversion.py`; two tests on the real engine in `tests/tui/test_tui_e2e.py`,
+   `test_f9_adds_moves_renames_and_deletes_an_osc_surface_on_the_real_engine` and
+   `test_f9_adds_changes_and_deletes_a_midi_surface_and_a_web_remote_on_the_real_engine`.
+
+   Calls the user may veto:
+   - **`[+ surface…]` goes first in the strip, and the chosen surface's name after it** (`[+
+     surface…] "Touch" [soft] [jump] [edit…] …`), as F8's strips have `[+ route…] U1 sACN 1
+     [edit…] …`, where the strip had the label `edit "Touch"` on its left. One strip wraps
+     between buttons: one line at 99 columns, two at 132 where SURFACES is a column; with the
+     label beside it, the buttons would have had 30 cells there, and five lines.
+   - **`[delete]` always sends `cascade`, and passes no `RunLine.ask`:** busk asks before every
+     cascade, a surface without bindings too (`Delete surface "Phone"?`), so a TUI question would
+     never show. Every surface deleted is asked about, as F7's masters are.
+   - **The choice follows a rename, and goes to a new surface,** once busk has the line, as F8's
+     `[number…]` follows a universe. A line busk refuses leaves the choice where it was.
+
 Docs: the guide's F9, the TUI plan's §2.10 SURFACES row, the report's header and its "Beyond this
 report", the page's module docs, and `CHANGELOG.md`.
+
+**Done** (2026-11-23). The guide: its first note, F9's drawing, a list of SURFACES' strip, the
+forms (`[+ surface…]` and a surface's `[edit…]`, chips reached by Tab) and the questions (F9's
+`[delete]`); the TUI plan's §2.10 (a row for setting surfaces up, which the spec has not); the
+report's header and its "Beyond this report"; `docs/surfaces.md`'s opening points to F9; the
+modules' docs (the page, the form, `busk_tui.widgets.controls`); `CHANGELOG.md` under Added.
+
+**Phase 39 checks** (2026-11-23), on top of `aa60229`. The whole suite with `uv run pytest -n
+12`: 7,681 passed, 1 skipped and 1 failed in 7:47. The failure was
+`test_a_drag_that_pauses_opens_a_new_undo_group_when_it_moves_on`, the pause-timer flake under
+load, which passed 3 runs of 3 alone. A first run, before the last fixes, had the other two known
+load flakes (the engine host's tick overrun and the F2 drag on the real engine), each 3 of 3
+alone. `ruff check`, `ruff format --check` and `mypy src` clean. F9's, the bridge's, the
+contract's, the conversion's, the frame's, the prompt's, the boundary's and the e2e tests pass on
+Textual 8.2.0: 752 tests. 29 mutations of the new code: 26 caught at first. Of the other three,
+the found note's display was untested (now tested), and the form's focus on the kind's chips and
+`where`'s kind check were redundant (Textual focuses the first field; a web remote has no feedback
+port) and went. The perf gate: F1 B and then F1 A read +0.251 and +0.254 against 0.25, F1 being
+untouched, as in Phase 37. F9's run alone, with its sweep of 100 OSC messages a second, read
++0.166 to +0.179 core over three runs (Phase 37: +0.18 to +0.20), with no overrun.
+
+The first e2e test raced under 12 workers: it sent to the old port before busk had closed it,
+because an OSC surface that moves from open to open shows no change of state. It now sends there
+only after the new port is heard, and it passed 6 runs of 6 under load, on both Textual versions.
+
+A real `busk run` under `busk-tui`, in a pty at 99 columns (pyte), `--state-dir` in the
+scratchpad, the club show with its web remote moved to `127.0.0.1:18080`, and a virtual ALSA
+port open (mido, `Phase39 Pad`). F9's strip was one line. `[+ surface…]` offered `[RtMidiOut
+Client:Phase39 Pad]`, the one device plugged in. A click put it in the field, and Enter sent
+`surface add midi "RtMidiOut Client:Phase39 Pad"`, which opened green (`MIDI s-…: RtMidiOut
+Client:Phase39 Pad 128:0`) and was chosen. Then, on that surface: `[soft]` sent `surface "…"
+pickup soft`; `[rename…]` renamed it `Pad`, and the choice followed; `[edit…]` with `Other Pad`
+typed turned it red with busk's reason (`'Other Pad' not found; available: …`); `[delete]` asked
+`Delete surface "Pad"?`, `y` deleted it, and `undo` brought it back. The OSC form typed with the
+keyboard (→ to OSC, Tab, the name, Tab, the port) sent `surface add osc "Touch" port 19000`. A
+binding typed at the prompt took a message there to fader 1 (40%). `[edit…]` with port 19001 sent
+`surface "Touch" change port 19001`, and busk printed `listening on udp 19001`. A message to 19001
+showed in MONITOR (`osc "/fader/1"  0.70  → fader 1`), and one sent to 19000 never did.
+
+The driver first typed the OSC form too fast: a key it sent a few milliseconds after Tab landed in
+the field Tab was leaving (`"Touch1" port 9000`). Textual hands a key to the focused field before
+Tab's binding moves the focus. Paced at 0.3 s, as a person types, every key landed where it
+should. The headless tests, which wait between keys, never see it.
 
 ### Phase 40: Engine: one binding at a time
 

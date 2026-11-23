@@ -676,6 +676,55 @@ def delete_master(name: str) -> Line:
     return Line(f"delete master {quoted(name)} cascade")
 
 
+# ---------------------------------------------------------------- surfaces
+
+
+def surface_add_midi(device: str) -> Line:
+    """``surface add midi "nanoKONTROL2"``: busk names it after its device."""
+    return Line(f"surface add midi {quoted(device)}")
+
+
+def surface_add(kind: Literal["osc", "web"], name: str, port: int, where: str = "") -> Line:
+    """``surface add osc "Touch" port 9000 feedback 10.0.0.2:9001``, ``surface
+    add web "Phone" port 8080 on 10.0.0.5``. ``where``: OSC's feedback target
+    (a host, ``host:port`` or ``:port``), a web remote's address; ``""`` for
+    the sender, or every interface."""
+    return Line(f"surface add {kind} {quoted(name)} {_listening(kind, port, where)}")
+
+
+def surface_change_midi(surface: str, device: str) -> Line:
+    """``surface "nanoKONTROL2" change "nanoKONTROL2 MIDI"`` (busk's GAP-61)."""
+    return Line(f"surface {quoted(surface)} change {quoted(device)}")
+
+
+def surface_change(surface: str, kind: Literal["osc", "web"], port: int, where: str = "") -> Line:
+    """``surface "Touch" change port 9001 feedback 10.0.0.2:9001`` (busk's
+    GAP-61): what :func:`surface_add` takes after the name, whole."""
+    return Line(f"surface {quoted(surface)} change {_listening(kind, port, where)}")
+
+
+def _listening(kind: Literal["osc", "web"], port: int, where: str) -> str:
+    words = f"port {port}"
+    if where:
+        words += f" {'feedback' if kind == 'osc' else 'on'} {word(where)}"
+    return words
+
+
+def surface_pickup(surface: str, pickup: str) -> Line:
+    """``surface "nanoKONTROL2" pickup soft``."""
+    return Line(f"surface {quoted(surface)} pickup {pickup}")
+
+
+def rename_surface(surface: str, new_name: str) -> Line:
+    return Line(f"rename surface {quoted(surface)} {quoted(new_name)}")
+
+
+def delete_surface(surface: str) -> Line:
+    """``delete surface "Touch" cascade``: busk asks, naming the bindings it
+    takes."""
+    return Line(f"delete surface {quoted(surface)} cascade")
+
+
 # ------------------------------------------------------------ safety, show
 
 
@@ -972,8 +1021,3 @@ def feedback_prefill(surface: str, given: str) -> str:
     """``feedback "nanoKONTROL2" cc 1 0 ``: ``led``, ``motor``, ``display``
     or ``none`` next."""
     return f"feedback {quoted(surface)} {given} "
-
-
-def pickup_prefill(surface: str) -> str:
-    """``surface "nanoKONTROL2" pickup ``: ``soft`` or ``jump`` next."""
-    return f"surface {quoted(surface)} pickup "

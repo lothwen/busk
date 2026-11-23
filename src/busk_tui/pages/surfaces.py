@@ -22,20 +22,31 @@ number its control sent (``in``) and the level of what it drives (``val``):
 a fader slot's playback on the current page, a playback, a master
 (``72%``). With soft pickup the two differ until the fader picks up.
 
-A click on a row chooses it, and the edits under each table act on the
-chosen surface (``bind "<surface>" ``, ``surface "<surface>" pickup ``) and
-binding (``unbind "<surface>" cc 1 48``, whole, and ``feedback …``), put
-in the prompt to finish. **Learn mode**: ``[learn]`` among the surface's
-edits arms it, lit amber; the next input from that surface puts ``bind
-"<surface>" cc 1 48 `` in the prompt, for the operator to finish with what
-it drives, and disarms. A control that has bindings says so in the hint
-row, since ``bind`` adds beside them. A pitch bend, which ``bind`` cannot
-take, and the clock, which a device sends on its own, are passed over. Esc,
-a second click, another surface or another page disarms it.
+A click on a row chooses it, and the strips under the tables act on it.
+SURFACES' (pending plan Phase 39): ``[+ surface…]``, the surface form
+(:mod:`busk_tui.widgets.surface_dialog`), which sends ``surface add …``;
+then for the chosen surface its pickup, ``[soft]`` ``[jump]``, its own lit,
+a click sending ``surface "Touch" pickup soft``; ``[edit…]``, the form
+filled in, its kind fixed, which sends ``surface "Touch" change …``;
+``[rename…]``; ``[delete]``, ``delete surface "Touch" cascade``, after
+busk's question, which counts the bindings that go; and ``bind "<surface>"
+`` put in the prompt to finish. A surface busk does not open (``hid``,
+``internal``) has ``[rename…]`` and ``[delete]`` alone. The choice follows a
+surface renamed, and goes to one just added. BINDINGS' strip puts
+``unbind "<surface>" cc 1 48``, whole, and ``feedback …`` in the prompt.
+
+**Learn mode**: ``[learn]`` among the surface's edits arms it, lit amber;
+the next input from that surface puts ``bind "<surface>" cc 1 48 `` in the
+prompt, for the operator to finish with what it drives, and disarms. A
+control that has bindings says so in the hint row, since ``bind`` adds
+beside them. A pitch bend, which ``bind`` cannot take, and the clock, which
+a device sends on its own, are passed over. Esc, a second click, another
+surface or another page disarms it.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import partial
 from typing import Final
 
@@ -50,15 +61,24 @@ from busk_tui.commands import Line
 from busk_tui.model import BindingInfo, InputView, LiveState, ShowModel, SurfaceView
 from busk_tui.nav import Item, Stop
 from busk_tui.pages.base import Page, Part, View
-from busk_tui.widgets.controls import ButtonStrip, FillPrompt, StripButton, button_label
+from busk_tui.widgets.controls import (
+    ButtonStrip,
+    FillPrompt,
+    RunLine,
+    StripButton,
+    button_label,
+)
+from busk_tui.widgets.dialogs import TextDialog
+from busk_tui.widgets.fixture_panel import chips
 from busk_tui.widgets.panel import Panel
 from busk_tui.widgets.quick import strip_stops
 from busk_tui.widgets.rows import Cells, Column, RowTable, cell
+from busk_tui.widgets.surface_dialog import SurfaceDialog, check_surface_name
 
 SIDE_BY_SIDE: Final = 132
 """From this many columns the bindings sit beside the surfaces."""
 
-NO_SURFACES: Final = 'no surfaces · surface add midi "<device>", or surface add web "Phone"'
+NO_SURFACES: Final = "no surfaces · [+ surface…]"
 NO_BINDINGS: Final = 'no bindings · bind "<surface>" cc 1 0 fader 1'
 
 NONE: Final = "—"
@@ -74,6 +94,11 @@ LEARN_LIT: Final = f"bold {colors.BG} on {colors.AMBER}"
 
 PASSED_OVER: Final = frozenset({"bend", "clock"})
 """The kinds of input learn mode passes over (see the module docs)."""
+
+IGNORED: Final = frozenset({"hid", "internal"})
+"""The kinds of surface busk does not open: renamed and deleted alone."""
+
+PICKUPS: Final = ("soft", "jump")
 
 
 class SurfaceTable(RowTable):
@@ -234,7 +259,6 @@ class SurfacesPage(Page):
         self.monitor = MonitorTable(Text(NOT_OPEN, style=colors.DIM), id="monitor-table")
         self.bindings = BindingTable(Text(NO_BINDINGS, style=colors.DIM), id="binding-table")
         self.notes = Static("", id="surface-notes")
-        self.surface_label = Static("", classes="edit-label")
         self.surface_edits = ButtonStrip(id="surface-edits", classes="edit-strip")
         self.binding_label = Static("", classes="edit-label")
         self.binding_edits = ButtonStrip(id="binding-edits", classes="edit-strip")
@@ -258,7 +282,6 @@ class SurfacesPage(Page):
                     yield self.surfaces
                     yield self.notes
                     with Horizontal(classes="edit-row"):
-                        yield self.surface_label
                         yield self.surface_edits
                 with self.monitor_panel:
                     yield self.monitor
@@ -353,22 +376,77 @@ class SurfacesPage(Page):
         return found or (self.shown_surfaces[0] if self.shown_surfaces else None)
 
     def _draw_surface_edits(self) -> None:
+        """``[+ surface…]``, then the chosen surface's name and edits."""
+        buttons = [_ask("+ surface…", self.ask_add)]
         surface = self.chosen_surface()
-        prefills: list[tuple[str, str]] = []
-        if surface is not None:
-            prefills = [
-                ("bind", commands.bind_prefill(surface.name)),
-                ("pickup", commands.pickup_prefill(surface.name)),
-            ]
-        label = Text()
-        if surface is not None:
-            label = Text.assemble(("edit ", colors.DIM), (f'"{surface.name}"', colors.CYAN))
-        _update(self.surface_label, label)
-        buttons = _buttons(prefills)
-        if surface is not None:
+        if surface is None:
+            self.surface_edits.show(buttons)
+            return
+        name = surface.name
+        buttons.append(
+            StripButton(Text(commands.quoted(name), style=colors.CYAN), Line(""), note=True)
+        )
+        if surface.kind not in IGNORED:
+            buttons += chips(PICKUPS, surface.pickup, partial(commands.surface_pickup, name))
+            buttons.append(_ask("edit…", self.ask_edit))
+        buttons += [
+            _ask("rename…", self.ask_name),
+            StripButton(button_label("delete", colors.RED), commands.delete_surface(name)),
+        ]
+        if surface.kind not in IGNORED:
+            buttons += _buttons([("bind", commands.bind_prefill(name))])
             learn = cell("[learn]", LEARN_LIT if self.learning else colors.MID)  # a span: lit or
             buttons.append(StripButton(learn, Line(""), action=self.toggle_learn))  # not differ
         self.surface_edits.show(buttons)
+
+    # ------------------------------------------------------------ forms
+
+    def ask_add(self) -> None:
+        """``[+ surface…]``: the form, then ``surface add …``; the new surface
+        is chosen once busk has it."""
+        dialog = SurfaceDialog(self.shown_surfaces)
+
+        def given(line: Line | None) -> None:
+            if line is not None:
+                self.post_message(RunLine(line, done=partial(self._follow, dialog.new_name())))
+
+        self.app.push_screen(dialog, given)
+
+    def ask_edit(self) -> None:
+        """``[edit…]``: the form, filled in with how busk finds the chosen
+        surface: ``surface "Touch" change …``. A form that changes nothing
+        sends nothing."""
+        surface = self.chosen_surface()
+        if surface is None:
+            return
+
+        def given(line: Line | None) -> None:
+            if line is not None:
+                self.post_message(RunLine(line))
+
+        self.app.push_screen(SurfaceDialog(self.shown_surfaces, surface), given)
+
+    def ask_name(self) -> None:
+        """``[rename…]``: ``rename surface "Touch" "Pad"``; nothing for the
+        name it has. The choice follows it."""
+        surface = self.chosen_surface()
+        if surface is None:
+            return
+
+        def given(text: str | None) -> None:
+            name = None if text is None else text.strip()
+            if name is not None and name != surface.name:
+                line = commands.rename_surface(surface.name, name)
+                self.post_message(RunLine(line, done=partial(self._follow, name)))
+
+        names = [other.name for other in self.shown_surfaces]
+        check = check_surface_name(names, surface.name)
+        self.app.push_screen(TextDialog("RENAME SURFACE", surface.name, check), given)
+
+    def _follow(self, name: str, ok: bool) -> None:
+        """Choose the surface a line named, once busk took the line."""
+        if ok:
+            self.choose_surface(name)
 
     # ------------------------------------------------------------ learn
 
@@ -458,6 +536,11 @@ def _buttons(prefills: list[tuple[str, str]]) -> list[StripButton]:
         StripButton(button_label(f"{name}…", colors.MID), Line(text), prefill=text)
         for name, text in prefills
     ]
+
+
+def _ask(label: str, action: Callable[[], None]) -> StripButton:
+    """A button that opens a dialog of the page's."""
+    return StripButton(button_label(label, colors.MID), Line(""), action=action)
 
 
 def _update(widget: Static, text: Text) -> None:

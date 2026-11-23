@@ -103,6 +103,7 @@ from busk_tui.pages.program import ProgramPage
 from busk_tui.pages.surfaces import SurfacesPage
 from busk_tui.widgets.controls import (
     FillPrompt,
+    ReadDevices,
     ReadPlot,
     ReadProfile,
     ReadRecovery,
@@ -636,6 +637,19 @@ class BuskApp(App[int]):
                 self.call_from_thread(then, found)
 
         self.run_worker(read, thread=True, group="read-plot")
+
+    def on_read_devices(self, message: ReadDevices) -> None:
+        """The MIDI devices plugged in, for F9's surface form: busk asks the
+        system on a worker thread, and ``then`` gets them."""
+        message.stop()
+        bridge, then = self.bridge, message.then
+
+        def read() -> None:
+            found = bridge.midi_devices()
+            if not get_current_worker().is_cancelled:
+                self.call_from_thread(then, found)
+
+        self.run_worker(read, thread=True, group="read-devices")
 
     def on_read_show(self, message: ReadShow) -> None:
         """A show file to show before it is opened (the file picker, Open

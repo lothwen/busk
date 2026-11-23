@@ -337,6 +337,7 @@ planned and recorded in [the rig plan](../../plans/tui-rig-plan.md).
 | Spec item | busk | Class | Live source | Gap |
 |---|---|---|---|---|
 | SURFACES: name, kind, binding count | `surfaces[]` (midi, osc, web), `bindings[]` | S | `doc` | |
+| SURFACES set up (not in the spec) | since 2026-11-23, `[+ surface…]` and a surface's `[edit…]`, a form for `surface add` and `surface "<name>" change` (GAP-61) with the MIDI devices plugged in as chips (`busk.midi_devices()`, GAP-62, read on a worker as the form opens); `[soft]` `[jump]`; `[rename…]` and `[delete]` (GAP-60, `cascade`, busk's question) (pending plan Phase 39) | S | `doc`, `surf` | |
 | Status dot | `LiveShow.surfaces` (GAP-08): `state`, `detail`; an open web remote's `urls` | S | `surf` | |
 | MONITOR | since 2026-11-18, `LiveShow.inputs` (GAP-13): the newest 64 inputs, each with its control as `bind` takes it, the number the device sent and what it drives; read at 10 Hz while F9 shows (pending plan Phase 37) | S | `inputs` | |
 | BINDINGS: surface, type, channel, number, target | `bindings[]`: input (cc, note, osc, clock), action, feedback | S | `doc` | |

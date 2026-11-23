@@ -10,6 +10,14 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- F9 sets up the control surfaces from controls. `[+ surface…]` opens a form: the kind's chips
+  (MIDI, OSC, web), then for MIDI the devices plugged in to the console's computer as chips, or
+  a device typed, and for OSC and the web remote a name, a port and where feedback goes or the
+  address to listen on. It says what is wrong before it sends (an empty name, a name or a port
+  another surface has). The chosen surface's strip has its pickup as two chips, `[soft]`
+  `[jump]`, a click each, and `[edit…]`, the same form filled in, which moves the surface to
+  another device or port on a running show; `[rename…]`; and `[delete]`, after busk's question,
+  which counts the bindings that go with it.
 - Surfaces are renamed, deleted and changed from the console. `rename surface "Phone"
   "Tablet"` renames one; `delete surface "<name>"` deletes one with no bindings, and one with
   bindings with `cascade`, which takes them and asks first at the prompt. `surface "<name>"

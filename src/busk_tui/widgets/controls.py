@@ -1,6 +1,7 @@
 """Buttons and chips (spec §4.3), and :class:`RunLine`, how every control asks
 for a line to be run (and :class:`ReadProfile` and :class:`ReadShow`, how the
-file picker asks busk to read a profile file or a show file).
+file picker asks busk to read a profile file or a show file, and
+:class:`ReadDevices`, how F9's form asks for the MIDI devices plugged in).
 
 A control never talks to the bridge: it posts :class:`RunLine`, which
 bubbles up to the app. The app asks the engine's question first if there is
@@ -110,6 +111,16 @@ class ReadPlot(Message):
         self.then = then
         self.audience = audience
         self.origin = origin
+
+
+class ReadDevices(Message):
+    """Have busk say which MIDI devices are plugged in, and call ``then``
+    with them, on the UI thread (F9's surface form). The app asks on a worker
+    thread, as busk asks the system."""
+
+    def __init__(self, then: Callable[[tuple[str, ...]], None]) -> None:
+        super().__init__()
+        self.then = then
 
 
 class ReadRecovery(Message):

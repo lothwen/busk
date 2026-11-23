@@ -19,9 +19,9 @@ from busk.model.playback import ButtonFunction, FaderFunction, Playback
 from busk.output import dmxusb
 from busk_tui import attributes, commands, config
 from busk_tui import bridge as bridge_module
-from busk_tui.bridge import show_model
+from busk_tui.bridge import show_model, surface_views
 from busk_tui.commands import Line
-from busk_tui.widgets import master_panel, route_dialog
+from busk_tui.widgets import master_panel, route_dialog, surface_dialog
 from busk_tui.widgets.chase_dialog import (
     DIRECTIONS,
     check_crossfade,
@@ -440,6 +440,48 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
         False,
     ),
     "delete master": (commands.delete_master("Fade"), 'delete master "Fade" cascade', False),
+    # Surfaces added, changed, renamed and deleted (pending plan Phase 39).
+    "delete surface": (commands.delete_surface("Phone"), 'delete surface "Phone" cascade', False),
+    "rename surface": (
+        commands.rename_surface("nanoKONTROL2", 'Left "A"'),
+        r'rename surface "nanoKONTROL2" "Left \"A\""',
+        False,
+    ),
+    "surface add midi": (
+        commands.surface_add_midi("X-Touch"),
+        'surface add midi "X-Touch"',
+        False,
+    ),
+    "surface add osc": (
+        commands.surface_add("osc", "Touch", 9000, "10.0.0.2:9001"),
+        'surface add osc "Touch" port 9000 feedback 10.0.0.2:9001',
+        False,
+    ),
+    "surface add web": (
+        commands.surface_add("web", "Tablet", 8081, "10.0.0.5"),
+        'surface add web "Tablet" port 8081 on 10.0.0.5',
+        False,
+    ),
+    "surface change midi": (
+        commands.surface_change_midi("X-Touch", "X-Touch:X-Touch MIDI 2"),
+        'surface "X-Touch" change "X-Touch:X-Touch MIDI 2"',
+        False,
+    ),
+    "surface change osc": (
+        commands.surface_change("Touch", "osc", 9001, ":9002"),
+        'surface "Touch" change port 9001 feedback :9002',
+        False,
+    ),
+    "surface change web": (
+        commands.surface_change("Tablet", "web", 8082),
+        'surface "Tablet" change port 8082',
+        False,
+    ),
+    "surface pickup": (
+        commands.surface_pickup('Left "A"', "jump"),
+        r'surface "Left \"A\"" pickup jump',
+        False,
+    ),
     # The strobe cap and the show's title (pending plan Phase 36).
     "safety strobe": (commands.strobe_cap("2.5"), "safety strobe 2.5", False),
     "safety strobe off": (commands.no_strobe_cap(), "safety strobe off", False),
@@ -584,7 +626,6 @@ PREFILLS = (
     commands.cue_prefill(9, "3", "go"),
     commands.bind_prefill("nanoKONTROL2"),
     commands.feedback_prefill("nanoKONTROL2", "cc 1 0"),
-    commands.pickup_prefill("nanoKONTROL2"),
 )
 """Lines the UI puts in the prompt to finish."""
 
@@ -1111,6 +1152,90 @@ def test_a_tempo_the_master_form_refuses_busk_refuses_too(
 ) -> None:
     assert master_panel.check_bpm(text) is not None
     assert not show.execute(f'master add speed "New" bpm {text}').ok
+
+
+def test_the_surface_lines_do_what_they_say(show: busk.OfflineShow) -> None:
+    for line in (
+        commands.surface_add("osc", "Touch", 9000, "10.0.0.2:9001"),
+        commands.surface_add("web", "Tablet", 8081, "10.0.0.5"),
+        commands.surface_add_midi("X-Touch"),
+    ):
+        assert show.execute(line.text).ok, line
+    views = {view.name: view for view in surface_views(show.show, None)}
+    touch, tablet, xtouch = views["Touch"], views["Tablet"], views["X-Touch"]
+    assert (touch.kind, touch.port, touch.where) == ("osc", 9000, "10.0.0.2:9001")
+    assert (tablet.kind, tablet.port, tablet.where) == ("web", 8081, "10.0.0.5")
+    assert (xtouch.kind, xtouch.midi, xtouch.pickup) == ("midi", "X-Touch", "jump")
+    for line in (
+        commands.surface_change("Touch", "osc", 9001, ":9002"),
+        commands.surface_change("Tablet", "web", 8082),
+        commands.surface_change_midi("X-Touch", "X-Touch MIDI 2"),
+        commands.surface_pickup("X-Touch", "soft"),
+        commands.rename_surface("X-Touch", "Left"),
+        commands.delete_surface("Phone"),
+    ):
+        assert show.execute(line.text).ok, line
+    views = {view.name: view for view in surface_views(show.show, None)}
+    assert (views["Touch"].port, views["Touch"].where) == (9001, ":9002")
+    assert (views["Tablet"].port, views["Tablet"].where) == (8082, "")
+    assert (views["Left"].midi, views["Left"].pickup) == ("X-Touch MIDI 2", "soft")
+    assert "Phone" not in views
+    assert "X-Touch" not in views
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "8081", "1", "65535", " 8082 ", "08083", "\u0668\u0660\u0668\u0664", "8080",
+        "0", "65536", "-1", "+8085", "1.5", "", "x", "²",
+        pytest.param("7" * 5000, id="past-int"),
+    ],
+)  # fmt: skip
+def test_the_surface_form_and_busk_agree_on_a_port(show: busk.OfflineShow, text: str) -> None:
+    """On the club's surfaces, whose web remote listens on 8080."""
+    views = surface_views(show.show, None)
+    passes = surface_dialog.check_port(views, "web", None)(text) is None
+    assert passes is show.execute(f'surface add web "New" port {text.strip()}').ok
+
+
+def test_a_surfaces_own_port_may_stay(show: busk.OfflineShow) -> None:
+    views = surface_views(show.show, None)
+    assert surface_dialog.check_port(views, "web", "Phone")("8080") is None
+    assert show.execute(commands.surface_change("Phone", "web", 8080, "10.0.0.9").text).ok
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "", "10.0.0.2", "10.0.0.2:9001", ":9001", "host:", "fe80::1", "two words",
+        ":", "host:0", "host:65536", "host:x", ":-1", "host:+9",
+    ],
+)  # fmt: skip
+def test_the_surface_form_and_busk_agree_on_where_feedback_goes(
+    show: busk.OfflineShow, text: str
+) -> None:
+    passes = surface_dialog.check_feedback(text) is None
+    line = commands.surface_add("osc", "New", 9100, text.strip())
+    assert passes is show.execute(line.text).ok
+
+
+@pytest.mark.parametrize(
+    ("text", "ok"), [("Desk", True), ("phone", False), ("NANOkontrol2", False), ("  ", False)]
+)
+def test_the_surface_form_and_busk_agree_on_a_name(
+    show: busk.OfflineShow, text: str, ok: bool
+) -> None:
+    """A MIDI surface's name is its device. An empty device is the one place
+    the form refuses what busk takes: it would open nothing."""
+    names = [view.name for view in surface_views(show.show, None)]
+    check = surface_dialog.check_surface_name(names, None)
+    assert (check(text) is None) is ok
+    assert show.execute(commands.surface_add("osc", text.strip(), 9100).text).ok is ok
+    if ok:
+        assert show.execute("undo").ok
+    assert (surface_dialog.check_device(text) is None) is bool(text.strip())
+    midi = show.execute(commands.surface_add_midi(text.strip()).text)
+    assert midi.ok is (ok or not text.strip())
 
 
 @pytest.mark.parametrize(("text", "ok"), [("Size", True), ("fx", False), ("SPEED 1", False)])
