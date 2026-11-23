@@ -4171,6 +4171,39 @@ Engine only. Q15 settles the line's words. Code: `src/busk/console/parser.py` (`
 
    Add GAP-63's entry and its Summary row to engine-gaps.md, and update `docs/console.md` (the
    Bindings row), `docs/surfaces.md` and `busk help`.
+
+   **Done** (2026-11-23), under Q15 (a), the user's "use recommended answer to questions".
+   `_cmd_binding`, `_delete_binding` and `_binding_by_id` in `src/busk/console/parser.py`, and
+   `_binding`, what `bind` takes after the surface, which `bind` and `change` share. `_input`,
+   `_action` and `_binding_names` moved there from `busk.console.console`, with a new
+   `_binding_text`, so a reply words a binding as `list bindings` does; `_address_text` went
+   for `_input`, which also words a clock. The words: `deleted binding b-40d1: cc 1 48 →
+   blackout`, `changed binding b-40d1: cc 1 49 → button 2 2 [led]`, `binding b-40d1 is set up
+   that way already`, `no binding b-nope`. `unbind "<s>" clock` reads `clock`, with no `thru`
+   after it. The help lines and two paragraphs of the parser's module docs. Tests: in the new
+   `tests/test_binding_lines.py` (62 in all, with step 2), two in `tests/test_pickup.py`, and
+   rows in `tests/test_console_prompt.py`.
+
+   Calls the user may veto:
+   - **A `change` sets each part that differs** (`input`, `action`, `feedback`) and deletes a
+     feedback left out, as `route <id> change` does, so the binding keeps its place in the list
+     and `list bindings` its order.
+   - **The replies name the binding, then what it is now or was,** as `list bindings` prints it
+     after the surface, where `delete route` says only `deleted route r-1`: a binding's id says
+     nothing to a reader.
+   - **A binding on a web remote or a `hid` surface, from a show file, is deleted but not
+     changed:** `change` refuses as `bind` does there, since no control on it is one busk reads.
+   - **A soft-pickup fader moved to another control now picks the level up again,** found by the
+     live test this step asked for: soft takeover is kept by binding id, so the moved binding was
+     still attached to its fader and the new fader, wherever it stood, jumped the level at its
+     first move (62.5% to 25% in the test). The engine's swap now forgets the takeover state of
+     a binding whose input changed (`Pickup.forget` in `src/busk/engine/surfaces.py`, called
+     from `_swap` in `src/busk/engine/loop.py`). A binding moved to another slot on the same
+     control keeps its position, which is the hardware's, and picks the new slot's level up as
+     before. The test fails with the call taken out.
+   - **The old feedback address keeps the last value it was sent,** as after `unbind`: an LED
+     the binding lit stays lit until something else sends there. Darkening it would mean
+     sending a value nothing asked for, a motor fader's to 0 among them.
 2. **What `bind` takes and should not,** found while planning (2026-11-23). Bugs, with no
    number:
    - a MIDI channel outside 1 to 16 and a CC or note number above 127 go through in silence
@@ -4186,6 +4219,33 @@ Engine only. Q15 settles the line's words. Code: `src/busk/console/parser.py` (`
    `feedback` and `unbind` too (§5, call 36). A show file that holds one still loads, with the
    validator's warning.
 
+   **Done** (2026-11-23). `address` in `src/busk/console/parser.py` takes the controls a
+   surface sends (`_CONTROLS`: `cc`, `note` and `clock` on MIDI, `osc` on OSC; `_sends` names
+   the surface) and reads a channel and a number through `within`; Tab offers the surface's
+   controls and feedback alone. The words, each `expected …, got …` as the parser's other
+   refusals: `expected a MIDI channel (1–16), got '17'`, `expected a CC number (0–127), got
+   '128'` (`a note number` after `note`, `… after thru` for `thru`'s end), `surface "Pad" is a
+   MIDI surface: expected cc, note or clock, got 'osc'`, `surface "Touch" is an OSC surface:
+   expected osc, got 'cc'`, `surface "Pad" is a MIDI surface: expected led or motor, got
+   'display'` (`led, motor or none` from `feedback`), and `surface "Phone" is a web remote,
+   which sends commands of its own: it takes no binding`. The validator (`_binding_surface`,
+   `_midi_numbers` in `src/busk/model/validate.py`) now warns of the ranges and of `display`
+   on MIDI, as it warned of the kinds: `bindings[3].input.channel: A MIDI channel is from 1 to
+   16, got 17; this binding does nothing`, `… .feedback.kind: MIDI surface 's-…' has no
+   display; this feedback is not sent`.
+
+   Calls the user may veto:
+   - **A binding on a `hid` or `internal` surface is refused too,** in the words of `surface
+     … change` (`surface "Keys" is a hid surface, which busk does not open`): its controls are
+     hardware ones no line makes.
+   - **`feedback … display` on MIDI is refused,** which the step listed for `bind` and
+     `change` alone: it makes the same binding.
+   - **`unbind` and `feedback` refuse the ranges but not the kinds,** so a show file's `cc` on an
+     OSC surface can still be unbound by its control; `delete binding` takes any of them.
+   - **The validator warns of the ranges and of `display`,** where it was silent, so "still
+     loads, with the validator's warning" holds for each: the feedback address's ranges too
+     (`this feedback is not sent`).
+
    Verify: one of two bindings on a control deleted, and changed; a clock's binding changed and
    deleted; a pitch bend's binding from a show file deleted; each refusal, with Tab and `?`;
    `undo`; on a running `LiveShow` with an OSC surface on localhost, a binding moved to another
@@ -4193,6 +4253,33 @@ Engine only. Q15 settles the line's words. Code: `src/busk/console/parser.py` (`
    and feedback moved; `busk run` with processes.
 
 Docs: as above, the parser's module docs, and `CHANGELOG.md`.
+
+**Done** (2026-11-23). engine-gaps.md: GAP-63 and its Summary row; `docs/console.md` (the
+Bindings row, the surfaces paragraph, the line on `unbind`); `docs/surfaces.md` (a paragraph
+under the opening, and a sentence under Feedback); `busk help` and the parser's module docs (the
+grammar, two paragraphs); the modules' docs of `Pickup` and the engine's swap; `CHANGELOG.md`,
+under Added (the lines) and Fixed (what `bind` took). The guide and the operations report change
+with F9, in Phase 41.
+
+**Phase 40 checks** (2026-11-23), on top of `afdefef`. The whole suite with `uv run pytest -n
+12`: 7,755 passed and 1 skipped, in 8:23. A first run had 6 failures, each a row with the old
+words: three rows of `tests/test_console_prompt.py` (`delete ` now offers `binding`, a MIDI
+binding's feedback no longer offers `display`, its address no longer `osc`), one error row of
+`tests/test_console_parser.py` (`expected a CC number (0–127)`), and two tests of
+`tests/tui/test_tui_conversion.py`, whose rig bound an OSC control with LED feedback on `note 1
+40`, a control an OSC surface does not send; it now sends it to `osc "/1/led1"`, and the TUI
+words it as before. `ruff check`, `ruff format --check` and `mypy src` clean. 19 mutations of the
+new code, all caught. No TUI code changed, so neither Textual 8.2.0 nor the perf gate was run.
+
+A real `busk run club.show --state-dir …` with processes, lines piped to its prompt, the club
+show with its web remote moved to `127.0.0.1:18080` and an OSC surface `Touch` on udp 19100,
+soft pickup, with two bindings on `/fader/1`: fader 1 and a momentary blackout. `/fader/1` at
+0.75 set playback 1 to 0.75 and held the blackout. `delete binding` of the blackout's replied
+`deleted binding b-…: osc "/fader/1" → blackout momentary`, and 0.75 then moved the fader alone.
+`binding b-… change osc "/fader/2" fader 1` replied `changed binding b-…: osc "/fader/2" → fader
+1`; `/fader/2` at 0 and at 0.5 changed nothing (soft pickup, the level at 0.75), at 1.0 it crossed
+and took the level, and `/fader/1` then did nothing. `list bindings` showed the one binding on
+`/fader/2`, and two `undo`s brought both back on `/fader/1`.
 
 ### Phase 41: F9: bindings set up from controls
 
@@ -4506,7 +4593,7 @@ sequences, executors and recipes. Each doubtful point was checked on `OfflineSho
   user's word of 2026-11-23.
 - `bind` takes a MIDI channel outside 1 to 16 and a number above 127 in silence, a control its
   surface cannot send with a warning by path, and `display` feedback on MIDI in silence. Found on
-  2026-11-23, while planning Phase 40. **Phase 40**, step 2.
+  2026-11-23, while planning Phase 40. **Phase 40**, step 2. Fixed there the same day.
 
 ## 8. Questions
 
@@ -4655,3 +4742,6 @@ sequences, executors and recipes. Each doubtful point was checked on `OfflineSho
       one, and `rebind "<s>" <input> <what> to <input> <what> [feedback]` changes it. It reads
       well typed, but it is long, two alike bindings on one control cannot be told apart, and a
       binding whose target `bind` cannot word (a command from a show file) has no name.
+
+    ANSWER: (a), the recommended one (the user's standing word, "use recommended answer to
+    questions", 2026-11-23). Built in Phase 40.

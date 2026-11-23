@@ -719,7 +719,8 @@ class Engine:
         their levels (new ones start at their initial level) and speed
         masters their tempo, phase and level (new ones start counting now);
         the group factor is rebuilt, since a group or the patch may have
-        changed; the current page is kept by id (Phase 6); buffers are
+        changed; the current page is kept by id (Phase 6); a binding moved
+        to another input loses its soft takeover state (GAP-63); buffers are
         reallocated only when their size changed.
         """
         old = self._compiled
@@ -752,6 +753,10 @@ class Engine:
         runtime.fadeLevels = _levels(compiled, "fadeTime", runtime.fadeLevels)
         self._refresh_fade()
         runtime.page.rebind(compiled.pages)
+        inputs = {binding["id"]: binding["input"] for binding in old.bindings}
+        runtime.pickup.forget(
+            b["id"] for b in compiled.bindings if inputs.get(b["id"], b["input"]) != b["input"]
+        )
 
     def _refresh_fade(self) -> None:
         """Recompute the fade-time override from the fade-time masters'

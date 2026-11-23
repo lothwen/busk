@@ -10,6 +10,14 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- One binding is deleted or changed alone, by its id, which `list bindings` prints and Tab
+  offers. `delete binding <id>` deletes it, whatever its control: one of two on a control, a
+  clock's, a pitch bend's from a show file. `binding <id> change …` takes what `bind` takes
+  after the surface and gives the binding whole (`binding b-40d1 change cc 1 49 button 2 2
+  led`), keeping its id and its surface: a binding moves to another control, drives something
+  else or sends its feedback elsewhere in one undo step, and the control's other bindings stay.
+  On a running show, a soft-pickup fader moved to another control or slot picks the level up
+  again. `unbind "<surface>" clock` takes a clock's bindings.
 - F9 sets up the control surfaces from controls. `[+ surface…]` opens a form: the kind's chips
   (MIDI, OSC, web), then for MIDI the devices plugged in to the console's computer as chips, or
   a device typed, and for OSC and the web remote a name, a port and where feedback goes or the
@@ -141,6 +149,12 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Fixed
 
+- `bind` took a MIDI channel outside 1 to 16 and a CC or note number above 127, which never
+  fire, and `display` feedback on MIDI, which has none, in silence; and a control the surface
+  cannot send (`osc` on a MIDI surface, any control on the web remote) with a warning by
+  path. Each is refused in words, and Tab offers the surface's own controls alone; `unbind`
+  and `feedback` refuse the ranges too. A show file that holds such a binding still loads,
+  with a warning.
 - A GDTF file whose `description.xml` ends in NUL bytes after its last element, as some
   exporters write it, is read: `profile import` and a profile library refused it as not
   well-formed XML. So is an MVR plot from the same exporters. A NUL anywhere else is still

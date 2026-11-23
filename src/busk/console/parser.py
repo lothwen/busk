@@ -38,13 +38,17 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
         (a MIDI surface's device, or what an OSC or web surface listens on)
     rename surface "<name>" "<new name>" | delete surface "<name>" [cascade]
     bind "<surface>" <input> <what> [led|motor|display [<input>]]
-    bind "<surface>" clock tap ["<master>"] [led|motor|display <input>]
+    bind "<surface>" clock tap ["<master>"] [led|motor <input>]
         <input> = cc|note <channel> <number> | osc "/path"
         <what> = fader <slot> | fader playback N | button <slot> <b> | master gm
                | master "<name>" | tap ["<master>"] | blackout [momentary]
                | page +N | page -N | page N | release all [<seconds>] | output on|off
+        (a MIDI surface: cc, note, clock, led, motor; an OSC one: osc, led, motor,
+         display; <channel> 1 to 16, <number> 0 to 127)
+    binding <id> change <what bind takes after the surface>
+    delete binding <id>
     feedback "<surface>" <input> [thru <number>] led|motor|display|none
-    unbind "<surface>" <input> [thru <number>]
+    unbind "<surface>" <input> [thru <number>] | unbind "<surface>" clock
     page N | page next | page prev | page add N ["name"]
     page P slot S playback N | page P slot S clear
     playback N goto <cue>
@@ -380,6 +384,26 @@ add`` refuses, a ``hid`` or ``internal`` surface, which busk does not open,
 and a line that would change nothing. Each is one undo step. A running show
 closes a deleted or changed surface and opens the new one; a web remote
 restarts only when its port or host changes.
+
+One binding at a time (GAP-63). A binding has no number or name, so a line
+names it by its id, as ``list bindings`` prints it, and Tab offers the ids.
+``delete binding <id>`` takes one binding, whatever its control (one of two
+on a control, a clock's, a pitch bend's from a show file), and asks nothing,
+as a plain ``delete`` does. ``binding <id> change`` takes what ``bind`` takes
+after the surface and gives the binding whole, as ``route <id> change`` gives
+a route, so a feedback left out goes; the binding keeps its id, its surface
+and its place. It refuses what ``bind`` refuses, and a line that would change
+nothing. Each is one undo step. ``unbind "<surface>" clock`` takes the
+clock's bindings.
+
+What a surface can use (§5, call 36 of the pending plan). ``bind`` and
+``binding <id> change`` take the controls the surface sends, and Tab offers
+them alone: ``cc``, ``note`` and ``clock`` on MIDI, ``osc`` on OSC. They
+refuse in words another control, ``display`` on MIDI, and any binding on a
+web remote or on a surface busk does not open. Every line that names a MIDI
+control refuses a channel outside 1 to 16 and a number outside 0 to 127.
+A show file that holds such a binding still loads, with the validator's
+warning.
 
 An empty cue list (GAP-33). ``cuelist add N ["name"]`` makes a list with no
 cues, with the defaults of a list that ``record cue`` makes; ``record cue N``
@@ -899,6 +923,10 @@ _OPTIONAL: Final = frozenset(
 _DEFAULT_BPM: Final = 120
 _DEFAULT_PORTS: Final = {"osc": 8000, "web": 8080}
 _FEEDBACK: Final = {"led": "led", "motor": "motorFader", "display": "display"}
+_CONTROLS: Final = {"midi": ("a MIDI surface", ("cc", "note", "clock")),
+                    "osc": ("an OSC surface", ("osc",))}  # fmt: skip
+"""What each kind of surface that takes bindings is called, and the controls it sends."""
+_MIDI_NUMBERS: Final = {"cc": "CC number", "note": "note number"}
 _DEFAULT_STEPS: Final = (0.25, 0.5, 1, 2, 4)
 
 
@@ -2286,35 +2314,70 @@ class _Parser:
 
     def _cmd_bind(self) -> Action:
         surface = self.surface()
-        address = self.address(clock=True)
+        value = {
+            "id": self.new_id("b", "bindings"),
+            "surfaceId": surface["id"],
+            **self._binding(surface),
+        }
+        return self.submit({"type": "ADD", "path": ["bindings"], "value": value})
+
+    def _binding(self, surface: Mapping[str, Any]) -> dict[str, Any]:
+        """What ``bind`` takes after the surface, and ``binding <id> change``
+        after ``change``: the input, what it drives and its feedback, each
+        refused where ``surface`` could not use it (§5, call 36): a control
+        of another kind than it sends, and ``display`` on MIDI."""
+        who, kinds = self._sends(surface)
+        address = self.address(kinds, who)
         action: dict[str, Any]
         if address["kind"] == "midiClock":  # an external clock only taps
             self.expect("tap")
             action = {"kind": "tap", "masterId": self.speed_master()}
         else:
             action = self._what()
-        value = {
-            "id": self.new_id("b", "bindings"),
-            "surfaceId": surface["id"],
-            "input": address,
-            "action": action,
-        }
+        binding = {"input": address, "action": action}
+        feedbacks = _FEEDBACK if surface["kind"] == "osc" else ("led", "motor")
         if (token := self.peek()) is not None:
-            kind = self.keyword(*_FEEDBACK)
+            kind = self.keyword(*feedbacks)
             if kind is None:
+                if token.lower in _FEEDBACK:  # display, on MIDI
+                    raise ParseError(f"{who}: expected led or motor, got {token.text!r}")
                 raise ParseError(f"expected led, motor or display, got {token.text!r}")
-            target = address if self.ending("cc", "note", "osc") else self.address()
+            targets = tuple(k for k in kinds if k != "clock")
+            target = address if self.ending(*targets) else self.address(targets, who)
             if target["kind"] == "midiClock":
                 raise ParseError("a clock input has no feedback address: give one")
-            value["feedback"] = {"kind": _FEEDBACK[kind], "address": target}
+            binding["feedback"] = {"kind": _FEEDBACK[kind], "address": target}
         else:
-            self.offers += _FEEDBACK  # a feedback may follow
-        return self.submit({"type": "ADD", "path": ["bindings"], "value": value})
+            self.offers += feedbacks  # a feedback may follow
+        return binding
 
-    def address(self, *, clock: bool = False) -> dict[str, Any]:
-        """``cc|note <channel> <number>``, ``osc "/path"`` or (``clock``) ``clock``."""
-        kinds = ("cc", "note", "osc", "clock") if clock else ("cc", "note", "osc")
-        kind = self.expect(*kinds)
+    def _sends(self, surface: Mapping[str, Any]) -> tuple[str, tuple[str, ...]]:
+        """How a refusal names ``surface`` (``surface "Pad" is a MIDI
+        surface``), and the controls it sends; a surface that sends none
+        (the web remote, ``hid``, ``internal``) is refused here."""
+        kind, subject = surface["kind"], f"surface {short(surface['name'])}"
+        if kind == "web":
+            raise ParseError(
+                f"{subject} is a web remote, which sends commands of its own: it takes no binding"
+            )
+        if kind not in _CONTROLS:
+            raise ParseError(f"{subject} is a {kind} surface, which busk does not open")
+        return f"{subject} is {_CONTROLS[kind][0]}", _CONTROLS[kind][1]
+
+    def address(
+        self, kinds: Sequence[str] = ("cc", "note", "osc"), who: str = ""
+    ) -> dict[str, Any]:
+        """``cc|note <channel> <number>``, ``osc "/path"`` or ``clock``, one
+        of ``kinds``. Another of them is refused in words where ``who`` names
+        the surface that cannot send it. A channel is from 1 to 16 and a
+        number from 0 to 127, as MIDI has them (§5, call 36)."""
+        kind = self.keyword(*kinds)
+        if kind is None:
+            token = self.peek()
+            got = f", got {token.text!r}" if token else ""
+            if who and token is not None and token.lower in ("cc", "note", "osc", "clock"):
+                raise ParseError(f"{who}: expected {_or(kinds)}{got}")
+            raise self.fail(f"expected {' or '.join(kinds)}{got}")
         if kind == "clock":
             return {"kind": "midiClock"}
         if kind == "osc":
@@ -2323,11 +2386,18 @@ class _Parser:
             if not token.quoted or not token.text.startswith("/"):
                 raise ParseError(f"expected {what}")
             return {"kind": "osc", "path": token.text}
-        channel = self.integer("a MIDI channel (1–16)")
-        control = self.integer("a CC or note number")
+        channel = self.within("a MIDI channel (1–16)", 1, 16)
+        control = self.within(f"a {_MIDI_NUMBERS[kind]} (0–127)", 0, 127)
         if kind == "cc":
             return {"kind": "midiCC", "channel": channel, "cc": control}
         return {"kind": "midiNote", "channel": channel, "note": control}
+
+    def within(self, what: str, low: int, high: int) -> int:
+        """A whole number from ``low`` to ``high``, ``what``."""
+        value = self.integer(what)
+        if not low <= value <= high:
+            raise ParseError(f"expected {what}, got {self.tokens[self.k - 1].text!r}")
+        return value
 
     def _what(self) -> dict[str, Any]:
         """A binding's ``<what>``: the action."""
@@ -2385,6 +2455,9 @@ class _Parser:
             token = self.peek()
             got = f", got {token.text!r}" if token else ""
             raise self.fail(f"expected led, motor, display or none{got}")
+        if kind == "display" and surface["kind"] == "midi":
+            who = self._sends(surface)[0]
+            raise ParseError(f"{who}: expected led, motor or none, got 'display'")
         commands = []
         for address in addresses:
             for binding in self.bound(surface, address):
@@ -2406,9 +2479,10 @@ class _Parser:
 
     def _cmd_unbind(self) -> Action:
         """``unbind "<s>" <inputs>``: remove every binding of those inputs
-        (Phase 7: the §5.24 script moves marker SET to ``release all``)."""
+        (Phase 7: the §5.24 script moves marker SET to ``release all``), a
+        clock's too (GAP-63)."""
         surface = self.surface()
-        addresses = self.inputs()
+        addresses = self.inputs(("cc", "note", "osc", "clock"))
         commands = [
             {"type": "DELETE", "path": ["bindings", {"id": binding["id"]}]}
             for address in addresses
@@ -2418,14 +2492,14 @@ class _Parser:
         label = f"unbound {count} binding{'s' * (count != 1)}"
         return self.submit({"type": "BATCH", "label": label, "commands": commands})
 
-    def inputs(self) -> list[dict[str, Any]]:
-        """``<input> [thru <number>]``: one input, or a run of CCs or notes
-        on one channel, ``thru`` counting either way."""
-        first = self.address()
-        if first["kind"] == "osc" or not self.keyword("thru"):
+    def inputs(self, kinds: Sequence[str] = ("cc", "note", "osc")) -> list[dict[str, Any]]:
+        """``<input> [thru <number>]``: one input of ``kinds``, or a run of
+        CCs or notes on one channel, ``thru`` counting either way."""
+        first = self.address(kinds)
+        if first["kind"] in ("osc", "midiClock") or not self.keyword("thru"):
             return [first]
         field = "cc" if first["kind"] == "midiCC" else "note"
-        last = self.integer("a CC or note number after thru")
+        last = self.within(f"a {_MIDI_NUMBERS[field]} (0–127) after thru", 0, 127)
         step = 1 if last >= first[field] else -1
         return [{**first, field: n} for n in range(first[field], last + step, step)]
 
@@ -2436,8 +2510,51 @@ class _Parser:
             if b["surfaceId"] == surface["id"] and b["input"] == address
         ]  # fmt: skip
         if not bound:
-            raise ParseError(f"{surface['name']!r} has no binding on {_address_text(address)}")
+            raise ParseError(f"{surface['name']!r} has no binding on {_input(address)}")
         return bound
+
+    def _cmd_binding(self) -> Action:
+        """``binding <id> change <what bind takes after the surface>``
+        (GAP-63): the binding whole, as ``route <id> change`` gives a route,
+        so a feedback left out goes; its id and its surface stay."""
+        old = self._binding_by_id()
+        self.expect("change")
+        new = {
+            "id": old["id"],
+            "surfaceId": old["surfaceId"],
+            **self._binding(_by_id(self.show["surfaces"], old["surfaceId"])),
+        }
+        self.done()
+        if new == old:
+            raise ParseError(f"binding {old['id']} is set up that way already")
+        path: EditPath = ["bindings", {"id": old["id"]}]
+        commands: list[dict[str, Any]] = [
+            {"type": "SET", "path": [*path, key], "value": value}
+            for key, value in new.items()
+            if old.get(key) != value
+        ]
+        commands += [{"type": "DELETE", "path": [*path, key]} for key in old if key not in new]
+        text = _binding_text(new, _binding_names(self.show))
+        return Submit(_labelled(f"changed binding {old['id']}: {text}", *commands))
+
+    def _delete_binding(self) -> Action:
+        """``delete binding <id>`` (GAP-63): one binding, whatever its control;
+        it asks nothing, as a plain ``delete`` does."""
+        binding = self._binding_by_id()
+        self.done()
+        text = _binding_text(binding, _binding_names(self.show))
+        delete = {"type": "DELETE", "path": ["bindings", {"id": binding["id"]}]}
+        return Submit(_labelled(f"deleted binding {binding['id']}: {text}", delete))
+
+    def _binding_by_id(self) -> Mapping[str, Any]:
+        """A binding named by its id, as ``list bindings`` prints it; Tab
+        offers the ids."""
+        ids = [_word(binding["id"]) for binding in self.show["bindings"]]
+        ident = self.take("a binding id", *ids).text
+        found = next((b for b in self.show["bindings"] if b["id"] == ident), None)
+        if found is None:
+            raise ParseError(f"no binding {ident}")
+        return found
 
     def _slot(self) -> int:
         slot = self.integer("a slot number (from 1)")
@@ -3149,10 +3266,12 @@ class _Parser:
         )
 
     def _cmd_delete(self) -> Action:
-        named = {"route", "master", "surface"}  # not by a number: lines of their own
+        named = {"route", "master", "surface", "binding"}  # not by a number: lines of their own
         head = self.word("an entity", *sorted(_ENTITIES - {"show"} | named))
         if head == "route":
             return self._delete_route()
+        if head == "binding":
+            return self._delete_binding()
         if head == "master":
             return self._delete_master()
         if head == "surface":
@@ -3929,6 +4048,11 @@ def _quoted(names: Iterable[str]) -> tuple[str, ...]:
     return tuple(json.dumps(name, ensure_ascii=False) for name in names)
 
 
+def _or(words: Sequence[str]) -> str:
+    """``cc, note or clock``."""
+    return " or ".join(filter(None, (", ".join(words[:-1]), words[-1])))
+
+
 def _word(name: str) -> str:
     """A name as typed: bare when it is one word, else in quotes."""
     return name if _BARE.fullmatch(name) else _quoted([name])[0]
@@ -3992,13 +4116,70 @@ def _match_words(kind: str, match: Mapping[str, Any]) -> str:
     return f"{text} on {match['host']}" if "host" in match else text
 
 
-def _address_text(address: Mapping[str, Any]) -> str:
-    """An input address as the console writes it: ``cc 1 32``, ``osc "/x"``."""
-    if address["kind"] == "midiCC":
+def _input(address: Mapping[str, Any]) -> str:
+    """An input as ``bind`` takes it; a pitch bend, which it cannot take,
+    as ``bend 1``."""
+    kind = address["kind"]
+    if kind == "midiCC":
         return f"cc {address['channel']} {address['cc']}"
-    if address["kind"] == "midiNote":
+    if kind == "midiNote":
         return f"note {address['channel']} {address['note']}"
-    return f"osc {json.dumps(address['path'])}"
+    if kind == "osc":
+        return f"osc {json.dumps(address['path'])}"
+    if kind == "midiClock":
+        return "clock"
+    if kind == "midiPitchBend":
+        return f"bend {address['channel']}"
+    return " ".join(str(v) for v in address.values())
+
+
+def _binding_names(show: Show) -> dict[str, Mapping[Any, Any]]:
+    """What :func:`_action` names: by field, each master's, page's and
+    playback's id (a page's number) → its name (a playback's number and
+    name)."""
+    return {
+        "masterId": {master["id"]: master["name"] for master in show["masters"]},
+        "number": {page["number"]: page["name"] for page in show["pages"]},
+        "playbackId": {p["id"]: (p["number"], p["name"]) for p in show["playbacks"]},
+    }
+
+
+def _action(action: Mapping[str, Any], names: Mapping[str, Mapping[Any, Any]]) -> str:
+    """An action as ``bind`` takes it, with the names of the master, page or
+    playback it drives (``names``: id or page number → name, by field)."""
+    kind = action["kind"]
+    if kind == "playbackFader":
+        return f"fader {action['slot'] + 1}"
+    if kind == "playbackButton":
+        return f"button {action['slot'] + 1} {action['button'] + 1}"
+    if kind == "command":
+        return f"command {action['command']['type']}"
+    if kind in ("master", "tap"):
+        return f"{kind} {names['masterId'].get(action['masterId'], action['masterId'])!r}"
+    if kind == "page":
+        return f"page {action['delta']:+d}"
+    if kind == "pageAbs":
+        name = names["number"].get(action["number"])
+        return f"page {action['number']}" + ("" if name is None else f" {name!r}")
+    if kind == "playbackFaderAbs":
+        number, name = names["playbackId"].get(action["playbackId"], ("?", "?"))
+        return f"fader playback {number} {name!r}"
+    if kind == "blackout":
+        return "blackout momentary" if action.get("momentary") else "blackout"
+    return " ".join(str(v) for v in action.values())
+
+
+def _binding_text(binding: Mapping[str, Any], names: Mapping[str, Mapping[Any, Any]]) -> str:
+    """A binding as ``list bindings`` prints it after its surface: its input,
+    what it drives, and its feedback in brackets, with its address only when
+    it is not the input's (``cc 1 32 → button 1 1 [led]``)."""
+    text = f"{_input(binding['input'])} → {_action(binding['action'], names)}"
+    feedback = binding.get("feedback")
+    if feedback is not None:
+        kind = "motor" if feedback["kind"] == "motorFader" else feedback["kind"]
+        own = feedback["address"] == binding["input"]
+        text += f" [{kind}]" if own else f" [{kind} {_input(feedback['address'])}]"
+    return text
 
 
 def _adds_template(action: Mapping[str, Any], ident: str) -> bool:

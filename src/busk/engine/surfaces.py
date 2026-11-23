@@ -23,6 +23,7 @@ decision 5); commands without one (the console, the phone, embedded
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Final, Literal
 
 from busk.compiler.playbacks import CompiledPage
@@ -142,7 +143,9 @@ class Pickup:
 
     State is kept by binding id, so it survives live edits: switching a
     surface between ``jump`` and ``soft`` takes effect at the swap, and a
-    control that was the last to set a knob is still attached to it.
+    control that was the last to set a knob is still attached to it. A
+    binding moved to another input is another piece of hardware, which the
+    swap makes :meth:`forget` (GAP-63).
     """
 
     def __init__(self) -> None:
@@ -180,6 +183,13 @@ class Pickup:
             return True
         self.attached[control] = None
         return False
+
+    def forget(self, controls: Iterable[str]) -> None:
+        """Drop the position and the attachment of ``controls``: their
+        bindings now read other hardware, which must meet the level again."""
+        for control in controls:
+            self.last.pop(control, None)
+            self.attached.pop(control, None)
 
     def missed(self, control: str | None, value: float) -> None:
         """Record a move of ``control`` that reached no knob (an empty slot):

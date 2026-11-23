@@ -127,6 +127,7 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-60](#gap-60-renaming-and-deleting-a-surface) Renaming and deleting a surface | action | important | F9 | **done** 2026-11-23 |
 | [GAP-61](#gap-61-changing-how-busk-finds-a-surface) Changing how busk finds a surface | action | important | F9 | **done** 2026-11-23 |
 | [GAP-62](#gap-62-the-midi-devices-plugged-in) The MIDI devices plugged in | read | nice-to-have | F9 | **done** 2026-11-23 |
+| [GAP-63](#gap-63-one-binding-at-a-time) One binding at a time | action | important | F9 | **done** 2026-11-23 |
 
 ---
 
@@ -3911,3 +3912,76 @@ one is missing.
   plugged in and a backend that fails, without `mido`, a virtual ALSA port under the `midi`
   marker, `busk run`'s console process), `tests/test_public_api.py` and its golden,
   `tests/api_consumer.py`; the library guide.
+
+## GAP-63: One binding at a time
+
+**Status:** done 2026-11-23 (see **Done** at the end of this section).
+
+The user's word of 2026-11-23, with GAP-60; built in Phase 40 of
+`docs/plans/tui-pending-plan.md` under its Q15 (a), for F9 in its Phase 41.
+
+**Needed by:** F9's `[edit…]`, `[learn]` and `[delete]` on a binding row, and its binding form.
+
+**Today:** a binding has an id but no number or name, and the lines that remove or change one
+name a control: `unbind "<s>" <input>` and `feedback "<s>" <input> …` take every binding on it.
+So one of two bindings on a control (`cc 1 48` driving a button and a blackout) cannot go
+alone; `unbind "nanoKONTROL2" clock` is refused (`expected cc or note or osc, got 'clock'`),
+though `bind` takes `clock`; a pitch bend's or a hardware control's binding, which a show file
+can hold and no line makes, cannot go at all; and nothing changes a binding in place: another
+target, control or feedback address is `unbind` then `bind`, two undo steps, and the control's
+other bindings go too.
+
+**Engine should provide:** a line that deletes one binding and one that changes it, each one
+undo step, naming the binding by its id.
+
+**Priority:** important: F9's binding edits would otherwise take every binding on a control,
+in two undo steps.
+
+**TUI until then:** F9's binding edits pre-fill `unbind` and `feedback` lines, which act on
+every binding of the control.
+
+**Done** (2026-11-23). `_cmd_binding`, `_delete_binding` and `_binding` (what `bind` takes after
+the surface, shared by both) in `src/busk/console/parser.py`, with `_input`, `_action` and
+`_binding_names`, which moved there from `busk.console.console` so that a reply words a
+binding as `list bindings` does (`_binding_text`). No public name was added. What it settles:
+
+- **A binding is named by its id,** as a route is, and as `list bindings` prints it; Tab offers
+  the ids after `binding` and `delete binding`.
+- **`delete binding <id>` takes one binding, whatever its control:** one of two on a control, a
+  clock's, a pitch bend's or a hardware control's from a show file. It asks nothing, as a plain
+  `delete` does, and the reply says what went: `deleted binding b-40d1: cc 1 48 → blackout`.
+  `undo` brings it back in its place.
+- **`binding <id> change` takes what `bind` takes after the surface** (`binding b-40d1 change cc
+  1 49 button 2 2 led`, `binding b-7 change clock tap "Speed 1" led cc 1 46`) **and gives the
+  binding whole,** as `route <id> change` gives a route: its control, what it drives and its
+  feedback are the line's, so a feedback left out goes. It keeps its id, its surface and its
+  place in the list. One `SET` per part that differs, and a `DELETE` of a feedback left out.
+  The reply is the binding as `list bindings` prints it: `changed binding b-40d1: cc 1 49 →
+  button 2 2 [led]`.
+- **It refuses what `bind` refuses,** by the same code, and a line that would change nothing
+  (`binding b-40d1 is set up that way already`), which Tab says before Enter. A binding on a
+  web remote or on a `hid` or `internal` surface cannot be changed (no control there is one
+  busk reads), only deleted.
+- **`unbind "<surface>" clock`** takes the clock's bindings, as `bind` takes `clock`.
+- **On a running show** the bindings follow the compiled show: a binding moved to another path
+  drives from it at once, and nothing from the old one. A soft-pickup fader moved to another
+  slot picks that slot's level up again. One moved to another control did not: soft takeover
+  is kept by binding id, so the new fader, wherever it stood, was still attached and jumped the
+  level at its first move. The engine's swap now forgets the takeover state of a binding whose
+  input changed (`Pickup.forget` in `src/busk/engine/surfaces.py`), so the new fader picks the
+  level up too. Feedback moves to the new address, which gets the value at once; the old
+  address keeps the last value it was sent, as after `unbind`.
+- **What `bind` refuses** (bugs, no number; the plan's §5, call 36), found while planning the
+  phase: a MIDI channel outside 1 to 16 and a CC or note number outside 0 to 127 (`expected a
+  MIDI channel (1–16), got '17'`), refused by every line that names a MIDI control, `unbind`
+  and `feedback` too; a control the surface's kind cannot send (`surface "Pad" is a MIDI
+  surface: expected cc, note or clock, got 'osc'`), which was a warning by path; `display` on
+  MIDI (`surface "Pad" is a MIDI surface: expected led or motor, got 'display'`), refused by
+  `feedback` too; any binding on a web remote (`surface "Phone" is a web remote, which sends
+  commands of its own: it takes no binding`) or on a surface busk does not open. Tab offers a
+  surface's own controls and feedback alone. A show file that holds one of these still loads,
+  and the validator now warns of the ranges and of `display` on MIDI as it warned of the kinds.
+- Tests: `tests/test_binding_lines.py` (each line, its reply and undo step, each refusal, Tab,
+  `help`, the validator's warnings, a running `LiveShow` with an OSC surface on localhost, and
+  `busk run` with processes), two in `tests/test_pickup.py`, and the rows of
+  `tests/test_console_prompt.py`.

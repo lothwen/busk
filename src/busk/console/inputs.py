@@ -25,7 +25,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
-from busk.console.console import _action, _binding_names, _input
+from busk.console.parser import _action, _binding_names, _input
 from busk.io.events import InputEvent
 from busk.model.common import SurfaceId
 from busk.model.show import Show

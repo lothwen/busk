@@ -1006,7 +1006,7 @@ RIG_LINES = (
     "route add 1 sacn 2 unicast 10.0.0.9",
     'surface add osc "TouchOSC" port 8000 feedback 10.0.0.5:9000',
     'surface add web "Tablet" port 8081 on 127.0.0.1',
-    'bind "TouchOSC" osc "/1/push1" blackout momentary led note 1 40',
+    'bind "TouchOSC" osc "/1/push1" blackout momentary led osc "/1/led1"',
     'bind "TouchOSC" osc "/1/f" fader playback 9',
     'bind "TouchOSC" osc "/1/p" page 2',
     'bind "TouchOSC" osc "/1/r" release all 2',
@@ -1099,7 +1099,7 @@ def test_bindings_in_the_words_of_bind(show: busk.OfflineShow) -> None:
     assert ("cc 1 46", "tap", "led", None) in words  # one speed master: no name
     assert ("cc 1 61", "page -1", "", None) in words
     assert ("cc 1 60", "release all", "", None) in words
-    assert ('osc "/1/push1"', "blackout momentary", "led note 1 40", None) in words
+    assert ('osc "/1/push1"', "blackout momentary", 'led osc "/1/led1"', None) in words
     assert ('osc "/1/f"', "fader playback 9", "", ("playback", 9)) in words
     assert ('osc "/1/p"', "page 2", "", None) in words
     assert ('osc "/1/r"', "release all 2", "", None) in words

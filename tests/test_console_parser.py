@@ -2021,7 +2021,7 @@ def test_record_slot_names_its_page_or_uses_the_current_one() -> None:
         ('surface "TouchOSC" pickup sometimes', "expected soft or jump, got 'sometimes'"),
         ('bind "MIDI Controller" cc 1 0 fader 1 blink',
          "expected led, motor or display, got 'blink'"),
-        ('bind "MIDI Controller" cc 1 0 fader 1 led cc 1', "expected a CC or note number"),
+        ('bind "MIDI Controller" cc 1 0 fader 1 led cc 1', "expected a CC number (0–127)"),
         ('bind "MIDI Controller" clock fader 1', "expected tap, got 'fader'"),
         ('bind "MIDI Controller" clock tap led',
          "a clock input has no feedback address: give one"),

@@ -319,6 +319,34 @@ def test_a_live_switch_between_jump_and_soft(doc: dict[str, Any], show: Compiled
     assert driver.level("pb-song") == 0.2
 
 
+def test_forget_drops_a_controls_position_and_attachment() -> None:
+    pickup = Pickup()
+    pickup.accept("b1", True, SONG, 0.5, 0.5)
+    pickup.accept("b9", True, SONG, 0.2, 0.2)
+    pickup.forget(["b1", "b-gone"])
+    assert (pickup.last, pickup.attached) == ({"b9": 0.2}, {"b9": SONG})
+    assert pickup.accept("b1", True, SONG, 0.2, 0.9) is False  # no position to cross from
+
+
+def test_a_binding_moved_to_another_control_picks_the_level_up_again(
+    doc: dict[str, Any], show: CompiledShow
+) -> None:
+    driver = Driver(show)
+    driver.send(slot_fader(0, 0.0), "b1")
+    driver.send(slot_fader(0, 0.6), "b1")  # attached, at 0.6
+    doc["bindings"][0]["input"] = {"kind": "midiCC", "channel": 1, "cc": 20}  # GAP-63's change
+    install(driver.harness, doc)
+    driver.send(slot_fader(0, 0.1), "b1")  # the new fader is down: it must not jump
+    assert driver.level("pb-song") == 0.6
+    driver.send(slot_fader(0, 0.7), "b1")  # it crosses, and takes the level
+    assert driver.level("pb-song") == 0.7
+    driver.send(fader("pb-blue", 0.4))
+    doc["bindings"][0]["action"] = {"kind": "playbackFader", "slot": 2}  # the same control
+    install(driver.harness, doc)
+    driver.send(slot_fader(2, 0.3), "b1")  # from 0.7, its kept position, it crosses 0.4
+    assert driver.level("pb-blue") == 0.3
+
+
 # --------------------------------------------------------------- hypothesis
 #
 # Random interleavings of moves on slot 0 and on the grand master, from soft

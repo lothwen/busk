@@ -1632,7 +1632,8 @@ class _SemanticPass:
         """Warn about a binding its surface cannot drive (Phase 6): MIDI inputs
         belong on MIDI surfaces and OSC paths on OSC surfaces; a web remote
         sends commands of its own and shows state by itself, so it takes no
-        bindings and no feedback."""
+        bindings and no feedback. A MIDI number out of range and ``display``
+        feedback on MIDI do nothing either (Phase 40 of the pending plan)."""
         kind = self.surfaces[binding["surfaceId"]]["kind"]
         surface = binding["surfaceId"]
         if kind == "web":
@@ -1654,6 +1655,33 @@ class _SemanticPass:
                 f"{kind} surface {surface!r} cannot send {input_kind} inputs; "
                 "this binding does nothing",
             )
+        self._midi_numbers(binding["input"], f"{path}.input", "this binding does nothing")
+        feedback = binding.get("feedback")
+        if feedback is not None:
+            where = f"{path}.feedback"
+            self._midi_numbers(feedback["address"], f"{where}.address", "this feedback is not sent")
+            if kind == "midi" and feedback["kind"] == "display":
+                self._warning(
+                    f"{where}.kind",
+                    f"MIDI surface {surface!r} has no display; this feedback is not sent",
+                )
+
+    def _midi_numbers(self, address: Mapping[str, Any], path: str, outcome: str) -> None:
+        """Warn about a MIDI channel outside 1 to 16 or a CC or note number
+        outside 0 to 127, which no MIDI message carries. The console refuses
+        them; a show file that holds one loads with this warning."""
+        if "channel" in address and not 1 <= address["channel"] <= 16:
+            self._warning(
+                f"{path}.channel",
+                f"A MIDI channel is from 1 to 16, got {address['channel']}; {outcome}",
+            )
+        for key, what in (("cc", "CC"), ("note", "note")):
+            number = address.get(key)
+            if isinstance(number, int) and not 0 <= number <= 127:
+                self._warning(
+                    f"{path}.{key}",
+                    f"A MIDI {what} number is from 0 to 127, got {number}; {outcome}",
+                )
 
     def _page_number(self, number: int, path: str) -> None:
         """A warning, not an error, for a page number no page has: page numbers

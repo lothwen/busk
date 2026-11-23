@@ -80,6 +80,8 @@ from busk.console.parser import (
     Source,
     Submit,
     SubmitAll,
+    _binding_names,
+    _binding_text,
     _word,
     defaults_words,
     expected,
@@ -969,19 +971,11 @@ class Console:
         the input's)."""
         surfaces = {surface["id"]: surface["name"] for surface in show["surfaces"]}
         names = _binding_names(show)
-        lines = []
-        for binding in show["bindings"]:
-            line = (
-                f"{binding['id']}  {surfaces.get(binding['surfaceId'], '?')} "
-                f"{_input(binding['input'])} → {_action(binding['action'], names)}"
-            )
-            feedback = binding.get("feedback")
-            if feedback is not None:
-                kind = "motor" if feedback["kind"] == "motorFader" else feedback["kind"]
-                own = feedback["address"] == binding["input"]
-                line += f" [{kind}]" if own else f" [{kind} {_input(feedback['address'])}]"
-            lines.append(line)
-        return lines
+        return [
+            f"{binding['id']}  {surfaces.get(binding['surfaceId'], '?')} "
+            f"{_binding_text(binding, names)}"
+            for binding in show["bindings"]
+        ]
 
     def _list_effects(self, show: Show) -> list[str]:
         """The show's effect templates, their layers and the defaults ``effect
@@ -1218,23 +1212,6 @@ def _surface(surface: Mapping[str, Any]) -> str:
     return f"{text}, {surface['faderPickup']} pickup"
 
 
-def _input(address: Mapping[str, Any]) -> str:
-    """An input as ``bind`` takes it; a pitch bend, which it cannot take,
-    as ``bend 1``."""
-    kind = address["kind"]
-    if kind == "midiCC":
-        return f"cc {address['channel']} {address['cc']}"
-    if kind == "midiNote":
-        return f"note {address['channel']} {address['note']}"
-    if kind == "osc":
-        return f"osc {json.dumps(address['path'])}"
-    if kind == "midiClock":
-        return "clock"
-    if kind == "midiPitchBend":
-        return f"bend {address['channel']}"
-    return " ".join(str(v) for v in address.values())
-
-
 def _timing(timing: Mapping[str, Any]) -> str:
     """A cue's timing as ``cue L/C time`` takes it, per-family timing after commas."""
     words = [f"time {_pair(timing['fadeIn'], timing['fadeOut'])}"]
@@ -1291,42 +1268,6 @@ def _curve(curve: str | Mapping[str, Any]) -> str:
 def _trigger(trigger: Mapping[str, Any]) -> str:
     """``go``, ``wait 8`` or ``follow 0``."""
     return trigger["kind"] if trigger["kind"] == "go" else f"{trigger['kind']} {trigger['delay']:g}"
-
-
-def _binding_names(show: Show) -> dict[str, Mapping[Any, Any]]:
-    """What :func:`_action` names: by field, each master's, page's and
-    playback's id (a page's number) → its name (a playback's number and
-    name)."""
-    return {
-        "masterId": {master["id"]: master["name"] for master in show["masters"]},
-        "number": {page["number"]: page["name"] for page in show["pages"]},
-        "playbackId": {p["id"]: (p["number"], p["name"]) for p in show["playbacks"]},
-    }
-
-
-def _action(action: Mapping[str, Any], names: Mapping[str, Mapping[Any, Any]]) -> str:
-    """An action as ``bind`` takes it, with the names of the master, page or
-    playback it drives (``names``: id or page number → name, by field)."""
-    kind = action["kind"]
-    if kind == "playbackFader":
-        return f"fader {action['slot'] + 1}"
-    if kind == "playbackButton":
-        return f"button {action['slot'] + 1} {action['button'] + 1}"
-    if kind == "command":
-        return f"command {action['command']['type']}"
-    if kind in ("master", "tap"):
-        return f"{kind} {names['masterId'].get(action['masterId'], action['masterId'])!r}"
-    if kind == "page":
-        return f"page {action['delta']:+d}"
-    if kind == "pageAbs":
-        name = names["number"].get(action["number"])
-        return f"page {action['number']}" + ("" if name is None else f" {name!r}")
-    if kind == "playbackFaderAbs":
-        number, name = names["playbackId"].get(action["playbackId"], ("?", "?"))
-        return f"fader playback {number} {name!r}"
-    if kind == "blackout":
-        return "blackout momentary" if action.get("momentary") else "blackout"
-    return " ".join(str(v) for v in action.values())
 
 
 _LEVEL_SHOWN: Final = frozenset({"master", "size", "temp"})

@@ -15,6 +15,13 @@ show reopens it at once. `rename surface "Touch" "Desk"` renames one, and `delet
 The terminal UI's F9 does all of this from controls, with those devices as chips
 ([F9 Surfaces](tui/guide.md#f9-surfaces)).
 
+A binding is changed or deleted alone by its id, which `list bindings` prints: `binding
+b-40d1 change cc 1 49 button 2 2 led` gives it another control, action or feedback, whole,
+and `delete binding b-40d1` deletes it, even where another binding shares its control.
+`bind` takes only what the surface can use: a MIDI surface's `cc`, `note` and `clock` on
+channels 1 to 16 with numbers 0 to 127 and `led` or `motor` feedback, an OSC surface's `osc`
+paths with any feedback, and nothing on a web remote, which sends commands of its own.
+
 - [MIDI](#midi)
 - [OSC](#osc)
 - [The web remote](#the-web-remote)
@@ -141,7 +148,9 @@ A binding with a feedback (`led`, `motor` or `display`) shows its action's state
 - a **label** (`display`, OSC only) shows the name.
 
 Feedback is sent 30 times a second, only what changed. `feedback "<surface>" cc 1 32 thru
-39 led` adds feedback to bindings already on those inputs (`none` removes it).
+39 led` adds feedback to bindings already on those inputs (`none` removes it), and `binding
+<id> change` moves one binding's feedback to another address: the new one gets the value at
+once, and the old one keeps the last value it was sent.
 
 On a Korg nanoKONTROL2, set the LED mode to **External** with the KORG KONTROL Editor;
 in the factory mode a button lights only while pressed.

@@ -58,7 +58,7 @@ session, as the web remote's commands do. `help` prints the grammar.
 | Patch | `universe add 1 "Stage"`, `fixture add 101 thru 104 "Generic Spot 16ch" mode 16ch at 1.1`, `fixture 101 patch 2.1`, `fixture 101 patch none`, `fixture 101 thru 104 patch 2.1\|none`, `fixture 101 mode 16ch`, `fixture 101 profile "RGB Par 3ch" mode 3ch` |
 | Output | `route add 1 sacn 1 [unicast 10.0.0.20 \| multicast IF]`, `route add 1 artnet 0.0.1 [unicast 10.0.0.20 \| broadcast IF]`, `route add 1 dmxusb enttecPro\|dmxking /dev/ttyUSB0 [hz 40]`, `route r-1 on\|off`, `route r-1 change 1 sacn 2 [unicast 10.0.0.20]` (what `route add` takes), `delete route r-1` |
 | Surfaces | `surface add midi "nanoKONTROL2"`, `surface add osc "Touch" [port 8000] [feedback 10.0.0.5:9000]`, `surface add web "Phone" [port 8080] [on 10.0.0.2]`, `surface "nanoKONTROL2" pickup soft\|jump`, `surface "nanoKONTROL2" change "nanoKONTROL2 MIDI"`, `surface "Touch" change [port 9000] [feedback 10.0.0.5:9001]`, `surface "Phone" change [port 8081] [on 10.0.0.2]`, `rename surface "Phone" "Tablet"`, `delete surface "nanoKONTROL2" [cascade]` |
-| Bindings, feedback | `bind "nanoKONTROL2" cc 1 0 fader 1`, `… cc 1 32 button 1 1 [led]`, `… cc 1 7 fader playback 18 [motor]`, `… cc 1 23 master gm`, `… cc 1 18 master "Speed 1"`, `… cc 1 46 tap ["Speed 1"]`, `… cc 1 42 blackout [momentary]`, `… cc 1 62 page +1`, `… note 1 60 page 2`, `bind "Touch" osc "/fader/1" fader 1 [display osc "/label/1"]`, `bind "nanoKONTROL2" clock tap`, `… cc 1 60 release all [2]`, `… note 1 61 output off`, `feedback "nanoKONTROL2" cc 1 32 thru 39 led\|motor\|display\|none`, `unbind "nanoKONTROL2" cc 1 60 [thru 61]` |
+| Bindings, feedback | `bind "nanoKONTROL2" cc 1 0 fader 1`, `… cc 1 32 button 1 1 [led]`, `… cc 1 7 fader playback 18 [motor]`, `… cc 1 23 master gm`, `… cc 1 18 master "Speed 1"`, `… cc 1 46 tap ["Speed 1"]`, `… cc 1 42 blackout [momentary]`, `… cc 1 62 page +1`, `… note 1 60 page 2`, `bind "Touch" osc "/fader/1" fader 1 [display osc "/label/1"]`, `bind "nanoKONTROL2" clock tap`, `… cc 1 60 release all [2]`, `… note 1 61 output off`, `feedback "nanoKONTROL2" cc 1 32 thru 39 led\|motor\|display\|none`, `unbind "nanoKONTROL2" cc 1 60 [thru 61]`, `unbind "nanoKONTROL2" clock`, `binding b-40d1 change cc 1 49 button 2 2 led`, `delete binding b-40d1` |
 | Pages | `page 2`, `page next\|prev`, `page add 2 ["Washes"]`, `page 2 slot 1 playback 14`, `page 2 slot 5 clear`, `record slot 2.1`, `playback 9 goto 4` |
 | Edit | `playback 3 exclusivity color`, `cue 3/1 timing.fadeIn 1`, `playback 1 buttons ["toggle", "flash", "release"]`, `show meta.title "Club Night"`, `rename group 1 "Heads"`, `cue 9/2 number 7`, `cue 9/2 copy [10/]3`, `delete cue 10/2`, `delete fixture 101 cascade`, `delete fixture 101 thru 104 cascade`, `delete universe 2 cascade`, `delete preset color 3 cascade`, `delete group 2 cascade`, `delete cuelist 9 cascade`, `delete playback 3 cascade`, `delete page 2 cascade`, `fixture 101 location {"x": 1, "y": 2, "z": 3, "rx": 0, "ry": 0, "rz": 0}`, `fixture 101 location none`, `fixture 101 thru 104 orientation.invertPan true`, `fixture 101 orientation.panOffset 30` |
 | Playbacks | `playback add 5 cuelist 10 [at [P.]S] ["name"]`, `playback 3 cuelist 10`, `playback 3 fader size`, `playback 3 flash.level 0.5`, `playback 3 exclusivity none` |
@@ -264,7 +264,18 @@ session, as the web remote's commands do. `help` prints the grammar.
   action (`led`, `motor` or `display`, sent to the input's own address unless another
   follows); `feedback "<surface>" <input> [thru <n>] led` adds feedback to the bindings
   already on those inputs (`none` removes it), and an input without a binding is an
-  error. `list surfaces` and `list bindings` show ports, pickup and feedback.
+  error. `list surfaces` and `list bindings` show ports, pickup and feedback, and `list
+  bindings` each binding's id. A line names one binding by that id, and Tab offers the ids:
+  `delete binding <id>` deletes it alone, whatever its control (one of two on a control, a
+  clock's, a pitch bend's from a show file), and asks nothing; `binding <id> change` takes
+  what `bind` takes after the surface and gives the binding whole, keeping its id, its
+  surface and its place, so a feedback left out goes. Each is one undo step, and `unbind
+  "<surface>" clock` takes a clock's bindings. `bind` and `binding <id> change` take the
+  controls the surface sends (`cc`, `note` and `clock` on MIDI, `osc` on OSC), and Tab
+  offers them alone; another control, `display` on MIDI, and a binding on a web remote are
+  refused in words, and every line that names a MIDI control refuses a channel outside 1 to
+  16 and a number outside 0 to 127. A show file that holds one of these still loads, with a
+  warning.
 * **Buttons.** `flash N on` holds playback N's flash until `flash N off` (or `release
   all`), as a held flash button does, whether or not the playback has one. `button N B
   on|off` presses and releases the playback's button B as a bound control does: `go`,
@@ -279,7 +290,8 @@ session, as the web remote's commands do. `help` prints the grammar.
   limits and keeps the others, `limits pan none` removes one and keeps the others, and
   `limits none` removes them all. `release all` and `output on|off` are performance
   commands, like `go`, and can be bound; `bind` adds a binding next to those already on an
-  input, so `unbind "<surface>" <input> [thru N]` frees it first. `info` adds the
+  input, so `unbind "<surface>" <input> [thru N]` frees it first, or `binding <id> change`
+  changes the one there. `info` adds the
   processes, their restarts and the event log file.
 * **Mode and profile.** `fixture N mode <mode>` takes another mode of the fixture's profile,
   by name or id, in any case, as `fixture add` takes it. `fixture N profile "<profile>" mode
