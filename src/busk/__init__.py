@@ -8,7 +8,7 @@ The public API
 ==============
 
 Every public name is importable from ``busk`` itself; ``__all__`` lists the
-50 of them. The library guide, ``docs/library.md``, has the examples and the
+51 of them. The library guide, ``docs/library.md``, has the examples and the
 reference.
 
 Show documents
@@ -41,7 +41,8 @@ Running a show
     (:attr:`~LiveShow.surfaces`), what comes in from them
     (:attr:`~LiveShow.inputs`) and how its engine is doing
     (:attr:`~LiveShow.health`). :func:`pending_recovery` says whether
-    ``busk run`` would recover a show its last run left behind.
+    ``busk run`` would recover a show its last run left behind, and
+    :func:`midi_devices` which MIDI devices are plugged in.
 Data types
     :class:`Show`, :class:`FixtureProfile` and :data:`Command`, the
     ``TypedDict``\\ s of the file and command formats; :class:`Issue`,
@@ -150,6 +151,7 @@ __all__ = [
     "TrackedValue",
     "UnsupportedFeature",
     "load_show",
+    "midi_devices",
     "new_show",
     "pending_recovery",
     "read_gdtf",
@@ -201,6 +203,7 @@ _EXPORTS: dict[str, str] = {
     "RouteStatus": "busk.output.driver",
     "SurfaceInput": "busk.console.inputs",
     "SurfaceStatus": "busk.io.surfaces",
+    "midi_devices": "busk.io.surfaces",
     "UnsupportedFeature": "busk.compiler.compile",
     "OfflineShow": "busk.runner",
     "LiveShow": "busk.runner",
@@ -238,6 +241,7 @@ if TYPE_CHECKING:  # what type checkers see: the same table, as explicit re-expo
     from busk.importers.gdtf import read_gdtf as read_gdtf
     from busk.importers.ofl import read_ofl as read_ofl
     from busk.io.surfaces import SurfaceStatus as SurfaceStatus
+    from busk.io.surfaces import midi_devices as midi_devices
     from busk.model.profile import FixtureProfile as FixtureProfile
     from busk.model.show import Show as Show
     from busk.model.validate import Issue as Issue

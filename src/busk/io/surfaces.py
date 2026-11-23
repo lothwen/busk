@@ -13,6 +13,9 @@ removed or changed ones. Each kind gets its own input:
   its WebSocket on its port. It restarts only when its port or host
   changes, so phones stay connected through other edits.
 
+A surface reopens only when its kind or how busk finds it (``match``)
+changes (:func:`same_device`): a new name or pickup keeps it open.
+
 Opening a surface reports its lines through ``say`` (``MIDI s-nano:
 <port>``, ``OSC s-touch: listening on udp 8000, feedback to the sender``,
 one ``Web s-phone: http://10.0.0.5:8080/?k=…`` per address). A surface that
@@ -51,13 +54,20 @@ not (what its line said), and the web remote's addresses. The supervisor
 publishes it by reference assignment, and only when it differs from the last
 one, so any thread reads it whole, and the same object while nothing
 changed. :meth:`~SurfaceManager.close` leaves it as it was.
+
+**The MIDI devices plugged in** (GAP-62). :func:`midi_devices` reads the
+input port names as the hot-plug read does, and gives each device as
+``surface add midi`` takes it (:func:`device_names`), for a frontend's form
+to offer: ALSA's ``nanoKONTROL2:nanoKONTROL2 _ CTRL 20:0`` reads
+``nanoKONTROL2``.
 """
 
 from __future__ import annotations
 
 import logging
 import math
-from collections.abc import Callable
+import re
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from functools import partial
 from typing import TYPE_CHECKING, Final, Literal, Protocol
@@ -137,6 +147,58 @@ class MidiPort(Protocol):
     def open(self, names: list[str] | None = None) -> str | None: ...
 
     def close(self) -> None: ...
+
+
+THROUGH: Final = "Midi Through"
+"""ALSA's own loopback client, which no controller is."""
+
+_ALSA_NUMBERS: Final = re.compile(r"\s+\d+:\d+$")
+"""The client and port numbers ALSA ends a port name with (``20:0``), which
+change when the device is plugged in again."""
+
+
+def midi_devices() -> tuple[str, ...]:
+    """The MIDI input devices the system offers now, each once, as ``surface
+    add midi`` takes them (:func:`device_names`), in the system's order:
+    ``("nanoKONTROL2",)``. ``()`` without the ``midi`` extra or a MIDI
+    backend that can run: it never raises (GAP-62).
+
+    It reads the system on each call, as the hot-plug read does, so a
+    device plugged in a moment ago is there. Under ``busk run`` a frontend
+    runs in the console process, so it reads the console's host."""
+    try:
+        from busk.io import midi
+
+        names = midi.input_names()
+    except Exception:  # no mido, no ALSA sequencer, backend not loadable
+        return ()
+    return device_names(names)
+
+
+def device_names(ports: Iterable[str]) -> tuple[str, ...]:
+    """MIDI input port names as ``surface add midi`` takes them, once each,
+    without ALSA's numbers. A client with one port named after it, as a
+    controller's is, reads as its name (``nanoKONTROL2:nanoKONTROL2 _ CTRL
+    20:0`` reads ``nanoKONTROL2``); any other ALSA port as its client and
+    port (``X-Touch:X-Touch MIDI 2``, one of two; ``RtMidiOut Client:Pad``, a
+    program's port), so each opens its own; a name without a client, as other
+    systems give them, whole. ALSA's ``Midi Through`` is left out. A surface
+    opens the first port whose name contains its device, in any case, and
+    each of these is in its own port's name."""
+    bare = [_ALSA_NUMBERS.sub("", port).strip() for port in ports]
+    clients: dict[str, set[str]] = {}
+    for name in bare:
+        client, colon, _ = name.partition(":")
+        if colon:
+            clients.setdefault(client, set()).add(name)
+    found: dict[str, None] = {}  # an ordered set
+    for name in bare:
+        client, colon, port = name.partition(":")
+        if client == THROUGH or not name:
+            continue
+        alone = colon and len(clients[client]) == 1 and port.startswith(client)
+        found[client if alone else name] = None
+    return tuple(found)
 
 
 def open_midi(
@@ -251,7 +313,7 @@ class SurfaceManager:
         self._surfaces = surfaces
         wanted = {s["id"]: s for s in surfaces if s["kind"] in ("midi", "osc", "web")}
         for ident, (surface, port) in list(self._open.items()):
-            if ident not in wanted or not _unchanged(surface, wanted[ident]):
+            if ident not in wanted or not same_device(surface, wanted[ident]):
                 if port is not None:
                     port.close()
                 del self._open[ident]
@@ -405,10 +467,14 @@ class SurfaceManager:
         self._publish()
 
 
-def _unchanged(opened: ControlSurface, wanted: ControlSurface) -> bool:
-    """Whether an open surface can stay open under its new definition: a web
-    server only restarts when its address changes."""
-    if opened["kind"] == wanted["kind"] == "web":
-        old, new = opened["match"], wanted["match"]
+def same_device(opened: ControlSurface, wanted: ControlSurface) -> bool:
+    """Whether an open surface's port can stay open under its new definition:
+    its kind and how busk finds it (``match``) are the same, so a new name or
+    pickup reopens nothing (GAP-60). A web server restarts only when its port
+    or host changes."""
+    if opened["kind"] != wanted["kind"]:
+        return False
+    old, new = opened["match"], wanted["match"]
+    if opened["kind"] == "web":
         return (old.get("port"), old.get("host")) == (new.get("port"), new.get("host"))
-    return opened == wanted
+    return old == new

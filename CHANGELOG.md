@@ -10,6 +10,16 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- Surfaces are renamed, deleted and changed from the console. `rename surface "Phone"
+  "Tablet"` renames one; `delete surface "<name>"` deletes one with no bindings, and one with
+  bindings with `cascade`, which takes them and asks first at the prompt. `surface "<name>"
+  change …` takes what `surface add` takes after the kind and the name, a MIDI surface's
+  device or an OSC or web surface's port with its feedback address or host, and sets it
+  whole, keeping the surface's name, pickup and bindings; a running show reopens the surface
+  there. A MIDI surface renamed is still found by its device while no surface has that name.
+- `busk.midi_devices()` lists the MIDI input devices plugged in, once each, as `surface add
+  midi` takes them (`nanoKONTROL2`, without ALSA's numbers), and `()` without the `midi`
+  extra.
 - `rig import "<path>"` builds the rig from an MVR plot (My Virtual Rig, DIN SPEC 15801), as a
   lighting designer draws it in Vectorworks, grandMA3 or other CAD, in one undo step: the
   profiles of its GDTF files, the universes it patches into, each fixture with its number,

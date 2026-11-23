@@ -83,6 +83,8 @@ def offline(directory: Path) -> bytes:
         when: datetime = pending.written
         edits: bool = pending.edits
         assert (when, edits) is not None
+    devices: tuple[str, ...] = busk.midi_devices()  # GAP-62: () with no MIDI backend
+    assert all(isinstance(device, str) for device in devices)
 
     reply: busk.Reply = show_.execute("fader 1 1")
     assert reply.ok, reply.text

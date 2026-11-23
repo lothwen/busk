@@ -36,7 +36,8 @@ The TUI runs a `busk.LiveShow` in its own process, or, since GAP-11, is run by `
   from the surfaces) and since GAP-03 `LiveShow.session` (`SessionStatus`: unsaved edits,
   the show's file, the undo steps). Since GAP-54 `busk.read_profile(path)` reads a profile file as
   `profile import` would, without importing it, and since GAP-58 `busk.pending_recovery(path)`
-  says whether `busk run` would recover a show. Since GAP-57 `run_script(path, each=…)` tells
+  says whether `busk run` would recover a show, and since GAP-62 `busk.midi_devices()` lists the
+  MIDI devices plugged in, as `surface add midi` takes them. Since GAP-57 `run_script(path, each=…)` tells
   each line of a script as it runs, and since GAP-59 `rig_check(path)` (`RigCheck`) what `rig
   import` of a plot would do. Since GAP-16 a profile in `LiveShow.show`
   may have a `category`, and since GAP-17 a playback in the snapshot has the `color` of
@@ -123,6 +124,9 @@ Every new read should also reach `busk run`'s console process, so the TUI gets i
 | [GAP-57](#gap-57-a-script-reports-each-line-as-it-runs) A script reports each line as it runs | read | nice-to-have | Import script | **done** 2026-11-21 |
 | [GAP-58](#gap-58-whether-busk-run-would-recover-a-show) Whether `busk run` would recover a show | read | nice-to-have | launcher, Open recent | **done** 2026-11-21 |
 | [GAP-59](#gap-59-what-rig-import-would-do) What `rig import` would do | read | important | F3, File menu | **done** 2026-11-22 |
+| [GAP-60](#gap-60-renaming-and-deleting-a-surface) Renaming and deleting a surface | action | important | F9 | **done** 2026-11-23 |
+| [GAP-61](#gap-61-changing-how-busk-finds-a-surface) Changing how busk finds a surface | action | important | F9 | **done** 2026-11-23 |
+| [GAP-62](#gap-62-the-midi-devices-plugged-in) The MIDI devices plugged in | read | nice-to-have | F9 | **done** 2026-11-23 |
 
 ---
 
@@ -3754,3 +3758,156 @@ run`'s show has it too, reading the plot in the console process), and `RigCheck`
   kept, `cascade`, `blocked`, nothing to do, files that fail, a relative path, a `LiveShow`
   from another thread), `tests/test_frontend.py` (from `busk run`'s console process),
   `tests/test_public_api.py` and its golden, `tests/api_consumer.py`; the library guide.
+
+## GAP-60: Renaming and deleting a surface
+
+**Status:** done 2026-11-23 (see **Done** at the end of this section).
+
+The user's word of 2026-11-23: F9's surfaces and bindings cannot be added, removed or edited from
+the TUI. Built in Phase 38 of `docs/plans/tui-pending-plan.md`, for F9 in its Phase 39.
+
+**Needed by:** F9's `[rename…]` and `[delete]` on a surface.
+
+**Today:** `surface add` makes a surface, and nothing renames or deletes one: `rename surface` and
+`delete surface` are refused (`cannot delete 'surface'`). A `DELETE` through `submit()` of a
+surface that has bindings is refused by path, a line per binding (`bindings[0].surfaceId: Unknown
+surface 's-…'`).
+
+**Engine should provide:** `rename surface "<name>" "<new>"` and `delete surface "<name>"
+[cascade]`, each one undo step, the bindings going with the surface under `cascade`.
+
+**Priority:** important: a show that changes controller keeps the old one's surface and bindings
+for good.
+
+**TUI until then:** F9 has no `[rename…]` or `[delete]` on a surface.
+
+**Done** (2026-11-23). `_rename_surface` and `_delete_surface` in `src/busk/console/parser.py`,
+the delete's walk `surface_cascade` in `src/busk/console/cascade.py`. Documented in
+`docs/console.md`, `docs/surfaces.md`, `busk help` and both modules' docs. No public name was
+added. What it settles:
+
+- **A surface is named as every surface line names it,** in quotes, in any case, and a MIDI
+  surface also by its device, but now only when no surface has that name: a surface renamed
+  `"Left"` is still found as `"nanoKONTROL2"`, its device, until a surface takes that name, and
+  then the name wins. Before, the first surface whose name or device matched won, which never
+  differed while a MIDI surface could only be named after its device. Tab offers the names.
+- **`rename` refuses a name another surface has, in any case,** as `surface add` does (`a surface
+  named 'phone' exists`). A surface may change the case of its own name. The reply is in words:
+  `renamed surface "Phone" to "Tablet"`. Its bindings name its id, so they follow.
+- **A surface with bindings goes only with `cascade`,** which takes them (the plan's §5, call 30):
+  a plain `delete` is refused in one line that counts them (`surface "nanoKONTROL2" has 51
+  bindings: add cascade`), and Tab then offers `cascade` alone. The prompt asks first, always, as
+  for every cascade (`Delete surface "nanoKONTROL2"? It leaves 51 bindings.`, or `Delete surface
+  "Phone"?` with none), and the reply counts them (`deleted surface "nanoKONTROL2": left 51
+  bindings`). A surface with no bindings goes with a plain `delete`, which asks nothing. Nothing
+  but a binding names a surface.
+- **Every kind goes,** `hid` and `internal` too, which busk shows as ignored, and every kind is
+  renamed.
+- **On a running show** the surface manager closes a deleted surface at its next reconcile, and
+  `undo` opens it again, with its bindings. A renamed web remote keeps its server and its key, as
+  GAP-08 found.
+- **A rename or a pickup change reopens nothing.** The surface manager and the feedback worker
+  reopened a surface whose definition changed in any way, so renaming an OSC surface closed and
+  reopened its socket, and a MIDI controller its input and feedback ports. Now a surface reopens
+  only when its kind or its `match` changes (`same_device` in `src/busk/io/surfaces.py`, used by
+  both); the web remote's rule, its port and host, is unchanged.
+- Tests: `tests/test_surface_lines.py` (each kind renamed and deleted, in one undo step, names in
+  any case, a name in use, the device's lookup, the cascade, its question and reply, a script, the
+  club show's controller saved and reloaded, the refusals, Tab, a running `LiveShow`), and the
+  `rename ` and `delete ` rows of `tests/test_console_prompt.py`.
+
+## GAP-61: Changing how busk finds a surface
+
+**Status:** done 2026-11-23 (see **Done** at the end of this section).
+
+The user's word of 2026-11-23, with GAP-60; built in Phase 38 of
+`docs/plans/tui-pending-plan.md`.
+
+**Needed by:** F9's `[edit…]` on a surface.
+
+**Today:** `surface "<name>" pickup soft|jump` is the only line that changes a surface. Nothing
+moves an OSC surface to another port, changes where its feedback goes, moves the web remote, or
+points a MIDI surface at another device: `surface "Phone" port 8081` is refused (`expected pickup,
+got 'port'`). Deleting and adding it again would lose its bindings.
+
+**Engine should provide:** `surface "<name>" change <what surface add takes after the kind>`, one
+undo step that keeps the surface's id, name, pickup and bindings.
+
+**Priority:** important: a venue's network or a replacement controller would otherwise mean
+binding the surface again.
+
+**TUI until then:** F9 has no `[edit…]` on a surface.
+
+**Done** (2026-11-23). `_surface_change` in `src/busk/console/parser.py`, which shares
+`_device` and `_listening` with `surface add`. What it settles:
+
+- **The words are `surface add`'s after the kind and the name:** `surface "nanoKONTROL2" change
+  "nanoKONTROL2 MIDI"` (the device), `surface "Touch" change port 9001 feedback 10.0.0.2:9001`,
+  `surface "Phone" change port 8081 on 10.0.0.5`, options in any order.
+- **The line gives the whole of it,** as `route <id> change` does (GAP-37): one `SET` of the
+  surface's `match`, so an option left out goes back to `surface add`'s default. `surface "Touch"
+  change` listens on 8000 and sends feedback to the sender.
+- **The kind stays,** and so do the id, the name, the pickup and the bindings (the plan's §5, call
+  31). Another kind is a delete and an add, since a binding's control belongs to its surface's
+  kind.
+- **It refuses what `surface add` refuses,** by the same code: a port outside 1 to 65535, an
+  option twice, an option of the other kind, a port another surface of the kind listens on (`port
+  9100 is in use by surface 'Other'`), but not its own. It refuses a `hid` or an `internal`
+  surface (`surface "Keys" is a hid surface, which busk does not open`), and a line that would
+  change nothing (`surface "Touch" is set up that way already`), which would be an undo step of no
+  edit. Tab says so before Enter.
+- **The reply names what it is now,** as `list surfaces` does: `changed surface "Touch": port 9001,
+  feedback to 10.0.0.2:9001`.
+- **It asks nothing.** On a running show the surface manager compares how busk finds a surface,
+  so it closes the old definition and opens the new one at its next reconcile; a web remote
+  restarts only when its port or host changes. A MIDI surface pointed at a device that is not plugged in
+  turns `failed`, with busk's reason, and opens at the next hot-plug read after the device comes.
+- Tests: `tests/test_surface_lines.py` (each kind, every option, what goes back to its default,
+  each refusal, Tab, an OSC surface moved and moved back on a running `LiveShow`, a web remote
+  moved, a MIDI surface pointed at a device plugged in later, `busk run` with processes and with
+  `--threads`).
+
+## GAP-62: The MIDI devices plugged in
+
+**Status:** done 2026-11-23 (see **Done** at the end of this section).
+
+The user's word of 2026-11-23, with GAP-60; built in Phase 38 of
+`docs/plans/tui-pending-plan.md`.
+
+**Needed by:** F9's surface form, which offers the MIDI devices plugged in as chips.
+
+**Today:** nothing public lists them. `busk.io.midi.input_names()` is internal, and a failed
+surface's `detail` names the ports only once a surface has failed to find its device. ALSA's
+names hold numbers that change when a device is plugged in again (`nanoKONTROL2:nanoKONTROL2 _
+CTRL 20:0`), so they are not what `surface add midi` should take.
+
+**Engine should provide:** a read of the MIDI input devices plugged in now, each as `surface add
+midi` takes it.
+
+**Priority:** nice-to-have: a device's name can be typed, and `busk run` prints the ports when
+one is missing.
+
+**TUI until then:** F9's form takes a typed device name only.
+
+**Done** (2026-11-23). `busk.midi_devices() -> tuple[str, ...]`, the 51st name of
+`busk.__all__`, in `src/busk/io/surfaces.py` with `device_names`, which gives the words.
+
+- **A function, not a property of a show:** the devices are the host's. Under `busk run` a
+  frontend runs in the console process, so it reads the console's host, with processes and with
+  `--threads`, both tested.
+- **The words:** ALSA's numbers go. A client with one port named after it, as a controller's is,
+  reads as its name (`nanoKONTROL2`); any other ALSA port as its client and port, so each opens
+  its own (`X-Touch:X-Touch MIDI 2`, one of two; `RtMidiOut Client:Pad`, a program's port); a name
+  without a client, as other systems give them, whole. Each is in its own port's name, so a
+  surface with it opens that port. Two devices alike read once. ALSA's `Midi Through` is left out
+  (the plan's §5, call 33). In the system's order.
+- **`()` without the `midi` extra or a backend that can run,** never an error; without `mido` it
+  does not import `busk.io.midi`.
+- **It reads the system on each call,** as the hot-plug read does: about 20 ms here, since
+  rtmidi makes a client for each read. A form reads it as it opens; nothing polls it.
+- No prompt line lists them, and Tab does not offer them after `surface add midi` (the plan's
+  §5, call 33).
+- Tests: `tests/test_surface_lines.py` (the words for ALSA's and other systems' names, fake ports
+  plugged in and a backend that fails, without `mido`, a virtual ALSA port under the `midi`
+  marker, `busk run`'s console process), `tests/test_public_api.py` and its golden,
+  `tests/api_consumer.py`; the library guide.

@@ -66,7 +66,7 @@ from busk.compiler.compile import CompiledShow
 from busk.compiler.playbacks import CompiledPage
 from busk.engine.snapshot import EngineSnapshot, PlaybackStatus, SpeedStatus
 from busk.io.bindings import current_page
-from busk.io.surfaces import HOTPLUG_S, MIDI_MISSING, follow_midi, open_midi
+from busk.io.surfaces import HOTPLUG_S, MIDI_MISSING, follow_midi, open_midi, same_device
 from busk.model.common import MasterId, PlaybackId, SurfaceId
 
 if TYPE_CHECKING:  # imported where a port opens: it needs mido, the `midi` extra
@@ -341,8 +341,8 @@ class FeedbackWorker:
 
     def _reconcile(self, compiled: CompiledShow) -> None:
         """Open a MIDI output for each MIDI surface with feedback bindings,
-        and close the ones that are gone or changed (as the surface manager
-        does for inputs)."""
+        and close the ones that are gone or find another device (as the
+        surface manager does for inputs: a new name or pickup keeps it)."""
         with_feedback = {binding["surfaceId"] for binding in self._bindings}
         wanted = {
             surface["id"]: surface
@@ -350,7 +350,7 @@ class FeedbackWorker:
             if surface["kind"] == "midi" and surface["id"] in with_feedback
         }
         for ident, (surface, port) in list(self._midi.items()):
-            if wanted.get(ident) != surface:
+            if ident not in wanted or not same_device(surface, wanted[ident]):
                 if port is not None:
                     port.close()
                 del self._midi[ident]

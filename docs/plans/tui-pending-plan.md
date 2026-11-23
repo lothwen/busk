@@ -7,7 +7,8 @@
 > the plan's own calls, which the user may veto, and §8 the questions only the user can answer.
 > On 2026-11-12 the user added Phases 26 to 36. They cover the gaps found by comparing busk with a
 > grandMA3 show-programming howto (§7's items of that date). On 2026-11-18 the user added Phase
-> 37, F9's MONITOR, from GAP-13 (§7).
+> 37, F9's MONITOR, from GAP-13 (§7). On 2026-11-23 the user added Phases 38 to 41: surfaces and
+> bindings set up on F9 (§7).
 
 ## 1. How a phase runs
 
@@ -23,7 +24,8 @@
   uses it. The TUI step keeps the TUI phases' rules below. Phases 26 to 36, added on 2026-11-12,
   follow the same pattern. Where an item's engine work is too large to share a phase, it gets a
   phase of its own before the TUI's: 27 before 28, and 29 before 30. Phase 31 is engine only.
-  Phase 37, added on 2026-11-18, follows it too.
+  Phase 37, added on 2026-11-18, follows it too. Phases 38 to 41, added on 2026-11-23, give the
+  engine phases of their own: 38 before 39, and 40 before 41.
 - **Engine phases** change `src/busk/` and its tests. Each gap gets an entry and a Summary row in
   `docs/dev/tui/engine-gaps.md`. A wrong message or a missing range check is a bug, not a gap, and
   gets no number.
@@ -140,6 +142,10 @@ to be at `f851165`.
 | 35 | Masters renamed and deleted (GAP-53); made, renamed and deleted on F7 | busk, TUI | 33, if built | |
 | 36 | F2's option chips, the strobe cap on F7, the show's title | TUI | | |
 | 37 | What comes in from the surfaces (GAP-13); F9's MONITOR, raw value and learn mode | busk, TUI | | Q14 |
+| 38 | Surfaces renamed, deleted and changed (GAP-60, GAP-61); the MIDI devices plugged in (GAP-62) | busk | | |
+| 39 | F9: surfaces added, changed, renamed and deleted; pickup in one click | TUI | 38 | |
+| 40 | One binding at a time, deleted and changed (GAP-63); what `bind` should refuse | busk | | Q15 |
+| 41 | F9: bindings added, changed, moved and deleted from a form | TUI | 39, 40 | Q15 |
 
 ## 4. What busk does (checked on 2026-11-08)
 
@@ -253,6 +259,30 @@ Added on 2026-11-18, for Phase 37:
     operator reads is what they type, and learn mode's pre-fill is the same text. A pitch bend,
     which `bind` cannot take, reads `bend 1`.
 28. **No prompt line lists the inputs.** The read is for frontends, as `LiveShow.surfaces` is.
+
+Added on 2026-11-23, for Phases 38 to 41:
+
+29. **GAP-60 to GAP-63** are numbered here, in the order they are built.
+30. **A surface with bindings goes only with `cascade`,** which takes them, after busk's question:
+    no binding outlives its surface. A surface with none goes with a plain `delete`, which asks
+    nothing.
+31. **A surface keeps its kind.** `surface "<name>" change` gives how busk finds it, whole, as
+    `route <id> change` does, so an option left out goes back to `surface add`'s default. Another
+    kind is a delete and an add, since a binding's control belongs to its surface's kind.
+32. **A MIDI surface is named by its device,** as `surface add midi` names it, and F9's form has
+    no name for it. `[rename…]` renames it afterwards, a second undo step.
+33. **The device chips are the MIDI input devices of the console's host,** read as the form opens,
+    without ALSA's numbers and without ALSA's own `Midi Through`. A device not plugged in is typed.
+    Tab does not offer them at the prompt: `busk run` names the ports when a device is missing.
+34. **Pickup is two chips,** a click each, and asks nothing, as busk asks nothing.
+35. **The pre-fills give way to controls:** `[pickup…]`, `[bind…]`, `[unbind…]` and
+    `[feedback…]`. The lines still work typed, and `thru` stays typed. The surface's `[learn]`
+    stays as Phase 37 built it, a pre-fill for the operator who types; the form's `[learn]` is the
+    same read, for the form.
+36. **A binding its surface cannot use is refused at the prompt,** not warned: a channel outside 1
+    to 16, a number above 127, a control of another kind than the surface's, `display` on MIDI. A
+    show file that holds one still loads, with the validator's warning, as call 10 says for
+    seconds.
 
 ## 6. Phases
 
@@ -3777,6 +3807,344 @@ the bend over, took the CC with the note `cc 1 48 drives fader 2, blackout: unbi
 it` in the hint row, and `fader 3` sent from there was the third binding `list bindings` listed.
 This host has a real nanoKONTROL2 plugged in; its faders were not moved.
 
+### Phase 38: Engine: surfaces deleted, renamed and changed
+
+The user's word of 2026-11-23: surfaces and bindings cannot be added, removed or edited from the
+TUI. F9 shows them, and its edits put `bind`, `unbind`, `feedback` and `pickup` lines in the
+prompt, but nothing on screen sets one up (the report's "Beyond this report"). Phases 38 to 41
+give F9 those controls, the engine's lines first. For surfaces, busk lacks them. Checked on
+`0c63290`, with `OfflineShow` on the club show:
+
+- `delete surface "Phone"` and `rename surface "Phone" "Tablet"` are refused (`cannot delete
+  'surface'`, `cannot rename 'surface'`);
+- no line changes how busk finds a surface: `surface "Phone" port 8081` replies `expected
+  pickup, got 'port'`;
+- a `DELETE` of a surface that has bindings, through `submit()`, is refused by path, a line per
+  binding (`bindings[0].surfaceId: Unknown surface 's-…'`); one with no bindings goes;
+- nothing public lists the MIDI devices plugged in: `busk.io.midi.input_names()` is internal,
+  and a failed surface's `detail` names the ports only once it has failed.
+
+Engine only. Code: `src/busk/console/parser.py` (`_cmd_surface`, `_listening`, `surface`),
+`src/busk/console/cascade.py`, `src/busk/console/console.py` (`confirmation`, `list surfaces`),
+`src/busk/io/surfaces.py` (`SurfaceManager.reconcile`, `_unchanged`), `src/busk/io/midi.py`
+(`input_names`), `src/busk/__init__.py`.
+
+1. **GAP-60: `rename surface "<name>" "<new>"` and `delete surface "<name>" [cascade]`.**
+   - A rename refuses a name another surface has, in any case, as `surface add` does. A line
+     also finds a MIDI surface by its device (`surface()`), so a name that is another surface's
+     device is refused too.
+   - A delete of a surface with bindings is refused in one line that counts them (`surface
+     "nanoKONTROL2" has 51 bindings: add cascade`). With `cascade` they go with it, after
+     `confirmation()`'s question, in the words of the other cascades (`Delete surface
+     "nanoKONTROL2"? It leaves 51 bindings.`). A surface with none goes with a plain `delete`,
+     which asks nothing (§5, call 30).
+   - A surface of any kind can go, `hid` and `internal` too, which busk shows as ignored.
+   - Each is one undo step, with a reply in words. Tab offers `surface` after `delete` and
+     `rename`, and the surfaces' names after it.
+   - On a running show the surface closes at the manager's next reconcile, and `undo` opens it
+     again. A renamed web remote keeps its server, as GAP-08 found.
+
+   **Done** (2026-11-23). `_rename_surface` and `_delete_surface` in
+   `src/busk/console/parser.py`, `surface_cascade` in `src/busk/console/cascade.py`, with the help
+   lines and a paragraph in both modules' docs. The words are as this step has them: `renamed
+   surface "Phone" to "Tablet"`, `surface "nanoKONTROL2" has 51 bindings: add cascade`, `Delete
+   surface "nanoKONTROL2"? It leaves 51 bindings.`, `deleted surface "nanoKONTROL2": left 51
+   bindings`. Tests: in `tests/test_surface_lines.py` (61 in all, with steps 2 and 3), and the
+   `rename ` and `delete ` rows of `tests/test_console_prompt.py`.
+
+   Calls the user may veto:
+   - **A name that is another surface's device is not refused;** the lookup changed instead. A
+     surface is found by its name first, and by a MIDI surface's device only when no surface has
+     that name. Before, the first surface whose name or device matched won, which never differed
+     while a MIDI surface was always named after its device. So a surface renamed `"Left"` is
+     still `"nanoKONTROL2"` to a script that binds it by its device, until a surface takes that
+     name, and then the name wins. Refusing the name as this step said would not have been
+     enough: `surface add midi` of a device a renamed surface opens would have made the same
+     clash.
+   - **`delete surface … cascade` asks even with nothing to take** (`Delete surface "Phone"?`), as
+     every cascade does (`delete master "FX" cascade` too). Phase 39's `[delete]` should send
+     `cascade` only to a surface with bindings if it wants a surface without them to go unasked;
+     its text says busk asks when bindings go.
+   - **A rename or a pickup change reopens nothing on a running show,** found in the real `busk
+     run` below: the surface manager and the feedback worker reopened a surface whose definition
+     changed in any way, so renaming an OSC surface closed and reopened its socket, and a MIDI
+     controller its ports, which drops what comes in meanwhile. Now a surface reopens only when
+     its kind or its `match` changes (`same_device` in `src/busk/io/surfaces.py`, used by both);
+     the web remote's rule is unchanged. Phase 39's pickup chips and `[rename…]` would have hit it
+     at every click.
+2. **GAP-61: `surface "<name>" change <what surface add takes after the kind>`.**
+   - `surface "nanoKONTROL2" change "nanoKONTROL2 MIDI"`, `surface "Touch" change port 9001
+     feedback 10.0.0.2:9001`, `surface "Phone" change port 8081 on 10.0.0.5`.
+   - The surface keeps its kind, id, name, pickup and bindings (§5, call 31). Another kind is a
+     delete and an add.
+   - The line gives the whole of how busk finds the surface, as `route <id> change` gives the
+     whole route (GAP-37): an option left out goes back to `surface add`'s default (port 8000 or
+     8080, no feedback, no host).
+   - It refuses what `surface add` refuses, by the same code (a port another surface of its kind
+     listens on, its own excepted), and a line that changes nothing (`surface "Touch" already
+     listens there`), which would be an undo step of no edit. A `hid` or `internal` surface is
+     refused: busk opens neither.
+   - On a running show the manager closes the old definition and opens the new one: it compares a
+     surface by value, and restarts a web remote only when its port or host changes
+     (`_unchanged`). A MIDI surface moved to a device that is not plugged in turns `failed` with
+     busk's reason, and opens when the device comes.
+
+   **Done** (2026-11-23). `_surface_change` in `src/busk/console/parser.py`, which shares
+   `_device` and `_listening` (now with the surface's own id, whose port is free to it) with
+   `surface add`, and `_new_surface_name` with it and the rename. One `SET` of the surface's
+   `match`. The reply names what it is now, as `list surfaces` does: `changed surface "Touch":
+   port 9001, feedback to 10.0.0.2:9001`, `changed surface "nanoKONTROL2": device "nanoKONTROL2
+   MIDI"`. `surface "<name>" ` now offers `pickup` and `change`, and a wrong word after the name
+   says `expected pickup or change`.
+
+   Calls the user may veto:
+   - **The refusal of a line that changes nothing** is `surface "Touch" is set up that way
+     already`, one sentence for every kind, where this step had `already listens there`, which
+     reads wrong for a MIDI device. Tab shows it before Enter: `surface "Phone" change ` on a web
+     remote on 8080 with no host is not runnable, since the bare line would change nothing.
+   - **A `hid` or `internal` surface** is refused as `surface "Keys" is a hid surface, which busk
+     does not open`, the words of its `ignored` status (`hid surfaces are not implemented`) put
+     as a reason.
+   - **A MIDI device is any word or quote,** as `surface add midi` takes it, an empty `""` too,
+     which opens nothing; the same code, so the same reading.
+3. **GAP-62: the MIDI devices plugged in.**
+   - A read for frontends, its name settled in the phase (`busk.midi_devices()`, say): the MIDI
+     input devices the system offers now, once each, as `surface add midi` takes them: a port's
+     name without ALSA's client and port numbers (`nanoKONTROL2:nanoKONTROL2 _ CTRL 20:0` reads
+     `nanoKONTROL2`), with ALSA's own `Midi Through` left out (§5, call 33).
+   - `()` without the `midi` extra or a MIDI backend, never an error: a form calls it.
+   - Under `busk run` the frontend shares the console process, so it reads the console's host.
+     Check it, as Phase 37 checked `inputs`. Measure a read: F9's form makes one as it opens.
+
+   **Done** (2026-11-23). `busk.midi_devices() -> tuple[str, ...]`, in `src/busk/io/surfaces.py`
+   with `device_names`, which gives the words; `busk.__all__` has 51 names. Without `mido` it
+   returns `()` and does not import `busk.io.midi`; a backend that raises gives `()` too. Under
+   `busk run` the probe frontend read it in the console process, with processes and with
+   `--threads`, equal to the test's own read on the same host. A read costs about 20 ms here:
+   rtmidi makes a client for each. Tests: in `tests/test_surface_lines.py`, one of them on a
+   virtual ALSA port under the `midi` marker; `tests/test_public_api.py`, its golden (the one
+   new entry) and `tests/api_consumer.py`.
+
+   Calls the user may veto:
+   - **A function of `busk`, not a property of a show:** the devices are the host's, and a form
+     can ask before any show runs.
+   - **The words:** a client with one port named after it, as a controller's is, reads as its
+     name (`nanoKONTROL2`); any other ALSA port as its client and port, without the numbers. A
+     virtual port that a program opens through rtmidi is `RtMidiOut Client:Phase38 Pad`, and the
+     bare client name would have offered `RtMidiOut Client`, which any rtmidi program's port
+     matches. A device with several ports gives each (`X-Touch:X-Touch MIDI 2`), so each opens
+     its own. A name without a client, as macOS and Windows give them, comes whole. Two devices
+     alike read once. In the system's order.
+   - **Nothing polls it, and Tab does not offer it,** as §5's call 33 says.
+
+   Add the entries of GAP-60 to GAP-62 and their Summary rows to engine-gaps.md, and update
+   `docs/console.md` (the Surfaces row and the cascade table), `docs/surfaces.md`,
+   `docs/library.md` (the read) and `busk help`.
+
+   Verify: each kind renamed, changed and deleted, with bindings and without; the cascade, and
+   `undo` bringing the surface back with its bindings; a rename to a name or a device in use; each
+   refusal of `change`; Tab; on a running `LiveShow`, an OSC surface on localhost moved to another
+   port (the old port stops listening, and a message on the new one reaches its bindings), a web
+   remote renamed (it keeps its server) and moved (it restarts), and a surface deleted and brought
+   back by `undo`; a virtual MIDI port (mido, as Phase 37 used one) for a MIDI surface's `change`
+   and for the read; `busk run` with processes and with `--threads`.
+
+Docs: as above, the parser's and the cascade's module docs, and `CHANGELOG.md`.
+
+**Done** (2026-11-23). engine-gaps.md: GAP-60 to GAP-62, their Summary rows and the list of
+reads; `docs/console.md` (the Surfaces row, the surfaces paragraph, a row of the cascade table);
+`docs/surfaces.md` (a paragraph under the opening); `docs/library.md` (section 3, the reference
+and the table of what raises); `docs/running.md`'s live edits; `busk help` and the modules' docs
+(the parser, the cascade, `busk.io.surfaces`, `busk/__init__.py`); `CHANGELOG.md` under Added. The
+operations report and the guide change with F9, in Phases 39 and 41.
+
+**Phase 38 checks** (2026-11-23), on top of `0c63290`. The whole suite: 7,626 passed and 1
+skipped, in 14:54 with `uv run pytest -n 6`. `ruff check`, `ruff format --check`, `mypy src` and
+`mypy --strict tests/api_consumer.py` clean. The new test of the reopen fix fails with the old
+comparison put back. No TUI code changed, so neither Textual 8.2.0 nor the perf gate was run.
+
+A real `busk run club.show --state-dir …` with processes, lines piped to its prompt, the club
+show with an OSC surface `Touch` on udp 19000 bound to fader 1 and its web remote moved to
+127.0.0.1:18080: OSC on 19000 set playback 1 to 0.40; `surface "Touch" change port 19001`
+replied `changed surface "Touch": port 19001, feedback to the sender`, `OSC …: listening on udp
+19001` followed, a message to 19000 changed nothing, and one to 19001 set 0.60. `delete surface
+"Touch"` was refused (`has 1 binding: add cascade`); `rename surface "Touch" "Desk"` renamed it,
+and `list bindings` named `Desk`. That rename printed `listening on udp 19001` again: the socket
+had been reopened, which led to the reopen fix in step 1's calls. With a virtual ALSA port open
+(mido, `Phase38 Pad`), `busk.midi_devices()` gave `('RtMidiOut Client:Phase38 Pad',)`, and
+`surface "nanoKONTROL2" change "RtMidiOut Client:Phase38 Pad"` opened it (`MIDI s-…:
+RtMidiOut Client:Phase38 Pad 128:0`); closing the port printed `unplugged; waiting for it`.
+`delete surface "Desk" cascade` (`left 1 binding`) and `undo` reopened it on 19001. The same run
+with the fix: the rename printed nothing, and the rest read the same. The feedback port of the
+virtual device was `not found`, rightly: a program's output port has no input for busk to send
+to.
+
+### Phase 39: F9: surfaces set up from controls
+
+The user's word of 2026-11-23. Needs Phase 38. F9's SURFACES then adds, changes, renames and
+deletes a surface, and sets its pickup in one click. TUI only. Code:
+`src/busk_tui/pages/surfaces.py` (`_draw_surface_edits`), `src/busk_tui/bridge.py`
+(`surface_views`, `_device_words`), `src/busk_tui/model.py` (`SurfaceView`),
+`src/busk_tui/commands.py`, and a new form on the pattern of F8's route form
+(`src/busk_tui/widgets/route_dialog.py`: `RouteDialog`, `PickRow`).
+
+1. **A new surface.** `[+ surface…]` under SURFACES opens a form: the kind's chips (MIDI, OSC,
+   web), then the kind's fields.
+   - MIDI: the devices plugged in (GAP-62) as chips, dim where another surface finds the device
+     already, or a name typed, so a controller can be set up before it is plugged in. It sends
+     `surface add midi "nanoKONTROL2"`, which names the surface by its device (§5, call 32).
+   - OSC: a name, the port (8000) and where feedback goes, empty for the sender (a host, a
+     `host:port` or a `:port`): `surface add osc "Touch" port 9000 feedback 10.0.0.2:9001`.
+   - Web: a name, the port (8080) and the address to listen on, empty for every interface:
+     `surface add web "Phone" port 8080`.
+
+   The line always carries the port, as F7's master form carries the tempo. The form checks what
+   the show tells it, each in words under its field: an empty name, a name another surface has in
+   any case, a port outside 1 to 65535 or one another surface of the kind listens on. What only
+   busk can tell is refused in the log, as for every control.
+2. **The chosen surface's edits.** The strip under SURFACES (`edit "Touch"`) becomes:
+   - `[soft]` `[jump]`, the pickup, its own lit, giving way to `[pickup…]`: a click sends
+     `surface "Touch" pickup soft` (§5, call 34);
+   - `[edit…]`: the form filled in, its kind fixed, which sends `surface "Touch" change …`, and
+     nothing when nothing changed;
+   - `[rename…]`: a `TextDialog` (`RENAME SURFACE`) that sends `rename surface "Touch" "Pad"`;
+   - `[delete]`: `delete surface "Touch" cascade`, always, as F7's `[delete]` sends it, passing
+     `RunLine.ask`, so busk asks when bindings go and names how many.
+
+   `[bind…]` and `[learn]` stay until Phase 41. An ignored surface (`hid`, `internal`) has
+   `[rename…]` and `[delete]` alone. A failed MIDI surface's `[edit…]` offers the devices plugged
+   in, so a controller that came back under another name is a click away. `SurfaceView` carries
+   the parts of the definition the form starts from (the device, the port, the host, the
+   feedback's host and port), and the bridge reads GAP-62 for the form.
+
+   Verify: each kind added, changed, renamed and deleted on the real engine in
+   `tests/tui/test_tui_e2e.py`, and a delete with bindings asked and brought back by `undo`; an
+   OSC surface moved to another port on a running show, turning green there; the form's checks
+   agreeing with busk's refusals, as F7's tempo agreement test does; F9 at 99 columns; a real
+   `busk run` under `busk-tui` with a virtual MIDI port among the device chips.
+
+Docs: the guide's F9, the TUI plan's §2.10 SURFACES row, the report's header and its "Beyond this
+report", the page's module docs, and `CHANGELOG.md`.
+
+### Phase 40: Engine: one binding at a time
+
+The user's word of 2026-11-23, with Phase 38. A binding has an id but no number or name, and the
+lines that remove or change bindings name a control: `unbind "<s>" <input>` and `feedback "<s>"
+<input> …` take every binding on it. Checked on `0c63290`, with `OfflineShow` on the club show:
+
+- one of two bindings on a control (`cc 1 48` driving `button 1 2` and `blackout`) cannot go
+  alone;
+- `unbind "nanoKONTROL2" clock` is refused (`expected cc or note or osc, got 'clock'`), though
+  `bind` takes `clock`, so a clock's binding goes only with its surface (Phase 38);
+- a pitch bend's or a hardware control's binding, which a show file can hold and no line makes,
+  cannot go at all;
+- nothing changes a binding in place. Another target, another control or another feedback
+  address is `unbind` then `bind`: two undo steps, and the control's other bindings go too. Q14
+  left a binding row's learn mode, which moves a binding to another control, waiting on such a
+  line.
+
+Engine only. Q15 settles the line's words. Code: `src/busk/console/parser.py` (`_cmd_bind`,
+`address`, `_what`, `_cmd_feedback`, `_cmd_unbind`, `bound`), `src/busk/console/console.py`
+(`list bindings`), `src/busk/model/validate.py` (`_check_bindings`, `_binding_surface`),
+`src/busk/io/bindings.py`, `src/busk/compiler/compile.py` (soft pickup, kept by binding id).
+
+1. **GAP-63: a binding by its id,** as Q15 answers. Under (a):
+   - `delete binding <id>` takes one binding, whatever its control. It asks nothing, as a plain
+     `delete` does, and `undo` brings it back.
+   - `binding <id> change <what bind takes after the surface>`, as in `binding b-40d1 change cc 1
+     49 button 2 2 led`. The binding keeps its id and its surface; its control, what it drives
+     and its feedback are the line's, so a feedback left out goes, as `route <id> change`
+     replaces a route whole. A clock's binding takes `clock tap ["<master>"]`.
+   - It refuses what `bind` refuses, by the same code, and a line that changes nothing.
+   - Tab offers the ids after `binding` and `delete binding`, as it does after `route`. `list
+     bindings` prints them already.
+   - `unbind "<s>" clock` takes the clock's bindings, as `bind` takes `clock`.
+   - On a running show the resolver follows the compiled show. Check that a soft-pickup fader
+     moved to another slot picks the level up again rather than jumping to it, since the compiler
+     keeps soft pickup by binding id, and that feedback moves to the new address and stops on the
+     old one.
+
+   Under (b), the same edits, worded `unbind "<s>" <input> <what>` and `rebind "<s>" <input>
+   <what> to <input> <what> [led|motor|display [<input>]]`.
+
+   Add GAP-63's entry and its Summary row to engine-gaps.md, and update `docs/console.md` (the
+   Bindings row), `docs/surfaces.md` and `busk help`.
+2. **What `bind` takes and should not,** found while planning (2026-11-23). Bugs, with no
+   number:
+   - a MIDI channel outside 1 to 16 and a CC or note number above 127 go through in silence
+     (`bind "nanoKONTROL2" note 0 128 fader 1`, `cc 17 0`), and the binding never fires;
+   - a control the surface's kind cannot send (`osc` on a MIDI surface, `cc` on an OSC one, any
+     control on the web remote) goes through with a warning by path and by the surface's id:
+     `warning bindings[52].input: midi surface 's-e2c28b90d767' cannot send osc inputs; this
+     binding does nothing`;
+   - `display` feedback on a MIDI control goes through in silence, though MIDI has no display
+     (`busk.io.midi`'s feedback table).
+
+   Each is refused in one line, in words, by `bind` and by GAP-63's `change`; the ranges by
+   `feedback` and `unbind` too (§5, call 36). A show file that holds one still loads, with the
+   validator's warning.
+
+   Verify: one of two bindings on a control deleted, and changed; a clock's binding changed and
+   deleted; a pitch bend's binding from a show file deleted; each refusal, with Tab and `?`;
+   `undo`; on a running `LiveShow` with an OSC surface on localhost, a binding moved to another
+   path driving from it and no longer from the old one, a soft-pickup fader moved to another slot,
+   and feedback moved; `busk run` with processes.
+
+Docs: as above, the parser's module docs, and `CHANGELOG.md`.
+
+### Phase 41: F9: bindings set up from controls
+
+The user's word of 2026-11-23. Needs Phases 39 and 40. F9's BINDINGS then adds, changes, moves
+and deletes a binding from a form, and none of F9's edits needs the prompt. TUI only. Code:
+`src/busk_tui/pages/surfaces.py` (`_draw_binding_edits`, `toggle_learn`, `_take_inputs`),
+`src/busk_tui/bridge.py` (`binding_info`, `_input_words`, `_action_words`),
+`src/busk_tui/model.py` (`BindingInfo`), `src/busk_tui/commands.py`, and a new form.
+
+1. **The binding form.** `[+ binding…]` among the chosen surface's edits, giving way to
+   `[bind…]`, opens a form in three parts:
+   - **the control**, by the surface's kind: on MIDI the chips `cc`, `note` and `clock`, a
+     channel (1 to 16) and a number (0 to 127); on OSC a path (`/fader/1`). `[learn]` in the form
+     fills them from the next input that comes from the surface, passing a pitch bend and the
+     clock over, as F9's `[learn]` does;
+   - **what it drives**: the chips `fader`, `button`, `master`, `tap`, `blackout`, `page`,
+     `release all` and `output`, then each one's fields: a slot or a playback (`fader playback
+     18`); a slot and a button; `gm` or a master, as chips by name; the speed master, when the
+     show has more than one; `momentary`; `+N`, `-N` or a page; a release time; on or off. A
+     clock offers `tap` alone;
+   - **feedback**: `none`, `led`, `motor` and, on OSC, `display`, on the control itself or on
+     another, given as the control is.
+
+   It sends one `bind` line, and checks what it can first (the ranges, an empty path, a slot from
+   1); busk refuses the rest, in the log. On a web remote or an ignored surface `[+ binding…]` is
+   grey, and the hint row says why (`a web remote sends commands of its own: a binding on it does
+   nothing`).
+2. **A binding's edits.** The strip under BINDINGS (`edit cc 1 32 on "nanoKONTROL2"`) becomes:
+   - `[edit…]`: the form filled in, which sends `binding <id> change …` (Q15), and nothing when
+     nothing changed;
+   - `[learn]`: moves the binding to the next control that comes from its surface, what it drives
+     and its feedback kept, in one line. This is the spec's learn mode on a binding row, which
+     Q14 left for a gap. It arms, lights and disarms as the surface's `[learn]` does;
+   - `[delete]`: `delete binding <id>`, passing `RunLine.ask`.
+
+   `[unbind…]` and `[feedback…]` give way to these; `unbind … thru` and `feedback … thru` stay
+   typed (§5, call 35). A binding the form cannot word (a pitch bend's, a hardware control's, a
+   command other than `release all` and `output`, each from a show file) has `[delete]` alone,
+   its `[edit…]` and `[learn]` grey with the reason in the hint row. `BindingInfo` gains its id
+   and the parts the form starts from.
+
+   The bridge reads `inputs` only while F9 shows (`Page.WATCH_INPUTS`), and F9's `on_hide`
+   disarms learn mode: check that the form's `[learn]` still hears, with the form a modal screen
+   over F9.
+
+   Verify: each kind of target added and changed on the real engine; the form's `[learn]` from an
+   OSC input, and a row's `[learn]` moving a binding, on the real engine; one of two bindings on a
+   control deleted; a clock's binding changed and deleted; the form's checks agreeing with busk's
+   refusals; F9 at 99 columns; a real `busk run` under `busk-tui` with a virtual MIDI port.
+
+Docs: the guide's F9 and its first note (F9 no longer puts a binding's line in the prompt, but for
+the surface's learn mode), the TUI plan's §2.10 rows (BINDINGS, learn mode), the report's header
+and its "Beyond this report", the page's module docs, and `CHANGELOG.md`.
+
 ## 7. Seen, and not in the sources
 
 Left out because the five places do not name them. Say if any should join a phase.
@@ -4028,6 +4396,16 @@ sequences, executors and recipes. Each doubtful point was checked on `OfflineSho
   TUI.
 - New cue lists start without tracking: §5, call 20.
 
+**F9's setup (2026-11-23).**
+
+- F9 sets up no surface or binding: its edits put `bind`, `unbind`, `feedback` and `pickup` lines
+  in the prompt (the report's "Beyond this report"), and busk has no line to delete, rename or
+  change a surface, nor one that removes or changes a single binding. **Phases 38 to 41**, the
+  user's word of 2026-11-23.
+- `bind` takes a MIDI channel outside 1 to 16 and a number above 127 in silence, a control its
+  surface cannot send with a warning by path, and `display` feedback on MIDI in silence. Found on
+  2026-11-23, while planning Phase 40. **Phase 40**, step 2.
+
 ## 8. Questions
 
 1. **A show file that no longer loads** (blocks Phase 1, step 4). A `refreshHz` of 41 to 44 or a
@@ -4164,3 +4542,14 @@ sequences, executors and recipes. Each doubtful point was checked on `OfflineSho
 
     ANSWER: (a), the recommended one (the user's standing word, "use recommended answers",
     2026-11-18). Built in Phase 37.
+15. **How a line names one binding** (Phases 40, 41). A binding has an id but no number or name,
+    and `unbind` and `feedback` name a control, so they take every binding on it.
+    - (a) By its id, as a route is named (`route <id> change`, `delete route <id>`): `delete
+      binding <id>` and `binding <id> change <input> <what> [feedback]`. `list bindings` prints
+      the ids, and Tab offers them. **Recommended:** it names any binding (one of two on a
+      control, a clock's, a pitch bend's from a show file), F9 holds the ids, and `unbind` stays
+      the readable line at the prompt.
+    - (b) By its surface, its control and what it drives: `unbind "<s>" <input> <what>` takes that
+      one, and `rebind "<s>" <input> <what> to <input> <what> [feedback]` changes it. It reads
+      well typed, but it is long, two alike bindings on one control cannot be told apart, and a
+      binding whose target `bind` cannot word (a command from a show file) has no name.

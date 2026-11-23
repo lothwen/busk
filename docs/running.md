@@ -123,9 +123,10 @@ when the watchdog gave up on the engine or the console ([below](#processes-and-t
 ## Live edits
 
 Edits made at the console reach the stage at the next engine tick. A new route opens (its
-line is printed), and a removed or changed one sends Stream_Terminated. A new or changed
-surface opens; a web surface restarts only when its port or host changes, so renaming it
-keeps the phones connected. New bindings and feedback work at once. A running cue that you
+line is printed), and a removed or changed one sends Stream_Terminated. A new surface opens,
+and one moved to another device or port (`surface "<name>" change …`) opens there; a renamed
+surface, or one with another pickup, stays open, and a web surface restarts only when its port
+or host changes, so the phones stay connected. New bindings and feedback work at once. A running cue that you
 re-record or whose preset you edit fades to its new state with the cue's timing.
 
 ## Autosave and recovery

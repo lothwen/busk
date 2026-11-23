@@ -10,7 +10,10 @@ attached show, and follows the plan in the JSON file ``$BUSK_TEST_FRONTEND``:
 * ``osc``: then, once every surface is open, send its ``messages`` (each an
   address and its arguments) to 127.0.0.1 at its ``port``, and wait until the
   show has an input for each value they give (two for a message without
-  arguments);
+  arguments); with ``repeat``, send them again every 0.1 s until it has, for
+  a surface the plan's lines have just moved, which opens a moment later;
+* ``midiDevices``: report ``busk.midi_devices()``, as the console process
+  reads them;
 * ``steps``: then, for each, ask about its ``line`` and run it, and wait until
   the show's routes are its ``routes`` (each id and state) and, when it has
   them, the frame's universes are its ``universes``, the output's fixture
@@ -100,6 +103,10 @@ def run(show: Any, plan: dict[str, Any], records: Records, report: dict[str, Any
     report["replies"] = [[line, *_reply(show.execute(line))] for line in plan.get("lines", [])]
     if (osc := plan.get("osc")) is not None and not send_osc(show, osc, wait, report):
         return
+    if plan.get("midiDevices"):
+        import busk
+
+        report["midiDevices"] = list(busk.midi_devices())
     report["steps"] = []
     for step in plan.get("steps", []):
         question = show.confirmation(step["line"])
@@ -185,10 +192,19 @@ def send_osc(
 
     if not wait("the surfaces", opened):
         return False
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
-        for address, *args in osc["messages"]:
-            client.sendto(encode(address, *args), ("127.0.0.1", osc["port"]))
     count = sum(1 if args else 2 for _, *args in osc["messages"])
+    deadline = time.monotonic() + WAIT_S
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
+        while True:
+            for address, *args in osc["messages"]:
+                client.sendto(encode(address, *args), ("127.0.0.1", osc["port"]))
+            if not osc.get("repeat") or time.monotonic() > deadline:
+                break
+            pause = time.monotonic() + 0.1
+            while len(show.inputs) < count and time.monotonic() < pause:
+                time.sleep(0.01)
+            if len(show.inputs) >= count:
+                break
     if not wait(f"{count} inputs", lambda: len(show.inputs) >= count):
         return False
     report["inputs"] = [

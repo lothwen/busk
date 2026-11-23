@@ -39,6 +39,9 @@ A master (GAP-53) takes only the bindings that drive it, tap it or name it in a
 command. A cue's effect, a cue list's chase, a template's defaults (GAP-51) or
 an effect in the programmer that names it stops the line: their rate or size
 cannot lose the master and still run, and a used master is not cascaded.
+
+A surface (GAP-60) takes its bindings: nothing else names a surface, and a
+binding without its surface would be read from no device.
 """
 
 from __future__ import annotations
@@ -309,6 +312,25 @@ def master_cascade(show: Show, master: _Doc, programmer: Programmer) -> Cascade:
         question,
         _refused(subject, said),
         _master_users(show, ident, programmer, subject),
+    )
+
+
+def surface_cascade(show: Show, surface: _Doc) -> Cascade:
+    """``surface`` goes from ``show``, with its bindings. A plain ``delete``
+    is refused while it has any: ``surface "nanoKONTROL2" has 51 bindings``."""
+    ident = surface["id"]
+    bindings = [
+        _delete(["bindings", {"id": binding["id"]}])
+        for binding in show["bindings"]
+        if binding["surfaceId"] == ident
+    ]
+    subject = f"surface {_quoted(surface['name'])}"
+    said = [_count(len(bindings), "binding")]
+    return Cascade(
+        (*bindings, _delete(["surfaces", {"id": ident}])),
+        _reply(subject, "left ", said),
+        f"Delete {subject}?{_sentence('It leaves ', said, '; ')}",
+        f"{subject} has {said[0]}: add cascade" if bindings else None,
     )
 
 

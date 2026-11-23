@@ -57,7 +57,7 @@ session, as the web remote's commands do. `help` prints the grammar.
 | Load | `load cue 9/3 [only <family>…]` (the cue into the programmer, to edit it and record it back) |
 | Patch | `universe add 1 "Stage"`, `fixture add 101 thru 104 "Generic Spot 16ch" mode 16ch at 1.1`, `fixture 101 patch 2.1`, `fixture 101 patch none`, `fixture 101 thru 104 patch 2.1\|none`, `fixture 101 mode 16ch`, `fixture 101 profile "RGB Par 3ch" mode 3ch` |
 | Output | `route add 1 sacn 1 [unicast 10.0.0.20 \| multicast IF]`, `route add 1 artnet 0.0.1 [unicast 10.0.0.20 \| broadcast IF]`, `route add 1 dmxusb enttecPro\|dmxking /dev/ttyUSB0 [hz 40]`, `route r-1 on\|off`, `route r-1 change 1 sacn 2 [unicast 10.0.0.20]` (what `route add` takes), `delete route r-1` |
-| Surfaces | `surface add midi "nanoKONTROL2"`, `surface add osc "Touch" [port 8000] [feedback 10.0.0.5:9000]`, `surface add web "Phone" [port 8080] [on 10.0.0.2]`, `surface "nanoKONTROL2" pickup soft\|jump` |
+| Surfaces | `surface add midi "nanoKONTROL2"`, `surface add osc "Touch" [port 8000] [feedback 10.0.0.5:9000]`, `surface add web "Phone" [port 8080] [on 10.0.0.2]`, `surface "nanoKONTROL2" pickup soft\|jump`, `surface "nanoKONTROL2" change "nanoKONTROL2 MIDI"`, `surface "Touch" change [port 9000] [feedback 10.0.0.5:9001]`, `surface "Phone" change [port 8081] [on 10.0.0.2]`, `rename surface "Phone" "Tablet"`, `delete surface "nanoKONTROL2" [cascade]` |
 | Bindings, feedback | `bind "nanoKONTROL2" cc 1 0 fader 1`, `… cc 1 32 button 1 1 [led]`, `… cc 1 7 fader playback 18 [motor]`, `… cc 1 23 master gm`, `… cc 1 18 master "Speed 1"`, `… cc 1 46 tap ["Speed 1"]`, `… cc 1 42 blackout [momentary]`, `… cc 1 62 page +1`, `… note 1 60 page 2`, `bind "Touch" osc "/fader/1" fader 1 [display osc "/label/1"]`, `bind "nanoKONTROL2" clock tap`, `… cc 1 60 release all [2]`, `… note 1 61 output off`, `feedback "nanoKONTROL2" cc 1 32 thru 39 led\|motor\|display\|none`, `unbind "nanoKONTROL2" cc 1 60 [thru 61]` |
 | Pages | `page 2`, `page next\|prev`, `page add 2 ["Washes"]`, `page 2 slot 1 playback 14`, `page 2 slot 5 clear`, `record slot 2.1`, `playback 9 goto 4` |
 | Edit | `playback 3 exclusivity color`, `cue 3/1 timing.fadeIn 1`, `playback 1 buttons ["toggle", "flash", "release"]`, `show meta.title "Club Night"`, `rename group 1 "Heads"`, `cue 9/2 number 7`, `cue 9/2 copy [10/]3`, `delete cue 10/2`, `delete fixture 101 cascade`, `delete fixture 101 thru 104 cascade`, `delete universe 2 cascade`, `delete preset color 3 cascade`, `delete group 2 cascade`, `delete cuelist 9 cascade`, `delete playback 3 cascade`, `delete page 2 cascade`, `fixture 101 location {"x": 1, "y": 2, "z": 3, "rx": 0, "ry": 0, "rz": 0}`, `fixture 101 location none`, `fixture 101 thru 104 orientation.invertPan true`, `fixture 101 orientation.panOffset 30` |
@@ -252,7 +252,15 @@ session, as the web remote's commands do. `help` prints the grammar.
   engine's page (`list pages` marks it with `*`); `page add` creates one with empty slots,
   and `page P slot S playback N` fills a slot. `surface add osc` and `surface add web`
   take their options in any order; ports default to 8000 and 8080 and must be free among
-  surfaces of that kind, and surface names are unique. `bind` takes a feedback after the
+  surfaces of that kind, and surface names are unique, in any case. A MIDI surface is named
+  after its device, and is found by its device too while no surface has that name. `surface
+  "<name>" change` takes what `surface add` takes after the kind and the name (a MIDI
+  surface's device; an OSC or web surface's port, with its feedback or its host) and sets
+  how busk finds the surface, whole: what it leaves out goes back to the default, so
+  `surface "Touch" change port 9001` sends feedback to the sender again. The surface keeps
+  its kind, name, pickup and bindings, and a running show closes the old and opens the new.
+  `rename surface` renames one, and `delete surface` deletes one with no bindings; one with
+  bindings needs `cascade` (see the table below). Each is one undo step. `bind` takes a feedback after the
   action (`led`, `motor` or `display`, sent to the input's own address unless another
   follows); `feedback "<surface>" <input> [thru <n>] led` adds feedback to the bindings
   already on those inputs (`none` removes it), and an input without a binding is an
@@ -380,6 +388,7 @@ session, as the web remote's commands do. `help` prints the grammar.
   | `delete playback N cascade` | its page slots, which go empty, its `fader playback N` bindings and the bindings that name it | its cue list; bindings by slot |
   | `delete page N cascade` | the bindings that go to it by number or assign to it | its playbacks |
   | `delete master "<name>" cascade` | the bindings that drive it, tap it or name it in a command | refused while an effect, a chase, a template's defaults or the programmer names it |
+  | `delete surface "<name>" cascade` | its bindings | |
 
   `delete fixture N thru M cascade` deletes every fixture the span holds in one undo step and
   always needs `cascade`.

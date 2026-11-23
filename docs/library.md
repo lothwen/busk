@@ -399,6 +399,17 @@ for came in live.inputs:
 # nanoKONTROL2 cc 2 48 127 → —
 ```
 
+`busk.midi_devices()` lists the MIDI input devices plugged in now, once each, as `surface add
+midi` takes them: ALSA's `nanoKONTROL2:nanoKONTROL2 _ CTRL 20:0` reads `nanoKONTROL2`, a
+device with several ports gives each as its client and port (`X-Touch:X-Touch MIDI 2`), and
+ALSA's `Midi Through` is left out. It reads the system on each call, takes no show, and gives
+`()` without the `midi` extra or a MIDI backend that can run:
+
+```python
+for device in busk.midi_devices():
+    print(f'surface add midi "{device}"')   # surface add midi "nanoKONTROL2"
+```
+
 `health` says how the engine is doing, for a display's engine warning. Its `state` is
 `"running"`, `"starting"` (no tick yet), `"stalled"` (no new frame for 1 s, counting from
 `start()` while there is none; the output holds the last frame meanwhile) or `"stopped"`
@@ -590,6 +601,7 @@ take `str` or `os.PathLike`.
 | `OfflineShow` | A show on a clock you drive: `submit`, `execute`, `confirmation`, `expected`, `rig_check`, `run_script` (one undo step; `each` follows it line by line), `save`, `tick`, `tracking`; `show`, `warnings`, `snapshot`, `output`, `effects`, `programmer`, `session`, `effect_templates`, `fixture_profiles`, `time` |
 | `LiveShow` | A show in real time in your process: as `OfflineShow`, with `start`, `stop` and `with`, `frame` instead of `tick`, `routes`, `surfaces`, `inputs` and `health` |
 | `pending_recovery` | `pending_recovery(path, *, state_dir=None) -> PendingRecovery or None`: whether `busk run` would recover the show at `path` |
+| `midi_devices` | `midi_devices() -> tuple[str, ...]`: the MIDI input devices plugged in now, as `surface add midi` takes them |
 | `DmxFrame` | One engine output: `seq`, `time`, and `universes`, a mapping of universe number to 512 bytes |
 | `EngineHealth` | How a `LiveShow`'s engine is doing: `state` (`"starting"`, `"running"`, `"stalled"`, `"stopped"`; under `busk run` with processes also `"restarting"`, `"failed"`), `ticks`, `overruns`, `lastTickAge` (seconds since its newest tick, or `None`) |
 | `Show` | The show file format, a `TypedDict` |
@@ -654,6 +666,7 @@ BuskError(Exception)
 | `submit`, `execute`, `save` | nothing: the result has `ok=False` |
 | `run_script` | `ScriptError`, `OSError`; whatever its `each` raises, which stops the script there |
 | `pending_recovery` | nothing: `None` also for a file it cannot read |
+| `midi_devices` | nothing: `()` without the `midi` extra or a MIDI backend that can run |
 | `rig_check` | `ImportFailed`, also for a file that cannot be read |
 | `OfflineShow.tick` | `ValueError` (time going back) |
 | `LiveShow.start` | `RuntimeError` (started before). Routes and surfaces that fail to open are logged and retried, as in `busk run` |

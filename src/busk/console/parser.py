@@ -33,6 +33,10 @@ one of ``merge``, ``replace``, ``remove``; quoted strings are names)::
     surface add osc "<name>" [port N] [feedback <host>[:<port>]]
     surface add web "<name>" [port N] [on <host>]
     surface "<name>" pickup soft|jump
+    surface "<name>" change "<device>" | surface "<name>" change [port N] [feedback …]
+    surface "<name>" change [port N] [on <host>]
+        (a MIDI surface's device, or what an OSC or web surface listens on)
+    rename surface "<name>" "<new name>" | delete surface "<name>" [cascade]
     bind "<surface>" <input> <what> [led|motor|display [<input>]]
     bind "<surface>" clock tap ["<master>"] [led|motor|display <input>]
         <input> = cc|note <channel> <number> | osc "/path"
@@ -172,8 +176,9 @@ first page without an engine). ``page add`` makes a page with no slots;
 assigning a slot extends them. OSC surfaces listen on port 8000 and web
 surfaces on 8080 unless told otherwise; ``feedback <host>[:<port>]`` sends
 OSC feedback there instead of to the sender (either part may be left out).
-Surfaces are named in quotes (any case); a new surface needs a new name,
-and a port free among the surfaces of its kind. A binding's feedback goes
+Surfaces are named in quotes (any case; a MIDI surface also by its device,
+when no surface has that name); a new surface needs a new name, and a port
+free among the surfaces of its kind. A binding's feedback goes
 to its own input unless another is given; ``motor`` drives a motor fader.
 ``feedback`` sets (or with ``none`` removes) the feedback of every binding
 of the inputs it names, ``thru`` counting either way; ``unbind`` removes
@@ -363,6 +368,19 @@ a command is refused in one line by a plain ``delete``, and goes with
 drops a deleted master's level; ``undo`` brings the master back at its
 initial level.
 
+Surfaces renamed, deleted and changed (GAP-60, GAP-61). ``rename surface``
+refuses a name another surface has, in any case. ``delete surface`` is
+refused in one line while the surface has bindings, and takes them with
+``cascade``, which asks first at a prompt. ``surface "<name>" change`` takes
+what ``surface add`` takes after the kind and the name: a MIDI surface's
+device, or an OSC or web surface's port with its feedback address or host,
+whole, so an option left out goes back to ``surface add``'s default. It keeps
+the surface's kind, id, name, pickup and bindings, refuses what ``surface
+add`` refuses, a ``hid`` or ``internal`` surface, which busk does not open,
+and a line that would change nothing. Each is one undo step. A running show
+closes a deleted or changed surface and opens the new one; a web remote
+restarts only when its port or host changes.
+
 An empty cue list (GAP-33). ``cuelist add N ["name"]`` makes a list with no
 cues, with the defaults of a list that ``record cue`` makes; ``record cue N``
 appends to it. ``go`` is refused on a playback whose list has no cues, since
@@ -456,8 +474,10 @@ from busk.console.cascade import (
     page_cascade,
     playback_cascade,
     preset_cascade,
+    surface_cascade,
     universe_cascade,
 )
+from busk.io.osc import feedback_target
 from busk.model.attributes import ATTRIBUTES, AttributeDefinition
 from busk.model.common import MAX_DIGITS, TargetRef
 from busk.model.cue import CUE_NUMBER, cue_number_key
@@ -466,6 +486,7 @@ from busk.model.entry import TargetSpec, same_targets
 from busk.model.master import MAX_BPM
 from busk.model.profile import PROFILE_CATEGORIES, FixtureProfile, option_capabilities
 from busk.model.show import Audience, Show
+from busk.model.surface import SurfaceMatch
 from busk.model.validate import COLOR_COMPONENTS, loc_to_path, validate_effect
 from busk.session.ids import IdFactory, RandomIds
 from busk.session.library import EffectLibrary, ProfileLibrary, builtin_effects
@@ -2149,10 +2170,12 @@ class _Parser:
         return f"{route['id']} of universe {universe['number']}"
 
     def _cmd_surface(self) -> Action:
-        """``surface add midi|osc|web …`` or ``surface "<name>" pickup soft|jump``."""
+        """``surface add midi|osc|web …``, ``surface "<name>" pickup soft|jump``
+        or ``surface "<name>" change …`` (GAP-61)."""
         if not self.keyword("add"):
             surface = self.surface()
-            self.expect("pickup")
+            if self.expect("pickup", "change") == "change":
+                return self._surface_change(surface)
             pickup = self.expect("soft", "jump")
             path = ["surfaces", {"id": surface["id"]}, "faderPickup"]
             return self.submit(
@@ -2163,24 +2186,47 @@ class _Parser:
             )
         kind = self.expect("midi", "osc", "web")
         if kind == "midi":
-            name = self.take('a device name in quotes, e.g. "nanoKONTROL2"').text
-            match: dict[str, Any] = {"deviceName": name}
+            match = self._device()
+            name = match["deviceName"]
         else:
             name = self._name() or ""
             if not name:
                 raise self.fail("expected a name in quotes")
             match = self._listening(kind)
-        if any(s["name"].casefold() == name.casefold() for s in self.show["surfaces"]):
-            raise ParseError(f"a surface named {name!r} exists")
+        self._new_surface_name(name)
         value = {"id": self.new_id("s", "surfaces"), "name": name, "kind": kind,
                  "match": match, "faderPickup": "jump"}  # fmt: skip
         return self.submit({"type": "ADD", "path": ["surfaces"], "value": value})
 
-    def _listening(self, kind: str) -> dict[str, Any]:
+    def _surface_change(self, old: Mapping[str, Any]) -> Action:
+        """``surface "<name>" change <what surface add takes after the kind
+        and the name>`` (GAP-61): how busk finds the surface, whole, as one
+        undo step; its kind, id, name, pickup and bindings stay."""
+        kind, subject = old["kind"], f"surface {short(old['name'])}"
+        if kind not in ("midi", "osc", "web"):
+            raise ParseError(f"{subject} is a {kind} surface, which busk does not open")
+        match = self._device() if kind == "midi" else self._listening(kind, old["id"])
+        self.done()
+        if match == old["match"]:
+            raise ParseError(f"{subject} is set up that way already")
+        edit = {"type": "SET", "path": ["surfaces", {"id": old["id"]}, "match"], "value": match}
+        return Submit(_labelled(f"changed {subject}: {_match_words(kind, match)}", edit))
+
+    def _device(self) -> dict[str, Any]:
+        """A MIDI surface's ``match``: the device it opens, in quotes."""
+        return {"deviceName": self.take('a device name in quotes, e.g. "nanoKONTROL2"').text}
+
+    def _new_surface_name(self, name: str, own: str | None = None) -> None:
+        """Refuse ``name`` when a surface but ``own`` has it, in any case."""
+        folded = name.casefold()
+        if any(s["name"].casefold() == folded and s["id"] != own for s in self.show["surfaces"]):
+            raise ParseError(f"a surface named {name!r} exists")
+
+    def _listening(self, kind: str, own: str | None = None) -> dict[str, Any]:
         """The ``match`` of an OSC (``[port N] [feedback <host>[:<port>]]``)
         or web (``[port N] [on <host>]``) surface, options in any order. The
         port defaults to :data:`_DEFAULT_PORTS` and must be free among the
-        surfaces of that kind."""
+        surfaces of that kind but ``own``."""
         options: dict[str, Any] = {}
         other = "feedback" if kind == "osc" else "on"
         while (option := self.keyword("port", other)) is not None and option not in options:
@@ -2198,7 +2244,7 @@ class _Parser:
         port = options.get("port", _DEFAULT_PORTS[kind])
         user = next(
             (s for s in self.show["surfaces"]
-             if s["kind"] == kind and s["match"].get("port") == port),
+             if s["kind"] == kind and s["match"].get("port") == port and s["id"] != own),
             None,
         )  # fmt: skip
         if user is not None:
@@ -2224,15 +2270,16 @@ class _Parser:
         return target
 
     def surface(self) -> dict[str, Any]:
-        """A surface named in quotes (any case; a MIDI surface also by its device)."""
+        """A surface named in quotes (any case), or a MIDI surface by its
+        device when no surface has that name: a renamed surface's old name
+        may be another's device."""
         names = _quoted(s["name"] for s in self.show["surfaces"])
         name = self.take("a surface name in quotes", *names).text
         folded = name.casefold()
-        surface = next(
-            (s for s in self.show["surfaces"]
-             if folded in (s["name"].casefold(), s["match"].get("deviceName", "").casefold())),
-            None,
-        )  # fmt: skip
+        surfaces = self.show["surfaces"]
+        surface = next((s for s in surfaces if s["name"].casefold() == folded), None) or next(
+            (s for s in surfaces if s["match"].get("deviceName", "").casefold() == folded), None
+        )
         if surface is None:
             raise ParseError(f"no surface {name!r}")
         return cast(dict[str, Any], surface)
@@ -3077,9 +3124,11 @@ class _Parser:
         return f"{_COLLECTIONS[head][1]} {item['number']}"
 
     def _cmd_rename(self) -> Action:
-        head = self.word("an entity", *sorted(_ENTITIES | {"master"}))
+        head = self.word("an entity", *sorted(_ENTITIES | {"master", "surface"}))
         if head == "master":
             return self._rename_master()
+        if head == "surface":
+            return self._rename_surface()
         if head not in _ENTITIES:
             raise ParseError(f"cannot rename {head!r}")
         path = self.entity_path(head)
@@ -3100,11 +3149,14 @@ class _Parser:
         )
 
     def _cmd_delete(self) -> Action:
-        head = self.word("an entity", *sorted(_ENTITIES - {"show"} | {"route", "master"}))
+        named = {"route", "master", "surface"}  # not by a number: lines of their own
+        head = self.word("an entity", *sorted(_ENTITIES - {"show"} | named))
         if head == "route":
             return self._delete_route()
         if head == "master":
             return self._delete_master()
+        if head == "surface":
+            return self._delete_surface()
         if head not in _ENTITIES or head == "show":
             raise ParseError(f"cannot delete {head!r}")
         if head == "fixture" and (token := self.peek(1)) is not None and token.lower == "thru":
@@ -3189,6 +3241,30 @@ class _Parser:
             raise ParseError(f"a master named {name!r} exists")
         edit = {"type": "SET", "path": ["masters", {"id": master["id"]}, "name"], "value": name}
         return Submit(_labelled(_renamed("master", master["name"], name), edit))
+
+    def _delete_surface(self) -> Action:
+        """``delete surface "<name>" [cascade]`` (GAP-60): refused while the
+        surface has bindings; ``cascade`` takes them, after the question."""
+        cascade = surface_cascade(self.show, self.surface())
+        if self.keyword("cascade"):
+            self.done()
+            return Submit(_labelled(cascade.label, *cascade.commands), confirm=cascade.question)
+        self.done()
+        if cascade.refusal is not None:
+            raise self.fail(cascade.refusal)
+        return self.submit(_labelled(cascade.label, *cascade.commands))  # it has no bindings
+
+    def _rename_surface(self) -> Action:
+        """``rename surface "<name>" "<new name>"`` (GAP-60): refused for a
+        name another surface has, in any case."""
+        surface = self.surface()
+        name = self._name()
+        if name is None:
+            raise self.fail("expected a name in quotes")
+        self.done()
+        self._new_surface_name(name, surface["id"])
+        edit = {"type": "SET", "path": ["surfaces", {"id": surface["id"]}, "name"], "value": name}
+        return Submit(_labelled(_renamed("surface", surface["name"], name), edit))
 
     def _own_master(self, verb: str) -> Mapping[str, Any]:
         """A master named in quotes (any case), but the grand master, which
@@ -3902,6 +3978,18 @@ def _mode(profile: Mapping[str, Any], name: str) -> Mapping[str, Any]:
 def _port(text: str) -> int | None:
     """A UDP or TCP port, 1–65535, else ``None``."""
     return int(text) if text.isdecimal() and 1 <= int(text) <= 65535 else None
+
+
+def _match_words(kind: str, match: Mapping[str, Any]) -> str:
+    """How busk finds a surface, as ``list surfaces`` says it: ``device
+    "nanoKONTROL2"``, ``port 9000, feedback to 10.0.0.2:9001``, ``port 8080
+    on 10.0.0.5``."""
+    if kind == "midi":
+        return f"device {short(match['deviceName'])}"
+    text = f"port {match['port']}"
+    if kind == "osc":
+        return f"{text}, feedback to {feedback_target(cast(SurfaceMatch, match))}"
+    return f"{text} on {match['host']}" if "host" in match else text
 
 
 def _address_text(address: Mapping[str, Any]) -> str:

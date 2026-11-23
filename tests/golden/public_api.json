@@ -668,6 +668,11 @@
     "module": "busk.persistence.show_file",
     "signature": "(path: str | os.PathLike[str]) -> tuple[Show, list[Issue]]"
   },
+  "midi_devices": {
+    "kind": "function",
+    "module": "busk.io.surfaces",
+    "signature": "() -> tuple[str, ...]"
+  },
   "new_show": {
     "kind": "function",
     "module": "busk.persistence.show_file",

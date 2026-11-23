@@ -7,6 +7,12 @@ show's state back to LEDs, motor faders and labels. The console's
 [`surface`, `bind` and `feedback` commands](console.md#commands) set them up;
 [the demo show](demo-show.md) binds a Korg nanoKONTROL2 and a phone.
 
+A surface keeps its bindings when it moves: `surface "Touch" change port 9001` listens on
+another port, `surface "nanoKONTROL2" change "X-Touch"` opens another device, and a running
+show reopens it at once. `rename surface "Touch" "Desk"` renames one, and `delete surface
+"Touch" cascade` deletes it with its bindings. [The library](library.md)'s
+`busk.midi_devices()` lists the MIDI devices plugged in, as `surface add midi` takes them.
+
 - [MIDI](#midi)
 - [OSC](#osc)
 - [The web remote](#the-web-remote)
