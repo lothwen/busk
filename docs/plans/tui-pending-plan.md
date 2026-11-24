@@ -4307,6 +4307,43 @@ and deletes a binding from a form, and none of F9's edits needs the prompt. TUI 
    1); busk refuses the rest, in the log. On a web remote or an ignored surface `[+ binding…]` is
    grey, and the hint row says why (`a web remote sends commands of its own: a binding on it does
    nothing`).
+
+   **Done** (2026-11-24), under Q15 (a), the user's "use recommended answer to questions".
+   `BindingDialog` in the new `src/busk_tui/widgets/binding_dialog.py`, on the route and surface
+   forms' pattern (`PickRow` for every row of chips, `row`), with the checks `check_channel`,
+   `check_number`, `check_path`, `check_slot`, `check_button`, `check_playback`, `check_page`
+   and `check_release` (`within`, `read_int`), and the words `what_words`, `feedback_words`,
+   `binding_words` and `page_words`; `control_parts` reads a control as busk words it, and
+   `unworded` says why the form cannot word a binding. `[+ binding…]` replaced `[bind…]` in
+   SURFACES' strip (`ask_bind`); the form's line runs as it closes (`_open_form`). The builders:
+   `commands.control`, `bind`, `binding_change` and `delete_binding`; `bind_prefill`,
+   `unbind_prefill` and `feedback_prefill` went with their buttons. `StripButton` gained `hint`,
+   which `ButtonStrip` shows in the hint row while the mouse is on the button, a grey one too.
+
+   Calls the user may veto:
+   - **The form's `[learn]` hears through the page.** F9 stays the current page under a modal,
+     so the bridge still reads `inputs` and the page's `update_view` still runs; the page hands
+     the form the first input learn takes (`learnable`, which the surface's learn uses too). The
+     check the step asked for holds headless, on the real engine and in a real `busk-tui`. One
+     learn mode is armed at a time: opening the form disarms the surface's and a binding's.
+   - **No chip that can only be refused:** no `clock` and no `tap` without a speed master, no
+     `master` without a master, as F7's form has no `group` without a group. A clock only taps,
+     so its drives row says `tap: a clock taps the tempo` and has no chips.
+   - **The checks read numbers as busk does** (Python's `int`), so `+3` and `1_0` pass as a
+     channel because busk takes them; the agreement tests (80 texts over the eight checks) say
+     so. **The line carries them as busk stores them:** `07` goes as `7`, a page step `+01` as
+     `+1`, a release time `2.50` as `2.5` (`commands.exact`), so a form left as it was makes
+     the same line and sends nothing.
+   - **A playback or a page the show has not is busk's to refuse** (`no playback 99`), as the
+     step says, though the show model has them.
+   - **Blackout is two chips, `toggle` and `momentary`:** busk's `blackout` toggles on a press.
+   - **A clock's feedback lights another control,** always: it has no address of its own, so
+     the `on` chips do not show for a clock.
+   - **The form's `[learn]` is a click:** Tab reaches the chips and the fields, not it.
+   - **The edit form's title names the binding by its control** (`EDIT BINDING cc 1 23 ·
+     "nanoKONTROL2"`), not by its id.
+   - **A web remote has no `[learn]` either,** which Phase 39 left there: it sends no input, so
+     learn mode never fired on it.
 2. **A binding's edits.** The strip under BINDINGS (`edit cc 1 32 on "nanoKONTROL2"`) becomes:
    - `[edit…]`: the form filled in, which sends `binding <id> change …` (Q15), and nothing when
      nothing changed;
@@ -4330,9 +4367,76 @@ and deletes a binding from a form, and none of F9's edits needs the prompt. TUI 
    control deleted; a clock's binding changed and deleted; the form's checks agreeing with busk's
    refusals; F9 at 99 columns; a real `busk run` under `busk-tui` with a virtual MIDI port.
 
+   **Done** (2026-11-24). `_draw_binding_edits` in `src/busk_tui/pages/surfaces.py` builds
+   `[edit…]` (`ask_edit_binding`), `[learn]` (`toggle_move`, `moving`) and `[delete]`
+   (`ask_delete_binding`), or `[edit…]` and `[learn]` grey with `unworded`'s reason as their
+   hint. `BindingInfo` gained `id`, `action`, `values`, `feedback_kind` and `feedback_to`, which
+   the bridge fills (`_action_fields`). Armed, a binding's `[learn]` sends `binding <id> change`
+   with the first control from its surface that is not its own, a bend or the clock
+   (`binding_words` with `to`). `escape`, `on_hide`, `choose_binding` and the surface's
+   `[learn]` disarm it. The choice follows a binding by its id when the show changes.
+   `NO_BINDINGS` reads `no bindings · a surface's [+ binding…] adds one`. Tests: 12 new and 3
+   changed in `tests/tui/test_tui_surfaces.py`; in `tests/tui/test_tui_commands.py` 3 builders
+   in the contract test, every club binding's words refused by busk as `set up that way already`
+   and moved to another control keeping what it drives, the lines doing what they say, and the
+   form and busk agreeing on a channel, a number, a path, a slot, a button, a playback, a page
+   and a release time; the new fields and a show file's command and pitch bend in
+   `tests/tui/test_tui_conversion.py`; two tests on the real engine in
+   `tests/tui/test_tui_e2e.py`,
+   `test_f9_binds_learns_moves_and_deletes_a_binding_on_the_real_engine` and
+   `test_f9_binds_and_changes_each_kind_of_target_and_a_clock_on_the_real_engine`.
+
+   Calls the user may veto:
+   - **A binding's `[learn]` passes over its own control** too: a move there would change
+     nothing, which busk refuses, and a hand still on the fader would disarm it.
+   - **The move keeps what it drives and its feedback:** a feedback on its own control follows
+     it to the new control; one on another control stays there.
+   - **`[delete]` asks the TUI's question, naming the binding as BINDINGS shows it**
+     (`Delete binding cc 1 23 → master gm on "nanoKONTROL2"?`), since busk asks none. A deleted
+     binding leaves no choice, and `undo` does not choose it again.
+   - **What the form cannot word,** each from a show file: a binding on a web remote or on a
+     surface busk does not open, a control its surface does not send (a pitch bend, a hardware
+     control, `osc` on MIDI), a command but `release all` and `output`, a feedback its surface
+     has not (`display` on MIDI), or on such a control. The step listed the first three.
+   - **The label stays on the left of BINDINGS' strip** (`edit cc 1 32 on "nanoKONTROL2"`), as
+     the step drew it: unlike SURFACES', the strip fits beside it at 99 columns.
+
 Docs: the guide's F9 and its first note (F9 no longer puts a binding's line in the prompt, but for
 the surface's learn mode), the TUI plan's §2.10 rows (BINDINGS, learn mode), the report's header
 and its "Beyond this report", the page's module docs, and `CHANGELOG.md`.
+
+**Done** (2026-11-24). The guide: its first note, F9's drawing, SURFACES' `[+ binding…]`, the
+BINDINGS strip, what the form cannot word, learn mode (one armed at a time), the questions (F9's
+`[delete]` of a binding) and the forms; the TUI plan's §2.10 (a row for setting bindings up,
+learn mode on a binding row); the report's header and its "Beyond this report"; GAP-63's **TUI
+since**; `docs/surfaces.md` (two sentences point to F9's form); the modules' docs (the page, the
+form, `StripButton`); `CHANGELOG.md` under Added.
+
+**Phase 41 checks** (2026-11-24), on top of `6542d99`. The whole suite with `uv run pytest -n
+12`: 7,855 passed and 1 skipped, in 8:30. `ruff check`, `ruff format --check` and `mypy src`
+clean. F9's, the contract's, the conversion's, the widgets', the hints', the prompt's, the
+boundary's, the frame's and the bridge's tests pass on Textual 8.2.0 (852), and so do F9's five
+real-engine tests. 38 mutations of the new code: 36 caught at first. The other two were real
+gaps in the tests, now tested: a binding's `[learn]` left armed when its binding goes, which
+would spend the next Esc, and the binding strip redrawn when the surfaces come after the show.
+Every club binding round-trips: `binding <id> change` with the words the form starts from is
+refused as `set up that way already`. The perf gate: 9 passed; F9 with a sweep of 100 OSC
+messages a second read +0.159 core (Phase 39: +0.166 to +0.179), with no overrun.
+
+A real `busk-tui club.show --state-dir …` under `busk run`, in a pty at 99 columns (pyte), the
+club show without its nanoKONTROL2 (not plugged in), its web remote on `127.0.0.1:18080`, a
+virtual ALSA port (mido, `Phase41 Pad`) as a MIDI surface and an OSC surface on udp 19200.
+`[+ binding…]` on the pad, the form's `[learn]` armed (`move a control on "RtMidiOut
+Client:Phase41 Pad"…`), and a CC 21 from the port filled it (`learned cc 1 21`) with the form
+open over F9; `[led]` and Enter sent `bind "RtMidiOut Client:Phase41 Pad" cc 1 21 fader 1 led`,
+and CC 21 at 100 then read `→ fader 1` in MONITOR and 79% in BINDINGS. The binding's `[learn]`
+passed CC 21 over and took CC 22: `binding b-… change cc 1 22 fader 1 led` (`changed binding
+b-…: cc 1 22 → fader 1 [led]`), the choice staying on it. `[edit…]` with `[master]` sent `binding
+b-… change cc 1 22 master gm led`; `[delete]` asked `Delete binding cc 1 22 → master gm on
+"RtMidiOut Client:Phase41 Pad"?`, `y` deleted it, and `undo` brought it back. On the OSC
+surface, `/fader/9` typed in the form sent `bind "Touch" osc "/fader/9" fader 1`, and a message
+there read `→ fader 1` and 50%. busk warned that the pad's feedback port was `not found`,
+rightly: a program's virtual output has no input for busk to send to (as in Phase 38).
 
 ## 7. Seen, and not in the sources
 

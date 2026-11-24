@@ -370,7 +370,17 @@ class BindingInfo:
     """One binding, in the words of ``bind``: its surface, its input
     (``kind`` cc, note, osc, clock, bend, hw; ``channel``; ``number``, or an
     OSC path), what it drives (``what``: ``fader 1``, ``master gm``), its
-    feedback, and the level it shows (``target``)."""
+    feedback, and the level it shows (``target``).
+
+    Since the pending plan's Phase 41, its id, and the parts F9's binding
+    form starts from: ``action``, the chip of what it drives (``fader``,
+    ``button``, ``master``, ``tap``, ``blackout``, ``page``, ``release all``,
+    ``output``; ``""`` for what ``bind`` cannot word), with ``values``, its
+    fields as the form has them (``("slot", "1")``, ``("playback", "18")``,
+    ``("1", "2")``, a master's name, ``("momentary",)``, ``("+1",)``, a
+    release time or ``""``, ``("off",)``); ``feedback_kind`` (``led``,
+    ``motor``, ``display``; ``""`` for none) and ``feedback_to``, the control
+    it lights when not its own, as ``kind``, ``channel`` and ``number``."""
 
     surface: str
     kind: str
@@ -379,6 +389,11 @@ class BindingInfo:
     what: str
     feedback: str  # led, motor, display, with its address when not the input's; "" for none
     target: tuple[str, int | str] | None = None  # ("slot", 0), ("playback", 9), ("master", name)
+    id: str = ""
+    action: str = ""
+    values: tuple[str, ...] = ()
+    feedback_kind: str = ""
+    feedback_to: tuple[str, int | None, str] | None = None
 
     @property
     def input(self) -> str:

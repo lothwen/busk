@@ -10,6 +10,18 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- F9 sets up bindings from controls. `[+ binding…]` on a MIDI or OSC surface opens a form in
+  three parts: the control (on MIDI `cc`, `note` or `clock`, a channel and a number; on OSC a
+  path), with a `[learn]` of its own that fills it from the next control moved; what it drives
+  (`fader`, `button`, `master`, `tap`, `blackout`, `page`, `release all`, `output`, each with
+  its fields, the masters as chips); and its feedback, on the control or on another. It says
+  what is wrong before it sends (a channel, a number, a slot or a button out of range, a path
+  without `/`). A binding's strip has `[edit…]`, the same form filled in, which changes it in
+  one undo step; `[learn]`, which moves it to the next control moved on its surface, what it
+  drives and its feedback kept; and `[delete]`, after a question, which takes it alone. A
+  binding from a show file that `bind` cannot make has `[delete]` alone, and says why under
+  the mouse. F9 no longer puts `bind`, `unbind` or `feedback` lines in the prompt, but for the
+  surface's learn mode.
 - One binding is deleted or changed alone, by its id, which `list bindings` prints and Tab
   offers. `delete binding <id>` deletes it, whatever its control: one of two on a control, a
   clock's, a pitch bend's from a show file. `binding <id> change …` takes what `bind` takes

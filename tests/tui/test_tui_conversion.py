@@ -8,6 +8,7 @@ effects and the output with its sources."""
 from __future__ import annotations
 
 import copy
+import itertools
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -1108,6 +1109,48 @@ def test_bindings_in_the_words_of_bind(show: busk.OfflineShow) -> None:
     assert ("note 1 36", "button 1 1", "motor", None) in words
     clock = next(b for b in bindings if b.kind == "clock")
     assert (clock.surface, clock.channel, clock.number) == ("nanoKONTROL2", None, "")
+    ids = [binding["id"] for binding in show.show["bindings"]]
+    assert [binding.id for binding in bindings] == ids
+    parts = {(b.input, b.action, b.values, b.feedback_kind, b.feedback_to) for b in bindings}
+    assert {  # what F9's binding form starts from (the pending plan's Phase 41)
+        ("cc 1 0", "fader", ("slot", "1"), "", None),
+        ("cc 1 32", "button", ("1", "1"), "led", None),
+        ("cc 1 23", "master", ("Grand Master",), "", None),
+        ("cc 1 22", "master", ("FX",), "", None),
+        ("cc 1 46", "tap", ("Speed 1",), "led", None),  # named: the form keeps the name
+        ("cc 1 42", "blackout", ("toggle",), "led", None),
+        ("cc 1 61", "page", ("-1",), "", None),
+        ("cc 1 60", "release all", ("",), "", None),
+        ('osc "/1/push1"', "blackout", ("momentary",), "led", ("osc", None, "/1/led1")),
+        ('osc "/1/f"', "fader", ("playback", "9"), "", None),
+        ('osc "/1/p"', "page", ("2",), "", None),
+        ('osc "/1/r"', "release all", ("2",), "", None),
+        ('osc "/1/o"', "output", ("off",), "", None),
+        ("clock", "tap", ("Speed 1",), "", None),
+        ("note 1 36", "button", ("1", "1"), "motor", None),
+    } <= parts
+
+
+def test_a_binding_bind_cannot_word_has_no_fields(show: busk.OfflineShow) -> None:
+    """A command but ``release all`` and ``output``, and a pitch bend, from a
+    show file: F9's form cannot word them, and only ``[delete]`` takes them.
+    A release time keeps every digit."""
+    surface, playback = show.show["surfaces"][0]["id"], show.show["playbacks"][0]["id"]
+    actions = (
+        {"kind": "command", "command": {"type": "GO", "playbackId": playback}},
+        {"kind": "command", "command": {"type": "RELEASE_ALL", "time": 0.1234567891}},
+    )
+    inputs = ({"kind": "midiCC", "channel": 1, "cc": 99}, {"kind": "midiPitchBend", "channel": 1})
+    for number, (given, action) in enumerate(itertools.product(inputs, actions)):
+        value = {"id": f"b-{number}", "surfaceId": surface, "input": given, "action": action}
+        assert show.submit({"type": "ADD", "path": ["bindings"], "value": value}).ok
+    parts = [(b.input, b.what, b.action, b.values) for b in show_model(show.show).bindings[-4:]]
+    assert parts == [
+        ("cc 1 99", "command GO", "", ()),
+        ("cc 1 99", "release all 0.123457", "release all", ("0.1234567891",)),
+        ("bend 1", "command GO", "", ()),
+        ("bend 1", "release all 0.123457", "release all", ("0.1234567891",)),
+    ]
 
 
 def test_a_tap_names_its_master_when_the_show_has_two(show: busk.OfflineShow) -> None:

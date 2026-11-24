@@ -274,7 +274,9 @@ class StripButton:
     ``prefill``, a click puts that in the prompt instead of running a line;
     with an ``action``, a click calls it instead (a toggle of the page's own;
     keep one callable per button, so that equal buttons compare equal). A
-    ``note`` is only words among the buttons: no click, no pane cursor."""
+    ``note`` is only words among the buttons: no click, no pane cursor. A
+    ``hint`` shows in the hint row while the mouse is on it (a grey button
+    saying why, F9's)."""
 
     label: Text
     line: Line
@@ -282,6 +284,7 @@ class StripButton:
     prefill: str | None = None
     action: Callable[[], None] | None = None
     note: bool = False
+    hint: str | None = None
 
 
 class ButtonStrip(Widget):
@@ -320,11 +323,11 @@ class ButtonStrip(Widget):
             label = button.label.copy()
             if index == self._marked:
                 label.stylize(MARKED)
-            elif index == self._hover:
+            elif index == self._hover and not button.note:
                 label.stylize(f"on {colors.SEL}")
             if button.note:
                 label.truncate(width, overflow="ellipsis")  # wrapped, it would part lines and rows
-            else:
+            if not button.note or button.hint is not None:  # a note's hint shows on hover
                 label.apply_meta({"button": index})
             line = lines[-1]
             if line.cell_len and line.cell_len + 1 + label.cell_len > width:
@@ -350,6 +353,8 @@ class ButtonStrip(Widget):
             return
         event.stop()
         button = self.buttons[index]
+        if button.note:
+            return
         if button.action is not None:
             button.action()
             return
@@ -362,13 +367,24 @@ class ButtonStrip(Widget):
     def on_mouse_move(self, event: events.MouseMove) -> None:
         index = self._under(event)
         if index != self._hover:
+            self._hint(index)
             self._hover = index
             self.refresh()
 
     def on_leave(self, event: events.Leave) -> None:
         if self._hover is not None:
+            self._hint(None)
             self._hover = None
             self.refresh()
+
+    def _hint(self, index: int | None) -> None:
+        """The hint row shows the hint of the button under the mouse, and
+        its own text again once the mouse leaves a button that has one."""
+        before, after = (
+            None if at is None else self.buttons[at].hint for at in (self._hover, index)
+        )
+        if after is not None or before is not None:
+            self.post_message(ShowHint(after))
 
 
 def button_label(label: str, color: str) -> Text:

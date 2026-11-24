@@ -26,7 +26,10 @@
   another from a plot, through F3's ``[import plot…]``, and again.
 * On a show with an OSC surface open (``--standalone``): F9's MONITOR shows
   what comes in, a fader's moves on one line, BINDINGS the last number its
-  control sent, and learn mode binds a control that came in.
+  control sent, and learn mode binds a control that came in; F9 adds,
+  moves, renames and deletes surfaces, and its binding form binds each kind
+  of target, learns a control while it is open, and a binding's ``[learn]``
+  moves it to another.
 * On a running show with its output open (``--standalone``): F8 adds a route to
   a new universe, a fixture patched in it reaches a real receiver, and the route
   goes off, on and away.
@@ -94,6 +97,7 @@ from busk_tui.pages.surfaces import BindingTable, MonitorTable, SurfacesPage, Su
 from busk_tui.shell import BuskApp
 from busk_tui.widgets import encoders
 from busk_tui.widgets.bars import HBar
+from busk_tui.widgets.binding_dialog import BindingDialog
 from busk_tui.widgets.chase_dialog import ChaseDialog
 from busk_tui.widgets.colorpicker import cell_color, rgb_of
 from busk_tui.widgets.controls import ActionButton, ButtonStrip, CommandButton
@@ -3947,6 +3951,232 @@ def test_f9_adds_changes_and_deletes_a_midi_surface_and_a_web_remote_on_the_real
         await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
         await pilot.press("y")
         await until(pilot, lambda: surface("Tablet") is None)
+
+    try:
+        drive(app, body)
+    finally:
+        bridge.stop()
+
+
+def binding_form(app: BuskApp) -> BindingDialog:
+    dialog = app.screen
+    assert isinstance(dialog, BindingDialog)
+    return dialog
+
+
+def row_of(page: SurfacesPage, control: str, what: str) -> int | None:
+    """The row of BINDINGS that binds ``control`` to ``what``."""
+    rows = [(binding.input, binding.what) for binding in page.shown_bindings]
+    return rows.index((control, what)) if (control, what) in rows else None
+
+
+def test_f9_binds_learns_moves_and_deletes_a_binding_on_the_real_engine(
+    club_path: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The pending plan's Phase 41 (busk's GAP-63), with OSC sent to a surface
+    on localhost: the form's ``[learn]`` hears a control while it is open
+    over F9, a second binding on that control is deleted alone, a binding's
+    ``[learn]`` moves the other to the next control, and ``[edit…]`` changes
+    what it drives and its feedback."""
+    from busk.io.osc import encode
+
+    path = club_without_the_phone(club_path, tmp_path, monkeypatch)
+    port = free_port(socket.SOCK_DGRAM)
+    built = busk.OfflineShow(busk.load_show(path)[0], path=path)
+    assert built.execute(f'surface add osc "Touch" port {port}').ok
+    assert built.save().ok
+    bridge = Bridge.standalone(path, output=False, surfaces=True, state_dir=tmp_path / "state")
+    app = BuskApp(bridge, config.Settings(page=9), standalone=True)
+    client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    def send(address: str, value: float) -> None:
+        client.sendto(encode(address, value), ("127.0.0.1", port))
+
+    def heard() -> list[tuple[str, str, str]]:
+        table = app.query_one(MonitorTable)
+        cells = (column(table, "input"), column(table, "sent"), column(table, "drives"))
+        return list(zip(*cells, strict=True))
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = app.query_one(SurfacesPage)
+        await until(
+            pilot, lambda: any(s.name == "Touch" and s.state == "ok" for s in app.view.surfaces)
+        )
+        page.choose_surface("Touch")
+        await tap_button(pilot, page.surface_edits, "+ binding…")
+        await until(pilot, lambda: isinstance(app.screen, BindingDialog))
+        dialog = binding_form(app)
+        await tap_button(pilot, dialog.learn, "learn")
+        assert dialog.learning
+        send("/fader/7", 0.5)
+        await until(pilot, lambda: dialog.path.value == "/fader/7")  # heard under the form
+        assert not dialog.learning
+        await pilot.press("enter")  # fader 1, as the form starts
+        await until(pilot, lambda: row_of(page, 'osc "/fader/7"', "fader 1") is not None)
+        send("/fader/7", 0.25)
+        await until(pilot, lambda: ('osc "/fader/7"', "0.25", "→ fader 1") in heard())
+
+        await tap_button(pilot, page.surface_edits, "+ binding…")
+        await until(pilot, lambda: isinstance(app.screen, BindingDialog))
+        dialog = binding_form(app)
+        dialog.path.value = "/fader/7"
+        dialog.action.pick("blackout")
+        dialog.blackout.pick("momentary")
+        await pilot.pause()
+        await pilot.press("enter")
+        await until(pilot, lambda: row_of(page, 'osc "/fader/7"', "blackout momentary") is not None)
+        send("/fader/7", 0.0)  # two bindings on one control
+        await until(pilot, lambda: heard()[-1][2] == "→ fader 1, blackout momentary")
+
+        row = row_of(page, 'osc "/fader/7"', "blackout momentary")
+        assert row is not None
+        page.choose_binding(row)  # past the table's height: the club has 51 more
+        await tap_button(pilot, page.binding_edits, "delete")
+        await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+        assert isinstance(app.screen, ConfirmDialog)
+        assert app.screen.question == (
+            'Delete binding osc "/fader/7" → blackout momentary on "Touch"?'
+        )
+        await pilot.press("y")
+        await until(pilot, lambda: row_of(page, 'osc "/fader/7"', "blackout momentary") is None)
+        assert row_of(page, 'osc "/fader/7"', "fader 1") is not None  # the other stays
+        assert page.binding is None
+
+        row = row_of(page, 'osc "/fader/7"', "fader 1")
+        assert row is not None
+        page.choose_binding(row)
+        await tap_button(pilot, page.binding_edits, "learn")
+        assert page.moving
+        send("/fader/7", 0.6)  # its own control: passed over
+        await until(pilot, lambda: ('osc "/fader/7"', "0.60", "→ fader 1") in heard())
+        assert page.moving
+        send("/fader/8", 0.6)
+        await until(pilot, lambda: row_of(page, 'osc "/fader/8"', "fader 1") is not None)
+        assert not page.moving
+        assert row_of(page, 'osc "/fader/7"', "fader 1") is None
+        assert page.binding == row_of(page, 'osc "/fader/8"', "fader 1")  # it stays chosen
+        send("/fader/8", 0.3)
+        await until(pilot, lambda: heard()[-1] == ('osc "/fader/8"', "0.30", "→ fader 1"))
+        send("/fader/7", 0.4)
+        await until(pilot, lambda: heard()[-1] == ('osc "/fader/7"', "0.40", "→ —"))
+
+        await tap_button(pilot, page.binding_edits, "edit…")
+        await until(pilot, lambda: isinstance(app.screen, BindingDialog))
+        dialog = binding_form(app)
+        assert (dialog.path.value, dialog.action.chosen) == ("/fader/8", "fader")
+        dialog.action.pick("master")
+        assert dialog.master is not None
+        dialog.master.pick("Grand Master")
+        dialog.feedback.pick("display")
+        dialog.where.pick("other")
+        dialog.to_path.value = "/label/8"
+        await pilot.pause()
+        await pilot.press("enter")
+        await until(pilot, lambda: row_of(page, 'osc "/fader/8"', "master gm") is not None)
+        binding = page.shown_bindings[row_of(page, 'osc "/fader/8"', "master gm") or 0]
+        assert binding.feedback == 'display osc "/label/8"'
+        send("/fader/8", 0.5)
+        await until(pilot, lambda: app.view.live is not None and any(
+            m.kind == "grand" and m.level == 0.5 for m in app.view.live.masters
+        ))  # fmt: skip
+
+    try:
+        drive(app, body)
+    finally:
+        client.close()
+        bridge.stop()
+
+
+def test_f9_binds_and_changes_each_kind_of_target_and_a_clock_on_the_real_engine(
+    club_path: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Each kind of target from the form, on the club's nanoKONTROL2 (closed:
+    no MIDI port here), then one binding changed through each in turn; a
+    clock's binding added, changed and deleted."""
+    path = club_without_the_phone(club_path, tmp_path, monkeypatch)
+    bridge = Bridge.standalone(path, output=False, surfaces=True, state_dir=tmp_path / "state")
+    app = BuskApp(bridge, config.Settings(page=9), standalone=True)
+
+    def fill(dialog: BindingDialog, action: str, value: str) -> None:
+        dialog.action.pick(action)
+        match action:
+            case "fader":
+                dialog.fader_of.pick("playback")
+                dialog.fader.value = value
+            case "button":
+                dialog.slot.value, dialog.button.value = value.split()
+            case "master":
+                assert dialog.master is not None
+                dialog.master.pick(value)
+            case "blackout":
+                dialog.blackout.pick(value)
+            case "page":
+                dialog.page.value = value
+            case "release all":
+                dialog.release.value = value
+            case "output":
+                dialog.output.pick(value)
+
+    kinds = [
+        ("fader", "18", "fader playback 18"),
+        ("button", "2 3", "button 2 3"),
+        ("master", "FX", 'master "FX"'),
+        ("tap", "", "tap"),  # the club's one speed master
+        ("blackout", "toggle", "blackout"),
+        ("page", "-1", "page -1"),
+        ("page", "2", "page 2"),
+        ("release all", "1.5", "release all 1.5"),
+        ("output", "off", "output off"),
+    ]
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = app.query_one(SurfacesPage)
+        await until(pilot, lambda: any(s.name == "nanoKONTROL2" for s in app.view.surfaces))
+        for number, (action, value, what) in enumerate(kinds):
+            await tap_button(pilot, page.surface_edits, "+ binding…")
+            await until(pilot, lambda: isinstance(app.screen, BindingDialog))
+            dialog = binding_form(app)
+            dialog.number.value = str(100 + number)
+            fill(dialog, action, value)
+            await pilot.pause()
+            await pilot.press("enter")
+            await until(pilot, lambda what=what, n=number: row_of(page, f"cc 1 {100 + n}", what)
+                        is not None)  # fmt: skip
+
+        row = row_of(page, "cc 1 100", "fader playback 18")
+        assert row is not None
+        page.choose_binding(row)
+        for action, value, what in reversed(kinds):
+            await tap_button(pilot, page.binding_edits, "edit…")
+            await until(pilot, lambda: isinstance(app.screen, BindingDialog))
+            fill(binding_form(app), action, value)
+            await pilot.pause()
+            await pilot.press("enter")
+            await until(pilot, lambda what=what: row_of(page, "cc 1 100", what) is not None)
+            assert page.shown_bindings[page.binding or 0].what == what  # the choice follows
+
+        await tap_button(pilot, page.surface_edits, "+ binding…")
+        await until(pilot, lambda: isinstance(app.screen, BindingDialog))
+        await pilot.press("right", "right")  # clock
+        await pilot.press("enter")
+        await until(pilot, lambda: row_of(page, "clock", "tap") is not None)
+        page.choose_binding(row_of(page, "clock", "tap") or 0)
+        await tap_button(pilot, page.binding_edits, "edit…")
+        await until(pilot, lambda: isinstance(app.screen, BindingDialog))
+        dialog = binding_form(app)
+        assert dialog.control.chosen == "clock"
+        dialog.feedback.pick("led")
+        dialog.to_number.value = "47"
+        await pilot.pause()
+        await pilot.press("enter")
+        await until(
+            pilot,
+            lambda: page.shown_bindings[page.binding or 0].feedback == "led cc 1 47",
+        )
+        await tap_button(pilot, page.binding_edits, "delete")
+        await until(pilot, lambda: isinstance(app.screen, ConfirmDialog))
+        await pilot.press("y")
+        await until(pilot, lambda: row_of(page, "clock", "tap") is None)
 
     try:
         drive(app, body)

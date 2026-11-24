@@ -29,11 +29,23 @@ then for the chosen surface its pickup, ``[soft]`` ``[jump]``, its own lit,
 a click sending ``surface "Touch" pickup soft``; ``[edit…]``, the form
 filled in, its kind fixed, which sends ``surface "Touch" change …``;
 ``[rename…]``; ``[delete]``, ``delete surface "Touch" cascade``, after
-busk's question, which counts the bindings that go; and ``bind "<surface>"
-`` put in the prompt to finish. A surface busk does not open (``hid``,
-``internal``) has ``[rename…]`` and ``[delete]`` alone. The choice follows a
-surface renamed, and goes to one just added. BINDINGS' strip puts
-``unbind "<surface>" cc 1 48``, whole, and ``feedback …`` in the prompt.
+busk's question, which counts the bindings that go; and ``[+ binding…]``
+(Phase 41), the binding form (:mod:`busk_tui.widgets.binding_dialog`), which
+sends ``bind "Touch" …``. A surface busk does not open (``hid``,
+``internal``) has ``[rename…]`` and ``[delete]`` alone, and a web remote,
+which sends commands of its own, no ``[learn]``: their ``[+ binding…]`` is
+grey, and says why under the mouse. The choice follows a surface renamed,
+and goes to one just added.
+
+BINDINGS' strip (Phase 41), for the chosen binding: ``[edit…]``, the form
+filled in, which sends ``binding <id> change …`` (busk's GAP-63), and
+nothing when nothing changed; ``[learn]``, which moves it (below); and
+``[delete]``, ``delete binding <id>``, after the TUI's question, since busk
+asks none. A binding the form cannot word, one from a show file (a pitch
+bend's, a command but ``release all`` and ``output``, one on a web remote),
+has ``[delete]`` alone that works: its ``[edit…]`` and ``[learn]`` are grey,
+and say why under the mouse. The choice follows the binding through its
+edits, by its id.
 
 **Learn mode**: ``[learn]`` among the surface's edits arms it, lit amber;
 the next input from that surface puts ``bind "<surface>" cc 1 48 `` in the
@@ -41,7 +53,12 @@ prompt, for the operator to finish with what it drives, and disarms. A
 control that has bindings says so in the hint row, since ``bind`` adds
 beside them. A pitch bend, which ``bind`` cannot take, and the clock, which
 a device sends on its own, are passed over. Esc, a second click, another
-surface or another page disarms it.
+surface or another page disarms it. A binding's ``[learn]`` arms the same
+way, and the next control from its surface other than its own moves the
+binding there, in one line, what it drives and its feedback kept (the
+spec's learn mode on a binding row). One learn mode is armed at a time. The
+binding form's ``[learn]`` hears through the page, which reads the inputs
+while the form is open over it.
 """
 
 from __future__ import annotations
@@ -61,6 +78,15 @@ from busk_tui.commands import Line
 from busk_tui.model import BindingInfo, InputView, LiveState, ShowModel, SurfaceView
 from busk_tui.nav import Item, Stop
 from busk_tui.pages.base import Page, Part, View
+from busk_tui.widgets.binding_dialog import (
+    CONTROLS,
+    LEARN_LIT,
+    PASSED_OVER,
+    BindingDialog,
+    binding_words,
+    control_parts,
+    unworded,
+)
 from busk_tui.widgets.controls import (
     ButtonStrip,
     FillPrompt,
@@ -79,7 +105,7 @@ SIDE_BY_SIDE: Final = 132
 """From this many columns the bindings sit beside the surfaces."""
 
 NO_SURFACES: Final = "no surfaces · [+ surface…]"
-NO_BINDINGS: Final = 'no bindings · bind "<surface>" cc 1 0 fader 1'
+NO_BINDINGS: Final = "no bindings · a surface's [+ binding…] adds one"
 
 NONE: Final = "—"
 
@@ -89,11 +115,12 @@ MONITOR_LINES: Final = 14
 NO_INPUTS: Final = "messages show here as they come in"
 NOT_OPEN: Final = f"no surface is open: {NO_INPUTS}"
 
-LEARN_LIT: Final = f"bold {colors.BG} on {colors.AMBER}"
-"""``[learn]`` while armed: reversed, as a lit toggle."""
-
-PASSED_OVER: Final = frozenset({"bend", "clock"})
-"""The kinds of input learn mode passes over (see the module docs)."""
+UNBOUND: Final = {
+    "web": "a web remote sends commands of its own: a binding on it does nothing",
+    "hid": "busk does not open a hid surface: a binding on it does nothing",
+    "internal": "busk does not open an internal surface: a binding on it does nothing",
+}
+"""Why a surface of each kind that takes no binding has ``[+ binding…]`` grey."""
 
 IGNORED: Final = frozenset({"hid", "internal"})
 """The kinds of surface busk does not open: renamed and deleted alone."""
@@ -213,6 +240,24 @@ def monitor_cells(heard: InputView) -> Cells:
     }
 
 
+def learnable(
+    new: list[InputView], surface: str, own: tuple[str, int | None, str] | None = None
+) -> InputView | None:
+    """The first of ``new`` that learn mode takes from ``surface``: not one
+    it passes over, nor the control ``own`` (a binding's: it moves
+    elsewhere)."""
+    return next(
+        (
+            heard
+            for heard in new
+            if heard.surface == surface
+            and heard.input.split()[0] not in PASSED_OVER
+            and (own is None or control_parts(heard.input) != own)
+        ),
+        None,
+    )
+
+
 def learned_note(heard: InputView) -> str | None:
     """What the hint row says when learn mode takes a control that has
     bindings: ``bind`` adds beside them."""
@@ -272,6 +317,8 @@ class SurfacesPage(Page):
         self.heard: tuple[InputView, ...] = ()  # MONITOR's lines, oldest first
         self.last_sent: dict[tuple[str, str], InputView] = {}  # (surface, input) → the newest
         self.learning = False  # learn mode, armed on the chosen surface
+        self.moving = False  # learn mode, armed on the chosen binding: it moves
+        self.form: BindingDialog | None = None  # the binding form, while it is open
         self._seq = 0  # the newest input taken
         self._view = View()
 
@@ -315,21 +362,25 @@ class SurfacesPage(Page):
         self.heard = merged(self.heard, new)
         for heard in new:
             self.last_sent[heard.surface, heard.input] = heard
-        surface = self.chosen_surface()
-        if not self.learning or surface is None:
-            return
-        learned = next(
-            (
-                heard
-                for heard in new
-                if heard.surface == surface.name and heard.input.split()[0] not in PASSED_OVER
-            ),
-            None,
-        )
-        if learned is not None:
-            self._disarm()
-            text = commands.learned_prefill(surface.name, learned.input)
-            self.post_message(FillPrompt(text, learned_note(learned)))
+        surface, binding = self.chosen_surface(), self.chosen_binding()
+        if self.learning and surface is not None:
+            learned = learnable(new, surface.name)
+            if learned is not None:
+                self._disarm()
+                text = commands.learned_prefill(surface.name, learned.input)
+                self.post_message(FillPrompt(text, learned_note(learned)))
+        if self.moving and binding is not None:
+            own = (binding.kind, binding.channel, binding.number)
+            learned = learnable(new, binding.surface, own)
+            if learned is not None:
+                self._disarm()
+                masters = () if self._view.show is None else self._view.show.masters
+                words = binding_words(binding, masters, learned.input)
+                self.post_message(RunLine(commands.binding_change(binding.id, words)))
+        if self.form is not None and self.form.learning:
+            learned = learnable(new, self.form.surface.name)
+            if learned is not None:
+                self.form.learned(learned)
 
     # ------------------------------------------------------------- draw
 
@@ -349,6 +400,7 @@ class SurfacesPage(Page):
             self.notes.update(notes)
         self.surfaces_panel.set_title("surfaces", str(len(self.shown_surfaces)))
         self._draw_surface_edits()
+        self._draw_binding_edits()  # what the form can word depends on the surface's kind
 
     def _draw_monitor(self) -> None:
         open_ = any(surface.state == "ok" for surface in self._view.surfaces)
@@ -359,8 +411,14 @@ class SurfacesPage(Page):
         show, live = self._view.show, self._view.live
         bindings = () if show is None else show.bindings
         new = bindings != self.shown_bindings
-        if new:
+        if new:  # the choice follows its binding by id, as an edit or a move leaves it
+            chosen = self.chosen_binding()
             self.binding, self.shown_bindings = None, bindings
+            if chosen is not None and chosen.id:
+                ids = [binding.id for binding in bindings]
+                self.binding = ids.index(chosen.id) if chosen.id in ids else None
+            if self.binding is None:
+                self.moving = False
         rows = [
             binding_cells(b, binding_level(b, show, live), self.last_sent.get((b.surface, b.input)))
             for b in bindings
@@ -374,6 +432,12 @@ class SurfacesPage(Page):
         """The surface clicked last, else the first."""
         found = next((s for s in self.shown_surfaces if s.name == self.surface), None)
         return found or (self.shown_surfaces[0] if self.shown_surfaces else None)
+
+    def chosen_binding(self) -> BindingInfo | None:
+        return None if self.binding is None else self.shown_bindings[self.binding]
+
+    def surface_of(self, binding: BindingInfo) -> SurfaceView | None:
+        return next((s for s in self.shown_surfaces if s.name == binding.surface), None)
 
     def _draw_surface_edits(self) -> None:
         """``[+ surface…]``, then the chosen surface's name and edits."""
@@ -393,10 +457,13 @@ class SurfacesPage(Page):
             _ask("rename…", self.ask_name),
             StripButton(button_label("delete", colors.RED), commands.delete_surface(name)),
         ]
-        if surface.kind not in IGNORED:
-            buttons += _buttons([("bind", commands.bind_prefill(name))])
-            learn = cell("[learn]", LEARN_LIT if self.learning else colors.MID)  # a span: lit or
-            buttons.append(StripButton(learn, Line(""), action=self.toggle_learn))  # not differ
+        if surface.kind in CONTROLS:
+            buttons += [
+                _ask("+ binding…", self.ask_bind),
+                _learn(self.learning, self.toggle_learn),
+            ]
+        else:
+            buttons.append(_grey("+ binding…", UNBOUND.get(surface.kind, "")))
         self.surface_edits.show(buttons)
 
     # ------------------------------------------------------------ forms
@@ -448,24 +515,79 @@ class SurfacesPage(Page):
         if ok:
             self.choose_surface(name)
 
+    def ask_bind(self) -> None:
+        """``[+ binding…]``: the binding form on the chosen surface, then
+        ``bind "Touch" …``."""
+        surface = self.chosen_surface()
+        if surface is not None:
+            self._open_form(BindingDialog(surface, self._view.show))
+
+    def ask_edit_binding(self) -> None:
+        """A binding's ``[edit…]``: the form, filled in with the chosen
+        binding: ``binding <id> change …``. A form that changes nothing sends
+        nothing."""
+        binding = self.chosen_binding()
+        surface = None if binding is None else self.surface_of(binding)
+        if binding is not None and surface is not None:
+            self._open_form(BindingDialog(surface, self._view.show, binding))
+
+    def _open_form(self, dialog: BindingDialog) -> None:
+        """The binding form, which hears the inputs through the page while it
+        is open; one learn mode at a time."""
+        self._disarm()
+        self.form = dialog
+
+        def given(line: Line | None) -> None:
+            self.form = None
+            if line is not None:
+                self.post_message(RunLine(line))
+
+        self.app.push_screen(dialog, given)
+
+    def ask_delete_binding(self) -> None:
+        """A binding's ``[delete]``: ``delete binding <id>``, after the TUI's
+        question, since busk asks none."""
+        binding = self.chosen_binding()
+        if binding is None:
+            return
+        on = commands.quoted(binding.surface)
+        question = f"Delete binding {binding.input} → {binding.what} on {on}?"
+        self.post_message(RunLine(commands.delete_binding(binding.id), ask=question))
+
     # ------------------------------------------------------------ learn
 
     def toggle_learn(self) -> None:
-        """``[learn]``: arm learn mode on the chosen surface, or disarm it."""
+        """The surface's ``[learn]``: arm learn mode on the chosen surface,
+        or disarm it."""
         if self.learning:
             self._disarm()
         elif self.chosen_surface() is not None:
+            self._disarm()
             self.learning = True
             self._draw_surface_edits()
 
+    def toggle_move(self) -> None:
+        """A binding's ``[learn]``: arm learn mode on the chosen binding, to
+        move it, or disarm it."""
+        if self.moving:
+            self._disarm()
+        elif self.chosen_binding() is not None:
+            self._disarm()
+            self.moving = True
+            self._draw_binding_edits()
+
     def _disarm(self) -> None:
+        """Both learn modes off (the form's is its own)."""
         if self.learning:
             self.learning = False
             self._draw_surface_edits()
+        if self.moving:
+            self.moving = False
+            self._draw_binding_edits()
 
     def escape(self) -> bool:
         """Esc disarms learn mode, with nothing in the prompt."""
-        if not self.learning:
+        if not (self.learning or self.moving):
             return False
         self._disarm()
         return True
@@ -475,21 +597,28 @@ class SurfacesPage(Page):
         self._disarm()
 
     def _draw_binding_edits(self) -> None:
-        binding = None if self.binding is None else self.shown_bindings[self.binding]
-        prefills: list[tuple[str, str]] = []
-        if binding is not None and binding.kind in ("cc", "note", "osc"):
-            prefills = [
-                ("unbind", commands.unbind_prefill(binding.surface, binding.input)),
-                ("feedback", commands.feedback_prefill(binding.surface, binding.input)),
-            ]
+        """The chosen binding's ``[edit…]``, ``[learn]`` and ``[delete]``;
+        the first two grey, saying why, on one the form cannot word."""
+        binding = self.chosen_binding()
         label = Text()
+        buttons: list[StripButton] = []
         if binding is not None:
             label = Text.assemble(
                 ("edit ", colors.DIM), (binding.input, colors.CYAN), (" on ", colors.DIM),
                 (f'"{binding.surface}"', colors.FG),
             )  # fmt: skip
+            why = unworded(binding, self.surface_of(binding))
+            if why is None:
+                buttons += [
+                    _ask("edit…", self.ask_edit_binding),
+                    _learn(self.moving, self.toggle_move),
+                ]
+            else:
+                buttons += [_grey("edit…", why), _grey("learn", why)]
+            delete = button_label("delete", colors.RED)
+            buttons.append(StripButton(delete, Line(""), action=self.ask_delete_binding))
         _update(self.binding_label, label)
-        self.binding_edits.show(_buttons(prefills))
+        self.binding_edits.show(buttons)
 
     # ----------------------------------------------------------- clicks
 
@@ -507,6 +636,8 @@ class SurfacesPage(Page):
         self._draw_surface_edits()
 
     def choose_binding(self, row: int) -> None:
+        if row != self.binding:
+            self.moving = False  # it was armed on the binding chosen before
         self.binding = row
         self._draw_bindings()
         self._draw_binding_edits()
@@ -531,16 +662,19 @@ class SurfacesPage(Page):
         return stops + strip_stops(self.binding_edits)
 
 
-def _buttons(prefills: list[tuple[str, str]]) -> list[StripButton]:
-    return [
-        StripButton(button_label(f"{name}…", colors.MID), Line(text), prefill=text)
-        for name, text in prefills
-    ]
-
-
 def _ask(label: str, action: Callable[[], None]) -> StripButton:
     """A button that opens a dialog of the page's."""
     return StripButton(button_label(label, colors.MID), Line(""), action=action)
+
+
+def _learn(lit: bool, action: Callable[[], None]) -> StripButton:
+    """``[learn]``, lit while armed (a span: lit and not compare different)."""
+    return StripButton(cell("[learn]", LEARN_LIT if lit else colors.MID), Line(""), action=action)
+
+
+def _grey(label: str, why: str) -> StripButton:
+    """A button that does nothing here, and says why under the mouse."""
+    return StripButton(Text(f"[{label}]", style=colors.BORDER), Line(""), note=True, hint=why)
 
 
 def _update(widget: Static, text: Text) -> None:

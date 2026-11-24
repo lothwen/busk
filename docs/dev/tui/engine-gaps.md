@@ -3940,6 +3940,11 @@ in two undo steps.
 **TUI until then:** F9's binding edits pre-fill `unbind` and `feedback` lines, which act on
 every binding of the control.
 
+**TUI since** 2026-11-24: F9's binding form (`[+ binding…]` on a surface, `[edit…]` on a
+binding, which sends `binding <id> change …`), a binding's `[learn]`, which moves it to the
+next control in one line, and its `[delete]`, which sends `delete binding <id>` (Phase 41 of
+the pending plan). The pre-fills went.
+
 **Done** (2026-11-23). `_cmd_binding`, `_delete_binding` and `_binding` (what `bind` takes after
 the surface, shared by both) in `src/busk/console/parser.py`, with `_input`, `_action` and
 `_binding_names`, which moved there from `busk.console.console` so that a reply words a

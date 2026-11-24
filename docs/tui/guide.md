@@ -14,8 +14,9 @@ log, so what the UI does is what you could type.
 > and [F9 Surfaces](#f9-surfaces). Their edit modes and panels build a show from controls: the
 > rig, groups and park, presets, cues and cue lists, effects and their templates, playbacks and
 > pages, masters, the control surfaces, the strobe cap and the show's title. A few things are
-> still typed at the prompt: renumbering a page, and the options of an effect as it is added. F9
-> puts the start of a binding's line in the prompt, and its learn mode the control you move.
+> still typed at the prompt: renumbering a page, and the options of an effect as it is added. F9's
+> surface learn mode puts the control you move in the prompt, for a binding you type; its forms
+> set bindings up without it.
 
 ## Install
 
@@ -1473,9 +1474,9 @@ and what each input is bound to. Surfaces are added, changed, renamed and delete
  │ ● Touch      osc  port 8000      jump       1 open     ││ nanoKONTROL2          cc 1 32             button 1 1             led          —    — │
  │                                                        ││ nanoKONTROL2          cc 1 23             master gm                           — 100% │
  │ [+ surface…] "Touch" [soft] [jump] [edit…] [rename…]   ││ nanoKONTROL2          cc 1 46             tap                    led          —    — │
- │ [delete] [bind…] [learn]                               ││ nanoKONTROL2          cc 1 60             release all                         —    — │
+ │ [delete] [+ binding…] [learn]                          ││ nanoKONTROL2          cc 1 60             release all                         —    — │
  └────────────────────────────────────────────────────────┘│ Touch                 osc "/fader/1"      fader 1                          0.80  80% │
- ┌─ MONITOR ──────────────────────────────────────────────┐│ edit cc 1 32 on "nanoKONTROL2" [unbind…] [feedback…]                                 │
+ ┌─ MONITOR ──────────────────────────────────────────────┐│ edit cc 1 32 on "nanoKONTROL2" [edit…] [learn] [delete]                              │
  │ input             in drives            surface         │└──────────────────────────────────────────────────────────────────────────────────────┘
  │ cc 1 0           102 → fader 1         nanoKONTROL2    │
  │ osc "/fader/1"  0.80 → fader 1         Touch           │
@@ -1531,12 +1532,41 @@ A click on a row chooses it, and the strip under each table acts on it. Under SU
 - `[delete]`: `delete surface "Touch" cascade`, after busk's question, which counts the
   bindings that go with it (`Delete surface "Touch"? It leaves 3 bindings.`). `undo` brings
   both back.
-- `[bind…]` puts `bind "Touch" ` in the prompt, for the input and what it drives, and `[learn]`
-  is learn mode, below.
+- `[+ binding…]`: a form for a new binding on the surface, in three parts. **The control**: on
+  MIDI the chips `cc`, `note` and `clock`, then the channel (1 to 16) and the number (0 to 127);
+  on OSC the path (`/fader/1`). The form's own `[learn]` fills them from the next control you
+  move on the surface. **What it drives**: the chips `fader`, `button`, `master`, `tap`,
+  `blackout`, `page`, `release all` and `output`, then the fields of the one chosen: a slot or a
+  playback (`fader playback 18`); a slot and a button; the masters, as chips (`gm` is the grand
+  master); the speed master, when the show has several; `toggle` or `momentary`; `+1`, `-1` or a
+  page number; a release time (empty: each playback's own); on or off. A clock only taps.
+  **Feedback**: `none`, `led`, `motor` and, on OSC, `display`, on the control itself or on
+  another, given as the control is. It sends one line: `bind "nanoKONTROL2" cc 1 7 fader
+  playback 18 motor`. The form says what is wrong in red and stays open: a channel, a number, a
+  slot, a button or a playback out of range, a path that does not start with `/`, a page or a
+  time busk cannot read. A playback or a page the show has not is busk's to refuse, in the log.
+- `[learn]` is learn mode, below.
 
 A surface busk does not open (`hid`, `internal`, from a show file) has `[rename…]` and
-`[delete]` alone. Under BINDINGS, `unbind "nanoKONTROL2" cc 1 32` (a whole line: Enter runs
-it) and `feedback "nanoKONTROL2" cc 1 32 ` go in the prompt. The pane cursor stops on the
+`[delete]` alone, and a web remote, which sends commands of its own, no `[learn]`: their
+`[+ binding…]` is grey, and the hint row says why while the mouse is on it. Under BINDINGS, for
+the chosen binding:
+
+- `[edit…]`: the same form, filled in with the binding: `binding b-40d1 change cc 1 49 button 2
+  2 led`. The binding keeps its id and its surface; a feedback set to `none` goes. A form that
+  changes nothing sends nothing.
+- `[learn]`: moves the binding. Lit amber, it waits for a control from the binding's surface
+  other than its own, and moves the binding there in one line, what it drives and its feedback
+  kept: a feedback on its own control follows it to the new one. Esc, a second click, another
+  binding or another page disarms it.
+- `[delete]`: `delete binding b-40d1`, after the TUI's question (`Delete binding cc 1 32 →
+  button 1 1 on "nanoKONTROL2"?`). The control's other bindings stay; `undo` brings it back.
+
+A binding the form cannot word, from a show file (a pitch bend's, a hardware control's, a
+command other than `release all` and `output`, one on a web remote), has `[edit…]` and
+`[learn]` grey, saying why under the mouse, and `[delete]` takes it. The choice follows a
+binding through its edits. `unbind "nanoKONTROL2" cc 1 32 thru 39` and `feedback … thru …`,
+for several controls in one line, are typed at the prompt. The pane cursor stops on the
 surfaces, their strip, the bindings and their strip; Enter on a row chooses it. Below 132
 columns MONITOR goes under SURFACES, and BINDINGS under it.
 
@@ -1544,25 +1574,28 @@ columns MONITOR goes under SURFACES, and BINDINGS under it.
 on that surface: its line goes in the prompt, `bind "Touch" osc "/fader/3" `, for you to finish
 with what it drives (`fader 3`) and send. Nothing is sent before you do. When the control has
 bindings already, the hint row says so (`cc 1 0 drives fader 1: unbind it to replace it`):
-`bind` adds a binding beside them, so to move one, `unbind` it first. A pitch bend, which
-`bind` cannot take, and the clock, which a device sends on its own, are passed over. Esc, a
-second click, choosing another surface or another page disarms it.
+`bind` adds a binding beside them; to move one, use that binding's own `[learn]`. A pitch bend,
+which `bind` cannot take, and the clock, which a device sends on its own, are passed over by
+every learn mode. Esc, a second click, choosing another surface or another page disarms it. One
+learn mode is armed at a time: the surface's, a binding's, or the binding form's.
 
 ## Questions, dialogs and quitting
 
 A line busk asks about first, such as `output off`, opens a dialog with busk's question.
 The line runs only on **y**; **n**, Enter or Esc cancel it (`cancelled` in the log). F3's,
 F8's and F9's `[delete]`, F8's `[off]`, F4's `[delete]` of a list and F6's `[delete]` of a preset in
-use are such lines. F4's `[delete]` of a cue, `[replace]` and `[remove]`, and F6's `[delete]` of a preset
-nothing uses, `[replace]` and `[remove]`, ask the TUI's own question the same way.
+use are such lines. F4's `[delete]` of a cue, `[replace]` and `[remove]`, F6's `[delete]` of a preset
+nothing uses, `[replace]` and `[remove]`, and F9's `[delete]` of a binding ask the TUI's own
+question the same way.
 
 A name or a number (`[rename…]`, `[number…]`, `[address…]`, `[offset…]`, F4's `[follow…]`
 and `[wait…]`) is typed in a small dialog: Enter takes it, Esc cancels. What it refuses shows in red, and the dialog stays open. A form of several fields
 (`[limit…]`, `[location…]`, `[+ universe…]`, `[+ route…]` and a route's `[edit…]`, `[+ list…]`,
 `[record at…]`, `[copy…]`, `[release…]`, `[chase…]`, a cue's `[time…]`, `[delay…]` and
-`[curve…]`, `[+ surface…]` and a surface's `[edit…]`) works the same way: Tab moves between the
-fields, and Enter, in any of them, takes the form. In the route form, the surface form,
-`[chase…]`, `[time…]` and `[curve…]`, Tab also reaches the chips, and ← → move them.
+`[curve…]`, `[+ surface…]` and a surface's `[edit…]`, `[+ binding…]` and a binding's
+`[edit…]`) works the same way: Tab moves between the fields, and Enter, in any of them, takes the
+form. In the route form, the surface form, the binding form, `[chase…]`, `[time…]` and
+`[curve…]`, Tab also reaches the chips, and ← → move them.
 
 **The profile picker** (F3's `[profile…]` and `[choose…]`) lists what `fixture add` takes: the
 show's own profiles first, marked `●`, then the library's, with the maker, the name, and the modes

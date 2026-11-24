@@ -21,7 +21,7 @@ from busk_tui import attributes, commands, config
 from busk_tui import bridge as bridge_module
 from busk_tui.bridge import show_model, surface_views
 from busk_tui.commands import Line
-from busk_tui.widgets import master_panel, route_dialog, surface_dialog
+from busk_tui.widgets import binding_dialog, master_panel, route_dialog, surface_dialog
 from busk_tui.widgets.chase_dialog import (
     DIRECTIONS,
     check_crossfade,
@@ -57,6 +57,8 @@ OFL_DIMMER = {
 """An Open Fixture Library fixture: busk names it after its folder."""
 
 ROUTE = "r-club"
+BINDING = "b-club"
+"""The id the builders name for the club's first binding (cc 1 0 → fader 1)."""
 """The id the show of the contract test gives its route."""
 
 BUILDERS: dict[str, tuple[Line, str, bool]] = {
@@ -477,6 +479,17 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
         'surface "Tablet" change port 8082',
         False,
     ),
+    "bind": (
+        commands.bind("nanoKONTROL2", "cc 1 99 fader playback 18 motor"),
+        'bind "nanoKONTROL2" cc 1 99 fader playback 18 motor',
+        False,
+    ),
+    "binding change": (
+        commands.binding_change(BINDING, "cc 1 98 button 2 2 led note 1 97"),
+        f"binding {BINDING} change cc 1 98 button 2 2 led note 1 97",
+        False,
+    ),
+    "delete binding": (commands.delete_binding(BINDING), f"delete binding {BINDING}", False),
     "surface pickup": (
         commands.surface_pickup('Left "A"', "jump"),
         r'surface "Left \"A\"" pickup jump',
@@ -624,13 +637,9 @@ PREFILLS = (
     commands.cue_prefill(9, "3", "follow"),
     commands.cue_prefill(9, "3", "wait"),
     commands.cue_prefill(9, "3", "go"),
-    commands.bind_prefill("nanoKONTROL2"),
-    commands.feedback_prefill("nanoKONTROL2", "cc 1 0"),
+    commands.learned_prefill("nanoKONTROL2", "cc 1 99"),
 )
 """Lines the UI puts in the prompt to finish."""
-
-WHOLE_PREFILLS = (commands.unbind_prefill("nanoKONTROL2", "cc 1 0"),)
-"""Pre-fills that are whole lines: Enter runs them."""
 
 PERFORMANCE_WORDS = {
     "go", "back", "goto", "release", "fader", "flash", "toggle", "button", "gm", "master",
@@ -643,10 +652,11 @@ PERFORMANCE_WORDS = {
 @pytest.fixture
 def show(club_path: Path, tmp_path: Path) -> busk.OfflineShow:
     """A club-night show of the test's own, saved to a file of its own, its
-    route under the id the builders name."""
+    route and its first binding under the ids the builders name."""
     document, _ = busk.load_show(club_path)
     document = copy.deepcopy(document)
     document["output"]["routes"][0]["id"] = ROUTE
+    document["bindings"][0]["id"] = BINDING
     return busk.OfflineShow(document, path=tmp_path / "club.show")
 
 
@@ -1238,6 +1248,95 @@ def test_the_surface_form_and_busk_agree_on_a_name(
     assert midi.ok is (ok or not text.strip())
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "1", "16", " 2 ", "01", "+3", "1_0", "\u0663", "0", "17", "-1", "", "x", "1.5", "²",
+        pytest.param("9" * 5000, id="past-int"),
+    ],
+)  # fmt: skip
+def test_the_binding_form_and_busk_agree_on_a_channel(show: busk.OfflineShow, text: str) -> None:
+    passes = binding_dialog.check_channel(text) is None
+    assert passes is show.execute(f'bind "nanoKONTROL2" cc {text.strip()} 100 fader 1').ok
+    line = f'bind "nanoKONTROL2" cc 1 100 fader 1 led note {text.strip()} 5'
+    assert passes is show.execute(line).ok  # a feedback's, as the control's
+
+
+@pytest.mark.parametrize(
+    "text", ["0", "127", " 5 ", "007", "+5", "-0", "128", "-1", "", "x", "2.0", "²"]
+)
+def test_the_binding_form_and_busk_agree_on_a_number(show: busk.OfflineShow, text: str) -> None:
+    for kind in ("cc", "note"):
+        passes = binding_dialog.check_number(kind)(text) is None
+        assert passes is show.execute(f'bind "nanoKONTROL2" {kind} 2 {text.strip()} blackout').ok
+
+
+@pytest.mark.parametrize(
+    "text", ["/fader/1", "/", " /x ", "/two words", '/q"uote', "fader/1", "", "  ", "x/"]
+)
+def test_the_binding_form_and_busk_agree_on_a_path(show: busk.OfflineShow, text: str) -> None:
+    """busk's reading of the form's quoting: the path as typed, trimmed."""
+    assert show.execute('surface add osc "Touch" port 9100').ok
+    passes = binding_dialog.check_path(text) is None
+    control = commands.control("osc", None, text.strip())
+    assert passes is show.execute(commands.bind("Touch", f"{control} fader 1").text).ok
+
+
+@pytest.mark.parametrize("text", ["1", "12", "+2", "01", "0", "-1", "", "x", "1.5"])
+def test_the_binding_form_and_busk_agree_on_a_slot_and_a_button(
+    show: busk.OfflineShow, text: str
+) -> None:
+    slot = binding_dialog.check_slot(text) is None
+    assert slot is show.execute(f'bind "nanoKONTROL2" cc 1 100 fader {text.strip()}').ok
+    button = binding_dialog.check_button(text) is None
+    assert button is show.execute(f'bind "nanoKONTROL2" cc 1 101 button 1 {text.strip()}').ok
+
+
+@pytest.mark.parametrize(
+    ("text", "ok"),
+    [("1", True), ("20", True), ("+3", True), ("07", True), ("0", False), ("-1", False),
+     ("", False), ("x", False), ("99", None)],
+)  # fmt: skip
+def test_the_binding_form_and_busk_agree_on_a_playback(
+    show: busk.OfflineShow, text: str, ok: bool | None
+) -> None:
+    """``None``: the form passes a playback the show has not, which busk
+    refuses (it is busk's to tell)."""
+    assert (binding_dialog.check_playback(text) is None) is (ok is not False)
+    reply = show.execute(f'bind "nanoKONTROL2" cc 1 100 fader playback {text.strip()}')
+    assert reply.ok is (ok is True)
+    if ok is None:
+        assert reply.text == f"error: no playback {text}"
+
+
+@pytest.mark.parametrize(
+    ("text", "ok"),
+    [("+1", True), ("-1", True), ("-01", True), ("+0", True), ("1", True), ("02", True),
+     ("3", None), ("x", False), ("", False), ("1.5", False), ("+", False), ("²", False),
+     ("+²", False), ("1_0", False)],
+)  # fmt: skip
+def test_the_binding_form_and_busk_agree_on_a_page(
+    show: busk.OfflineShow, text: str, ok: bool | None
+) -> None:
+    """The club has pages 1 and 2; ``None``: one it has not, busk's to tell."""
+    assert (binding_dialog.check_page(text) is None) is (ok is not False)
+    assert show.execute(f'bind "nanoKONTROL2" cc 1 100 page {text.strip()}').ok is (ok is True)
+    if ok:
+        assert show.execute("undo").ok
+        words = binding_dialog.page_words(text)
+        assert show.execute(f'bind "nanoKONTROL2" cc 1 100 page {words}').ok
+
+
+@pytest.mark.parametrize(
+    "text", ["", "2", "0.5", ".5", "2.", "0", "-1", "+2", "50%", "x", "1e3", "2s"]
+)
+def test_the_binding_form_and_busk_agree_on_a_release_time(
+    show: busk.OfflineShow, text: str
+) -> None:
+    passes = binding_dialog.check_release(text) is None
+    assert passes is show.execute(f'bind "nanoKONTROL2" cc 1 100 release all {text}').ok
+
+
 @pytest.mark.parametrize(("text", "ok"), [("Size", True), ("fx", False), ("SPEED 1", False)])
 def test_the_master_form_and_busk_agree_on_a_name(
     show: busk.OfflineShow, text: str, ok: bool
@@ -1692,24 +1791,58 @@ def test_the_heads_take_what_their_profile_says(
     assert show.execute(f"set {attribute} {value}").ok is taken
 
 
-def test_the_whole_prefills_run(show: busk.OfflineShow) -> None:
+def test_a_location_is_one_whole_line() -> None:
     assert commands.location(101, (0.0,) * 6).text == (
         'fixture 101 location {"x": 0, "y": 0, "z": 0, "rx": 0, "ry": 0, "rz": 0}'
     )
-    for line in WHOLE_PREFILLS:
-        reply = show.execute(line)
-        assert reply.ok, (line, reply.text)
 
 
-def test_every_binding_of_the_show_unbinds_by_its_input(show: busk.OfflineShow) -> None:
-    """F9's unbind pre-fill names a binding's input as busk reads it."""
-    bindings = show_model(show.show).bindings
-    assert len(bindings) > 50
-    for binding in bindings:
-        line = commands.unbind_prefill(binding.surface, binding.input)
-        reply = show.execute(line)
-        assert reply.ok, (line, reply.text)
-    assert show.show["bindings"] == []
+def test_every_binding_of_the_show_is_the_words_the_form_starts_from(
+    show: busk.OfflineShow,
+) -> None:
+    """F9's binding form (the pending plan's Phase 41) starts at a binding's
+    own words: ``binding <id> change`` with them changes nothing, which busk
+    refuses. Moved to another control, each keeps what it drives."""
+    model = show_model(show.show)
+    surfaces = {view.name: view for view in surface_views(show.show, None)}
+    assert len(model.bindings) > 50
+    for binding in model.bindings:
+        assert binding_dialog.unworded(binding, surfaces[binding.surface]) is None
+        words = binding_dialog.binding_words(binding, model.masters)
+        reply = show.execute(commands.binding_change(binding.id, words).text)
+        assert reply.text == f"error: binding {binding.id} is set up that way already", words
+    for number, binding in enumerate(model.bindings):
+        words = binding_dialog.binding_words(binding, model.masters, f"note 2 {number}")
+        reply = show.execute(commands.binding_change(binding.id, words).text)
+        assert reply.ok, (words, reply.text)
+    moved = show_model(show.show).bindings
+    assert [b.what for b in moved] == [b.what for b in model.bindings]
+    assert [b.feedback for b in moved] == [b.feedback for b in model.bindings]
+    assert {b.input for b in moved} == {f"note 2 {n}" for n in range(len(moved))}
+
+
+def test_the_binding_lines_do_what_they_say(show: busk.OfflineShow) -> None:
+    """What the lines leave, read back as the form starts from it."""
+    assert show.execute('surface add osc "Touch" port 9100').ok
+    lines = (
+        commands.bind("Touch", 'osc "/f/1" fader playback 18 display osc "/l/1"'),
+        commands.bind("nanoKONTROL2", "clock tap led cc 1 46"),
+        commands.bind("nanoKONTROL2", "note 1 60 release all 2.5"),
+    )
+    for line in lines:
+        assert show.execute(line.text).ok, line
+    model = show_model(show.show)
+    added = {b.input: b for b in model.bindings[-3:]}
+    fader, clock, release = added['osc "/f/1"'], added["clock"], added["note 1 60"]
+    assert (fader.action, fader.values) == ("fader", ("playback", "18"))
+    assert (fader.feedback_kind, fader.feedback_to) == ("display", ("osc", None, "/l/1"))
+    assert (clock.action, clock.feedback_to) == ("tap", ("cc", 1, "46"))
+    assert (release.action, release.values) == ("release all", ("2.5",))
+    assert show.execute(commands.binding_change(release.id, "note 1 61 output off").text).ok
+    assert show.execute(commands.delete_binding(clock.id).text).ok
+    after = {b.id: b for b in show_model(show.show).bindings}
+    assert (after[release.id].input, after[release.id].what) == ("note 1 61", "output off")
+    assert clock.id not in after
 
 
 def test_the_families_are_busks() -> None:

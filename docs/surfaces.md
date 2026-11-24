@@ -21,6 +21,8 @@ and `delete binding b-40d1` deletes it, even where another binding shares its co
 `bind` takes only what the surface can use: a MIDI surface's `cc`, `note` and `clock` on
 channels 1 to 16 with numbers 0 to 127 and `led` or `motor` feedback, an OSC surface's `osc`
 paths with any feedback, and nothing on a web remote, which sends commands of its own.
+The terminal UI's F9 binds, changes, moves and deletes them from a form and the binding's own
+learn mode ([F9 Surfaces](tui/guide.md#f9-surfaces)).
 
 - [MIDI](#midi)
 - [OSC](#osc)
@@ -36,8 +38,8 @@ MIDI needs the `midi` extra (`busk[midi]`, see the [README](../README.md#install
 it each MIDI surface reports `MIDI s-…: unavailable: install busk[midi]` once and stays
 closed. On Linux MIDI uses the ALSA sequencer (`/dev/snd/seq`); `aseqdump -l` lists the
 input ports, and `aseqdump -p <port>` shows what a controller sends. Once the surface is open,
-the terminal UI's F9 shows it too, in `bind`'s words, and its learn mode starts the `bind`
-line for the control you move ([F9 Surfaces](tui/guide.md#f9-surfaces)).
+the terminal UI's F9 shows it too, in `bind`'s words, and its binding form's `[learn]` fills in
+the control you move ([F9 Surfaces](tui/guide.md#f9-surfaces)).
 
 ```
 busk> surface add midi "nanoKONTROL2"

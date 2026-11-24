@@ -44,7 +44,10 @@ status bar (`rename show`). Its Phase 37 published what comes in from the surfac
 `LiveShow.inputs`), and gave F9 its MONITOR, the number each control sent, and learn mode. Its
 Phase 38 added the lines that rename, delete and change a surface (GAP-60, GAP-61) and the read of
 the MIDI devices plugged in (GAP-62), and its Phase 39 F9's controls for them: `[+ surface…]` and
-`[edit…]`, a form with the devices as chips, `[soft]` `[jump]`, `[rename…]` and `[delete]`.
+`[edit…]`, a form with the devices as chips, `[soft]` `[jump]`, `[rename…]` and `[delete]`. Its
+Phase 40 added the lines that delete and change one binding by its id (GAP-63), and its Phase 41
+F9's controls for bindings: `[+ binding…]` and a binding's `[edit…]`, a form with its own learn
+mode, a binding's `[learn]`, which moves it to the next control, and `[delete]`.
 
 ## How to read it
 
@@ -96,11 +99,13 @@ In short:
 - **busk lacks a little:** deleting several presets, cues or cue lists in one line, and the two
   limits of GAP-41 on an effect's settings (see
   [What busk is missing](#what-busk-is-missing)).
-- **Beyond this report,** F9 sets up surfaces from controls: it adds, changes, renames and
-  deletes them (`surface add …`, `surface "<name>" change …`, `rename surface`, `delete surface
-  … cascade`), and sets their pickup in one click. It sets up no binding: it shows them, with
-  what comes in from the surfaces, and puts `bind`, `unbind` and `feedback` lines in the prompt;
-  its learn mode puts the control that comes in after `bind`. Masters, safety and the show's
+- **Beyond this report,** F9 sets up surfaces and bindings from controls: it adds, changes,
+  renames and deletes surfaces (`surface add …`, `surface "<name>" change …`, `rename surface`,
+  `delete surface … cascade`), and sets their pickup in one click; it adds, changes, moves and
+  deletes bindings (`bind "<s>" …`, `binding <id> change …`, `delete binding <id>`) from a form
+  and a binding's `[learn]`, and shows them with what comes in from the surfaces. Only the
+  surface's learn mode still puts a line in the prompt (`bind "<s>" cc 1 48 `), for the operator
+  who types; `unbind … thru` and `feedback … thru` are typed. Masters, safety and the show's
   title have controls: F7's MASTERS panel makes, renames and deletes masters (`master add`,
   `rename master`, `delete master … cascade`); park and limits are on F3's FIXTURE panel, and the
   strobe cap on F7's PANIC (`safety strobe 3|off`); a click on the status bar's title renames the

@@ -725,6 +725,35 @@ def delete_surface(surface: str) -> Line:
     return Line(f"delete surface {quoted(surface)} cascade")
 
 
+# ---------------------------------------------------------------- bindings
+
+
+def control(kind: str, channel: int | None = None, number: str = "") -> str:
+    """A control as ``bind`` takes it: ``cc 1 48``, ``note 1 60``, ``osc
+    "/fader/1"``, ``clock``."""
+    if kind == "osc":
+        return f"osc {quoted(number)}"
+    return " ".join([kind, *([] if channel is None else [str(channel)]), *filter(None, [number])])
+
+
+def bind(surface: str, words: str) -> Line:
+    """``bind "nanoKONTROL2" cc 1 48 fader 1 motor``: ``words`` are what
+    ``bind`` takes after the surface, the control, what it drives and its
+    feedback."""
+    return Line(f"bind {quoted(surface)} {words}")
+
+
+def binding_change(binding: str, words: str) -> Line:
+    """``binding b-40d1 change cc 1 49 button 2 2 led`` (busk's GAP-63): the
+    binding whole, as :func:`bind` takes it after the surface."""
+    return Line(f"binding {binding} change {words}")
+
+
+def delete_binding(binding: str) -> Line:
+    """``delete binding b-40d1``: busk asks nothing, so the control asks."""
+    return Line(f"delete binding {binding}")
+
+
 # ------------------------------------------------------------ safety, show
 
 
@@ -1001,23 +1030,7 @@ def cue_prefill(cue_list: int, cue: str, verb: str) -> str:
     return f"cue {cue_list}/{cue} go" if verb == "go" else f"cue {cue_list}/{cue} {verb} "
 
 
-def bind_prefill(surface: str) -> str:
-    """``bind "nanoKONTROL2" ``: an input and what it drives next."""
-    return f"bind {quoted(surface)} "
-
-
 def learned_prefill(surface: str, given: str) -> str:
     """``bind "nanoKONTROL2" cc 1 48 ``: what the control drives next (F9's
     learn mode, with the control that came in)."""
     return f"bind {quoted(surface)} {given} "
-
-
-def unbind_prefill(surface: str, given: str) -> str:
-    """``unbind "nanoKONTROL2" cc 1 0``, whole: Enter runs it."""
-    return f"unbind {quoted(surface)} {given}"
-
-
-def feedback_prefill(surface: str, given: str) -> str:
-    """``feedback "nanoKONTROL2" cc 1 0 ``: ``led``, ``motor``, ``display``
-    or ``none`` next."""
-    return f"feedback {quoted(surface)} {given} "

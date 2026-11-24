@@ -8,6 +8,7 @@ fake bridge."""
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any
 
 from rich.text import Text
@@ -27,13 +28,14 @@ from tui_fakes import (
 )
 
 import busk
-from busk_tui import colors
+from busk_tui import colors, commands
 from busk_tui.model import (
     BindingInfo,
     InputsChanged,
     InputView,
     LiveChanged,
     MasterLevel,
+    MasterView,
     PageInfo,
     PageView,
     ShowChanged,
@@ -45,6 +47,7 @@ from busk_tui.pages.surfaces import (
     LEARN_LIT,
     NO_INPUTS,
     NOT_OPEN,
+    UNBOUND,
     BindingTable,
     MonitorTable,
     SurfacesPage,
@@ -56,6 +59,13 @@ from busk_tui.pages.surfaces import (
     surface_cells,
 )
 from busk_tui.shell import BuskApp
+from busk_tui.widgets.binding_dialog import (
+    BindingDialog,
+    binding_words,
+    control_parts,
+    unworded,
+    what_words,
+)
 from busk_tui.widgets.controls import ButtonStrip
 from busk_tui.widgets.dialogs import ConfirmDialog, TextDialog
 from busk_tui.widgets.options import LIT
@@ -81,17 +91,35 @@ PAD = SurfaceView("Pad", "hid", "", "jump", "ignored", "hid surfaces are not imp
 SURFACES = (NANO, TOUCH, PHONE, PAD)
 
 BINDINGS = (
-    BindingInfo("nanoKONTROL2", "cc", 1, "0", "fader 1", "", ("slot", 0)),
-    BindingInfo("nanoKONTROL2", "cc", 1, "1", "fader 2", "", ("slot", 1)),  # an empty slot
-    BindingInfo("nanoKONTROL2", "note", 1, "36", "button 1 1", "led"),
-    BindingInfo("nanoKONTROL2", "cc", 1, "16", "fader playback 9", "", ("playback", 9)),
-    BindingInfo("nanoKONTROL2", "cc", 1, "23", "master gm", "", ("master", "Grand Master")),
-    BindingInfo("nanoKONTROL2", "cc", 1, "22", 'master "FX"', "motor", ("master", "FX")),
-    BindingInfo("nanoKONTROL2", "clock", None, "", 'tap "Speed 1"', ""),
-    BindingInfo("TouchOSC", "osc", None, "/1/push1", "blackout momentary", "led note 1 40"),
-    BindingInfo("TouchOSC", "osc", None, "/1/push2", "release all 2", ""),
-    BindingInfo("TouchOSC", "osc", None, "/1/push3", "output off", ""),
-    BindingInfo("TouchOSC", "osc", None, "/1/push4", "page +1", ""),
+    BindingInfo("nanoKONTROL2", "cc", 1, "0", "fader 1", "", ("slot", 0),
+                id="b-1", action="fader", values=("slot", "1")),
+    BindingInfo("nanoKONTROL2", "cc", 1, "1", "fader 2", "", ("slot", 1),  # an empty slot
+                id="b-2", action="fader", values=("slot", "2")),
+    BindingInfo("nanoKONTROL2", "note", 1, "36", "button 1 1", "led",
+                id="b-3", action="button", values=("1", "1"), feedback_kind="led"),
+    BindingInfo("nanoKONTROL2", "cc", 1, "16", "fader playback 9", "", ("playback", 9),
+                id="b-4", action="fader", values=("playback", "9")),
+    BindingInfo("nanoKONTROL2", "cc", 1, "23", "master gm", "", ("master", "Grand Master"),
+                id="b-5", action="master", values=("Grand Master",)),
+    BindingInfo("nanoKONTROL2", "cc", 1, "22", 'master "FX"', "motor", ("master", "FX"),
+                id="b-6", action="master", values=("FX",), feedback_kind="motor"),
+    BindingInfo("nanoKONTROL2", "clock", None, "", 'tap "Speed 1"', "",
+                id="b-7", action="tap", values=("Speed 1",)),
+    BindingInfo("TouchOSC", "osc", None, "/1/push1", "blackout momentary", "led note 1 40",
+                id="b-8", action="blackout", values=("momentary",), feedback_kind="led",
+                feedback_to=("note", 1, "40")),  # a note on OSC, from a show file
+    BindingInfo("TouchOSC", "osc", None, "/1/push2", "release all 2", "",
+                id="b-9", action="release all", values=("2",)),
+    BindingInfo("TouchOSC", "osc", None, "/1/push3", "output off", "",
+                id="b-10", action="output", values=("off",)),
+    BindingInfo("TouchOSC", "osc", None, "/1/push4", "page +1", "",
+                id="b-11", action="page", values=("+1",)),
+)  # fmt: skip
+MASTERS = (
+    MasterView("Grand Master", "grand", None, ()),
+    MasterView("FX", "size", None, ()),
+    MasterView("Speed 1", "speed", None, (0.5, 1, 2)),
+    MasterView("Speed 2", "speed", None, (0.5, 1, 2)),
 )
 LIVE = live_state(
     page=PageView(1, "Main"),
@@ -104,6 +132,7 @@ def rig(**changes: Any) -> ShowModel:
     parts: dict[str, Any] = {
         "pages": (PageInfo(1, "Main", (1, None)), PageInfo(2, "Song", (9, 1))),
         "bindings": BINDINGS,
+        "masters": MASTERS,
     }
     parts.update(changes)
     return show_model(**parts)
@@ -184,21 +213,17 @@ def test_the_edits_act_on_the_chosen_surface_and_binding() -> None:
     async def body(pilot: Pilot[int]) -> None:
         await settle(pilot, app)
         page = app.query_one(SurfacesPage)
-        assert [b.prefill for b in page.surface_edits.buttons if b.prefill] == [
-            'bind "nanoKONTROL2" '
-        ]
+        assert [b.prefill for b in page.surface_edits.buttons if b.prefill] == []  # none since 41
         assert page.binding_edits.buttons == ()  # no binding chosen yet
         await click_cell(pilot, app.query_one(SurfaceTable), 1, "name")
-        assert [b.prefill for b in page.surface_edits.buttons if b.prefill] == ['bind "TouchOSC" ']
+        assert labels(page.surface_edits)[-2:] == ["[+ binding…]", "[learn]"]
         bindings = app.query_one(BindingTable)
-        await click_cell(pilot, bindings, 7, "what")
-        assert bindings.chosen == 7
-        assert [b.prefill for b in page.binding_edits.buttons] == [
-            'unbind "TouchOSC" osc "/1/push1"',
-            'feedback "TouchOSC" osc "/1/push1" ',
-        ]
-        await click_cell(pilot, bindings, 6, "what")  # a clock: unbind cannot name it
-        assert page.binding_edits.buttons == ()
+        await click_cell(pilot, bindings, 9, "what")
+        assert bindings.chosen == 9
+        assert labels(page.binding_edits) == ["[edit…]", "[learn]", "[delete]"]
+        assert not any(button.note for button in page.binding_edits.buttons)
+        await click_cell(pilot, bindings, 6, "what")  # a clock's: the form words it now
+        assert labels(page.binding_edits) == ["[edit…]", "[learn]", "[delete]"]
         assert 'clock on "nanoKONTROL2"' in page.binding_label.content.plain
         assert bridge.sent == []  # choosing runs nothing
 
@@ -218,13 +243,18 @@ def test_the_pane_cursor_stops_on_surfaces_edits_and_bindings() -> None:
         assert labels[4:12] == [
             "[+ surface…]", 'surface "nanoKONTROL2" pickup jump',  # soft is lit: no stop
             "[edit…]", "[rename…]", 'delete surface "nanoKONTROL2" cascade',
-            'bind "nanoKONTROL2"', "[learn]", "binding nanoKONTROL2 cc 1 0 fader 1",
+            "[+ binding…]", "[learn]", "binding nanoKONTROL2 cc 1 0 fader 1",
         ]  # fmt: skip
         await pilot.press("tab", *["down"] * 11, "enter")  # chooses the first binding
         page = app.query_one(SurfacesPage)
         assert page.binding == 0
-        await pilot.press(*["down"] * 11, "enter")  # its unbind: a whole line to run
-        assert app.prompt.value == 'unbind "nanoKONTROL2" cc 1 0'
+        assert [item.label for item in app.current_page.items()][-3:] == [
+            "[edit…]", "[learn]", "[delete]"
+        ]  # fmt: skip
+        await pilot.press(*["down"] * 13, "enter")  # its [delete]: the TUI asks first
+        assert isinstance(app.screen, ConfirmDialog)
+        await pilot.press("n")
+        await settle(pilot, app)
         assert bridge.sent == []
 
     drive(app, body)
@@ -531,7 +561,7 @@ def test_the_chosen_surfaces_strip_by_kind() -> None:
         strip = page.surface_edits
         assert labels(strip) == [
             "[+ surface…]", '"nanoKONTROL2"', "[soft]", "[jump]", "[edit…]", "[rename…]",
-            "[delete]", "[bind…]", "[learn]",
+            "[delete]", "[+ binding…]", "[learn]",
         ]  # fmt: skip
         assert len(strip.lines(strip.size.width)) == 1  # one line at 99 columns
         soft, jump, delete = strip.buttons[2], strip.buttons[3], strip.buttons[6]
@@ -542,7 +572,11 @@ def test_the_chosen_surfaces_strip_by_kind() -> None:
         assert strip.buttons[2].line.text == 'surface "TouchOSC" pickup soft'
         assert strip.buttons[3].note  # jump
         page.choose_surface("Pad")  # hid: busk does not open it
-        assert labels(strip) == ["[+ surface…]", '"Pad"', "[rename…]", "[delete]"]
+        assert labels(strip) == ["[+ surface…]", '"Pad"', "[rename…]", "[delete]", "[+ binding…]"]
+        assert strip.buttons[-1].note  # grey: it takes no binding
+        page.choose_surface("Phone")  # a web remote sends commands of its own: no [learn]
+        assert labels(strip)[-2:] == ["[delete]", "[+ binding…]"]
+        assert strip.buttons[-1].note
         bridge.events.append(SurfacesChanged(()))
         await settle(pilot, app)
         assert labels(strip) == ["[+ surface…]"]
@@ -816,3 +850,540 @@ def test_the_forms_checks() -> None:
     assert found_by("NANOKONTROL2 MIDI 1", found) == "nanoKONTROL2"  # busk finds it in the name
     assert found_by("APC mini mk2", found) is None
     assert finders(SURFACES, "nanoKONTROL2") == {}
+
+
+# ------------------------------------------------- bindings set up (Phase 41)
+
+
+def binding_form(app: BuskApp) -> BindingDialog:
+    dialog = app.screen
+    assert isinstance(dialog, BindingDialog)
+    return dialog
+
+
+async def open_binding_form(pilot: Pilot[int], app: BuskApp, edit: bool = False) -> BindingDialog:
+    """The binding form, from the chosen surface's ``[+ binding…]`` or the
+    chosen binding's ``[edit…]``."""
+    page = app.query_one(SurfacesPage)
+    await pilot.pause()  # a binding just chosen: its strip laid out
+    if edit:
+        await tap(pilot, page.binding_edits, "[edit…]")
+    else:
+        await tap(pilot, page.surface_edits, "[+ binding…]")
+    return binding_form(app)
+
+
+async def sent(pilot: Pilot[int], app: BuskApp, bridge: FakeBridge) -> str:
+    """Enter on the form, and the line it ran."""
+    await pilot.press("enter")
+    await settle(pilot, app)
+    assert not isinstance(app.screen, BindingDialog)
+    return bridge.lines()[-1]
+
+
+def test_a_new_binding_drives_each_kind_of_target() -> None:
+    bridge = FakeBridge()
+    app = on_f9(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        dialog = await open_binding_form(pilot, app)
+        assert str(dialog.title_text) == 'NEW BINDING · "nanoKONTROL2" · MIDI'
+        assert dialog.control.has_focus  # the control's chips first
+        assert labels(dialog.action) == [
+            "[fader]", "[button]", "[master]", "[tap]", "[blackout]", "[page]", "[release all]",
+            "[output]",
+        ]  # fmt: skip
+        assert labels(dialog.feedback) == ["[none]", "[led]", "[motor]"]  # MIDI has no display
+        assert await sent(pilot, app, bridge) == 'bind "nanoKONTROL2" cc 1 0 fader 1'
+
+        async def made(choose: Any) -> str:
+            dialog = await open_binding_form(pilot, app)
+            choose(dialog)
+            await pilot.pause()
+            return await sent(pilot, app, bridge)
+
+        def fader_playback(dialog: BindingDialog) -> None:
+            dialog.number.value = "07"  # sent as busk stores it
+            dialog.action.pick("fader")
+            dialog.fader_of.pick("playback")
+            dialog.fader.value = "18"
+            dialog.feedback.pick("motor")
+
+        assert await made(fader_playback) == ('bind "nanoKONTROL2" cc 1 7 fader playback 18 motor')
+
+        def button_led_elsewhere(dialog: BindingDialog) -> None:
+            dialog.control.pick("note")
+            dialog.channel.value, dialog.number.value = "2", "60"
+            dialog.action.pick("button")
+            dialog.slot.value, dialog.button.value = "3", "2"
+            dialog.feedback.pick("led")
+            dialog.where.pick("other")
+            dialog.to_control.pick("note")
+            dialog.to_channel.value, dialog.to_number.value = "2", "61"
+
+        assert await made(button_led_elsewhere) == (
+            'bind "nanoKONTROL2" note 2 60 button 3 2 led note 2 61'
+        )
+        masters = [
+            ("Grand Master", "master gm"), ("FX", 'master "FX"'), ("Speed 2", 'master "Speed 2"')
+        ]  # fmt: skip
+        for name, words in masters:
+
+            def master(dialog: BindingDialog, name: str = name) -> None:
+                dialog.action.pick("master")
+                assert dialog.master is not None
+                assert labels(dialog.master) == ["[gm]", "[FX]", "[Speed 1]", "[Speed 2]"]
+                dialog.master.pick(name)
+
+            assert await made(master) == f'bind "nanoKONTROL2" cc 1 0 {words}'
+        others: list[tuple[str, str, str]] = [
+            ("tap", "", 'tap "Speed 1"'),  # two speed masters: named
+            ("blackout", "momentary", "blackout momentary"),
+            ("blackout", "toggle", "blackout"),
+            ("page", "-1", "page -1"),
+            ("page", "+01", "page +1"),
+            ("page", "2", "page 2"),
+            ("release all", "", "release all"),
+            ("release all", "2.50", "release all 2.5"),
+            ("output", "off", "output off"),
+        ]
+        for action, value, words in others:
+
+            def other(dialog: BindingDialog, action: str = action, value: str = value) -> None:
+                dialog.action.pick(action)
+                if action == "blackout":
+                    dialog.blackout.pick(value)
+                elif action == "page":
+                    dialog.page.value = value
+                elif action == "release all":
+                    dialog.release.value = value
+                elif action == "output":
+                    dialog.output.pick(value)
+
+            assert await made(other) == f'bind "nanoKONTROL2" cc 1 0 {words}'
+
+    drive(app, body)
+
+
+def test_a_clock_taps_and_its_feedback_lights_another_control() -> None:
+    bridge = FakeBridge()
+    app = on_f9(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        dialog = await open_binding_form(pilot, app)
+        await pilot.press("right", "right")  # the control's chips: clock
+        assert dialog.control.chosen == "clock"
+        assert not dialog.numbered.display  # no channel, no number
+        assert not dialog.action_row.display
+        assert dialog.taps_row.display  # a clock only taps
+        assert dialog.speed is not None
+        dialog.speed.pick("Speed 2")
+        dialog.feedback.pick("led")
+        await pilot.pause()
+        assert not dialog.where_row.display  # a clock has no address of its own
+        assert dialog.to_rows.display
+        dialog.to_number.value = "46"
+        assert (
+            await sent(pilot, app, bridge) == 'bind "nanoKONTROL2" clock tap "Speed 2" led cc 1 46'
+        )
+
+    drive(app, body)
+
+
+def test_a_show_without_speed_masters_offers_no_clock_or_tap() -> None:
+    bridge = FakeBridge()
+    bridge.events += [
+        ShowChanged(rig(masters=MASTERS[:1])),  # the grand master alone
+        SurfacesChanged(SURFACES),
+    ]
+    app = make_app(bridge, page=9)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        dialog = await open_binding_form(pilot, app)
+        assert labels(dialog.control) == ["[cc]", "[note]"]
+        assert "[tap]" not in labels(dialog.action)
+        dialog.action.pick("master")
+        assert dialog.master is not None
+        assert labels(dialog.master) == ["[gm]"]
+
+    drive(app, body)
+
+
+def test_an_osc_binding_has_a_path_and_display_feedback() -> None:
+    bridge = FakeBridge()
+    app = on_f9(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        app.query_one(SurfacesPage).choose_surface("TouchOSC")
+        dialog = await open_binding_form(pilot, app)
+        assert str(dialog.title_text) == 'NEW BINDING · "TouchOSC" · OSC'
+        assert not dialog.midi_rows.display
+        assert dialog.path.has_focus
+        assert labels(dialog.feedback) == ["[none]", "[led]", "[motor]", "[display]"]
+        await pilot.press("enter")
+        assert text(dialog.error) == "an OSC path, such as /fader/1"
+        dialog.path.value = "fader/1"
+        await pilot.press("enter")
+        assert text(dialog.error) == "an OSC path, such as /fader/1"
+        dialog.path.value = "/fader/1"
+        dialog.feedback.pick("display")
+        dialog.where.pick("other")
+        await pilot.press("enter")
+        assert text(dialog.error) == "an OSC path, such as /fader/1"  # the display's
+        dialog.to_path.value = '/label "1"'
+        assert await sent(pilot, app, bridge) == (
+            r'bind "TouchOSC" osc "/fader/1" fader 1 display osc "/label \"1\""'
+        )
+
+    drive(app, body)
+
+
+def test_the_form_says_what_is_wrong_first_to_last() -> None:
+    bridge = FakeBridge()
+    app = on_f9(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        dialog = await open_binding_form(pilot, app)
+        wrong = [
+            (dialog.channel, "17", "a MIDI channel from 1 to 16"),
+            (dialog.number, "128", "a CC number from 0 to 127"),
+            (dialog.fader, "0", "a slot from 1"),
+        ]
+        for field, value, _ in wrong:
+            field.value = value
+        for field, _, problem in wrong:
+            await pilot.press("enter")
+            assert text(dialog.error) == problem
+            field.value = "1"
+        dialog.action.pick("page")
+        dialog.page.value = "next"
+        await pilot.press("enter")
+        assert text(dialog.error) == "+1, -1 or a page number"
+        dialog.action.pick("release all")
+        await pilot.pause()
+        assert text(dialog.error) == ""  # it was of a field that went
+        dialog.release.value = "-2"
+        await pilot.press("enter")
+        assert text(dialog.error) == "a time in seconds, such as 2 or 0.5"
+        await pilot.press("escape")
+        await settle(pilot, app)
+        assert bridge.sent == []
+
+    drive(app, body)
+
+
+def test_edit_starts_at_the_binding_and_sends_only_a_change() -> None:
+    bridge = FakeBridge()
+    app = on_f9(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        page = app.query_one(SurfacesPage)
+        for row in (0, 2, 3, 4, 5, 6, 8, 9, 10):  # 7 is from a show file: no [edit…]
+            page.choose_binding(row)
+            dialog = await open_binding_form(pilot, app, edit=True)
+            binding = BINDINGS[row]
+            assert dialog.held == commands.binding_change(
+                binding.id, binding_words(binding, MASTERS)
+            )
+            await pilot.press("enter")  # as it is: nothing
+            await settle(pilot, app)
+        assert bridge.sent == []
+
+        page.choose_binding(4)  # cc 1 23 master gm
+        dialog = await open_binding_form(pilot, app, edit=True)
+        assert str(dialog.title_text) == 'EDIT BINDING cc 1 23 · "nanoKONTROL2"'
+        assert dialog.number.value == "23"
+        assert dialog.master is not None
+        assert dialog.master.chosen == "Grand Master"
+        dialog.master.pick("FX")
+        dialog.feedback.pick("motor")
+        assert await sent(pilot, app, bridge) == 'binding b-5 change cc 1 23 master "FX" motor'
+
+        page.choose_binding(2)  # note 1 36 button 1 1 led
+        dialog = await open_binding_form(pilot, app, edit=True)
+        assert (dialog.control.chosen, dialog.feedback.chosen) == ("note", "led")
+        assert (dialog.slot.value, dialog.button.value) == ("1", "1")
+        dialog.feedback.pick("none")  # a feedback left out goes, as busk's change has it
+        assert await sent(pilot, app, bridge) == "binding b-3 change note 1 36 button 1 1"
+
+        page.choose_binding(6)  # the clock's
+        dialog = await open_binding_form(pilot, app, edit=True)
+        assert dialog.control.chosen == "clock"
+        assert dialog.speed is not None
+        assert dialog.speed.chosen == "Speed 1"
+        dialog.control.pick("cc")
+        dialog.number.value = "46"
+        await pilot.pause()
+        assert dialog.action_row.display
+        assert dialog.action.chosen == "tap"
+        assert await sent(pilot, app, bridge) == 'binding b-7 change cc 1 46 tap "Speed 1"'
+
+    drive(app, body)
+
+
+def test_the_forms_learn_fills_the_control_while_it_is_open_over_f9() -> None:
+    bridge = FakeBridge()
+    app = on_f9(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        page = app.query_one(SurfacesPage)
+        await click_learn(pilot, page.surface_edits)  # F9's: the form's disarms it
+        assert page.learning
+        dialog = await open_binding_form(pilot, app)
+        assert not page.learning
+        assert page.form is dialog
+        await tap(pilot, dialog.learn, "[learn]")
+        assert dialog.learning
+        assert str(dialog.learn.buttons[0].label.spans[0].style) == LEARN_LIT
+        assert labels(dialog.learn)[1] == 'move a control on "nanoKONTROL2"…'
+        others = (
+            heard(1, "cc 1 5", 3, on="TouchOSC"),  # another surface
+            heard(2, "bend 1", 100, on="nanoKONTROL2"),  # bind cannot take it
+            heard(3, "clock", None, on="nanoKONTROL2"),  # comes on its own
+        )
+        bridge.events.append(InputsChanged(others))
+        await settle(pilot, app)
+        assert dialog.learning
+        bridge.events.append(
+            InputsChanged((heard(4, "note 2 61", 90, "button 1 1", on="nanoKONTROL2"),))
+        )
+        await settle(pilot, app)
+        assert not dialog.learning
+        assert (dialog.control.chosen, dialog.channel.value, dialog.number.value) == (
+            "note", "2", "61"
+        )  # fmt: skip
+        assert labels(dialog.learn)[1] == "learned note 2 61 drives button 1 1 already"
+        assert app.prompt.value == ""  # the form's: nothing in the prompt
+        assert await sent(pilot, app, bridge) == 'bind "nanoKONTROL2" note 2 61 fader 1'
+        assert page.form is None
+
+        page.choose_surface("TouchOSC")
+        dialog = await open_binding_form(pilot, app)
+        await tap(pilot, dialog.learn, "[learn]")
+        bridge.events.append(InputsChanged((heard(5, 'osc "/2/fader3"', None),)))
+        await settle(pilot, app)
+        assert dialog.path.value == "/2/fader3"
+
+    drive(app, body)
+
+
+def test_a_bindings_learn_moves_it_to_the_next_control() -> None:
+    bridge = FakeBridge()
+    app = on_f9(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        page = app.query_one(SurfacesPage)
+        await click_learn(pilot, page.surface_edits)
+        page.choose_binding(2)  # note 1 36 button 1 1 led
+        await settle(pilot, app)
+        await tap(pilot, page.binding_edits, "[learn]")
+        assert page.moving
+        assert not page.learning  # one learn mode at a time
+        assert str(page.binding_edits.buttons[1].label.spans[0].style) == LEARN_LIT
+        others = (
+            heard(1, "note 1 36", 90, on="nanoKONTROL2"),  # its own control
+            heard(2, "cc 1 5", 3, on="TouchOSC"),  # another surface
+            heard(3, "bend 1", 100, on="nanoKONTROL2"),
+        )
+        bridge.events.append(InputsChanged(others))
+        await settle(pilot, app)
+        assert page.moving
+        assert bridge.sent == []
+        bridge.events.append(InputsChanged((heard(4, "note 1 37", 90, on="nanoKONTROL2"),)))
+        await settle(pilot, app)
+        assert bridge.lines() == ["binding b-3 change note 1 37 button 1 1 led"]
+        assert not page.moving
+
+        page.choose_binding(7)  # led on note 1 40: a show file's, which [learn] cannot keep
+        assert page.binding_edits.buttons[1].note
+        page.choose_binding(9)  # osc "/1/push3" output off
+        await tap(pilot, page.binding_edits, "[learn]")
+        assert page.moving
+        await pilot.press("escape")
+        assert not page.moving
+        await tap(pilot, page.binding_edits, "[learn]")
+        page.choose_binding(10)  # another binding disarms it
+        assert not page.moving
+        await tap(pilot, page.binding_edits, "[learn]")
+        await click_learn(pilot, page.surface_edits)  # so does the surface's
+        assert (page.learning, page.moving) == (True, False)
+        await tap(pilot, page.binding_edits, "[learn]")
+        app.action_page(1)  # and another page
+        await pilot.pause()
+        assert not page.moving
+        app.action_page(9)
+        await settle(pilot, app)
+        bridge.events.append(InputsChanged((heard(5, 'osc "/9"', None),)))
+        await settle(pilot, app)
+        assert bridge.lines() == ["binding b-3 change note 1 37 button 1 1 led"]
+
+    drive(app, body)
+
+
+def test_delete_asks_first_and_sends_delete_binding() -> None:
+    bridge = FakeBridge()
+    app = on_f9(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        page = app.query_one(SurfacesPage)
+        page.choose_binding(4)
+        await pilot.pause()
+        await tap(pilot, page.binding_edits, "[delete]")
+        await settle(pilot, app)
+        dialog = app.screen
+        assert isinstance(dialog, ConfirmDialog)
+        assert dialog.question == 'Delete binding cc 1 23 → master gm on "nanoKONTROL2"?'
+        await pilot.press("n")
+        await settle(pilot, app)
+        assert bridge.sent == []
+        page.choose_binding(7)  # one the form cannot word goes all the same
+        await pilot.pause()
+        await tap(pilot, page.binding_edits, "[delete]")
+        await settle(pilot, app)
+        await pilot.press("y")
+        await settle(pilot, app)
+        assert bridge.lines() == ["delete binding b-8"]
+
+    drive(app, body)
+
+
+ODD = (
+    BindingInfo("nanoKONTROL2", "bend", 1, "", "fader 3", "", id="b-20",
+                action="fader", values=("slot", "3")),
+    BindingInfo("Pad", "hw", None, "fader1", "fader 4", "", id="b-21",
+                action="fader", values=("slot", "4")),
+    BindingInfo("nanoKONTROL2", "cc", 1, "70", "command RECORD", "", id="b-22"),
+    BindingInfo("Phone", "cc", 1, "71", "blackout", "", id="b-23",
+                action="blackout", values=("toggle",)),
+    BindingInfo("nanoKONTROL2", "cc", 1, "72", "blackout", "display", id="b-24",
+                action="blackout", values=("toggle",), feedback_kind="display"),
+)  # fmt: skip
+"""Bindings from a show file that ``bind`` cannot make."""
+
+
+def test_a_binding_the_form_cannot_word_says_why_under_the_mouse() -> None:
+    assert [unworded(b, next(s for s in SURFACES if s.name == b.surface)) for b in ODD] == [
+        "nanoKONTROL2 does not send bend 1: [delete] removes it",
+        "a binding on a hid surface does nothing: [delete] removes it",
+        "bind cannot make command RECORD: [delete] removes it",
+        "a binding on a web remote does nothing: [delete] removes it",
+        "nanoKONTROL2 has no display: [delete] removes it",
+    ]
+    assert unworded(BINDINGS[7], TOUCH) == "TouchOSC has no note 1 40: [delete] removes it"
+    assert (
+        unworded(BINDINGS[0], None) == "a binding on no surface does nothing: [delete] removes it"
+    )
+    assert [b for b in BINDINGS if unworded(b, NANO if b.surface == NANO.name else TOUCH)] == [
+        BINDINGS[7]
+    ]
+    bridge = FakeBridge()
+    bridge.events += [ShowChanged(rig(bindings=ODD)), SurfacesChanged(SURFACES)]
+    app = make_app(bridge, page=9)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        page = app.query_one(SurfacesPage)
+        hint = app.query_one(HintRow)
+        for row in range(len(ODD)):
+            page.choose_binding(row)
+            assert labels(page.binding_edits) == ["[edit…]", "[learn]", "[delete]"]
+            edit, learn, delete = page.binding_edits.buttons
+            assert edit.note
+            assert learn.note
+            assert not delete.note
+        page.choose_binding(0)
+        await settle(pilot, app)
+        before = text(hint)
+        await pilot.hover(page.binding_edits, offset=(1, 0))
+        await pilot.pause()
+        assert text(hint) == "nanoKONTROL2 does not send bend 1: [delete] removes it"
+        await tap(pilot, page.binding_edits, "[edit…]")  # grey: nothing opens
+        assert not isinstance(app.screen, BindingDialog)
+        await pilot.hover(app.query_one(BindingTable), offset=(1, 1))
+        await pilot.pause()
+        assert text(hint) == before
+        page.choose_surface("Phone")
+        await pilot.pause()
+        grey = labels(page.surface_edits).index("[+ binding…]")
+        lines = [line.plain for line in page.surface_edits.lines(page.surface_edits.size.width)]
+        y = next(y for y, line in enumerate(lines) if "[+ binding…]" in line)
+        await pilot.hover(page.surface_edits, offset=(lines[y].index("[+ binding…]") + 1, y))
+        await pilot.pause()
+        assert page.surface_edits.buttons[grey].note
+        assert text(hint) == UNBOUND["web"]
+        assert bridge.sent == []
+
+    drive(app, body)
+
+
+def test_the_choice_follows_its_binding_by_id() -> None:
+    bridge = FakeBridge()
+    app = on_f9(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        page = app.query_one(SurfacesPage)
+        page.choose_binding(4)  # b-5
+        moved = replace(BINDINGS[4], number="24")
+        bridge.events.append(ShowChanged(rig(bindings=(moved, *BINDINGS[:4], *BINDINGS[5:]))))
+        await settle(pilot, app)
+        assert page.binding == 0
+        assert app.query_one(BindingTable).chosen == 0
+        assert 'cc 1 24 on "nanoKONTROL2"' in page.binding_label.content.plain
+        await pilot.pause()
+        await tap(pilot, page.binding_edits, "[learn]")
+        assert page.moving
+        bridge.events.append(ShowChanged(rig(bindings=BINDINGS[5:])))  # it went
+        await settle(pilot, app)
+        assert page.binding is None
+        assert page.binding_edits.buttons == ()
+        assert not page.moving  # its learn mode went with it
+        app.prompt.value = "go 1"
+        await pilot.press("escape")  # nothing armed: Esc goes on to the prompt
+        assert app.prompt.value == ""
+
+    drive(app, body)
+
+
+def test_the_binding_strip_follows_surfaces_that_come_after_the_show() -> None:
+    """What the form can word depends on the surface's kind: a binding chosen
+    before busk said which surfaces there are is redrawn once it does."""
+    bridge = FakeBridge()
+    bridge.events.append(ShowChanged(rig()))
+    app = make_app(bridge, page=9)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        page = app.query_one(SurfacesPage)
+        page.choose_binding(0)
+        assert page.binding_edits.buttons[0].note  # no surface yet: grey
+        bridge.events.append(SurfacesChanged(SURFACES))
+        await settle(pilot, app)
+        assert labels(page.binding_edits) == ["[edit…]", "[learn]", "[delete]"]
+        assert not page.binding_edits.buttons[0].note
+
+    drive(app, body)
+
+
+def test_the_words_a_binding_is_made_of() -> None:
+    assert what_words("fader", ("slot", "3"), MASTERS) == "fader 3"
+    assert what_words("fader", ("playback", "18"), MASTERS) == "fader playback 18"
+    assert what_words("master", ("Grand Master",), MASTERS) == "master gm"
+    assert what_words("master", ('The "A"',), MASTERS) == r'master "The \"A\""'
+    assert what_words("tap", ("Speed 1",), MASTERS) == 'tap "Speed 1"'
+    assert what_words("tap", ("Speed 1",), MASTERS[:3]) == "tap"  # the only one: unnamed
+    assert what_words("release all", ("",), MASTERS) == "release all"
+    assert binding_words(BINDINGS[2], MASTERS, "note 1 37") == "note 1 37 button 1 1 led"
+    assert binding_words(BINDINGS[7], MASTERS) == 'osc "/1/push1" blackout momentary led note 1 40'
+    assert control_parts('osc "/a \\"b\\""') == ("osc", None, '/a "b"')
+    assert control_parts("cc 1 48") == ("cc", 1, "48")
+    assert control_parts("clock") == ("clock", None, "")

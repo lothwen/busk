@@ -341,8 +341,9 @@ planned and recorded in [the rig plan](../../plans/tui-rig-plan.md).
 | Status dot | `LiveShow.surfaces` (GAP-08): `state`, `detail`; an open web remote's `urls` | S | `surf` | |
 | MONITOR | since 2026-11-18, `LiveShow.inputs` (GAP-13): the newest 64 inputs, each with its control as `bind` takes it, the number the device sent and what it drives; read at 10 Hz while F9 shows (pending plan Phase 37) | S | `inputs` | |
 | BINDINGS: surface, type, channel, number, target | `bindings[]`: input (cc, note, osc, clock), action, feedback | S | `doc` | |
+| BINDINGS set up (not in the spec) | since 2026-11-24, `[+ binding…]` among the chosen surface's edits and a binding's `[edit…]`, a form for `bind` and `binding <id> change` (GAP-63): the control, what it drives, its feedback; a binding's `[delete]`, `delete binding <id>` after the TUI's question (pending plan Phase 41) | S | `doc` | |
 | `val` | the target's level (fader slot → the playback on the current page; master); since 2026-11-18 the number the control sent beside it, as `in` (GAP-13) | S | `snap`, `inputs` | |
-| Learn mode | since 2026-11-18, `[learn]` on the chosen surface: the next input from it pre-fills `bind "<surface>" <input> ` (pending plan Phase 37, Q14 (a)); not on a binding row, since `bind` adds beside a control's bindings | P | `inputs` | |
+| Learn mode | since 2026-11-18, `[learn]` on the chosen surface: the next input from it pre-fills `bind "<surface>" <input> ` (pending plan Phase 37, Q14 (a)); since 2026-11-24 also on a binding row, as the spec has it: the next input from its surface moves the binding there with `binding <id> change` (GAP-63), and the binding form's `[learn]` fills its control (pending plan Phase 41) | S | `inputs` | |
 
 ### 2.11 Spec §9, "Data the engine must expose"
 

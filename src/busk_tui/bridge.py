@@ -1711,14 +1711,20 @@ def binding_info(binding: Mapping[str, Any], doc: Show, names: _Names) -> Bindin
     surface = next((s["name"] for s in doc["surfaces"] if s["id"] == binding["surfaceId"]), "")
     kind, channel, number = _input_words(binding["input"])
     what, target = _action_words(binding["action"], doc, names)
-    feedback = ""
+    feedback = feedback_kind = ""
+    feedback_to = None
     if "feedback" in binding:
         given = binding["feedback"]
-        feedback = _FEEDBACK_WORDS.get(given["kind"], given["kind"])
+        feedback = feedback_kind = _FEEDBACK_WORDS.get(given["kind"], given["kind"])
         if given["address"] != binding["input"]:
-            address = _input_words(given["address"])
-            feedback += " " + BindingInfo("", *address, "", "").input
-    return BindingInfo(surface, kind, channel, number, what, feedback, target)
+            feedback_to = _input_words(given["address"])
+            feedback += " " + BindingInfo("", *feedback_to, "", "").input
+    action, values = _action_fields(binding["action"], doc)
+    return BindingInfo(
+        surface, kind, channel, number, what, feedback, target,
+        id=binding["id"], action=action, values=values,
+        feedback_kind=feedback_kind, feedback_to=feedback_to,
+    )  # fmt: skip
 
 
 def _input_words(given: Mapping[str, Any]) -> tuple[str, int | None, str]:
@@ -1780,6 +1786,37 @@ def _action_words(
                 return f"output {'on' if command['on'] else 'off'}", None
             return f"command {command['type']}", None
     return str(action["kind"]), None
+
+
+def _action_fields(action: Mapping[str, Any], doc: Show) -> tuple[str, tuple[str, ...]]:
+    """What a binding drives as F9's binding form starts from it: its chip
+    and its fields (see :class:`BindingInfo`); ``("", ())`` for what ``bind``
+    cannot word, a command but ``release all`` and ``output`` among them."""
+    masters = {master["id"]: master["name"] for master in doc["masters"]}
+    match action["kind"]:
+        case "playbackFader":
+            return "fader", ("slot", str(action["slot"] + 1))
+        case "playbackFaderAbs":
+            number = next(
+                (p["number"] for p in doc["playbacks"] if p["id"] == action["playbackId"]), None
+            )
+            return ("", ()) if number is None else ("fader", ("playback", str(number)))
+        case "playbackButton":
+            return "button", (str(action["slot"] + 1), str(action["button"] + 1))
+        case "master" | "tap" if action["masterId"] in masters:
+            return action["kind"], (masters[action["masterId"]],)
+        case "blackout":
+            return "blackout", ("momentary" if action.get("momentary") else "toggle",)
+        case "page":
+            return "page", (f"{action['delta']:+d}",)
+        case "pageAbs":
+            return "page", (str(action["number"]),)
+        case "command" if action["command"]["type"] == "RELEASE_ALL":
+            time = action["command"].get("time")
+            return "release all", ("" if time is None else commands.exact(time),)
+        case "command" if action["command"]["type"] == "OUTPUT":
+            return "output", ("on" if action["command"]["on"] else "off",)
+    return "", ()
 
 
 def session_state(status: SessionStatus) -> SessionState:
