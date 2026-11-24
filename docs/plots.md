@@ -167,8 +167,15 @@ Pools of light land on them. The audience's floor is the scenery's lowest point.
 The crowd stands in front of the plot's stage, sized to it, wherever the plot's origin is: the
 middle of the deck, a corner of the venue or busk's own. The stage is what of the scenery stands
 on the floor (decks, risers, walls, towers, a PA stacked on the floor; not what is flown), the
-largest block of it where several stand apart, and its downstage edge faces the crowd. A wrong
-`audience` still shows here: the crowd faces the stage's side or its back.
+block of it with the most floor under the rig where several stand apart, and its downstage
+edge faces the crowd. A wrong `audience` still shows here: the crowd faces the stage's side or
+its back.
+
+A plot may bring its own house: a crowd, barriers, a mix position, anything standing on the
+floor more than 2 m in front of its stage. busk then draws none of its own: no crowd, stands,
+barrier or mix position. A plot drawn inside a box of its own, the venue's walls and roof
+around the whole rig, shows the box from inside: from the house you see its walls and roof,
+and from outside you look in through its near side.
 
 busk reads the scenery from the plot's file each time a view opens, so keep the plot where
 the show says it is (beside the show, as a rule). The show keeps only the plot's path, so it

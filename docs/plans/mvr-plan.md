@@ -615,8 +615,8 @@ that day: Import plot… in the File menu as well, and the file picker to choose
      untrusted.
   2. With scenery, busk draws no deck, and no backcloth and no trusses of its own either: the
      plot has its own. The house (crowd, stands, PA, barrier, mix position) stays, on the
-     scenery's floor. (Changed in Phase 6, §11: no PA, and the house in front of the plot's
-     stage.)
+     scenery's floor. (Changed in Phase 6, §11: no PA, the house in front of the plot's stage,
+     and none when the plot brings its own.)
   3. Pools land on the scenery (a raycast on its meshes) or the floor. A beam keeps its landing
      until it moves, and at most 24 moving beams a frame look again, those waiting longest
      first, so a pool may trail a fast beam by a few frames.
@@ -700,6 +700,32 @@ that day: Import plot… in the File menu as well, and the file picker to choose
   and F1 C are unchanged. Checked headless: test2 as saved, Circle_Stage with the default frame
   (its round stage stood 4 m into the crowd too), and festival.show, unchanged. Not handled: a
   plot that draws the venue's walls, touching the stage, may take the room for the stage.
+- **A plot that brings the whole venue** (Phase 6, 2026-11-24, the user's
+  key_arena_remake_mvr.show from `Key_Arena_Remake_MVR.mvr`, Capture 2022.0.30). The plot draws
+  the venue as one closed box, 40 × 100 × 20 m with a roof, around everything, and its own house
+  inside it: about 730 figures of a crowd, barriers, a mix position. `stageOf` took the box for
+  the stage (it stands on the floor), so `shift` put the box's far wall at busk's 0: busk's
+  crowd, stands and camera stood outside it, looking at a wall. The box's faces look out and are
+  drawn on one side, so from inside it was not there. The user's call: the plot's own venue and
+  house are drawn, busk's are not. Fixed in the page alone:
+  - A shell, a part holding nearly every fixture and the middles of nearly all the other parts
+    (90 %), is left out of `stageOf` and drawn with only its faces that look in, found by how
+    they wind (`lookingIn`).
+  - The stage is the block with the most floor under the rig (its parts with a fixture over
+    them), then the most floor: the plot's crowd covered 272 m² against the stage's 346 m².
+    Counting the fixtures over a block's parts was tried and dropped: Demoshow_grandMA3 hangs
+    115 fixtures on a flat wall upstage.
+  - Anything standing on the floor more than 2 m in front of the stage makes the house the
+    plot's (`housed`): busk draws no barrier, mix position, stands or crowd.
+  - busk's ground gives way to a floor at its height (a polygon offset): the box's floor, 1 cm
+    above it, showed through it in stripes from afar.
+
+  Checked on the user's seven plots: only this one has a shell or a house, and the other six
+  find the same stage as before. Checked headless (WebGPU and WebGL 2) on it, on
+  demostage_mvr.show and on festival.show. Not handled: a venue drawn as several parts (each
+  wall its own) has no shell; a lone tower out in the house turns busk's crowd off. Also found:
+  this plot's GDTFs are placeholders of another kind, every channel a plain `Dimmer`, so they
+  import, and all 168 fixtures have intensity only.
 - **Capture's plots carry placeholder GDTFs** (Phase 6, 2026-11-24, `Capture_Demo.mvr` from
   Capture 2023.1.6 and `Template_Stage1.mvr` from Capture 2024.0.34). Each of their ten GDTFs
   has the fixture's modes and channel counts and nothing else: every channel is an 8-bit

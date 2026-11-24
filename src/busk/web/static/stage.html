@@ -12,7 +12,8 @@
   the page. The phone page shows it in a frame; small, it hides the key help
   and the haze panel. A rig from a plot brings the plot's scenery, which the
   page loads from busk (/stage/scenery/<file>) and draws in place of the deck
-  and the PA, the house in front of the plot's stage wherever its origin is.
+  and the PA, the house in front of the plot's stage wherever its origin is,
+  or none when the plot brings its own.
 
   It loads three.js from jsDelivr: the browser needs the internet the first
   time (it caches it after that). It draws with WebGPU, or with WebGL 2 in a
@@ -116,7 +117,8 @@ const rad = (degrees) => degrees * Math.PI / 180;
 // 1.6), and a 3DS file's own master scale is not taken. Each mesh is drawn
 // once for all the places its model stands. With scenery busk draws no deck,
 // backcloth, truss or PA of its own, and the audience's floor is the scenery's
-// lowest point, or busk's 0 when the scenery is all above it.
+// lowest point, or busk's 0 when the scenery is all above it. A plot that
+// brings its own house gets none of busk's.
 const manager = new THREE.LoadingManager();
 manager.setURLModifier((url) => /^(blob|data):/.test(url) ? url
   : url + (url.includes('?') ? '&' : '?') + location.search.slice(1));
@@ -165,11 +167,33 @@ const H = plotted ? Math.max(0, -new THREE.Box3().setFromObject(scenery.group).m
 // The plot's stage: what of its scenery stands on the floor (its bottom less
 // than REACH above it, its top higher than a rug's: decks, risers, walls,
 // towers, a PA stacked on the floor; not what is flown), in blocks of parts
-// that touch or nearly, the block over the most floor. Its footprint, or null
-// when nothing stands on the floor.
-const REACH = 3, RUG = 0.2, TOUCH = 0.5;   // metres
-function stageOf(parts, floor) {
-  const low = parts.filter((b) => b.min.z < floor + REACH && b.max.z > floor + RUG);
+// that touch or nearly, the block with the most floor under the rig (in its
+// parts with a fixture over them: a crowd may cover more floor than the
+// stage does), then the most floor. Its footprint, or null when nothing
+// stands on the floor.
+//
+// A plot may stand in a box of its own, the venue's walls and roof: a shell,
+// a part that holds nearly every fixture (HELD of them) and the middles of
+// nearly all the other parts. A shell is no part of the stage, and is drawn
+// from inside (lookingIn). The plot brings its own house (a crowd, barriers,
+// a mix position) when anything of it stands on the floor more than PIT in
+// front of its stage.
+const REACH = 3, RUG = 0.2, TOUCH = 0.5, PIT = 2, HELD = 0.9;   // metres; a share
+const standing = (b, floor) => b.min.z < floor + REACH && b.max.z > floor + RUG;
+const over = (b, p) => p.x >= b.min.x && p.x <= b.max.x && p.y >= b.min.y && p.y <= b.max.y;
+function shellsOf(parts, fixtures) {
+  const middles = parts.map((b) => ({ x: (b.min.x + b.max.x) / 2, y: (b.min.y + b.max.y) / 2,
+                                      z: (b.min.z + b.max.z) / 2 }));
+  const most = (b, points, spare) => {   // whether b holds all the points but `spare` of them
+    for (const p of points)
+      if (!(over(b, p) && p.z >= b.min.z && p.z <= b.max.z) && --spare < 0) return false;
+    return true;
+  };
+  return parts.filter((b) => most(b, fixtures, (1 - HELD) * fixtures.length)
+                          && most(b, middles, (1 - HELD) * (parts.length - 1)));
+}
+function stageOf(parts, floor, fixtures = []) {
+  const low = parts.filter((b) => standing(b, floor));
   const up = low.map((_, i) => i);   // the way from each part to its block's first
   const first = (i) => { while (up[i] !== i) i = up[i] = up[up[i]]; return i; };
   const near = (a, b) => a.min.x < b.max.x + TOUCH && b.min.x < a.max.x + TOUCH
@@ -180,33 +204,63 @@ function stageOf(parts, floor) {
   const blocks = new Map();
   low.forEach((b, i) => {
     const block = blocks.get(first(i)) ?? { min: { x: Infinity, y: Infinity },
-                                            max: { x: -Infinity, y: -Infinity }, floor: 0 };
+                                            max: { x: -Infinity, y: -Infinity }, floor: 0, lit: 0 };
     block.min.x = Math.min(block.min.x, b.min.x);
     block.min.y = Math.min(block.min.y, b.min.y);
     block.max.x = Math.max(block.max.x, b.max.x);
     block.max.y = Math.max(block.max.y, b.max.y);
-    block.floor += (b.max.x - b.min.x) * (b.max.y - b.min.y);
+    const area = (b.max.x - b.min.x) * (b.max.y - b.min.y);
+    block.floor += area;
+    if (!fixtures.length || fixtures.some((p) => over(b, p))) block.lit += area;
     blocks.set(first(i), block);
   });
   let stage = null;
-  for (const block of blocks.values()) if (!stage || block.floor > stage.floor) stage = block;
+  for (const block of blocks.values())
+    if (!stage || block.lit > stage.lit || (block.lit === stage.lit && block.floor > stage.floor))
+      stage = block;
   return stage;
 }
+const inHouse = (parts, stage, floor) =>
+  parts.some((b) => standing(b, floor) && b.min.y > stage.max.y + PIT);
 function partsOf(group) {   // the box of each mesh at each place it stands
   const parts = [], at = new THREE.Matrix4();
   for (const mesh of group.children)
     for (let i = 0; i < mesh.count; i++) {
       mesh.getMatrixAt(i, at);
-      parts.push(mesh.geometry.boundingBox.clone().applyMatrix4(at));
+      parts.push(Object.assign(mesh.geometry.boundingBox.clone().applyMatrix4(at), { mesh, i }));
     }
   return parts;
+}
+// A shell shows only its faces that look in: from the house, its walls and
+// roof around the camera; from outside, the box open on the camera's side.
+// Which faces those are is how they wind: the volume they wrap, taken from
+// its middle, is positive when they look out.
+function lookingIn({ mesh, i }) {
+  const at = new THREE.Matrix4(), middle = new THREE.Vector3();
+  mesh.getMatrixAt(i, at);
+  mesh.geometry.boundingBox.getCenter(middle).applyMatrix4(at);
+  const { index, attributes: { position } } = mesh.geometry;
+  const corner = (k) => new THREE.Vector3()
+    .fromBufferAttribute(position, index ? index.getX(k) : k).applyMatrix4(at).sub(middle);
+  let volume = 0;
+  for (let k = 0; k + 2 < (index ?? position).count; k += 3)
+    volume += corner(k).dot(corner(k + 1).cross(corner(k + 2)));
+  const side = volume > 0 ? THREE.BackSide : THREE.FrontSide;
+  const inward = (m) => Object.assign(m.clone(), { side });
+  mesh.material = Array.isArray(mesh.material) ? mesh.material.map(inward) : inward(mesh.material);
 }
 // A plot's origin may be anywhere on its stage, or off it: the rig is drawn
 // moved by `shift`, which puts the middle of its stage's downstage edge at
 // busk's 0, so the house stands in front of the stage as it does of busk's
 // deck, sized to it. Without a plot, or with nothing of it on the floor, the
 // deck is sized to the rig (stage.py) and nothing moves.
-const found = plotted ? stageOf(partsOf(scenery.group), -H) : null;
+const spots = rig.fixtures.map((f) => f.loc);   // where the fixtures are, before `shift`
+const parts = plotted ? partsOf(scenery.group) : [];
+const shells = new Set(shellsOf(parts, spots));
+shells.forEach(lookingIn);
+const rest = parts.filter((b) => !shells.has(b));
+const found = plotted ? stageOf(rest, -H, spots) : null;
+const housed = found !== null && inHouse(rest, found, -H);   // the plot brings its own house
 const W = found ? found.max.x - found.min.x : rig.stage.width;
 const D = found ? found.max.y - found.min.y : rig.stage.depth;
 const shift = found ? new THREE.Vector3(-(found.min.x + found.max.x) / 2, -found.max.y, 0)
@@ -267,6 +321,7 @@ scene.add(work);
 
 // ------------------------------------------------------------------ venue
 // Scenery, the same for every show, sized to its stage: an arena around it.
+// A plot that brings its own house (`housed`) gets only the ground.
 const surface = (color, roughness = 0.85, metalness = 0) =>
   new THREE.MeshStandardMaterial({ color, roughness, metalness });
 const BODY = surface(0x17181b, 0.5, 0.5);
@@ -291,10 +346,14 @@ else {   // the deck
   stage.add(deck);
 }
 // The ground, under the arena and out to the horizon, where the fog takes it.
-// It glows a little of its own, or the dim house would leave it black.
+// It glows a little of its own, or the dim house would leave it black. It
+// gives way to a floor of the plot's at its height or a hair above (seen from
+// afar, they would show through each other in stripes).
 const GROUND = 1000;
-add(new THREE.PlaneGeometry(GROUND, GROUND), surface(0x2a2c31, 0.95), 0, 0, FLOOR)
-  .material.emissive.setHex(0x0d0e11);
+const ground = add(new THREE.PlaneGeometry(GROUND, GROUND), surface(0x2a2c31, 0.95), 0, 0, FLOOR);
+ground.material.emissive.setHex(0x0d0e11);
+Object.assign(ground.material,
+              { polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 4 });
 scene.fog = new THREE.Fog(scene.background, 60, 300);
 
 // The backcloth, on a pipe behind the deck.
@@ -308,13 +367,15 @@ if (!plotted) {
 // The crowd barrier, closing the pit in front of the stage, and the mix
 // position: a riser with two desks.
 const RAIL = surface(0x5c5f66, 0.5, 0.6);
-add(new THREE.BoxGeometry(W + 2, 0.06, 1.1), RAIL, 0, BARRIER, FLOOR + 0.55);
-for (const side of [-1, 1])
-  add(new THREE.BoxGeometry(0.06, BARRIER, 1.1), RAIL,
-      side * (W / 2 + 1), BARRIER / 2, FLOOR + 0.55);
-add(new THREE.BoxGeometry(6, 4, 0.4), BODY, 0, FOH + 2, FLOOR + 0.2);
-for (const side of [-1, 1])
-  add(new THREE.BoxGeometry(2.2, 0.9, 0.9), BODY, side * 1.3, FOH + 1.2, FLOOR + 0.85);
+if (!housed) {
+  add(new THREE.BoxGeometry(W + 2, 0.06, 1.1), RAIL, 0, BARRIER, FLOOR + 0.55);
+  for (const side of [-1, 1])
+    add(new THREE.BoxGeometry(0.06, BARRIER, 1.1), RAIL,
+        side * (W / 2 + 1), BARRIER / 2, FLOOR + 0.55);
+  add(new THREE.BoxGeometry(6, 4, 0.4), BODY, 0, FOH + 2, FLOOR + 0.2);
+  for (const side of [-1, 1])
+    add(new THREE.BoxGeometry(2.2, 0.9, 0.9), BODY, side * 1.3, FOH + 1.2, FLOOR + 0.85);
+}
 
 // The PA: a main hang and an outfill either side of the stage, flown and
 // curving down at the floor, and a row of subs on the floor under the lip.
@@ -350,76 +411,78 @@ if (!plotted) {
   }
 }
 
-// Stands on three sides of the floor: a wall, rows of steps, a back wall.
-const SEAT_ROWS = 14, RISE = 0.45, TREAD = 0.85, WALL = 2.5, SIDES_FROM = -2;
-const profile = new THREE.Shape().moveTo(0, 0);   // across a stand: out, up
-for (let row = 0; row < SEAT_ROWS; row++)
-  profile.lineTo(row * TREAD, WALL + row * RISE).lineTo((row + 1) * TREAD, WALL + row * RISE);
-const deep = SEAT_ROWS * TREAD, high = WALL + SEAT_ROWS * RISE + 2;
-profile.lineTo(deep, high).lineTo(deep + 0.3, high).lineTo(deep + 0.3, 0);
-const STANDS = [   // where each starts, the way it runs, the way it rises
-  { length: BACK - SIDES_FROM, origin: [HALF, BACK], along: [0, -1], out: [1, 0] },
-  { length: BACK - SIDES_FROM, origin: [-HALF, SIDES_FROM], along: [0, 1], out: [-1, 0] },
-  { length: 2 * HALF, origin: [-HALF, BACK], along: [1, 0], out: [0, 1] },
-];
-const SEATS = surface(0x1c202c, 0.9);
-for (const { length, origin, along, out } of STANDS) {
-  const mesh = new THREE.Mesh(
-    new THREE.ExtrudeGeometry(profile, { depth: length, bevelEnabled: false }), SEATS);
-  mesh.matrixAutoUpdate = false;
-  mesh.matrix.makeBasis(new THREE.Vector3(out[0], out[1], 0), new THREE.Vector3(0, 0, 1),
-                        new THREE.Vector3(along[0], along[1], 0))
-    .setPosition(origin[0], origin[1], FLOOR);
-  stage.add(mesh);
-}
-
-// The audience, still: thick at the barrier and thinner to the back and the
-// sides, the stands half full, the crew at the desks. Two figures, hands
-// down and hands up, each drawn as one instanced mesh.
-let seed = 7;
-const random = () => (seed = seed * 16807 % 2147483647) / 2147483647;
-const crowd = [[], []];   // [x, y, z] of each person, hands down and hands up
-const person = (x, y, z) => crowd[random() < 0.2 ? 1 : 0].push([x, y, z]);
-for (let y = BARRIER + 0.6; y < BACK - 0.5; y += 0.65)
-  for (let x = -HALF + 0.5; x < HALF - 0.5; x += 0.65) {
-    const atFoh = Math.abs(x) < 4 && y > FOH - 1 && y < FOH + 5;
-    const thick = 0.95 - 0.6 * (y - BARRIER) / (BACK - BARRIER)
-                - 0.5 * Math.max(0, Math.abs(x) - W / 2 - 2) / HALF;
-    if (!atFoh && random() < thick)
-      person(x + 0.4 * (random() - 0.5), y + 0.4 * (random() - 0.5), FLOOR);
-  }
-for (const { length, origin, along, out } of STANDS)
+if (!housed) {
+  // Stands on three sides of the floor: a wall, rows of steps, a back wall.
+  const SEAT_ROWS = 14, RISE = 0.45, TREAD = 0.85, WALL = 2.5, SIDES_FROM = -2;
+  const profile = new THREE.Shape().moveTo(0, 0);   // across a stand: out, up
   for (let row = 0; row < SEAT_ROWS; row++)
-    for (let s = 0.4; s < length - 0.4; s += 0.55) {
-      const u = (row + 0.5) * TREAD;
-      if (random() < 0.5)
-        person(origin[0] + along[0] * s + out[0] * u, origin[1] + along[1] * s + out[1] * u,
-               FLOOR + WALL + row * RISE);
-    }
-for (const x of [-1.3, 0, 1.3]) person(x, FOH + 2.2, FLOOR + 0.4);
-
-function figure(handsUp) {
-  const parts = [
-    new THREE.CylinderGeometry(0.2, 0.13, 1.45, 6).translate(0, 0.725, 0),
-    new THREE.SphereGeometry(0.11, 6, 4).translate(0, 1.6, 0),
+    profile.lineTo(row * TREAD, WALL + row * RISE).lineTo((row + 1) * TREAD, WALL + row * RISE);
+  const deep = SEAT_ROWS * TREAD, high = WALL + SEAT_ROWS * RISE + 2;
+  profile.lineTo(deep, high).lineTo(deep + 0.3, high).lineTo(deep + 0.3, 0);
+  const STANDS = [   // where each starts, the way it runs, the way it rises
+    { length: BACK - SIDES_FROM, origin: [HALF, BACK], along: [0, -1], out: [1, 0] },
+    { length: BACK - SIDES_FROM, origin: [-HALF, SIDES_FROM], along: [0, 1], out: [-1, 0] },
+    { length: 2 * HALF, origin: [-HALF, BACK], along: [1, 0], out: [0, 1] },
   ];
-  for (const side of handsUp ? [-1, 1] : [])
-    parts.push(new THREE.CylinderGeometry(0.035, 0.035, 0.7, 4).translate(0, 0.35, 0)
-      .rotateZ(-side * 0.3).translate(side * 0.17, 1.38, 0));
-  return mergeGeometries(parts).rotateX(Math.PI / 2);   // standing on z = 0
-}
-const CLOTHES = surface(0xffffff, 0.9);
-crowd.forEach((where, handsUp) => {
-  const mesh = new THREE.InstancedMesh(figure(handsUp), CLOTHES, where.length);
-  const m = new THREE.Matrix4(), tone = new THREE.Color();
-  where.forEach(([x, y, z], i) => {
-    const tall = 0.9 + 0.2 * random();
-    m.makeRotationZ(2 * Math.PI * random()).scale(new THREE.Vector3(tall, tall, tall));
-    mesh.setMatrixAt(i, m.setPosition(x, y, z));
-    mesh.setColorAt(i, tone.setHSL(random(), 0.15 + 0.15 * random(), 0.05 + 0.12 * random()));
+  const SEATS = surface(0x1c202c, 0.9);
+  for (const { length, origin, along, out } of STANDS) {
+    const mesh = new THREE.Mesh(
+      new THREE.ExtrudeGeometry(profile, { depth: length, bevelEnabled: false }), SEATS);
+    mesh.matrixAutoUpdate = false;
+    mesh.matrix.makeBasis(new THREE.Vector3(out[0], out[1], 0), new THREE.Vector3(0, 0, 1),
+                          new THREE.Vector3(along[0], along[1], 0))
+      .setPosition(origin[0], origin[1], FLOOR);
+    stage.add(mesh);
+  }
+
+  // The audience, still: thick at the barrier and thinner to the back and the
+  // sides, the stands half full, the crew at the desks. Two figures, hands
+  // down and hands up, each drawn as one instanced mesh.
+  let seed = 7;
+  const random = () => (seed = seed * 16807 % 2147483647) / 2147483647;
+  const crowd = [[], []];   // [x, y, z] of each person, hands down and hands up
+  const person = (x, y, z) => crowd[random() < 0.2 ? 1 : 0].push([x, y, z]);
+  for (let y = BARRIER + 0.6; y < BACK - 0.5; y += 0.65)
+    for (let x = -HALF + 0.5; x < HALF - 0.5; x += 0.65) {
+      const atFoh = Math.abs(x) < 4 && y > FOH - 1 && y < FOH + 5;
+      const thick = 0.95 - 0.6 * (y - BARRIER) / (BACK - BARRIER)
+                  - 0.5 * Math.max(0, Math.abs(x) - W / 2 - 2) / HALF;
+      if (!atFoh && random() < thick)
+        person(x + 0.4 * (random() - 0.5), y + 0.4 * (random() - 0.5), FLOOR);
+    }
+  for (const { length, origin, along, out } of STANDS)
+    for (let row = 0; row < SEAT_ROWS; row++)
+      for (let s = 0.4; s < length - 0.4; s += 0.55) {
+        const u = (row + 0.5) * TREAD;
+        if (random() < 0.5)
+          person(origin[0] + along[0] * s + out[0] * u, origin[1] + along[1] * s + out[1] * u,
+                 FLOOR + WALL + row * RISE);
+      }
+  for (const x of [-1.3, 0, 1.3]) person(x, FOH + 2.2, FLOOR + 0.4);
+
+  function figure(handsUp) {
+    const parts = [
+      new THREE.CylinderGeometry(0.2, 0.13, 1.45, 6).translate(0, 0.725, 0),
+      new THREE.SphereGeometry(0.11, 6, 4).translate(0, 1.6, 0),
+    ];
+    for (const side of handsUp ? [-1, 1] : [])
+      parts.push(new THREE.CylinderGeometry(0.035, 0.035, 0.7, 4).translate(0, 0.35, 0)
+        .rotateZ(-side * 0.3).translate(side * 0.17, 1.38, 0));
+    return mergeGeometries(parts).rotateX(Math.PI / 2);   // standing on z = 0
+  }
+  const CLOTHES = surface(0xffffff, 0.9);
+  crowd.forEach((where, handsUp) => {
+    const mesh = new THREE.InstancedMesh(figure(handsUp), CLOTHES, where.length);
+    const m = new THREE.Matrix4(), tone = new THREE.Color();
+    where.forEach(([x, y, z], i) => {
+      const tall = 0.9 + 0.2 * random();
+      m.makeRotationZ(2 * Math.PI * random()).scale(new THREE.Vector3(tall, tall, tall));
+      mesh.setMatrixAt(i, m.setPosition(x, y, z));
+      mesh.setColorAt(i, tone.setHSL(random(), 0.15 + 0.15 * random(), 0.05 + 0.12 * random()));
+    });
+    stage.add(mesh);
   });
-  stage.add(mesh);
-});
+}
 
 // A truss over every row of fixtures hung at the same depth and height (with
 // scenery, the plot's own).

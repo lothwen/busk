@@ -189,6 +189,7 @@ const box = (x0, y0, z0, x1, y1, z1) => ({ min: { x: x0, y: y0, z: z0 },
                                            max: { x: x1, y: y1, z: z1 } });
 %s
 // Demostage's scenery, its origin in the middle of its deck, on the floor.
+const riser = box(-3, 20, 0, 3, 24, 0.4);   // the mix riser, out in the audience
 const plot = [
   box(-6, -4, 1.0, 6, 4, 1.1),            // the deck's top
   box(-6, 3.9, 0, 6, 4, 1.0),             // its skirt, at the front
@@ -197,12 +198,56 @@ const plot = [
   box(-9, -0.17, 0, -4.5, -0.07, 8),      // the other
   box(-9, 6.36, 9, 9, 6.64, 9.29),        // the front of house truss, flown
   box(7.21, 3.56, 6.6, 7.79, 4.16, 8.5),  // a PA hang, flown
-  box(-3, 20, 0, 3, 24, 0.4),             // the mix riser, out in the audience
+  riser,
   box(-50, -50, -0.05, 50, 50, 0),        // the venue's floor
 ];
 const trusses = [box(-9, -4.14, 7.5, 9, -3.86, 7.79), box(-9, 3.86, 8.5, 9, 4.14, 8.79)];
-console.log(JSON.stringify({ plot: stageOf(plot, 0), trusses: stageOf(trusses, 0) }));
+const rig = [{ x: -5, y: -4, z: 7.4 }, { x: 5, y: -4, z: 7.4 }, { x: 0, y: 4, z: 8.4 },
+             { x: 0, y: 6.5, z: 8.9 }];   // on the trusses, and the front of house one
+const stage = stageOf(plot, 0);
+console.log(JSON.stringify({
+  plot: stage, rigged: stageOf(plot, 0, rig), trusses: stageOf(trusses, 0),
+  shells: shellsOf(plot, rig).length,
+  housed: inHouse(plot.filter((b) => b !== riser), stage, 0), riser: inHouse(plot, stage, 0),
+}));
 """
+
+HALL = """
+const box = (x0, y0, z0, x1, y1, z1) => ({ min: { x: x0, y: y0, z: z0 },
+                                           max: { x: x1, y: y1, z: z1 } });
+%s
+// A venue drawn whole, as Key_Arena_Remake_MVR.mvr draws it: a closed box
+// around it all, the deck with the rig over it, and a crowd of flat figures
+// in rows, over more floor than the deck, a truss of the rig over them.
+const hall = box(-20, -8.4, 0, 20, 91.6, 20);
+const deck = box(-10, -5, 0, 10, 2.4, 1.2);
+const crowd = [];
+for (let y = 9; y < 41; y += 0.5) crowd.push(box(-19, y, 0, 19, y + 0.1, 2.4));
+const rig = [{ x: -8, y: -3, z: 8 }, { x: 8, y: -3, z: 8 }, { x: 0, y: 0, z: 8 },
+             { x: 0, y: 17.5, z: 13.7 }];
+const parts = [hall, deck, ...crowd];
+const shells = shellsOf(parts, rig);
+const rest = parts.filter((b) => !shells.includes(b));
+const stage = stageOf(rest, 0, rig);
+console.log(JSON.stringify({
+  shells: shells.map((b) => parts.indexOf(b)), stage, housed: inHouse(rest, stage, 0),
+  withHall: stageOf(parts, 0, rig), byFloor: stageOf(rest, 0),
+}));
+"""
+
+
+def run_stage_block(script: str) -> dict[str, Any]:
+    """``script`` run in node with the page's own stage block (``stageOf``,
+    ``shellsOf``, ``inHouse`` and what they use) in place of its ``%s``."""
+    page = stage_page().decode()
+    block = re.search(r"^const REACH = .*?(?=^function partsOf)", page, re.M | re.S)
+    assert block is not None
+    done = subprocess.run(
+        ["node", "-e", script % block.group(0)], capture_output=True, text=True, timeout=30
+    )
+    assert done.returncode == 0, done.stderr
+    seen: dict[str, Any] = json.loads(done.stdout)
+    return seen
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="needs node to run the page's script")
@@ -210,18 +255,30 @@ def test_the_stage_of_a_plot_is_what_stands_on_the_floor() -> None:
     """The page's own ``stageOf``, run in node: the stage is the block of
     scenery standing on the floor that covers the most of it. What is flown,
     a riser apart from the stage and the floor itself are not the stage; a
-    plot with nothing on the floor has none."""
-    page = stage_page().decode()
-    block = re.search(r"^const REACH = .*?^}$", page, re.M | re.S)
-    assert block is not None
-    done = subprocess.run(
-        ["node", "-e", STAGE % block.group(0)], capture_output=True, text=True, timeout=30
-    )
-    assert done.returncode == 0, done.stderr
-    seen = json.loads(done.stdout)
-    stage = seen["plot"]
-    assert (stage["min"], stage["max"]) == ({"x": -9, "y": -4.17}, {"x": 9, "y": 4})
+    plot with nothing on the floor has none. The plot has no shell, and its
+    house is busk's unless something of it stands out there (the riser)."""
+    seen = run_stage_block(STAGE)
+    for stage in (seen["plot"], seen["rigged"]):
+        assert (stage["min"], stage["max"]) == ({"x": -9, "y": -4.17}, {"x": 9, "y": 4})
     assert seen["trusses"] is None
+    assert seen["shells"] == 0
+    assert seen["housed"] is False
+    assert seen["riser"] is True
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="needs node to run the page's script")
+def test_a_plot_in_a_hall_of_its_own_brings_its_house() -> None:
+    """A part holding the whole rig and nearly all the scenery is the venue's
+    shell: left out, the stage is the deck under the rig, not the crowd over
+    more floor, and the crowd standing in front makes the house the plot's.
+    With the shell in, the hall is taken for the stage."""
+    seen = run_stage_block(HALL)
+    assert seen["shells"] == [0]
+    stage = seen["stage"]
+    assert (stage["min"], stage["max"]) == ({"x": -10, "y": -5}, {"x": 10, "y": 2.4})
+    assert seen["housed"] is True
+    assert seen["withHall"]["max"]["y"] == 91.6
+    assert seen["byFloor"]["min"]["y"] == 9
 
 
 # --------------------------------------------------------------------- the plot's scenery
