@@ -43,7 +43,9 @@ A show whose rig came from a plot (``rig import``, MVR plan Phase 5) draws the
 plot's trusses and set in place of the deck: the models of its ``Truss``,
 ``Support``, ``SceneObject``, ``VideoScreen`` and ``Projector`` objects
 (:attr:`busk.importers.mvr.Plot.scenery`), each placed through the show's
-frame (:func:`busk.importers.mvr.scenery_matrix`). The plot is the show's
+frame (:func:`busk.importers.mvr.scenery_matrix`). busk draws no PA of its own
+then, and the page finds the plot's stage in the scenery and stands the house
+in front of it, sized to it, wherever the plot's origin is. The plot is the show's
 ``stage.plot``, relative to the show file's folder; :class:`StageFeed` reads
 it when the show changes or a page opens, and again only when the file has
 changed. The page loads each model at ``/stage/scenery/<file>`` (behind the

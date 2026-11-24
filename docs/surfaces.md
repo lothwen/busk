@@ -125,8 +125,8 @@ adding a fixture redraws the view.
 
 A rig built from a plot ([plots](plots.md#in-the-stage-view)) stands among the plot's own
 trusses and set, read from the plot's file each time the view opens, in place of busk's
-deck. Without the file the view draws the deck and says so, and it says when the file has
-changed since the import.
+deck and PA, with the crowd in front of the plot's stage. Without the file the view draws
+the deck and says so, and it says when the file has changed since the import.
 
 The view draws what the engine outputs, also while `output off` holds (it says so). It
 needs the internet the first time, for three.js (the browser keeps it after that); the

@@ -68,9 +68,10 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   while anything uses them). A new mode that loses cells in use is refused. Fixtures added by
   hand and groups are never touched. See [Plots](docs/plots.md).
 - The web stage view draws a plot's trusses, supports, set pieces, screens and projectors, read
-  from the plot's file each time it opens, in place of busk's own deck, and lands the beams'
-  pools on them. It says when the plot is missing (and draws the deck) or has changed since the
-  import. Saving a show into another folder keeps the plot's path relative to the new file.
+  from the plot's file each time it opens, in place of busk's own deck and PA, and lands the
+  beams' pools on them. The crowd stands in front of the plot's stage, sized to it, wherever the
+  plot's origin is. It says when the plot is missing (and draws the deck) or has changed since
+  the import. Saving a show into another folder keeps the plot's path relative to the new file.
 - The TUI imports a plot: F3's `[import plot…]`, or Import plot… in the File menu, opens the file
   picker on `.mvr` files, each previewed with what `rig check` says of it, starting on the plot
   the rig came from. The plot chosen opens IMPORT PLOT: busk's check, the frame on a first

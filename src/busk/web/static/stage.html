@@ -11,7 +11,8 @@
   changes, besides the remote's "state" (for OUTPUT OFF). A new rig reloads
   the page. The phone page shows it in a frame; small, it hides the key help
   and the haze panel. A rig from a plot brings the plot's scenery, which the
-  page loads from busk (/stage/scenery/<file>) and draws in place of the deck.
+  page loads from busk (/stage/scenery/<file>) and draws in place of the deck
+  and the PA, the house in front of the plot's stage wherever its origin is.
 
   It loads three.js from jsDelivr: the browser needs the internet the first
   time (it caches it after that). It draws with WebGPU, or with WebGL 2 in a
@@ -105,7 +106,6 @@ function connect() {
 connect();
 document.getElementById('hud').textContent = 'waiting for busk…';
 const rig = await rigReady;
-const W = rig.stage.width, D = rig.stage.depth;
 const rad = (degrees) => degrees * Math.PI / 180;
 
 // ---------------------------------------------------------------- scenery
@@ -115,7 +115,7 @@ const rad = (degrees) => degrees * Math.PI / 180;
 // origin). glTF is in metres with y up, 3DS in millimetres with z up (MVR
 // 1.6), and a 3DS file's own master scale is not taken. Each mesh is drawn
 // once for all the places its model stands. With scenery busk draws no deck,
-// backcloth or truss of its own, and the audience's floor is the scenery's
+// backcloth, truss or PA of its own, and the audience's floor is the scenery's
 // lowest point, or busk's 0 when the scenery is all above it.
 const manager = new THREE.LoadingManager();
 manager.setURLModifier((url) => /^(blob|data):/.test(url) ? url
@@ -161,6 +161,56 @@ if (rig.scenery.length) {
 const plotted = scenery !== null && scenery.group.children.length > 0;
 const H = plotted ? Math.max(0, -new THREE.Box3().setFromObject(scenery.group).min.z)
                   : rig.stage.height;   // the audience's floor is H below busk's 0
+
+// The plot's stage: what of its scenery stands on the floor (its bottom less
+// than REACH above it, its top higher than a rug's: decks, risers, walls,
+// towers, a PA stacked on the floor; not what is flown), in blocks of parts
+// that touch or nearly, the block over the most floor. Its footprint, or null
+// when nothing stands on the floor.
+const REACH = 3, RUG = 0.2, TOUCH = 0.5;   // metres
+function stageOf(parts, floor) {
+  const low = parts.filter((b) => b.min.z < floor + REACH && b.max.z > floor + RUG);
+  const up = low.map((_, i) => i);   // the way from each part to its block's first
+  const first = (i) => { while (up[i] !== i) i = up[i] = up[up[i]]; return i; };
+  const near = (a, b) => a.min.x < b.max.x + TOUCH && b.min.x < a.max.x + TOUCH
+                      && a.min.y < b.max.y + TOUCH && b.min.y < a.max.y + TOUCH;
+  for (let i = 0; i < low.length; i++)
+    for (let j = i + 1; j < low.length; j++)
+      if (near(low[i], low[j])) up[first(i)] = first(j);
+  const blocks = new Map();
+  low.forEach((b, i) => {
+    const block = blocks.get(first(i)) ?? { min: { x: Infinity, y: Infinity },
+                                            max: { x: -Infinity, y: -Infinity }, floor: 0 };
+    block.min.x = Math.min(block.min.x, b.min.x);
+    block.min.y = Math.min(block.min.y, b.min.y);
+    block.max.x = Math.max(block.max.x, b.max.x);
+    block.max.y = Math.max(block.max.y, b.max.y);
+    block.floor += (b.max.x - b.min.x) * (b.max.y - b.min.y);
+    blocks.set(first(i), block);
+  });
+  let stage = null;
+  for (const block of blocks.values()) if (!stage || block.floor > stage.floor) stage = block;
+  return stage;
+}
+function partsOf(group) {   // the box of each mesh at each place it stands
+  const parts = [], at = new THREE.Matrix4();
+  for (const mesh of group.children)
+    for (let i = 0; i < mesh.count; i++) {
+      mesh.getMatrixAt(i, at);
+      parts.push(mesh.geometry.boundingBox.clone().applyMatrix4(at));
+    }
+  return parts;
+}
+// A plot's origin may be anywhere on its stage, or off it: the rig is drawn
+// moved by `shift`, which puts the middle of its stage's downstage edge at
+// busk's 0, so the house stands in front of the stage as it does of busk's
+// deck, sized to it. Without a plot, or with nothing of it on the floor, the
+// deck is sized to the rig (stage.py) and nothing moves.
+const found = plotted ? stageOf(partsOf(scenery.group), -H) : null;
+const W = found ? found.max.x - found.min.x : rig.stage.width;
+const D = found ? found.max.y - found.min.y : rig.stage.depth;
+const shift = found ? new THREE.Vector3(-(found.min.x + found.max.x) / 2, -found.max.y, 0)
+                    : new THREE.Vector3();
 
 // --------------------------------------------------------------- renderer
 // WebGPU where the browser has it, WebGL 2 where it does not. No multisampling:
@@ -231,7 +281,10 @@ const FLOOR = -H;                                   // the audience's floor
 const HALF = Math.max(24, W / 2 + 15), BACK = 42;   // the arena's floor: |x| < HALF, y < BACK
 const BARRIER = 2.2, FOH = 26;                      // the crowd barrier, the mix position
 
-if (plotted) stage.add(scenery.group);
+const rigGroup = new THREE.Group();   // the scenery and the fixtures, moved by `shift`
+rigGroup.position.copy(shift);
+stage.add(rigGroup);
+if (plotted) rigGroup.add(scenery.group);
 else {   // the deck
   const deck = new THREE.Mesh(new THREE.BoxGeometry(W, D, H), surface(0x2a241f));
   deck.position.set(0, -D / 2, -H / 2);
@@ -265,33 +318,36 @@ for (const side of [-1, 1])
 
 // The PA: a main hang and an outfill either side of the stage, flown and
 // curving down at the floor, and a row of subs on the floor under the lip.
-// Every cabinet is a unit box from its front top edge, turned and scaled.
-const cabinets = [];
-function hang(x, y, top, toe, width, splays) {
-  const m = new THREE.Matrix4().makeRotationZ(rad(toe)).setPosition(x, y, top);
-  for (const splay of splays) {
-    m.multiply(new THREE.Matrix4().makeRotationX(-rad(splay)));
-    cabinets.push(m.clone().scale(new THREE.Vector3(width, 0.55, 0.36)));
-    m.multiply(new THREE.Matrix4().makeTranslation(0, 0, -0.36));
+// Every cabinet is a unit box from its front top edge, turned and scaled. A
+// plot brings its own PA.
+if (!plotted) {
+  const cabinets = [];
+  function hang(x, y, top, toe, width, splays) {
+    const m = new THREE.Matrix4().makeRotationZ(rad(toe)).setPosition(x, y, top);
+    for (const splay of splays) {
+      m.multiply(new THREE.Matrix4().makeRotationX(-rad(splay)));
+      cabinets.push(m.clone().scale(new THREE.Vector3(width, 0.55, 0.36)));
+      m.multiply(new THREE.Matrix4().makeTranslation(0, 0, -0.36));
+    }
   }
-}
-for (const side of [-1, 1]) {
-  hang(side * (W / 2 + 2.5), 0.8, 10.5, 0, 1.2, [3, 0.5, 0.5, 1, 1, 1.5, 2, 3, 4, 5, 6, 7]);
-  hang(side * (W / 2 + 7), 0.2, 10, -side * 35, 1.0, [5, 1, 1, 2, 3, 4, 6, 8]);
-}
-const subs = Math.floor(W / 1.4);
-for (let i = 0; i < subs; i++)
-  for (const top of [0.55, 1.1])
-    cabinets.push(new THREE.Matrix4().makeScale(1.3, 1, 0.55)
-      .setPosition((i - (subs - 1) / 2) * 1.4, 1.1, FLOOR + top));
-for (const [geometry, material] of [
-  [new THREE.BoxGeometry(1, 1, 1).translate(0, -0.5, -0.5), surface(0x111113, 0.8)],
-  [new THREE.PlaneGeometry(0.94, 0.86).rotateX(-Math.PI / 2).translate(0, 0.01, -0.5),
-   surface(0x2a2c31, 1)],                                                  // the grille
-]) {
-  const mesh = new THREE.InstancedMesh(geometry, material, cabinets.length);
-  cabinets.forEach((m, i) => mesh.setMatrixAt(i, m));
-  stage.add(mesh);
+  for (const side of [-1, 1]) {
+    hang(side * (W / 2 + 2.5), 0.8, 10.5, 0, 1.2, [3, 0.5, 0.5, 1, 1, 1.5, 2, 3, 4, 5, 6, 7]);
+    hang(side * (W / 2 + 7), 0.2, 10, -side * 35, 1.0, [5, 1, 1, 2, 3, 4, 6, 8]);
+  }
+  const subs = Math.floor(W / 1.4);
+  for (let i = 0; i < subs; i++)
+    for (const top of [0.55, 1.1])
+      cabinets.push(new THREE.Matrix4().makeScale(1.3, 1, 0.55)
+        .setPosition((i - (subs - 1) / 2) * 1.4, 1.1, FLOOR + top));
+  for (const [geometry, material] of [
+    [new THREE.BoxGeometry(1, 1, 1).translate(0, -0.5, -0.5), surface(0x111113, 0.8)],
+    [new THREE.PlaneGeometry(0.94, 0.86).rotateX(-Math.PI / 2).translate(0, 0.01, -0.5),
+     surface(0x2a2c31, 1)],                                                  // the grille
+  ]) {
+    const mesh = new THREE.InstancedMesh(geometry, material, cabinets.length);
+    cabinets.forEach((m, i) => mesh.setMatrixAt(i, m));
+    stage.add(mesh);
+  }
 }
 
 // Stands on three sides of the floor: a wall, rows of steps, a back wall.
@@ -537,7 +593,7 @@ const fixtures = rig.fixtures.map((f, index) => {
   const g = new THREE.Group();
   g.position.set(f.loc.x, f.loc.y, f.loc.z);
   g.rotation.set(rad(f.loc.rx), rad(f.loc.ry), rad(f.loc.rz), 'ZYX');   // x, then y, then z
-  stage.add(g);
+  rigGroup.add(g);
   return { ...f, index, ...BUILD[f.kind](g, f) };
 });
 
@@ -676,14 +732,15 @@ if (!plotted) SURFACES.push(
 const ray = new THREE.Raycaster(), held = new THREE.Matrix4(), normals = new THREE.Matrix3();
 ray.near = 0.05;
 ray.far = BEAM_LENGTH;
-function onScenery(o, d) {   // the scenery stands at the stage's 0: its places are stage metres
+function onScenery(o, d) {   // the scenery's places are stage metres, before `shift`
   ray.set(stage.localToWorld(o.clone()), d.clone().transformDirection(stage.matrixWorld));
   const hit = ray.intersectObject(scenery.group, true)[0];
   if (!hit) return null;
   hit.object.getMatrixAt(hit.instanceId, held);
   const normal = hit.face.normal.clone().applyNormalMatrix(normals.getNormalMatrix(held));
   if (normal.dot(d) > 0) normal.negate();
-  const extent = hit.object.geometry.boundingBox.clone().applyMatrix4(held).expandByScalar(0.05);
+  const extent = hit.object.geometry.boundingBox.clone().applyMatrix4(held).translate(shift)
+    .expandByScalar(0.05);
   return { t: hit.distance, p: stage.worldToLocal(hit.point), normal, extent };
 }
 function landing(o, d) {

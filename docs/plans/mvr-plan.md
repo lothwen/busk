@@ -615,7 +615,8 @@ that day: Import plot… in the File menu as well, and the file picker to choose
      untrusted.
   2. With scenery, busk draws no deck, and no backcloth and no trusses of its own either: the
      plot has its own. The house (crowd, stands, PA, barrier, mix position) stays, on the
-     scenery's floor.
+     scenery's floor. (Changed in Phase 6, §11: no PA, and the house in front of the plot's
+     stage.)
   3. Pools land on the scenery (a raycast on its meshes) or the floor. A beam keeps its landing
      until it moves, and at most 24 moving beams a frame look again, those waiting longest
      first, so a pool may trail a fast beam by a few frames.
@@ -684,6 +685,21 @@ that day: Import plot… in the File menu as well, and the file picker to choose
   The GDTF names the mode `Mode 8 - Pixel RGBW ` with a trailing space, which the GDTF importer
   keeps. The MVR reader strips the plot's `GDTFMode` (`mvr._text`), so `rig._mode` compares a
   stripped name with an unstripped one. Not fixed: comparing both stripped is one line.
+- **The house stood in the plot's stage** (Phase 6, 2026-11-24, the user's test2.show from
+  `Demostage_MVR.mvr`, imported with the default frame). The plot's origin is the middle of its
+  deck on the floor, not busk's (the middle of the downstage edge at deck height), so its 12 × 8
+  m deck stood at y −4…4 and z 0…1.1. The stage view built the house around busk's 0, sized to
+  the fixtures' span (19.8 m, from the front of house truss): the barrier (y 2.2) and the first
+  rows of the crowd (from y 2.8) stood inside the deck, and busk's subs (y 0.1…1.1, z 0…1.1) too,
+  their tops on the deck's top, which flickered. busk's PA also hung beside the plot's own.
+  The user's call: a plot must work as imported, with no frame to fix, and busk draws no PA with
+  a plot. Fixed in the page alone: `stageOf` finds the plot's stage (the scenery standing on the
+  floor, bottom under 3 m, top over 0.2 m, in blocks of parts within 0.5 m of each other, the
+  block over the most floor) and the rig is drawn moved by `shift`, so that the stage's
+  downstage edge is at busk's 0, in the middle; W and D come from the stage. Locations, the frame
+  and F1 C are unchanged. Checked headless: test2 as saved, Circle_Stage with the default frame
+  (its round stage stood 4 m into the crowd too), and festival.show, unchanged. Not handled: a
+  plot that draws the venue's walls, touching the stage, may take the room for the stage.
 - **`--standalone` goes LATE while a plot is read** (Phase 4). The check runs on a worker
   thread of the TUI, which is the engine's process under `--standalone`, and reading a plot
   holds the GIL for about 0.1 s: the status bar showed `LATE`. A profile's preview does the

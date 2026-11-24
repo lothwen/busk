@@ -184,6 +184,46 @@ def test_stage_right_is_on_the_left_from_the_front_of_house() -> None:
     assert seen["stageRight"] < 0 < seen["stageLeft"]  # x 3 on the screen's left, x -3 right
 
 
+STAGE = """
+const box = (x0, y0, z0, x1, y1, z1) => ({ min: { x: x0, y: y0, z: z0 },
+                                           max: { x: x1, y: y1, z: z1 } });
+%s
+// Demostage's scenery, its origin in the middle of its deck, on the floor.
+const plot = [
+  box(-6, -4, 1.0, 6, 4, 1.1),            // the deck's top
+  box(-6, 3.9, 0, 6, 4, 1.0),             // its skirt, at the front
+  box(-6.15, -4.17, 0, 6.15, -0.12, 8),   // the LED wall's box, upstage
+  box(4.5, -0.17, 0, 9, -0.07, 8),        // a wing
+  box(-9, -0.17, 0, -4.5, -0.07, 8),      // the other
+  box(-9, 6.36, 9, 9, 6.64, 9.29),        // the front of house truss, flown
+  box(7.21, 3.56, 6.6, 7.79, 4.16, 8.5),  // a PA hang, flown
+  box(-3, 20, 0, 3, 24, 0.4),             // the mix riser, out in the audience
+  box(-50, -50, -0.05, 50, 50, 0),        // the venue's floor
+];
+const trusses = [box(-9, -4.14, 7.5, 9, -3.86, 7.79), box(-9, 3.86, 8.5, 9, 4.14, 8.79)];
+console.log(JSON.stringify({ plot: stageOf(plot, 0), trusses: stageOf(trusses, 0) }));
+"""
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="needs node to run the page's script")
+def test_the_stage_of_a_plot_is_what_stands_on_the_floor() -> None:
+    """The page's own ``stageOf``, run in node: the stage is the block of
+    scenery standing on the floor that covers the most of it. What is flown,
+    a riser apart from the stage and the floor itself are not the stage; a
+    plot with nothing on the floor has none."""
+    page = stage_page().decode()
+    block = re.search(r"^const REACH = .*?^}$", page, re.M | re.S)
+    assert block is not None
+    done = subprocess.run(
+        ["node", "-e", STAGE % block.group(0)], capture_output=True, text=True, timeout=30
+    )
+    assert done.returncode == 0, done.stderr
+    seen = json.loads(done.stdout)
+    stage = seen["plot"]
+    assert (stage["min"], stage["max"]) == ({"x": -9, "y": -4.17}, {"x": 9, "y": 4})
+    assert seen["trusses"] is None
+
+
 # --------------------------------------------------------------------- the plot's scenery
 
 TRUSS = b"glTF: the truss"

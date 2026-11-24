@@ -161,9 +161,14 @@ guide](tui/guide.md#importing-a-plot).
 
 The web remote's stage view ([surfaces](surfaces.md#the-stage-view)) draws the plot's trusses,
 supports, set pieces, screens and projectors where the plot puts them, through the same frame
-as the fixtures, in place of busk's own deck, backcloth and trusses. Pools of light land on
-them. The audience's floor is the scenery's lowest point. A wrong frame shows here at once:
-the whole stage stands off to one side, turned, or out in the crowd.
+as the fixtures, in place of busk's own deck, backcloth, trusses and PA: a plot brings its own.
+Pools of light land on them. The audience's floor is the scenery's lowest point.
+
+The crowd stands in front of the plot's stage, sized to it, wherever the plot's origin is: the
+middle of the deck, a corner of the venue or busk's own. The stage is what of the scenery stands
+on the floor (decks, risers, walls, towers, a PA stacked on the floor; not what is flown), the
+largest block of it where several stand apart, and its downstage edge faces the crowd. A wrong
+`audience` still shows here: the crowd faces the stage's side or its back.
 
 busk reads the scenery from the plot's file each time a view opens, so keep the plot where
 the show says it is (beside the show, as a rule). The show keeps only the plot's path, so it
