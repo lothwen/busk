@@ -2,7 +2,7 @@
 
 * SELECTION: the selection (``101 thru 104, 301.2``), how many elements,
   which one the encoders show, and a button per group (``sel group N``;
-  Shift-click ``sel + group N``) and ``[none]`` (``sel none``).
+  Ctrl-click ``sel + group N``) and ``[none]`` (``sel none``).
 * The encoder panels, by busk's families: INTENSITY, POSITION, COLOR
   (with the output's colour and the programmer's as swatches, the colour
   presets and ``set color …``), BEAM, FOCUS and SHUTTER. A row shows when

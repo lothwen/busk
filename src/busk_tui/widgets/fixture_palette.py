@@ -12,8 +12,9 @@ fixtures out for a width (:meth:`FixturePalette.draw`): the lines, and
 where each fixture is (:class:`Spot`). The widget draws line by line, and
 only the lines that changed are drawn again (the output changes ten times a
 second while something moves). A click selects the fixture under the mouse
-(``sel fixture 101``); a Shift-click adds it to the selection or takes it
-out (``sel + fixture 101``, ``sel - fixture 101``). The pane cursor stops on
+(``sel fixture 101``); a Ctrl-click adds it to the selection or takes it
+out (``sel + fixture 101``, ``sel - fixture 101``; Alt and Shift do too,
+see :func:`~busk_tui.widgets.controls.adds`). The pane cursor stops on
 each fixture.
 """
 
@@ -34,7 +35,7 @@ from busk_tui.colors import ColorMode
 from busk_tui.commands import Line
 from busk_tui.model import ElementOutput
 from busk_tui.nav import Item, Stop
-from busk_tui.widgets.controls import MARKED, RunLine
+from busk_tui.widgets.controls import MARKED, RunLine, adds
 
 WHITE: Final = (1.0, 1.0, 1.0)
 UNLIT: Final = f"color({colors.UNLIT})"
@@ -68,10 +69,11 @@ def _color(out: ElementOutput, mode: ColorMode) -> str:
     return colors.swatch(out.color or WHITE, out.intensity, mode)
 
 
-def select_line(number: int, shift: bool, selected: bool) -> Line:
-    """A click on fixture ``number``: ``sel fixture N``; a Shift-click, ``sel
-    + fixture N``, or ``sel - fixture N`` while it is selected."""
-    if shift:
+def select_line(number: int, add: bool, selected: bool) -> Line:
+    """A click on fixture ``number``: ``sel fixture N``; a Ctrl-click
+    (``add``), ``sel + fixture N``, or ``sel - fixture N`` while it is
+    selected."""
+    if add:
         return commands.sel_fixture(number, add=not selected, remove=selected)
     return commands.sel_fixture(number)
 
@@ -191,7 +193,7 @@ class FixturePalette(Widget):
             return
         event.stop()
         number = self.spots[index].number
-        self.post_message(RunLine(select_line(number, event.shift, number in self.selected)))
+        self.post_message(RunLine(select_line(number, adds(event), number in self.selected)))
 
     def on_mouse_move(self, event: events.MouseMove) -> None:
         index = self._under(event)

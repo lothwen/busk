@@ -4,7 +4,7 @@ OUTPUT, top left: a row per fixture type (the profile's category, plan §3
 8; a profile with none has a row of its own, named after it), each fixture
 in its live output colour and intensity (:mod:`busk_tui.widgets.fixture_palette`),
 its number under it; the selected ones on the selection's background. A
-click selects, a Shift-click adds or takes out.
+click selects, a Ctrl-click adds or takes out.
 
 PROGRAMMER, top right (a third of the width, at least 38 cells): the
 selection, what the programmer holds (``2 fixtures · intensity color
@@ -328,7 +328,7 @@ class ConsoleLayout(Vertical):
         self.summary.update(programmer_summary(programmer))
         self.chips.show(color_chips(() if show is None else show.presets, view.mode))
         count = 0 if show is None else len(show.fixtures)
-        self.output_panel.set_title("output", f"{count} fixtures · click selects, Shift-click adds")
+        self.output_panel.set_title("output", f"{count} fixtures · click selects, Ctrl-click adds")
 
     def _build_tempo(self, show: ShowModel | None) -> None:
         first = first_speed(show)

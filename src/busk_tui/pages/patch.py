@@ -22,7 +22,7 @@ change …``, ``[off]`` or ``[on]``, and ``[delete]``. busk asks before ``off`` 
 
 A DMX MAP per universe (:mod:`busk_tui.widgets.dmxmap`), and a legend of
 the fixture types it shows. A click on a fixture's channels selects it
-(``sel fixture 101``; both fixtures of an overlap); a Shift-click adds it
+(``sel fixture 101``; both fixtures of an overlap); a Ctrl-click adds it
 to the selection or takes it out. The hint row says what the channel under
 the mouse does and what busk sends on it.
 
@@ -635,8 +635,8 @@ class PatchPage(Page):
         selected = self.selected()
         fixtures = message.fixtures
         if len(fixtures) > 1:
-            line = commands.sel_fixtures(fixtures, add=message.shift)
-        elif message.shift:
+            line = commands.sel_fixtures(fixtures, add=message.adds)
+        elif message.adds:
             inside = fixtures[0] in selected
             line = commands.sel_fixture(fixtures[0], add=not inside, remove=inside)
         else:

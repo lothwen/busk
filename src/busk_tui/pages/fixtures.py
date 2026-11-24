@@ -6,10 +6,12 @@ A header gives the counts and has ``[import plot…]``, which imports a rig
 from a plot (MVR plan Phase 4: the app opens the file picker, then IMPORT
 PLOT), ``[+ add]``, which opens the new fixture form in edit mode, and the
 ``[edit]`` toggle. A click on a row
-selects the fixture (``sel fixture 101``) and chooses it; a Shift-click adds
+selects the fixture (``sel fixture 101``) and chooses it; a Ctrl-click adds
 it to the selection or takes it out (``sel + fixture 101``, ``sel - fixture
-101``) and chooses it. Selecting does not change the stage, so a click means
-the same in edit mode.
+101``) and chooses it. A drag from one row to another selects the fixtures
+of the rows it covers (``sel fixture 101 thru 104, fixture 201``; with Ctrl
+held, ``sel + …``) and chooses the one it ends on. Selecting does not change
+the stage, so a click means the same in edit mode.
 
 In edit mode the FIXTURE panel (:mod:`busk_tui.widgets.fixture_panel`) shows
 the chosen fixture, to the right of the table at 100 columns or more, else
@@ -34,6 +36,7 @@ from textual.message import Message
 from textual.widgets import Static
 
 from busk_tui import colors, commands
+from busk_tui.formats import selection_text
 from busk_tui.model import ElementOutput, FixtureInfo, OutputModel
 from busk_tui.nav import Item, Stop
 from busk_tui.pages.base import Page, Part, View
@@ -54,8 +57,8 @@ from busk_tui.widgets.rows import Cells, RowTable
 
 NO_FIXTURES: Final = 'no fixtures · fixture add 101 "<profile>" mode <mode> at 1.1'
 
-CLICK_SELECTS: Final = "click selects, Shift-click adds"
-CLICK_EDITS: Final = "click chooses, Shift-click adds to the selection"
+CLICK_SELECTS: Final = "click or drag selects, Ctrl adds"
+CLICK_EDITS: Final = "click chooses, drag selects, Ctrl adds"
 
 NARROW: Final = 100
 """Below this many columns the FIXTURE panel goes under the table (spec §3)."""
@@ -250,11 +253,27 @@ class FixturesPage(Page):
             return
         number = self.shown[message.row].number
         self.panel.choose(number)
-        if message.shift:
+        if message.adds:
             selected = number in self.selected()
             line = commands.sel_fixture(number, add=not selected, remove=selected)
         else:
             line = commands.sel_fixture(number)
+        self.post_message(RunLine(line))
+        if self.editing:
+            self._reveal_panel()
+
+    def on_row_table_dragged(self, message: RowTable.Dragged) -> None:
+        """The fixtures of the rows a drag covers, in one line: ``sel fixture
+        101 thru 104, fixture 201``, ``sel + …`` with Ctrl."""
+        message.stop()
+        first, last = sorted((message.start, message.end))
+        fixtures = self.shown[first : last + 1]
+        if not fixtures:
+            return
+        if message.end < len(self.shown):
+            self.panel.choose(self.shown[message.end].number)
+        whole = [(f.number, element) for f in fixtures for element in range(1, f.elements + 1)]
+        line = commands.sel_targets(selection_text(whole, fixtures), add=message.adds)
         self.post_message(RunLine(line))
         if self.editing:
             self._reveal_panel()

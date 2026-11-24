@@ -183,7 +183,7 @@ def test_a_fixture_is_a_glyph_or_a_cell_per_element_in_its_output() -> None:
     assert element_cells(bar[:3], 12, "■", 12, "256")[5] == ("█", UNLIT)  # not read yet
 
 
-def test_a_click_selects_and_a_shift_click_adds_or_takes_out() -> None:
+def test_a_click_selects_and_a_ctrl_click_adds_or_takes_out() -> None:
     assert select_line(101, False, True).text == "sel fixture 101"
     assert select_line(101, True, False).text == "sel + fixture 101"
     assert select_line(101, True, True).text == "sel - fixture 101"
@@ -244,8 +244,8 @@ def test_output_draws_each_fixture_in_its_output_and_the_selection() -> None:
         other = next(s for s in grid.spots if s.number == 102)
         assert colors.DIM in style_at(grid.lines[other.y + 1], other.x + 1)
         await pilot.click(grid, offset=(spot.x, spot.y))
-        await pilot.click(grid, offset=(head.x, head.y + 1), shift=True)
-        await pilot.click(grid, offset=(other.x, other.y), shift=True)
+        await pilot.click(grid, offset=(head.x, head.y + 1), control=True)
+        await pilot.click(grid, offset=(other.x, other.y), meta=True)  # Alt
         assert sent(bridge) == [
             ("sel fixture 201", "ui"),
             ("sel - fixture 101", "ui"),
@@ -568,7 +568,7 @@ def test_compact_rows_masters_and_quick() -> None:
         assert sent(bridge) == [("button 2 1 on", "ui")]
         assert [bar.label for bar in layout.bars.bars] == ["GM", "FX", "Washes"]
         assert [b.line.text for b in layout.groups.buttons] == ["sel group 1", "sel group 2"]
-        assert [b.shift.text for b in layout.groups.buttons if b.shift] == [
+        assert [b.adds.text for b in layout.groups.buttons if b.adds] == [
             "sel + group 1",
             "sel + group 2",
         ]

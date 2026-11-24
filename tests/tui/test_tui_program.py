@@ -615,7 +615,7 @@ def test_the_selection_and_the_group_buttons() -> None:
         groups = app.query_one("#program-groups", ButtonStrip)
         assert plain(groups) == "[1 Heads] [2 Washes] [none]"
         await pilot.click(groups, offset=(1, 0))
-        await pilot.click(groups, offset=(12, 0), shift=True)
+        await pilot.click(groups, offset=(12, 0), control=True)
         await pilot.click(groups, offset=(23, 0))
         assert [s.line for s in bridge.sent] == ["sel group 1", "sel + group 2", "sel none"]
         bridge.events.append(ProgrammerChanged(programmer(version=2)))

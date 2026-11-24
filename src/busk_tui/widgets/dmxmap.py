@@ -32,7 +32,7 @@ from textual.widget import Widget
 
 from busk_tui import colors
 from busk_tui.model import FixtureInfo
-from busk_tui.widgets.controls import MARKED, ShowHint
+from busk_tui.widgets.controls import MARKED, ShowHint, adds
 
 CHANNELS: Final = 512
 LABEL: Final = 5  # the address column, a space included
@@ -161,13 +161,14 @@ class DmxMap(Widget):
     DEFAULT_CSS = "DmxMap { height: auto; }"
 
     class Clicked(Message):
-        """A click on a channel that ``fixtures`` take."""
+        """A click on a channel that ``fixtures`` take; ``adds``: a Ctrl-click
+        (:func:`~busk_tui.widgets.controls.adds`)."""
 
-        def __init__(self, dmx_map: DmxMap, fixtures: tuple[int, ...], shift: bool) -> None:
+        def __init__(self, dmx_map: DmxMap, fixtures: tuple[int, ...], adds: bool) -> None:
             super().__init__()
             self.dmx_map = dmx_map
             self.fixtures = fixtures
-            self.shift = shift
+            self.adds = adds
 
     class PlaceClicked(Message):
         """A click on ``channel`` of ``universe``, which no fixture takes."""
@@ -300,6 +301,6 @@ class DmxMap(Widget):
         found = self._owners[channel - 1]
         if found:
             fixtures = tuple(print_.fixture for print_ in found)
-            self.post_message(self.Clicked(self, fixtures, event.shift))
+            self.post_message(self.Clicked(self, fixtures, adds(event)))
         else:
             self.post_message(self.PlaceClicked(self.universe, channel))

@@ -1,6 +1,6 @@
 """Group buttons and colour chips (spec §8.1 SELECTION and QUICK).
 
-A group button ``[Washes]`` runs ``sel group N``, and on a Shift-click
+A group button ``[Washes]`` runs ``sel group N``, and on a Ctrl-click
 ``sel + group N``. A colour chip ``██``, in the colour the preset gives,
 runs ``preset color N``; a preset with no single colour (one per profile,
 or none) is a grey ``░░``.

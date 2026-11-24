@@ -42,6 +42,15 @@ MARKED = f"bold {colors.BG} on {colors.CYAN}"
 """The pane cursor on a control (cyan: the UI's focus)."""
 
 
+def adds(event: events.MouseEvent) -> bool:
+    """Whether a click adds to the selection (or takes out) instead of
+    replacing it: with Ctrl, Alt or Shift held. Terminals keep Shift-clicks
+    for their own text selection (kitty, xterm and most others), so Ctrl is
+    the one to tell people; Alt is there for a window manager that takes
+    Ctrl-clicks."""
+    return event.ctrl or event.meta or event.shift
+
+
 class RunLine(Message):
     """Run ``line``. ``origin`` ``ui`` echoes it, ``internal`` does not (a
     drag's moves, the wheel). With a ``key``, a newer line with the same key
@@ -270,7 +279,8 @@ class ActionButton(CommandButton):
 @dataclass(frozen=True, slots=True)
 class StripButton:
     """One button of a :class:`ButtonStrip`: its label as drawn, its line,
-    and the line a Shift-click runs instead (``None``: the same). With a
+    and the line a Ctrl-click runs instead (``None``: the same; see
+    :func:`adds`). With a
     ``prefill``, a click puts that in the prompt instead of running a line;
     with an ``action``, a click calls it instead (a toggle of the page's own;
     keep one callable per button, so that equal buttons compare equal). A
@@ -280,7 +290,7 @@ class StripButton:
 
     label: Text
     line: Line
-    shift: Line | None = None
+    adds: Line | None = None
     prefill: str | None = None
     action: Callable[[], None] | None = None
     note: bool = False
@@ -289,8 +299,8 @@ class StripButton:
 
 class ButtonStrip(Widget):
     """A row of buttons that wraps between buttons, never inside one; a
-    click runs the line of the button under the mouse, or its ``shift``
-    line on a Shift-click."""
+    click runs the line of the button under the mouse, or its ``adds``
+    line on a Ctrl-click."""
 
     DEFAULT_CSS = "ButtonStrip { height: auto; }"
 
@@ -361,7 +371,7 @@ class ButtonStrip(Widget):
         if button.prefill is not None:
             self.post_message(FillPrompt(button.prefill))
             return
-        line = button.shift if event.shift and button.shift is not None else button.line
+        line = button.adds if adds(event) and button.adds is not None else button.line
         self.post_message(RunLine(line))
 
     def on_mouse_move(self, event: events.MouseMove) -> None:

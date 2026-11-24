@@ -213,6 +213,11 @@ BUILDERS: dict[str, tuple[Line, str, bool]] = {
         False,
     ),
     "sel targets, one": (commands.sel_targets("101"), "sel fixture 101", False),
+    "sel + targets": (
+        commands.sel_targets("101 thru 102, 301", add=True),
+        "sel + fixture 101 thru 102, fixture 301",
+        False,
+    ),
     "goto": (commands.goto(9, "3"), "goto 9 3", True),
     "record slot": (commands.record_slot(2, 7), "record slot 2.7", False),
     "record cue": (commands.record_cue(9), "record cue 9", False),

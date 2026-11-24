@@ -68,7 +68,7 @@ Fixture swatches show the fixture's computed output (colour × intensity), quant
 | Tab | `F2 Program`; key in cyan, label mid. Active tab is reverse video: cyan bg, bg-coloured text. | Click or F-key. |
 | Horizontal bar | Fill `█` in value colour, remainder `░` in 237. Width fills the available column; fill quantised to whole cells (optional ⅛ cells via `▏▎▍▌▋▊▉`). | Click/drag sets value from x position. Wheel ±5%. |
 | Vertical fader | 10 rows × 4 cells. Full rows `████`, top partial row `▁▂▃▄▅▆▇` ×4, empty rows `░░░░` (237). Fill colour = current cue colour. | Click/drag sets level from y. Wheel ±5%. |
-| Fixture swatch | Single-cell fixtures: `███` (grid) or a type glyph (stage plot: `■` par, `◆` spot, `●` wash, `▲` strobe). Multi-element fixtures: one `█` per element. Fixture number beneath. | Click = `sel fixture N`; Shift-click toggles in/out. |
+| Fixture swatch | Single-cell fixtures: `███` (grid) or a type glyph (stage plot: `■` par, `◆` spot, `●` wash, `▲` strobe). Multi-element fixtures: one `█` per element. Fixture number beneath. | Click = `sel fixture N`; Ctrl-click toggles in/out. |
 | Table | Header row bg 235, cyan text. Rows 1 line, no row borders. Current/selected row bg 235 plus a `▸` or `▶` marker column. | Row hover 236; click per screen. |
 | Status chip | Text in a 1-cell-padded block. Off: 239 text, no bg. On: coloured bg, bg-coloured text (BLIND magenta, BLACKOUT red). | Indicator only. |
 | Big digits | 3-row block font built from `█ ▀`, 3 cells per glyph, 1 cell gap. Used for BPM and GM. | Display only. |
@@ -111,7 +111,7 @@ The prompt always has text focus. Printable keys go to the prompt from any scree
 ### 6.2 Mouse
 
 - **Click** on buttons, tabs, tiles, rows, fixtures → runs the mapped command.
-- **Shift-click** on fixtures or group buttons → additive selection (`sel +` / `sel -`).
+- **Ctrl-click** on fixtures or group buttons → additive selection (`sel +` / `sel -`). Alt-click and Shift-click do the same, but terminals keep Shift-clicks for their own text selection while an app has the mouse (kitty, xterm and most others), so the UI names Ctrl.
 - **Drag** on faders, bars and encoders → continuous update to the engine. One undo snapshot is taken at drag start. The equivalent command (e.g. `fader 2 72%`) is logged once, on release.
 - **Wheel** over faders and encoders → ±5% per notch (±5° for pan/tilt). Not logged.
 - **Flash** buttons are momentary: level 100% while held, restored on release or when the pointer leaves the button.
@@ -159,9 +159,9 @@ The performance screen. A header row shows `page 1 · playbacks 1–N · sel …
 | ◂ (back) | `back N` |
 | FLASH (hold) | momentary full output; no command logged |
 | `Pn` label click | select the playback for Space / \[ \] (UI state only) |
-| Fixture swatch | `sel fixture N` · Shift: `sel + / - fixture N` |
+| Fixture swatch | `sel fixture N` · Ctrl: `sel + / - fixture N` |
 | Colour chip | `preset color N` |
-| Group button | `sel group N` · Shift: `sel + group N` |
+| Group button | `sel group N` · Ctrl: `sel + group N` |
 | Master bar drag | `gm <level>` / `master "<name>" <level>` |
 | \[TAP\] | `tap` |
 | \[B.O.\] / \[BLACKOUT\] | `blackout on\|off` (toggle) |
@@ -218,7 +218,7 @@ The selected playback is drawn with a cyan border (layout A) or a bg-235 row (B,
 
 A table of all fixtures (minimum 96 columns; scrolls horizontally below that). Columns: marker `▸` · # · name · profile (`×8` for multi-element) · mode · patch `U.A` (red `—` if unpatched) · dim · colour swatch · pan · tilt (movers only) · zoom (spots/washes) · src.
 
-**Source colouring** applies to dim, pan, tilt and src: magenta = programmer, fg = playback, green = effect, dim = nothing driving it. A legend sits below the table. Row click → `sel fixture N`; Shift-click → `sel +/-`.
+**Source colouring** applies to dim, pan, tilt and src: magenta = programmer, fg = playback, green = effect, dim = nothing driving it. A legend sits below the table. Row click → `sel fixture N`; Ctrl-click → `sel +/-`; a drag from one row to another → the fixtures of the rows it covers in one line (`sel fixture 101 thru 104, fixture 201`), Ctrl-drag → `sel + …`.
 
 ### 8.4 F4 · Cues
 

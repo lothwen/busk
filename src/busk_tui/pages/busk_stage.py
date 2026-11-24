@@ -13,7 +13,7 @@ under it, and on a fixture with pan or tilt the pan as an arrow (``↑`` at
 0°, clockwise) and the tilt (``↗ 30°``). Fixtures without a place are in a row of their own, under
 AUDIENCE, and ``[location…]`` opens the form of the six values for the first
 selected fixture (else the first without a place), as F3's FIXTURE panel
-does. A click selects, a Shift-click adds or takes out.
+does. A click selects, a Ctrl-click adds or takes out.
 
 The right column: compact PLAYBACKS (``Pn``, name, bar, level, its first button),
 MASTERS (the grand, size and group masters, and the tempo row), QUICK
@@ -347,7 +347,7 @@ class StageLayout(Horizontal):
         self.chips = ButtonStrip(id="stage-chips")
 
     def compose(self) -> ComposeResult:
-        with Panel("stage", id="stage-panel", meta="click selects, Shift-click adds"):
+        with Panel("stage", id="stage-panel", meta="click selects, Ctrl-click adds"):
             yield self.plot
             with Horizontal(id="stage-edit-row"):
                 yield self.edit_label

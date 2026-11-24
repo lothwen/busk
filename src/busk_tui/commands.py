@@ -186,10 +186,11 @@ def sel_fixture(fixture: int, *, add: bool = False, remove: bool = False) -> Lin
     return Line(f"sel {change}fixture {fixture}")
 
 
-def sel_targets(compressed: str) -> Line:
+def sel_targets(compressed: str, *, add: bool = False) -> Line:
     """Elements as :func:`~busk_tui.formats.selection_text` writes them, in
-    their order: ``sel fixture 101 thru 102, fixture 301.2``."""
-    return Line(f"sel {targets(compressed)}")
+    their order: ``sel fixture 101 thru 102, fixture 301.2`` (``add``: ``sel
+    + …``)."""
+    return Line(f"sel {'+ ' if add else ''}{targets(compressed)}")
 
 
 def sel_fixtures(fixtures: Sequence[int], *, add: bool = False) -> Line:

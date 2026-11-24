@@ -8,6 +8,7 @@ from collections.abc import Awaitable, Callable
 
 import pytest
 from rich.text import Text
+from textual import events
 from textual.app import App, ComposeResult
 from textual.containers import Vertical
 from textual.pilot import Pilot
@@ -21,6 +22,7 @@ from busk_tui.widgets.controls import (
     CommandButton,
     RunLine,
     StripButton,
+    adds,
     button_label,
     chip,
 )
@@ -233,6 +235,21 @@ def test_a_note_in_a_strip_is_no_button() -> None:
         assert [stop.index for stop in strip_stops(strip)] == [0, 2]
 
     bench(app, body)
+
+
+@pytest.mark.parametrize(
+    ("shift", "alt", "ctrl", "added"),
+    [
+        (False, False, False, False),
+        (False, False, True, True),
+        (False, True, False, True),
+        (True, False, False, True),  # where the terminal lets Shift-clicks through
+    ],
+)
+def test_ctrl_alt_or_shift_makes_a_click_add(
+    shift: bool, alt: bool, ctrl: bool, added: bool
+) -> None:
+    assert adds(events.Click(None, 0, 0, 0, 0, 1, shift, alt, ctrl)) is added
 
 
 def test_bars_fill_in_eighths_of_a_cell() -> None:

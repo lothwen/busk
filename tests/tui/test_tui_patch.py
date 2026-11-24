@@ -265,7 +265,7 @@ def test_hover_tells_the_channel_and_a_click_selects() -> None:
         await pilot.click(dmx_map, offset=(5 + 2, 0))  # 101, selected
         await pilot.click(dmx_map, offset=(5 + 2, 0), shift=True)
         await pilot.click(dmx_map, offset=(5 + 9, 1))  # 401 at 74
-        await pilot.click(dmx_map, offset=(5 + 9, 1), shift=True)
+        await pilot.click(dmx_map, offset=(5 + 9, 1), control=True)
         await pilot.click(dmx_map, offset=(5 + 30, 1))  # 94: 501 and 502
         await pilot.click(dmx_map, offset=(5 + 30, 1), shift=True)
         await pilot.click(dmx_map, offset=(5 + 50, 3))  # free: no line

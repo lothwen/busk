@@ -45,6 +45,9 @@ _RANK: Final[dict[Source, int]] = {
 
 
 class FixtureTable(RowTable):
+    DRAGS = True  # a drag selects a run of fixtures
+    ALLOW_SELECT = False  # and not the text under it, as Textual would
+
     COLUMNS = (
         Column("marker", "", 1),
         Column("number", "#", 4, right=True),
@@ -63,6 +66,9 @@ class FixtureTable(RowTable):
 
 
 class RigTable(RowTable):
+    DRAGS = True
+    ALLOW_SELECT = False
+
     COLUMNS = (
         Column("marker", "", 1),
         Column("number", "#", 4, right=True),

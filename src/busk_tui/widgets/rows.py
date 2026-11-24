@@ -9,8 +9,11 @@ class's :data:`COLUMNS`, or a table's own (:meth:`RowTable.columns`); when
 the table is narrower than all of them, the columns with the highest
 ``drop`` go first, and a ``flex`` column takes the room left. A click posts
 :class:`RowTable.Clicked` with the row and the name of the column under the
-mouse; the page decides what it does. The pane cursor marks a row, or one
-cell of it (:attr:`RowTable.spots`).
+mouse; the page decides what it does. In a table that :attr:`~RowTable.DRAGS`
+(F3's), a press on a row dragged to another posts :class:`RowTable.Dragged`
+instead, and the rows between are drawn as the row under the mouse is until
+the mouse lets go. The pane cursor marks a row, or one cell of it
+(:attr:`RowTable.spots`).
 """
 
 from __future__ import annotations
@@ -27,7 +30,7 @@ from textual.strip import Strip
 from textual.widget import Widget
 
 from busk_tui import colors
-from busk_tui.widgets.controls import MARKED
+from busk_tui.widgets.controls import MARKED, adds
 
 type Cells = Mapping[str, Text]
 """One row: each column's text, by column name (a missing one is blank)."""
@@ -81,16 +84,32 @@ class RowTable(Widget):
 
     COLUMNS: ClassVar[tuple[Column, ...]] = ()
 
+    DRAGS: ClassVar[bool] = False
+    """Whether a press dragged from one row to another posts :class:`Dragged`
+    (else it is a click where the mouse lets go, as Textual makes it)."""
+
     class Clicked(Message):
         """A click on ``row`` (counted from 0), in the column ``cell``
-        (``None``: between two)."""
+        (``None``: between two); ``adds``: a Ctrl-click
+        (:func:`~busk_tui.widgets.controls.adds`)."""
 
-        def __init__(self, table: RowTable, row: int, cell: str | None, shift: bool) -> None:
+        def __init__(self, table: RowTable, row: int, cell: str | None, adds: bool) -> None:
             super().__init__()
             self.table = table
             self.row = row
             self.cell = cell
-            self.shift = shift
+            self.adds = adds
+
+    class Dragged(Message):
+        """A press on row ``start`` let go on row ``end``, another one (either
+        may be the higher); ``adds``: Ctrl was held at the press."""
+
+        def __init__(self, table: RowTable, start: int, end: int, adds: bool) -> None:
+            super().__init__()
+            self.table = table
+            self.start = start
+            self.end = end
+            self.adds = adds
 
     def __init__(
         self, empty: Text | None = None, *, id: str | None = None, classes: str | None = None
@@ -102,6 +121,9 @@ class RowTable(Widget):
         self.lit: frozenset[int] = frozenset()
         self.spots: list[tuple[int, str | None]] = []  # the pane cursor's stops: row, cell
         self._hover: int | None = None
+        self._press: tuple[int, bool] | None = None  # a drag's first row, and whether it adds
+        self._reach = 0  # the row a drag has reached
+        self._dragged = False  # a drag just ended: the click Textual makes of it is not one
         self._marked: tuple[int, str | None] | None = None
         self._strips: dict[int, Strip] = {}  # line → as drawn, until it changes
         self._width = 0
@@ -179,7 +201,7 @@ class RowTable(Widget):
         line.pad_right(max(0, width - line.cell_len))
         if self._marked == (row, None):
             line.stylize(MARKED)
-        elif row == self._hover:
+        elif row == self._hover or row in self._run():
             line.stylize(f"on {colors.SEL}")
         elif row == self.chosen or row in self.lit:
             line.stylize(f"on {colors.BAR}")
@@ -224,14 +246,57 @@ class RowTable(Widget):
             left += size + 1
         return offset.y - 1, None
 
+    def _reach_of(self, event: events.MouseEvent) -> int:
+        """The row level with the mouse, during a drag: the first or the last
+        while it is above or below the rows."""
+        y = event.get_content_offset_capture(self).y - 1
+        return max(0, min(len(self.rows) - 1, y))
+
+    def _run(self) -> range:
+        """The rows a drag covers now (none while there is no drag)."""
+        if self._press is None:
+            return range(0)
+        start = self._press[0]
+        return range(min(start, self._reach), max(start, self._reach) + 1)
+
+    def on_mouse_down(self, event: events.MouseDown) -> None:
+        self._dragged = False
+        if not self.DRAGS or event.button != 1:
+            return
+        row, _ = self._under(event)
+        if row is None:
+            return
+        self._press, self._reach = (row, adds(event)), row
+        self.capture_mouse()
+
+    def on_mouse_up(self, event: events.MouseUp) -> None:
+        if self._press is None:
+            return
+        (start, add), end = self._press, self._reach_of(event)
+        run = set(self._run())
+        self._press = None
+        self.release_mouse()
+        self._redraw_rows(run)
+        if end != start:
+            self._dragged = True
+            self.post_message(self.Dragged(self, start, end, add))
+
     def on_click(self, event: events.Click) -> None:
+        if self._dragged:  # Textual's click of a drag let go on this table
+            self._dragged = False
+            event.stop()
+            return
         row, name = self._under(event)
         if row is None:
             return
         event.stop()
-        self.post_message(self.Clicked(self, row, name, event.shift))
+        self.post_message(self.Clicked(self, row, name, adds(event)))
 
     def on_mouse_move(self, event: events.MouseMove) -> None:
+        if self._press is not None:
+            run = set(self._run())
+            self._reach = self._reach_of(event)
+            self._redraw_rows(run ^ set(self._run()))
         row, _ = self._under(event)
         if row != self._hover:
             before, self._hover = self._hover, row

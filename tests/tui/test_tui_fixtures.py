@@ -1,7 +1,7 @@
 """F3 Fixtures (spec §8.3, plan Phase 4): a row per fixture, single and
 multi-element, patched, split and unpatched; the live cells and their source
-colours from an ``OutputModel``; the selection marker; clicks, Shift-clicks and
-the pane cursor. Edit mode (``docs/plans/tui-rig-plan.md`` §6.4, §6.5): the
+colours from an ``OutputModel``; the selection marker; clicks, Ctrl-clicks,
+drags and the pane cursor. Edit mode (``docs/plans/tui-rig-plan.md`` §6.4, §6.5): the
 rig's table and the FIXTURE panel, its header, category and mode, its limits,
 orientation and location, and how far each reaches, a run's ``[delete]``
 included. Headless, with a fake bridge."""
@@ -13,6 +13,7 @@ from typing import Any
 
 import pytest
 from textual import events
+from textual.geometry import Offset
 from textual.pilot import Pilot
 from textual.widget import Widget
 from textual.widgets import Input
@@ -76,6 +77,7 @@ from busk_tui.widgets.legend import Legend
 from busk_tui.widgets.location_form import check_place
 from busk_tui.widgets.log import LogView
 from busk_tui.widgets.options import LIT
+from busk_tui.widgets.rows import RowTable
 
 SPOT = FixtureInfo(
     101, 1, "Spot 101", "Spot", "16ch", 16, (1, 1), location=(1.5, 2.0, 4.0, 0, 0, 0)
@@ -216,7 +218,7 @@ def test_the_page_lists_every_fixture_and_lights_the_selection() -> None:
     drive(app, body)
 
 
-def test_clicks_select_and_shift_clicks_add_or_take_out() -> None:
+def test_clicks_select_and_ctrl_or_alt_clicks_add_or_take_out() -> None:
     bridge = FakeBridge()
     app = on_f3(bridge)
 
@@ -224,13 +226,79 @@ def test_clicks_select_and_shift_clicks_add_or_take_out() -> None:
         await settle(pilot, app)
         table = app.query_one(FixtureTable)
         await click_cell(pilot, table, 0, "name")
-        await pilot.click(table, offset=(10, 1), shift=True)  # 101, not selected: added
-        await pilot.click(table, offset=(10, 2), shift=True)  # 301, selected: taken out
+        await pilot.click(table, offset=(10, 1), control=True)  # 101, not selected: added
+        await pilot.click(table, offset=(10, 2), meta=True)  # Alt: 301, selected: taken out
         assert [(s.line, s.origin, s.performance) for s in bridge.sent] == [
             ("sel fixture 101", "ui", False),
             ("sel + fixture 101", "ui", False),
             ("sel - fixture 301", "ui", False),
         ]
+
+    drive(app, body)
+
+
+def run_rows(table: RowTable) -> list[int]:
+    """The rows drawn as the row under the mouse is."""
+    hover = f"on {colors.SEL}"
+    lines = (table.line(row + 1, table.size.width) for row in range(len(table.rows)))
+    return [row for row, line in enumerate(lines) if any(str(s.style) == hover for s in line.spans)]
+
+
+def test_a_drag_selects_the_rows_it_covers_and_ctrl_adds_them() -> None:
+    bridge = FakeBridge()
+    app = on_f3(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        await settle(pilot, app)
+        table = app.query_one(FixtureTable)
+        await pilot.mouse_down(table, offset=(10, 1))  # 101
+        await pilot.hover(table, offset=(10, 3))  # 302
+        assert run_rows(table) == [0, 1, 2]
+        await pilot.mouse_up(table, offset=(10, 3))
+        assert run_rows(table) == [2]  # the mouse is on it
+        await pilot.mouse_down(table, offset=(10, 4), control=True)  # 401
+        await pilot.hover(table, offset=(10, 0))  # the header: the first row
+        await pilot.mouse_up(table, offset=(10, -2))  # above the table: the first row still
+        assert bridge.lines() == [
+            "sel fixture 101, fixture 301 thru 302",
+            "sel + fixture 101, fixture 301 thru 302, fixture 401",
+        ]
+        await pilot.mouse_down(table, offset=(10, 2))  # 301
+        await pilot.hover(table, offset=(10, 3))
+        await pilot.mouse_up(table, offset=(10, 2))  # back where it began: no drag
+        await pilot.click(table, offset=(10, 2))  # but the click Textual makes of it
+        assert bridge.lines()[2:] == ["sel fixture 301"]
+
+    drive(app, body)
+
+
+async def as_a_terminal_sends(
+    pilot: Pilot[int], widget: Widget, *moves: tuple[type[events.MouseEvent], int, int]
+) -> None:
+    """Mouse events at offsets in ``widget``, through the app as the terminal's
+    driver sends them: the app makes a click of a press and a release on one
+    widget, which pilot's own mouse calls skip."""
+    for kind, x, y in moves:
+        at = widget.region.offset + Offset(x, y)
+        pilot.app.post_message(kind(None, at.x, at.y, 0, 0, 1, False, False, False, at.x, at.y))
+        await pilot.pause()
+
+
+def test_a_drag_chooses_the_row_it_ends_on_and_is_no_click_there() -> None:
+    bridge = FakeBridge()
+    app = on_the_rig(bridge)
+
+    async def body(pilot: Pilot[int]) -> None:
+        page = await enter(pilot, app, None)
+        down, move, up = events.MouseDown, events.MouseMove, events.MouseUp
+        await as_a_terminal_sends(pilot, page.rig, (down, 10, 4), (move, 10, 3), (up, 10, 2))
+        await settle(pilot, app)
+        assert bridge.lines() == ["sel fixture 102 thru 103, fixture 201"]  # 201 up to 102
+        assert page.panel.chosen == 102
+        await as_a_terminal_sends(pilot, page.rig, (down, 10, 1), (up, 10, 1))
+        await settle(pilot, app)
+        assert bridge.lines()[1:] == ["sel fixture 101"]
+        assert page.panel.chosen == 101
 
     drive(app, body)
 
@@ -432,7 +500,7 @@ def test_output_does_not_touch_the_rigs_table() -> None:
     drive(app, body)
 
 
-def test_a_click_selects_and_chooses_in_edit_mode_and_shift_adds() -> None:
+def test_a_click_selects_and_chooses_in_edit_mode_and_ctrl_adds() -> None:
     bridge = FakeBridge()
     app = on_the_rig(bridge, 201)
 
@@ -449,7 +517,7 @@ def test_a_click_selects_and_chooses_in_edit_mode_and_shift_adds() -> None:
         assert not page.panel.hint.display
         assert str(page.panel.border_title) == "FIXTURE · 102 Head 2"
         assert str(page.rig.rows[1]["number"].spans[0].style) == LIT
-        await pilot.click(page.rig, offset=(10, 3), shift=True)  # 103, added
+        await pilot.click(page.rig, offset=(10, 3), control=True)  # 103, added
         await pilot.click(page.rig, offset=(10, 4), shift=True)  # 201, taken out
         await settle(pilot, app)
         assert bridge.lines() == ["sel fixture 102", "sel + fixture 103", "sel - fixture 201"]

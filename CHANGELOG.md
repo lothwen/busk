@@ -10,6 +10,10 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- F3 selects with a drag: from one row to another, it selects the fixtures of the rows it
+  covers in one line (`sel fixture 101 thru 104, fixture 201`), and with Ctrl held it adds them
+  (`sel + …`). The rows are lit while the mouse is down, and in edit mode the FIXTURE panel
+  shows the row the drag ends on.
 - F9 sets up bindings from controls. `[+ binding…]` on a MIDI or OSC surface opens a form in
   three parts: the control (on MIDI `cc`, `note` or `clock`, a channel and a number; on OSC a
   path), with a `[learn]` of its own that fills it from the next control moved; what it drives
@@ -161,6 +165,10 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Fixed
 
+- The TUI added to the selection on a Shift-click (fixtures on F1, F3 and F8, group buttons on
+  F1 and F2), which kitty, xterm and most other terminals keep for their own text selection, so
+  it never arrived. Ctrl-click now adds or takes out, and so does Alt-click; Shift-click still
+  does where the terminal passes it on. The hints say Ctrl.
 - `bind` took a MIDI channel outside 1 to 16 and a CC or note number above 127, which never
   fire, and `display` feedback on MIDI, which has none, in silence; and a control the surface
   cannot send (`osc` on a MIDI surface, any control on the web remote) with a warning by

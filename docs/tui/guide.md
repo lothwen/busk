@@ -198,6 +198,12 @@ on the prompt or, where noted, only when it is empty.
 | Ctrl+C | Clear the line; on an empty prompt, twice in a row, quit. |
 | Ctrl+Q | Quit. |
 
+**With the mouse,** Ctrl-click adds a fixture or a group to the selection, or takes a
+selected fixture out (`sel + fixture 101`, `sel - fixture 101`); Alt-click does the same,
+for a window manager that keeps Ctrl-clicks. Shift-click does too, but only where the
+terminal passes it on: kitty, xterm and most others keep Shift-clicks while an app has the
+mouse, to select text on the screen and copy it.
+
 Typing `help` opens the help overlay with busk's answer. The prompt stays usable while help
 is open.
 
@@ -269,7 +275,7 @@ for a colour cycle), and `[RUN]` (dimmed while it fades in or out) or `[off]`. O
 effect, `[RUN]` releases the playback (`release 11`): GO on it brings the effect back. On a
 programmer effect it runs `effect stop fx5`, and `[off]` runs `effect run fx5`.
 **SELECTION** shows the selection (`101 thru 102, 301.3`), a button per group (`sel group
-2`; Shift-click adds the group, `sel + group 2`) and a chip per colour preset (`preset color
+2`; Ctrl-click adds the group, `sel + group 2`) and a chip per colour preset (`preset color
 1`; a preset with more than one colour is a grey `░░`).
 
 Below 100 columns the right column goes under the playbacks.
@@ -372,7 +378,7 @@ panel goes under the grid, and a click on a tile scrolls to the slot's row and t
 ```
  page 1 Main · slots 1–13 · sel 101 thru 102                                                                layout   A console    B stack    C stage
 
- ┌─ OUTPUT · 7 fixtures · click selects, Shift-click adds ────────────────────────────────────────┐┌─ PROGRAMMER ───────────────────────────────────┐
+ ┌─ OUTPUT · 7 fixtures · click selects, Ctrl-click adds ─────────────────────────────────────────┐┌─ PROGRAMMER ───────────────────────────────────┐
  │ PARS     ███ ███ ███ ███                                                                       ││ sel 101 thru 102 (2)                           │
  │          201 202 203 204                                                                       ││ programmer empty                               │
  │                                                                                                ││                                                │
@@ -411,7 +417,7 @@ STROBES …; a profile with no category has a row of its own, named after it), a
 fixture in it in what busk outputs now: its colour at its intensity, after the masters,
 blackout, park and limits (dark when it is out). A fixture of one element is `███`, one of
 several a `█` per element. The number under it is cyan while the fixture is selected, on a
-lighter background. A click selects the fixture (`sel fixture 201`); Shift-click adds it or
+lighter background. A click selects the fixture (`sel fixture 201`); Ctrl-click adds it or
 takes it out (`sel + fixture 201`, `sel - fixture 201`).
 
 **PROGRAMMER** shows the selection, what the programmer holds (`2 fixtures · intensity color
@@ -431,7 +437,7 @@ The selected playback has a cyan border. Below 100 columns PROGRAMMER goes under
 ```
  page 1 Main · slots 1–13 · sel 101 thru 102                                                                layout   A console    B stack    C stage
 
- ┌─ STAGE · click selects, Shift-click adds ────────────────────────────────────────────────────────────────┐┌─ PLAYBACKS ──────────────────────────┐
+ ┌─ STAGE · click selects, Ctrl-click adds ─────────────────────────────────────────────────────────────────┐┌─ PLAYBACKS ──────────────────────────┐
  │ y -1.0    ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄   ◆   ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄   ◆   ┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄ ││ P1  Warm         ███████▎░  80  [TG] │
  │ z 5.0                       102                                                    101                   ││ P2  Cool         ░░░░░░░░░   0  [TG] │
  │                            ↑ 1°                                                   ↑ 10°                  ││ P3  Blue         ░░░░░░░░░   0  [TG] │
@@ -498,7 +504,7 @@ Select fixtures, set their attributes, apply presets, and see what the programme
 
 **SELECTION** shows the selection as you would type it (`101 thru 104, 301.2`), how many
 elements it has, and which one the encoders show: the first. A button per group runs `sel
-group N` (Shift-click adds it, `sel + group N`), and `[none]` runs `sel none`.
+group N` (Ctrl-click adds it, `sel + group N`), and `[none]` runs `sel none`.
 
 **The encoders** are grouped by busk's families: INTENSITY, POSITION (`pan`, `tilt`), COLOR
 (`color.r`, `.g`, `.b`, `.w`, `cto`), BEAM (`zoom`, `iris`, `frost`), FOCUS and SHUTTER
@@ -558,7 +564,7 @@ changes any of them, `[+ add]` adds new ones, and `[import plot…]` brings them
 ([below](#importing-a-plot)).
 
 ```
- 7 fixtures · 2 selected · click selects, Shift-click adds                                           [import plot…] [+ add] [edit]
+ 7 fixtures · 2 selected · click or drag selects, Ctrl adds                                          [import plot…] [+ add] [edit]
 
  ┌─ FIXTURES ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
  │      # name                   profile                 type   mode      patch   intensity colour         pan  tilt zoom src     │
@@ -593,8 +599,11 @@ playback, green an effect, grey nothing (the intensity and `src` by what drives 
 pan and tilt by what drives the position, zoom by the beam's). Park comes first, whatever else
 drives the value, as busk outputs it, and one parked element is enough for the fixture.
 
-A click on a row selects the fixture (`sel fixture 101`); Shift-click adds it to the
-selection, or takes it out when it is in (`sel + fixture 101`, `sel - fixture 101`). The pane
+A click on a row selects the fixture (`sel fixture 101`); Ctrl-click adds it to the
+selection, or takes it out when it is in (`sel + fixture 101`, `sel - fixture 101`). A drag
+from one row to another selects the fixtures of the rows it covers, in one line (`sel fixture
+201 thru 204`, or `sel fixture 102, fixture 201 thru 202` from 102 to 202); a drag with Ctrl
+held adds them (`sel + …`). The rows it covers are lit until the mouse lets go. The pane
 cursor stops on `[import plot…]`, `[+ add]`, `[edit]` and each row (Enter selects it, and the
 cursor stays).
 
@@ -603,12 +612,12 @@ cursor stays).
 `[edit]`, at the right of the header, turns edit mode on (`[edit ●]`), and `[done]`, at the end
 of the panel, turns it off. The live columns give way to the rig's, and the page stops reading
 the output: `limits` says what the fixture limits (`tilt`, `pan tilt`, `int`), and `place`
-whether it has a location (`●`, else `·`). A click still selects, and the panel shows the
-fixture clicked last, whose number is lit: several selected rows look alike. The
+whether it has a location (`●`, else `·`). A click or a drag still selects, and the panel
+shows the fixture clicked last (or the row a drag ends on), whose number is lit: several selected rows look alike. The
 [GROUPS](#groups) panel is under the table.
 
 ```
- 7 fixtures · 2 selected · click chooses, Shift-click adds to the selection                        [import plot…] [+ add] [edit ●]
+ 7 fixtures · 2 selected · click chooses, drag selects, Ctrl adds                                  [import plot…] [+ add] [edit ●]
 
  ┌─ FIXTURES ────────────────────────────────────────────────────────────────┐ ┌─ FIXTURE · 102 Spot 102 ─────────────────────────┐
  │      # name          profile         mode      patch   limits       place │ │ [rename…] [number…] [delete 101 thru 102]        │
@@ -1418,7 +1427,7 @@ Hover over a channel and the hint row says what it is, what it does in the fixtu
 and what busk sends on it now: `1.17 · fixture 102 · ch 1/16 pan · 128`, or `1.94 · overlap
 · fixture 501 · ch 3/12 tilt · fixture 502 · ch 3/12 tilt · 128`. The value follows the
 show while the mouse stays. A click on a fixture selects it (`sel fixture 101`), and on an
-overlap it selects both (`sel fixture 501, fixture 502`). Shift-click adds a fixture to the
+overlap it selects both (`sel fixture 501, fixture 502`). Ctrl-click adds a fixture to the
 selection, or takes it out.
 
 **CHANNELS**, under the maps: with one fixture selected, each channel of its footprint, its
