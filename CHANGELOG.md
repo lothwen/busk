@@ -163,6 +163,11 @@ the public API, and as a breaking change, is in [the library guide](docs/library
   took back its last line (`undid: source build.busk`), and a script longer than the 1,000
   steps the history keeps no longer pushes the steps from before it out. A script that stops
   at an error leaves one step for the lines that ran.
+- A GDTF file with no channel busk has an attribute for, as the placeholder GDTFs in Capture's
+  MVR plots (every channel a `Dimmer1`, `Dimmer2` …), is refused in one line that names three of
+  them and counts the rest (`no channel has a busk attribute (Dimmer1, Dimmer2, Dimmer3 and 36
+  more)`), by `profile import`, `busk import gdtf` and `rig import`. The refusal listed every
+  channel of every mode.
 
 ### Fixed
 

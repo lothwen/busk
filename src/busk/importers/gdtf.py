@@ -325,6 +325,10 @@ def import_gdtf(description: bytes, *, manufacturer: str | None = None) -> Impor
         mode_ids.add(mode["id"])
         modes.append(mode)
     if not modes:
+        if fixture.unknown and not fixture.known:  # a note per channel would bury it
+            names = list(fixture.unknown)
+            more = f" and {len(names) - 3} more" if len(names) > 3 else ""
+            raise ImportFailed(f"no channel has a busk attribute ({', '.join(names[:3])}{more})")
         reasons = "; ".join(fixture.notes) or "it has no DMX modes"
         raise ImportFailed(f"no mode could be imported ({reasons})")
     profile = fixture.profile(modes)
@@ -516,6 +520,8 @@ class _FixtureType:
     physical: FixturePhysical = field(default_factory=FixturePhysical)
     geometries: dict[str, ET.Element] = field(default_factory=dict)
     parents: dict[str, str | None] = field(default_factory=dict)
+    unknown: dict[str, None] = field(default_factory=dict)  # attributes busk has none for
+    known: bool = False  # whether a channel of any mode has a busk attribute
 
     def __post_init__(self) -> None:
         for top in self.node.iterfind("Geometries/*"):
@@ -886,6 +892,11 @@ class _ModeBuilder:
                         continue  # only a logical channel's own: Control1 holds resets too
                     p.attribute, p.source = ATTRIBUTES[attribute], attribute
                     break
+        for p in placed:
+            if p.attribute != "control":
+                self.fixture.known = True
+            elif p.channel.attribute:
+                self.fixture.unknown.setdefault(p.channel.attribute, None)
         self._dedupe(placed)
 
     def _dedupe(self, placed: list[_Placed]) -> None:

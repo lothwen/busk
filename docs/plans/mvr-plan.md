@@ -370,7 +370,7 @@ Saved locations, the web view and `examples/festival.busk` are unchanged.
   1. A show with any fixture holding `mvrUuid` refuses both lines ("importing a plot again
      is not supported yet") until Phase 3. `cascade` is not a word yet.
   2. A line with nothing to add is refused after its notes; `rig check` says `nothing to
-     add`.
+     add` (since Phase 6, on a first import, `no fixture busk can add`, as the import does).
   3. Notes group fixtures by reason, name three and count the rest. Numbering notes count
      fixtures and list numbers. Number lists run from three numbers (`101–103, 201, 202`),
      as `spec_words` runs `thru`.
@@ -700,6 +700,18 @@ that day: Import plot… in the File menu as well, and the file picker to choose
   and F1 C are unchanged. Checked headless: test2 as saved, Circle_Stage with the default frame
   (its round stage stood 4 m into the crowd too), and festival.show, unchanged. Not handled: a
   plot that draws the venue's walls, touching the stage, may take the room for the stage.
+- **Capture's plots carry placeholder GDTFs** (Phase 6, 2026-11-24, `Capture_Demo.mvr` from
+  Capture 2023.1.6 and `Template_Stage1.mvr` from Capture 2024.0.34). Each of their ten GDTFs
+  has the fixture's modes and channel counts and nothing else: every channel is an 8-bit
+  `Dimmer<n>` with one unnamed function, under one geometry with no beam. No channel maps to
+  a busk attribute, every mode is refused, and no fixture is added, which is right. The reply
+  was not: each GDTF's refusal listed every channel of every mode (24,000 and 30,000
+  characters), and `rig check` said `nothing to add` where `rig import` refused. Fixed: a
+  fixture type with no channel busk knows is refused in a line, naming three of its attributes
+  and counting the rest, in `profile import` too, and `rig check` says `no fixture busk can add`
+  as the import does. With one real `Dimmer` channel in each GDTF, both plots import whole (76
+  and 118 fixtures), so the scene is read right. Not done: letting the user give such a
+  fixture type a profile of their own, so the plot's patch and positions still come in.
 - **`--standalone` goes LATE while a plot is read** (Phase 4). The check runs on a worker
   thread of the TUI, which is the engine's process under `--standalone`, and reading a plot
   holds the GIL for about 0.1 s: the status bar showed `LATE`. A profile's preview does the

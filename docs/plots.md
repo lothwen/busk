@@ -195,6 +195,13 @@ Each of these is a note, in `rig check` and in `rig import`'s reply:
 - A patch that would end past channel 512: the fixture is added unpatched.
 - A profile the show has at another revision: the show's is used, not the plot's.
 
+Some CAD writes a placeholder GDTF for each fixture type: the right modes and channel counts,
+but every channel a `Dimmer1`, `Dimmer2` and so on, which says nothing of what it does. Capture
+does, in the plots it exports. busk cannot make a profile of one, and says so in a line
+(`"Robe@Robin MegaPointe@r3038.gdtf" cannot be imported: no channel has a busk attribute
+(Dimmer1, Dimmer2, Dimmer3 and 36 more)`); when every GDTF of the plot is one, `rig check`
+says `no fixture busk can add`, and `rig import` refuses.
+
 The GDTF import also notes, for each profile it adds, what it cannot map: a channel busk has
 no attribute for, held at its default, and the like. These run long, so `rig check` counts
 them for each profile (`"Martin Professional MAC Aura XB": 10 notes from its GDTF`) and `rig

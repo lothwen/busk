@@ -882,10 +882,32 @@ def test_a_plot_with_nothing_to_add(tmp_path: Path) -> None:
     path = club(tmp_path, scene(layer("L1", "L")))
     show = offline()
     assert run(show, f'rig check "{path}"') == (
-        "the plot has 0 fixtures, 0 profiles and 0 universes\n  nothing to add"
+        "the plot has 0 fixtures, 0 profiles and 0 universes\n  no fixture busk can add"
     )
     reply = show.execute(f'rig import "{path}"')
     assert (reply.ok, reply.text) == (False, "error: club.mvr has no fixture busk can add")
+
+
+def test_a_plot_of_placeholder_gdtfs_says_why_in_a_line(tmp_path: Path) -> None:
+    """Capture writes a GDTF of ``Dimmer1``… for each fixture type: no
+    channel has a busk attribute, and the check says so as the import does."""
+    stub = description(
+        gdtf_mode("3ch", *(gdtf_channel(str(k), gdtf_function(f"Dimmer{k}")) for k in (1, 2, 3))),
+        gdtf_mode("1ch", gdtf_channel("1", gdtf_function("Dimmer1"))),
+        name="Spot",
+        manufacturer="Acme",
+    )
+    path = club(tmp_path, files={SPOT: gdtf(stub)})
+    note = (
+        'note: "Acme@Spot.gdtf" cannot be imported: no channel has a busk attribute '
+        '(Dimmer1, Dimmer2, Dimmer3): "Spot 1", "Spot 2", "Spot 3" and 2 more not added'
+    )
+    show = offline()
+    assert run(show, f'rig check "{path}"') == (
+        f"the plot has 5 fixtures, 1 profile and 2 universes\n  no fixture busk can add\n  {note}"
+    )
+    reply = show.execute(f'rig import "{path}"')
+    assert (reply.ok, reply.text) == (False, f"{note}\nerror: club.mvr has no fixture busk can add")
 
 
 # ------------------------------------------------------------------ the line
@@ -1017,7 +1039,7 @@ def test_rig_check_says_when_there_is_nothing_to_do(tmp_path: Path) -> None:
     empty = club(tmp_path, scene(layer("L1", "L")), name="empty.mvr")
     check = offline().rig_check(empty)
     assert (check.first, check.changes) == (True, False)
-    assert check.text.splitlines()[-1] == "  nothing to add"
+    assert check.text.splitlines()[-1] == "  no fixture busk can add"
     show = imported(tmp_path)
     check = show.rig_check(club(tmp_path))
     assert (check.first, check.changes, check.cascade, check.text) == (False, False, False, NOTHING)

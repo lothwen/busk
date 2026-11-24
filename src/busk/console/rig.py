@@ -175,7 +175,7 @@ class RigPlan:
             lines.append(f"  remove {len(self.removed)}: {runs(self.removed)}{used}")
         if not self.changes:
             if self.first:
-                lines.append("  nothing to add")
+                lines.append("  no fixture busk can add")
             elif self.command is None:
                 lines.append("  nothing to change")
             else:

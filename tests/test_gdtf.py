@@ -943,6 +943,18 @@ def test_a_mode_that_cannot_be_imported_is_skipped_and_reported() -> None:
         imported(mode("bad", channel("1", function("Dimmer", "x/1"))))
 
 
+def test_a_fixture_type_with_no_channel_busk_knows_says_so_in_a_line() -> None:
+    """Capture's placeholder GDTFs: every channel a ``Dimmer<n>``."""
+    dimmers = [channel(str(k), function(f"Dimmer{k}")) for k in range(1, 6)]
+    with pytest.raises(ImportFailed) as failed:
+        imported(mode("1", *dimmers), mode("2", *dimmers[:2]))
+    assert str(failed.value) == (
+        "no channel has a busk attribute (Dimmer1, Dimmer2, Dimmer3 and 2 more)"
+    )
+    with pytest.raises(ImportFailed, match=r"^no mode could be imported \(.*mode '2' skipped"):
+        imported(mode("1", *dimmers), mode("2", channel("1", function("Pan"))))
+
+
 # ------------------------------------------------------------------ refused
 
 
