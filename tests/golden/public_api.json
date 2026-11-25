@@ -663,6 +663,11 @@
     "members": {},
     "module": "busk.compiler.compile"
   },
+  "banner_frames": {
+    "kind": "function",
+    "module": "busk.banner",
+    "signature": "(rate: float = 30.0) -> tuple[str, ...]"
+  },
   "load_show": {
     "kind": "function",
     "module": "busk.persistence.show_file",

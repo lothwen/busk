@@ -6,9 +6,13 @@ from __future__ import annotations
 import time
 
 import pytest
+from rich.color import Color
+from rich.style import Style
 from rich.text import Text
+from textual.geometry import Region
 from textual.pilot import Pilot
-from textual.widgets import ContentSwitcher
+from textual.widget import Widget
+from textual.widgets import ContentSwitcher, Static
 from tui_fakes import FakeBridge, drive, live_state, make_app, programmer, settle, show_model
 
 from busk_tui import colors
@@ -24,6 +28,7 @@ from busk_tui.model import (
     SessionState,
     ShowChanged,
 )
+from busk_tui.pages.busk import BuskHeader
 from busk_tui.shell import BuskApp
 from busk_tui.widgets.dialogs import TextDialog
 from busk_tui.widgets.frame import PAGES, StatusBar, TabBar
@@ -145,6 +150,75 @@ def test_the_badge_and_the_title_are_links_and_nothing_else_in_the_status_bar_is
     assert links(status) == [(" busk ▾ ", "app.file_menu"), ("Club Night", "app.rename_show")]
     status.title = ""
     assert links(status) == [(" busk ▾ ", "app.file_menu"), ("—", "app.rename_show")]
+
+
+def test_the_badge_and_the_prompt_colour_each_letter_of_busk_in_its_gel() -> None:
+    app = make_app()
+
+    async def body(pilot: Pilot[int]) -> None:
+        badge = app.query_one(StatusBar).left_text()
+        label = app.query_one("#prompt-label", Static).content
+        assert isinstance(label, Text)
+        assert (badge.plain[:8], label.plain) == (" busk ▾ ", "busk> ")
+
+        def styles(text: Text, at: int) -> list[str]:
+            return [str(span.style) for span in text.spans if span.start <= at < span.end]
+
+        for k, gel in enumerate(colors.GELS):
+            assert gel in styles(badge, 1 + k)
+            assert gel in styles(label, k)
+
+    drive(app, body)
+
+
+def test_the_mouse_lights_the_whole_badge_and_the_title() -> None:
+    app = make_app()
+
+    async def body(pilot: Pilot[int]) -> None:
+        status = app.query_one(StatusBar)
+        status.title = "Club Night"
+
+        def lit() -> list[str]:
+            text = status.left_text()
+            return [
+                text.plain[span.start : span.end]
+                for span in text.spans
+                if isinstance(span.style, Style) and span.style.bgcolor == Color.parse(colors.SEL)
+            ]
+
+        assert lit() == []
+        await pilot.hover(StatusBar, offset=(3, 0))  # on the s
+        assert lit() == [" busk ▾ "]
+        await pilot.hover(StatusBar, offset=(status.left_text().plain.index("Club") + 1, 0))
+        assert lit() == ["Club Night"]
+        await pilot.hover(StatusBar, offset=(status.left_text().plain.index("GM"), 0))
+        assert lit() == []
+
+    drive(app, body)
+
+
+def test_the_current_tab_and_layout_read_dark_on_cyan() -> None:
+    """Drawn, not only styled: Textual's link colour would paint over them."""
+    app = make_app()
+
+    def drawn(widget: Widget, text: str) -> tuple[str | None, str | None]:
+        strip = widget.render_lines(Region(0, 0, widget.size.width, 1))[0]
+        style = next(segment.style for segment in strip if text in segment.text)
+        assert style is not None
+        color, bgcolor = style.color, style.bgcolor
+        return (
+            None if color is None else color.name,
+            None if bgcolor is None else bgcolor.name,
+        )
+
+    async def body(pilot: Pilot[int]) -> None:
+        tabs, header = app.query_one(TabBar), app.query_one(BuskHeader)
+        assert drawn(tabs, "Busk") == (colors.BG, colors.CYAN)
+        assert drawn(tabs, "F2") == (colors.CYAN, colors.BG)
+        assert drawn(tabs, "Program") == (colors.MID, colors.BG)
+        assert drawn(header, "stack") == (colors.BG, colors.CYAN)
+
+    drive(app, body)
 
 
 def test_the_last_page_is_where_it_starts() -> None:

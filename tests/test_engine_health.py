@@ -285,6 +285,7 @@ def test_the_console_process_says_what_the_root_last_said(
     fake = types.SimpleNamespace(
         Thread=lambda **kwargs: types.SimpleNamespace(start=lambda: None),
         Lock=threading.Lock,
+        Event=threading.Event,
     )
     monkeypatch.setattr(console_host, "threading", fake)
     monkeypatch.setattr(os, "_exit", exit_)

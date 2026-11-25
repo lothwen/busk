@@ -73,11 +73,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 def _launch(options: config.Options) -> Path | int:
     """The launcher: the show chosen there, or the exit code, when it is
     quit (0) or crashed."""
-    from busk_tui.bridge import show_read
+    from busk_tui.bridge import banner, show_read
     from busk_tui.launcher import Launcher
 
     _debug_log()
-    launcher = Launcher(show_read, recovery=recovery(options), state_dir=options.state_dir)
+    launcher = Launcher(
+        show_read, recovery=recovery(options), state_dir=options.state_dir, banner=banner
+    )
     show = launcher.run()
     return (launcher.return_code or 0) if show is None else show
 

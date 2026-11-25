@@ -2,6 +2,6 @@
 
 import sys
 
-from busk.cli import main
+from busk.launch import main
 
 sys.exit(main())

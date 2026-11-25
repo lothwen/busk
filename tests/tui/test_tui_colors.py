@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from busk import banner
 from busk_tui import colors
 
 
@@ -12,6 +13,12 @@ def test_each_token_is_its_xterm_colour(name: str) -> None:
     token = colors.PALETTE[name]
     red, green, blue = colors.xterm_rgb(token.xterm)
     assert token.hex == f"#{red:02x}{green:02x}{blue:02x}"
+
+
+def test_the_gels_are_the_banners() -> None:
+    """busk_tui imports no busk but in the bridge: the four are copied."""
+    copied = tuple("#{:02x}{:02x}{:02x}".format(*(round(v) for v in gel)) for gel in banner.GELS)
+    assert copied == colors.GELS
 
 
 def test_below_one_and_a_half_percent_is_unlit() -> None:

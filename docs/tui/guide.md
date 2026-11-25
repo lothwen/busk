@@ -59,7 +59,19 @@ front end and are not offered.
 Without a show, with or without other options, `busk-tui` opens the launcher:
 
 ```
- busk
+                     ╺━━━━┳━━━━━━━━┳━━━━━━━━┳━━━━━━━━┳━━━━╸
+                         ▐▄▌      ▐▄▌      ▐▄▌      ▐▄▌
+                         ░▒░      ░▒░      ░▒░      ░▒░
+                        ░░▒░░    ░░▒░░    ░░▒░░    ░░▒░░
+                       ░░▒▒▒░░  ░░▒▒▒░░  ░░▒▒▒░░  ░░▒▒▒░░
+                       ██▒▒▒░░  ░░▒▒▒░░  ░░▒▒▒░░  ██▒▒▒░░
+                       ██▄▄▄▄   ▄▄   ▄▄   ▄▄▄▄▄▄  ██   ▄▄
+                       ██   ██  ██   ██  ▀█▄▄▄▄   ██▄▄█▀
+                       ██   ██  ██   ██       ██  ██  ▀█▄
+                       ▀▀▀▀▀▀    ▀▀▀▀▀▀  ▀▀▀▀▀▀   ▀▀   ▀▀
+                     ▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀
+                       ▮ live     lighting console engine
+
 ┌─ RECENT SHOWS ───────────────────────────────────────────────────────────────┐
 │ Club Night            recovers  ~/shows/club.show  │ Club Night              │
 │ Festival Main Stage   ~/shows/festival.show        │ ~/shows/club.show       │
@@ -72,14 +84,17 @@ Without a show, with or without other options, `busk-tui` opens the launcher:
 │                                                    │ 22:14): busk recovers   │
 │                                                    │ the programmer and its  │
 │                                                    │ unsaved edits.          │
+│                                                                              │
+│ [n New show…]  [o Open…]  [q Quit]                                           │
+│                                                                              │
+│ ↑ ↓: move · Enter: open · Delete: forget                                     │
 └──────────────────────────────────────────────────────────────────────────────┘
-
- [n New show…]  [o Open…]  [q Quit]
-
- ↑ ↓: move · Enter: open · Delete: forget
 ```
 
-It lists the shows busk-tui ran last, newest first, with the preview Open recent… has
+Its box stands in the middle of the screen, about half its size (at least 80 columns and 12
+rows), under busk's banner, whose rig fires a lamp on each letter as it opens; on a screen of
+fewer than 25 rows a one-line `busk` badge stands there instead. It lists the shows busk-tui ran
+last, newest first, with the preview Open recent… has
 ([Opening another show](#opening-another-show)): what busk reads in the file the cursor is on.
 ↑ ↓ move and Enter opens it. A show whose file is gone is dimmed and marked `missing`, and
 cannot be opened. **Delete** or **d** forgets the show the cursor is on: it leaves the list at
@@ -132,7 +147,8 @@ after a Close.
 
 **The status bar**, from the left:
 
-- the `busk ▾` badge: a click opens the File menu ([The File menu](#the-file-menu));
+- the `busk ▾` badge, each letter of `busk` in its banner colour (magenta, amber, cyan, blue,
+  as on the `busk>` prompt): a click opens the File menu ([The File menu](#the-file-menu));
 - the show's title, with `*` while it has unsaved edits. A click on the title opens a name
   dialog that sends `rename show "Late Night"`, and refuses an empty name;
 - `ENGINE STALLED`, `ENGINE RESTARTING` or `ENGINE FAILED` (red) while the engine does not

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import select
 import subprocess
 import sys
@@ -27,7 +28,7 @@ from busk.console.parser import (
     parse,
     tokenize,
 )
-from busk.console.prompt import Editing, grammar, hints, split
+from busk.console.prompt import Editing, grammar, hints, prompt, split
 from busk.model.attributes import ATTRIBUTES
 from busk.model.profile import PROFILE_CATEGORIES
 from busk.runner import OfflineShow
@@ -585,6 +586,20 @@ def test_a_line_ending_in_a_question_mark_asks_where_it_is_no_key(console: Conso
     assert not editing.asks("route add ?")  # GNU readline: ? is a key
 
 
+def test_the_prompt_colours_each_letter_of_busk_in_its_gel() -> None:
+    assert prompt(None) == "busk> "
+    shown = prompt("truecolor")
+    assert shown.startswith("\x1b[38;2;255;61;139mb\x1b[38;2;255;178;30mu")
+    assert re.sub(r"\x1b\[[0-9;]*m", "", shown) == "busk> "
+    marked = prompt("truecolor", marked=True)  # for readline: the escapes take no room
+    assert marked.replace("\001", "").replace("\002", "") == shown
+    assert re.sub("\001[^\002]*\002", "", marked) == "busk> "
+
+
+def test_the_prompt_is_plain_where_stdout_shows_no_colour(console: Console) -> None:
+    assert Editing(console).prompt == "busk> "  # pytest's stdout: no terminal
+
+
 # ------------------------------------------------------------ a real prompt
 
 PROMPT_SCRIPT = f"""
@@ -608,12 +623,18 @@ def test_tab_question_mark_and_ctrl_c_on_a_terminal() -> None:
     The prompt starts through ``subprocess``, in a session of its own, and takes
     the pty as that session's terminal itself. ``pty.fork`` would run Python in
     the child between fork and exec, which can deadlock it in a process with
-    threads, such as a pytest-xdist worker."""
+    threads, such as a pytest-xdist worker.
+
+    The terminal shows 256 colours: the prompt comes with the letters of
+    ``busk`` coloured, without readline's ``\\001``/``\\002`` marks."""
     pytest.importorskip("termios")
     readline = pytest.importorskip("readline")
     libedit = "libedit" in (readline.__doc__ or "")
     fd, terminal = os.openpty()
-    env = {**os.environ, "TERM": "xterm", "INPUTRC": os.devnull}
+    env = {k: v for k, v in os.environ.items() if k not in ("NO_COLOR", "COLORTERM")}
+    env |= {"TERM": "xterm", "INPUTRC": os.devnull}
+    shown = prompt("256")
+    assert shown != "busk> "
     child = subprocess.Popen(
         [sys.executable, "-c", PROMPT_SCRIPT],
         stdin=terminal,
@@ -648,18 +669,18 @@ def test_tab_question_mark_and_ctrl_c_on_a_terminal() -> None:
         os.write(fd, b"\x03")
 
     try:
-        expect("busk> ")
+        expect(shown)
         os.write(fd, b"sel fix\t101\r")  # Tab completes "fixture "
         expect("1 target selected")
         os.write(fd, b"route add 1 ?" + (b"\r" if libedit else b""))
         expect("next: artnet  dmxusb  sacn")
-        expect("busk> ")  # the line again (libedit: a new, empty one)
+        expect(shown)  # the line again (libedit: a new, empty one)
         if not libedit:  # GNU readline kept the line: Ctrl+C clears it, and that is all
             ctrl_c()
-            assert "press Ctrl+C" not in expect("busk> ")
+            assert "press Ctrl+C" not in expect(shown)
         ctrl_c()
         expect("press Ctrl+C again to quit")
-        expect("busk> ")
+        expect(shown)
         ctrl_c()
         expect("[EXIT]")
     finally:

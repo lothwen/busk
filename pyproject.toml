@@ -29,7 +29,7 @@ tui = ["textual>=8.2"]
 Repository = "https://github.com/lothwen/busk"
 
 [project.scripts]
-busk = "busk.cli:main"
+busk = "busk.launch:main"
 busk-tui = "busk_tui.app:main"
 
 [build-system]

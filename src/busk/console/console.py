@@ -91,7 +91,7 @@ from busk.console.parser import (
     spec_words,
     template_defaults,
 )
-from busk.console.prompt import PROMPT, Editing, hints, split
+from busk.console.prompt import Editing, hints, split
 from busk.console.rig import RigCheck, RigPlan, plan_rig
 from busk.engine.loop import Frame
 from busk.engine.snapshot import EngineSnapshot
@@ -1352,7 +1352,7 @@ def interact(
     while not console.quit_requested:
         try:
             with editing:
-                line = ask(PROMPT)
+                line = ask(editing.prompt)
         except KeyboardInterrupt:
             write("")  # a new, empty prompt: the output keeps running
             if editing.typed().strip():  # it cleared the line

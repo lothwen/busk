@@ -77,7 +77,15 @@ the show uses that busk ignores, one line each with its path (`hid` and `interna
 surfaces, `hw` inputs, display feedback on a MIDI surface, feedback on a `command` action,
 …).
 
-**At start-up**, one line per open route and surface:
+**At start-up**, at an interactive prompt (stdin and stdout a terminal, no `--frontend`), busk's
+banner comes first: a rig that fires a lamp on each letter of `busk`, animated on a colour
+terminal (24-bit when `COLORTERM` says so, else 256 colours) while busk starts. Nothing waits for
+it: the processes start and the show loads meanwhile, and the first line busk prints brings it to
+rest at once, so it plays as long as the start-up takes, up to about 2 s. `BUSK_NO_ANIM=1` or
+`CI` prints it at rest at once, `NO_COLOR` without colour, and a terminal narrower than 38
+columns gets one line. Ctrl+C before the run starts ends it with exit code 130. The `busk>` prompt has the
+letters of `busk` in the same colours, under the same rules. Then one line per open route and
+surface:
 
 ```
 sACN r-…: U1 Stage → universe 1, multicast 239.255.0.1 via eth0, priority 100

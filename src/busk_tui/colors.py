@@ -59,6 +59,11 @@ GREEN: Final = PALETTE["green"].hex
 AMBER: Final = PALETTE["amber"].hex
 RED: Final = PALETTE["red"].hex
 
+GELS: Final = ("#ff3d8b", "#ffb21e", "#2fe0d0", "#6f86ff")
+"""busk's four gels, one for each letter of ``busk``, as its banner lights
+them (``busk.banner``): magenta, amber, cyan and blue. They are 24-bit, as
+the banner's frames are; a 256-colour terminal shows the nearest."""
+
 UNLIT: Final = 236
 """The xterm colour of an unlit swatch."""
 

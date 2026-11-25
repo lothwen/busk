@@ -86,5 +86,5 @@ def test_midi_is_only_an_extra(wheel: zipfile.ZipFile) -> None:
 
 def test_the_wheel_has_the_command_and_the_type_marker(wheel: zipfile.ZipFile) -> None:
     entry_points = wheel.read(f"{DIST_INFO}/entry_points.txt").decode()
-    assert "busk = busk.cli:main" in entry_points.splitlines()
+    assert "busk = busk.launch:main" in entry_points.splitlines()
     assert "busk/py.typed" in wheel.namelist()

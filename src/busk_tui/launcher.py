@@ -1,12 +1,15 @@
 """The launcher (file-menu plan call 15): what ``busk-tui`` shows when it is
 given no show. A Textual app of its own, with no show running behind it.
 
-It lists the shows busk-tui ran last (``recent`` in ``state.json``), with a
-preview of the one the cursor is on (:class:`RecentShows`), the ones busk
-would recover marked (file-menu plan call 24), and offers a new show and a
-show from a file. ↑ ↓ move, Enter opens a recent show (not a missing one),
-Delete or ``d`` forgets one (call 23), ``n`` makes a new show, ``o`` opens
-the file picker, ``q`` or Esc quits. A show chosen is read first, as the TUI's
+In a box in the middle of the screen, about half its size, it lists the
+shows busk-tui ran last (``recent`` in ``state.json``), with a preview of
+the one the cursor is on (:class:`RecentShows`), the ones busk would recover
+marked (file-menu plan call 24), and offers a new show and a show from a
+file. busk's banner plays above the box (:class:`Banner`), where there is
+room for it; where there is not, a one-line ``busk`` badge stands there.
+↑ ↓ move, Enter opens a recent show (not a missing one), Delete or ``d``
+forgets one (call 23), ``n`` makes a new show, ``o`` opens the file picker,
+``q`` or Esc quits. A show chosen is read first, as the TUI's
 Open… reads it (file-menu plan call 13): one that busk cannot open is
 refused, with why. A new show is written by ``busk new`` in the folder
 busk-tui runs in.
@@ -24,14 +27,16 @@ from __future__ import annotations
 import subprocess
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import ClassVar, cast
+from typing import ClassVar, Final, cast
 
 from rich.style import Style
-from rich.text import Text
+from rich.text import Span, Text
+from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding, BindingType
-from textual.containers import Horizontal
+from textual.containers import Center, Horizontal, Vertical
 from textual.screen import Screen
+from textual.timer import Timer
 from textual.widgets import OptionList, Static
 from textual.worker import get_current_worker
 
@@ -41,7 +46,6 @@ from busk_tui.model import Recovery, ShowRead
 from busk_tui.widgets.controls import ReadRecovery, ReadShow
 from busk_tui.widgets.dialogs import Choice
 from busk_tui.widgets.file_picker import FileDialog, home_text
-from busk_tui.widgets.panel import Panel
 from busk_tui.widgets.show_dialogs import (
     NO_RECENT,
     NewShowDialog,
@@ -50,23 +54,84 @@ from busk_tui.widgets.show_dialogs import (
     new_path,
 )
 
+BANNER_RATE: Final = 30.0
+"""The banner's frames a second."""
+
+BOX_COLUMNS: Final = 80
+"""The fewest columns of the recent shows' box, which is half the screen's
+width where that is more."""
+
+BOX_ROWS: Final = 12
+"""The fewest rows of the box, which is half the screen's height where that
+is more."""
+
+
+def frame_text(frame: str) -> Text:
+    """A frame of the banner as text, without the background its escapes
+    reset to (the terminal's, which Textual paints black): the screen's
+    shows there."""
+    text = Text.from_ansi(frame)
+    text.spans = [
+        Span(start, end, Style(color=style.color))
+        if isinstance(style, Style) and style.bgcolor is not None and style.bgcolor.is_default
+        else Span(start, end, style)
+        for start, end, style in text.spans
+    ]
+    return text
+
+
+class Banner(Static):
+    """busk's banner (``busk.banner_frames``): its frames played once,
+    :data:`BANNER_RATE` a second, and the last kept."""
+
+    def __init__(self, frames: Sequence[str]) -> None:
+        first = frame_text(frames[0])
+        super().__init__(first, id="banner")
+        self.frames = frames
+        self.shown = 0
+        lines = first.split("\n")
+        self.rows = len(lines)
+        self.columns = max(line.cell_len for line in lines)
+        self.timer: Timer | None = None
+
+    def on_mount(self) -> None:
+        if len(self.frames) > 1:
+            self.timer = self.set_interval(1 / BANNER_RATE, self._next)
+
+    def _next(self) -> None:
+        self.shown += 1
+        self.update(frame_text(self.frames[self.shown]), layout=False)
+        if self.shown == len(self.frames) - 1 and self.timer is not None:
+            self.timer.stop()
+
 
 class LauncherScreen(Screen[None]):
-    """The launcher's one screen: the recent shows and the choices."""
+    """The launcher's one screen: busk's banner, and under it the box of the
+    recent shows and the choices."""
 
     DEFAULT_CSS = f"""
-    LauncherScreen #bar {{ height: 1; background: {colors.BAR}; }}
-    LauncherScreen Panel {{ height: 1fr; }}
+    LauncherScreen {{ align: center middle; }}
+    LauncherScreen #top, LauncherScreen #box {{
+        width: 50%; min-width: {BOX_COLUMNS}; max-width: 100%;
+    }}
+    LauncherScreen #top {{ height: auto; margin-bottom: 1; }}
+    LauncherScreen #banner {{ width: auto; height: auto; }}
+    LauncherScreen #badge {{ width: auto; height: 1; }}
+    LauncherScreen #box {{
+        height: 50%; min-height: {BOX_ROWS};
+        padding: 0 1; background: {colors.BG}; border: solid {colors.CYAN};
+        border-title-color: {colors.CYAN}; border-title-align: left;
+    }}
     LauncherScreen RecentShows {{ height: 1fr; }}
     LauncherScreen RecentShows .preview {{
         border-left: solid {colors.BORDER}; padding-left: 1;
     }}
-    LauncherScreen .none {{ color: {colors.FG}; }}
-    LauncherScreen #choices {{ height: 1; margin: 1 1 0 1; }}
+    LauncherScreen .none {{ height: 1fr; color: {colors.FG}; }}
+    LauncherScreen #choices {{ height: 1; margin-top: 1; }}
     LauncherScreen .choice {{ width: auto; margin-right: 2; }}
     LauncherScreen .choice:hover {{ background: {colors.SEL}; }}
-    LauncherScreen #message {{ height: auto; margin: 0 1; color: {colors.RED}; }}
-    LauncherScreen .note {{ height: 1; margin: 0 1; color: {colors.DIM}; }}
+    LauncherScreen #message {{ height: auto; color: {colors.RED}; }}
+    LauncherScreen .note {{ height: 1; color: {colors.DIM}; }}
     """
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("n", "app.new_show", "New show", show=False),
@@ -74,31 +139,47 @@ class LauncherScreen(Screen[None]):
         Binding("q,escape,ctrl+c", "app.quit", "Quit", show=False),
     ]
 
-    def __init__(self, shows: Sequence[RecentShow]) -> None:
+    def __init__(self, shows: Sequence[RecentShow], banner: Sequence[str] = ()) -> None:
         super().__init__()
         self.recent = RecentShows(shows)
         self.message = Static("", id="message")  # why a new show was not made
+        self.banner = Banner(banner) if banner else None
+        badge = Style(bold=True, color=colors.BG, bgcolor=colors.CYAN)
+        self.badge = Static(Text(" busk ", style=badge), id="badge")
 
     def compose(self) -> ComposeResult:
-        badge = Style(bold=True, color=colors.BG, bgcolor=colors.CYAN)
-        yield Static(Text(" busk ", style=badge), id="bar")
-        with Panel("Recent shows"):
+        with Center(id="top"):  # as wide as the box: the banner over its middle
+            if self.banner is not None:
+                yield self.banner
+            yield self.badge
+        with Vertical(id="box") as box:
+            box.border_title = "RECENT SHOWS"
             if self.recent.list.shows:
                 yield self.recent
             else:
                 yield Static(NO_RECENT, classes="none")
-        with Horizontal(id="choices"):
-            yield Choice("n", "New show…", "new_show", colors.GREEN)
-            yield Choice("o", "Open…", "open_show", colors.CYAN)
-            yield Choice("q", "Quit", "quit", colors.MID)
-        yield self.message
-        if self.recent.list.shows:
-            yield Static("↑ ↓: move · Enter: open · Delete: forget", classes="note")
+            with Horizontal(id="choices"):
+                yield Choice("n", "New show…", "new_show", colors.GREEN)
+                yield Choice("o", "Open…", "open_show", colors.CYAN)
+                yield Choice("q", "Quit", "quit", colors.MID)
+            yield self.message
+            if self.recent.list.shows:
+                yield Static("↑ ↓: move · Enter: open · Delete: forget", classes="note")
+
+    def on_resize(self, event: events.Resize) -> None:
+        """The banner where it fits above the box, else the badge."""
+        width, height = event.size
+        box = max(BOX_ROWS, height // 2)
+        banner = self.banner
+        fits = banner is not None and width >= banner.columns and height >= banner.rows + 1 + box
+        if banner is not None:
+            banner.display = fits
+        self.badge.display = not fits
 
     def on_recent_shows_emptied(self, event: RecentShows.Emptied) -> None:
         """The last one forgotten: the launcher says there is none."""
         event.stop()
-        self.query_one(Panel).mount(Static(NO_RECENT, classes="none"))
+        self.query_one("#box").mount(Static(NO_RECENT, classes="none"), before="#choices")
         self.query_one(".note").remove()
         self.recent.remove()
 
@@ -117,7 +198,9 @@ class Launcher(App[Path]):
     show file (:func:`busk_tui.bridge.show_read`), called on a worker
     thread; ``recovery``: what busk would recover of one, the same way
     (``None``: the shows it opens recover nothing, so none is marked).
-    ``state_dir``: busk's state directory, for ``busk new``'s sACN CID."""
+    ``state_dir``: busk's state directory, for ``busk new``'s sACN CID;
+    ``banner``: busk's banner as frames, at the rate given
+    (:func:`busk_tui.bridge.banner`; ``None``: the badge alone)."""
 
     CSS_PATH = "busk.tcss"
     TITLE = "busk"
@@ -130,14 +213,17 @@ class Launcher(App[Path]):
         *,
         recovery: Callable[[Path], Recovery | None] | None = None,
         state_dir: Path | None = None,
+        banner: Callable[[float], Sequence[str]] | None = None,
     ) -> None:
         super().__init__()
         self.read = read
         self.recovery = recovery
         self.state_dir = state_dir
+        self.banner = banner
 
     def get_default_screen(self) -> LauncherScreen:
-        self.home = LauncherScreen(config.recent_shows(config.state_path()))
+        frames = () if self.banner is None else self.banner(BANNER_RATE)
+        self.home = LauncherScreen(config.recent_shows(config.state_path()), frames)
         return self.home
 
     def on_read_show(self, message: ReadShow) -> None:

@@ -81,11 +81,11 @@ Every screen shares the same vertical frame. Only the main area changes between 
 
 | Row(s) | Region | Content |
 |---|---|---|
-| 1 | Status bar (bg 235) | `busk ▾` badge (cyan reverse, bold; a click or Alt+F opens the File menu: New… Ctrl+N, Open… Ctrl+O, Open recent…, Save Ctrl+S, Save as…, Import script…, Import profile…, Close, Quit Ctrl+Q) · show name (`*` with unsaved edits; a click renames it) · network TX per route (`● sACN·U1 ● ArtNet·U2`) · `GM 100%` (amber when \< 100) · `BPM 128.0 ●` (dot flashes on beat) · `FADE 0.0s` · `PROG n` (magenta) · BLIND chip · BLACKOUT chip · clock (right-aligned, HH:MM:SS). |
+| 1 | Status bar (bg 235) | `busk ▾` badge (bold, each letter of `busk` in its banner gel: #ff3d8b #ffb21e #2fe0d0 #6f86ff; the bg turns 236 under the mouse; a click or Alt+F opens the File menu: New… Ctrl+N, Open… Ctrl+O, Open recent…, Save Ctrl+S, Save as…, Import script…, Import profile…, Close, Quit Ctrl+Q) · show name (`*` with unsaved edits; a click renames it) · network TX per route (`● sACN·U1 ● ArtNet·U2`) · `GM 100%` (amber when \< 100) · `BPM 128.0 ●` (dot flashes on beat) · `FADE 0.0s` · `PROG n` (magenta) · BLIND chip · BLACKOUT chip · clock (right-aligned, HH:MM:SS). |
 | 1–2 | Tab bar | F1 Busk · F2 Program · F3 Fixtures · F4 Cues · F5 Effects · F6 Presets · F7 Masters · F8 Patch · F9 MIDI · F10 Help. Wraps on narrow terminals. Bottom border 239. |
 | flex | Main area | Active screen. Scrolls vertically if content exceeds height. |
 | 7 | Log | Top border with `LOG` title (dim). Six visible lines, scrollable, auto-scrolls to newest. See 7.3. |
-| 1 | Prompt (bg 235) | `busk>` (green, bold) + input + right-aligned context: `sel 8 · P1 · undo 3`. |
+| 1 | Prompt (bg 235) | `busk>` (bold; `busk` in the four gels, `>` green) + input + right-aligned context: `sel 8 · P1 · undo 3`. |
 | 1 | Syntax hint | Help lines matching the first typed word (dim). See 7.2. |
 | 1 | Key legend | Keys in cyan, actions dim: F1–F9 screens · F10 ? help · space GO · ← → playback · \[ \] fader · ↑ ↓ history · tab complete · esc clear. |
 

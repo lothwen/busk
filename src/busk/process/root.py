@@ -88,6 +88,7 @@ from pathlib import Path
 from types import FrameType
 from typing import IO, Any, Final, TextIO
 
+from busk.banner import child_hold
 from busk.compiler.compile import OutputLayout
 from busk.engine.clock import MonotonicClock
 from busk.engine.loop import Frame
@@ -96,7 +97,7 @@ from busk.output.driver import RouteStatus
 from busk.output.scheduler import STALL_S, OutputScheduler
 from busk.persistence.eventlog import EventLog
 from busk.persistence.paths import state_directory
-from busk.process.options import RunOptions
+from busk.process.options import RunOptions, is_interactive
 from busk.process.report import RouteReporter, diverted, plural, print_statistics, warn
 from busk.process.wire import (
     Attach,
@@ -599,16 +600,18 @@ class Root:
     def _report_routes(self) -> None:
         """Print route changes and send the console the routes' status
         (``ROUTES``) when it changed; once the first layout opened the routes,
-        warn when none is open and no frames are printed."""
+        warn when none is open and no frames are printed. A layout's lines
+        come before its ``ROUTES``: the console opens its prompt after the
+        first (``ProcessBackend.ready``), so no start-up line lands on it."""
+        routes = self._scheduler.route_status()  # first: its layout's notices are queued
         self._reporter.poll()
-        routes = self._scheduler.route_status()
-        if routes is not None and routes != self._routes:
-            self._routes = routes
-            self._tell_routes()
-        if not self._routes_checked and self._scheduler.layout is not None:
+        if not self._routes_checked and routes is not None:
             self._routes_checked = True
             if not self._scheduler.routes and not self._options.console:
                 warn("no output: no route is open (add --console to print frames)")
+        if routes is not None and routes != self._routes:
+            self._routes = routes
+            self._tell_routes()
 
     def _write_stats(self) -> None:
         """One ``--stats`` line (see :func:`stats_record`)."""
@@ -695,18 +698,6 @@ def rss(pid: int) -> int | None:
     return int(resident) * os.sysconf("SC_PAGE_SIZE")
 
 
-def is_interactive(options: RunOptions) -> bool:
-    """Whether a run with ``options`` opens the interactive prompt: the
-    console reads commands, there is no ``--duration``, and stdin is a
-    terminal. (``--console`` frame lines are off at a prompt.)"""
-    if options.no_console or options.duration is not None:
-        return False
-    try:
-        return sys.stdin.isatty()
-    except (AttributeError, ValueError, OSError):
-        return False
-
-
 # ------------------------------------------------------------------ children
 
 
@@ -718,9 +709,11 @@ def _spawn_engine(*, log: bool, piped: bool = False) -> tuple[subprocess.Popen[b
     with theirs:
         command = [sys.executable, "-m", "busk.process.engine_host"]
         command += ["--control", str(theirs.fileno()), *(["--log"] if log else [])]
+        held, environment = child_hold()  # its output waits for busk's banner
         process = subprocess.Popen(
             command,
-            pass_fds=(theirs.fileno(),),
+            pass_fds=(theirs.fileno(), *held),
+            env=environment,
             stdin=subprocess.DEVNULL,
             stderr=subprocess.PIPE if piped else None,
             start_new_session=True,
@@ -753,5 +746,8 @@ def _spawn_console(
             str(link.fileno()),
             *argv,
         ]
-        process = subprocess.Popen(command, pass_fds=(theirs.fileno(), link.fileno()))
+        held, environment = child_hold()  # its output waits for busk's banner
+        process = subprocess.Popen(
+            command, pass_fds=(theirs.fileno(), link.fileno(), *held), env=environment
+        )
     return process, Endpoint(ours)

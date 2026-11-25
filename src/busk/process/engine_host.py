@@ -69,6 +69,7 @@ from typing import Any, Final
 import numpy as np
 from numpy.typing import NDArray
 
+from busk.banner import hold_output
 from busk.commands.types import CommandEnvelope
 from busk.compiler.compile import CompiledShow, OutputLayout
 from busk.engine.clock import SWITCH_INTERVAL, Clock, MonotonicClock
@@ -548,6 +549,7 @@ class _Watched:
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run an engine host on the inherited control descriptor."""
+    hold_output()  # the terminal is busk's banner's until it rests
     parser = argparse.ArgumentParser(
         prog="python -m busk.process.engine_host",
         description="busk's engine process; the root of `busk run` starts it.",

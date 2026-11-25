@@ -10,6 +10,17 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Added
 
+- `busk run` opens its interactive prompt under busk's banner: a small rig whose lamps strike
+  one by one over the `busk` wordmark, animated on a colour terminal (24-bit when `COLORTERM`
+  says so, else 256 colours) while busk starts. It never holds the start-up: the processes start
+  and the show loads meanwhile, and the first line busk prints brings it to rest at once.
+  `BUSK_NO_ANIM=1` or `CI` shows it at rest at once, `NO_COLOR` without colour, and a terminal
+  narrower than 38 columns gets one line. Ctrl+C before the run starts ends it with 130.
+  Scripts, pipes and `--frontend` get none. The `busk` command now starts in `busk.launch`,
+  which reads the options before the command line's imports. The
+  `busk>` prompt has each letter of `busk` in its banner colour, where the terminal shows colour.
+- `busk.banner_frames()` gives the banner as the frames of its animation, 30 a second by
+  default, each 12 lines of 38 columns in 24-bit ANSI colours, for a frontend to play.
 - F3 selects with a drag: from one row to another, it selects the fixtures of the rows it
   covers in one line (`sel fixture 101 thru 104, fixture 201`), and with Ctrl held it adds them
   (`sel + …`). The rows are lit while the mouse is down, and in edit mode the FIXTURE panel
@@ -145,6 +156,11 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Changed
 
+- busk-tui's launcher is a box in the middle of the screen, about half its size (at least 80
+  columns and 12 rows), with busk's banner playing above it; on a screen of fewer than 25 rows
+  a one-line `busk` badge stands there instead.
+- busk-tui's `busk ▾` badge and `busk>` prompt have each letter of `busk` in its banner colour
+  (magenta, amber, cyan, blue); the badge is no longer cyan, and lights whole under the mouse.
 - `busk-tui SHOW` stays as the parent of `busk run` instead of replacing itself with it, so that
   the TUI can end the run and have the next show started. Its exit code is still the run's (128
   + N when a signal N killed the run); it passes SIGTERM and SIGHUP on to the run, and leaves
@@ -173,6 +189,9 @@ the public API, and as a breaking change, is in [the library guide](docs/library
 
 ### Fixed
 
+- busk-tui's current page tab and F1's shown layout read dark on cyan: Textual's link colour
+  painted their text white. The other tabs draw their F-key in cyan and their name in grey, as
+  meant, and F1's layout names are no longer underlined.
 - The TUI added to the selection on a Shift-click (fixtures on F1, F3 and F8, group buttons on
   F1 and F2), which kitty, xterm and most other terminals keep for their own text selection, so
   it never arrived. Ctrl-click now adds or takes out, and so does Alt-click; Shift-click still

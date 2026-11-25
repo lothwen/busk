@@ -99,6 +99,7 @@ from typing import Final, Literal, Protocol, TextIO, cast
 import numpy as np
 from numpy.typing import NDArray
 
+from busk.banner import hold_output
 from busk.commands.types import Command
 from busk.compiler.compile import CompiledShow, UnsupportedFeature, compile_show
 from busk.compiler.limitations import collect_limitations
@@ -119,7 +120,7 @@ from busk.persistence.paths import state_directory
 from busk.persistence.show_file import ShowLoadError, load_show, newest_backup, utc_now
 from busk.persistence.values_file import load_values
 from busk.process.links import RemoteBus, start_log
-from busk.process.options import RunOptions
+from busk.process.options import RunOptions, add_run_arguments, is_interactive
 from busk.process.report import (
     RouteReporter,
     diverted,
@@ -129,7 +130,6 @@ from busk.process.report import (
     say,
     warn,
 )
-from busk.process.root import is_interactive
 from busk.process.wire import Attach, Endpoint, Kind, LinkClosed, Processes, loads
 from busk.runner import MONITOR_S, SETTLE_S, LiveShow, _LocalRun
 from busk.session.library import ProfileLibrary
@@ -139,93 +139,16 @@ EXIT_FAILED: Final = 70
 """The exit code of a console that hit an unexpected exception (``EX_SOFTWARE``)."""
 
 
+ROUTES_S: Final = 2.0
+"""The longest the console waits for the root's first route report before
+its prompt (``ProcessBackend.ready``): it comes once the engine sent the
+show's layout, a few tens of milliseconds after the console synced."""
+
+
 class Terminated(BaseException):
     """Raised in the main thread by ``SIGTERM`` or ``SIGHUP``: quit as on
     Ctrl+C in a non-interactive run. A :class:`BaseException`, so the
     console's command handling never swallows it."""
-
-
-def add_run_arguments(run: argparse.ArgumentParser) -> None:
-    """The options of ``busk run`` (also parsed by the console process,
-    which the root starts with the same arguments)."""
-    run.add_argument("show", type=Path, help="path to a .show or .json show file")
-    run.add_argument(
-        "--values",
-        type=Path,
-        metavar="FILE",
-        help="logical values for slots no playback controls: a JSON list of park-style entries",
-    )
-    run.add_argument(
-        "--duration",
-        type=_positive_seconds,
-        metavar="SECONDS",
-        help="stop after this many seconds instead of waiting for Ctrl+C or quit",
-    )
-    run.add_argument(
-        "--console",
-        action="store_true",
-        help="also print each universe to stdout when its bytes change",
-    )
-    run.add_argument(
-        "--script", type=Path, metavar="FILE", help="run console commands from FILE first"
-    )
-    run.add_argument("--no-console", action="store_true", help="read no console commands")
-    run.add_argument(
-        "--iface", default="eth0", metavar="IF", help="interface for new multicast/broadcast routes"
-    )
-    run.add_argument("--state-dir", type=Path, metavar="D", help="busk's state directory")
-    run.add_argument(
-        "--library",
-        type=Path,
-        action="append",
-        default=[],
-        metavar="D",
-        help="another directory of fixture profiles (repeatable)",
-    )
-    run.add_argument("--no-recover", action="store_true", help="ignore the last run's crash state")
-    run.add_argument(
-        "--threads",
-        action="store_true",
-        help="run the engine and the output as threads of one process (no watchdog)",
-    )
-    run.add_argument(
-        "--stats",
-        type=Path,
-        metavar="FILE",
-        help="append the processes' statistics to FILE as one JSON line per second",
-    )
-    run.add_argument(
-        "--no-log", action="store_true", help="write no event log (<stateDir>/logs, busk replay)"
-    )
-    run.add_argument(
-        "--frontend",
-        type=_frontend_name,
-        metavar="MODULE:FUNCTION",
-        help="call FUNCTION(show) of MODULE instead of opening the prompt; the run ends "
-        "when it returns",
-    )
-
-
-FRONTEND_CLASHES: Final = ("console", "no_console", "duration")
-"""The options ``--frontend`` cannot be combined with: a frontend owns the
-terminal and the commands, and ends the run when it returns."""
-
-
-def _frontend_name(text: str) -> str:
-    module, colon, function = text.partition(":")
-    if not (module and colon and function):
-        raise argparse.ArgumentTypeError(f"expected MODULE:FUNCTION: {text!r}")
-    return text
-
-
-def _positive_seconds(text: str) -> float:
-    try:
-        seconds = float(text)
-    except ValueError:
-        raise argparse.ArgumentTypeError(f"not a number: {text!r}") from None
-    if not seconds > 0:  # also rejects NaN
-        raise argparse.ArgumentTypeError(f"must be positive: {text!r}")
-    return seconds
 
 
 # -------------------------------------------------------------------- backends
@@ -434,6 +357,7 @@ class ProcessBackend:
         self._state = "running"  # the root's last ENGINE news
         self._processes: Processes | None = None  # the root's last PROCESSES
         self._routes: tuple[RouteStatus, ...] | None = None  # the root's last ROUTES
+        self._routes_came = threading.Event()  # the first ROUTES: the root printed its lines
         self._reconnects = 0  # the bus's reconnects already reported
         threading.Thread(target=self._read_control, name="busk-control", daemon=True).start()
 
@@ -488,7 +412,11 @@ class ProcessBackend:
             raise Terminated
 
     def ready(self) -> None:
-        """Tell the root that the command loop runs (``--duration`` starts)."""
+        """Wait for the root's first route report (``ROUTES``; at most
+        :data:`ROUTES_S`), after the lines it printed for the routes, so that
+        none lands on the prompt; then tell the root that the command loop
+        runs (``--duration`` starts)."""
+        self._routes_came.wait(ROUTES_S)
         with contextlib.suppress(OSError):
             self._control.send(Kind.READY)
 
@@ -578,6 +506,7 @@ class ProcessBackend:
                 self._processes = loads(message.payload)
             elif message.kind == Kind.ROUTES:
                 self._routes = loads(message.payload)
+                self._routes_came.set()
             elif message.kind == Kind.NEWS:
                 failed, text = loads(message.payload)
                 (warn if failed else say)(text)
@@ -1029,6 +958,7 @@ def cannot_read(path: Path, exc: OSError) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the console process on the inherited control and link descriptors."""
+    hold_output()  # the terminal is busk's banner's until it rests
     parser = argparse.ArgumentParser(
         prog="python -m busk.process.console_host",
         description="busk's console process; the root of `busk run` starts it.",

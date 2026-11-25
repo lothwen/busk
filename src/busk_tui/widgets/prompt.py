@@ -86,7 +86,8 @@ class Prompt(Input):
 
 
 class PromptRow(Horizontal):
-    """``busk>``, the prompt, and the context on the right."""
+    """``busk>``, each letter of busk in its gel (:data:`colors.GELS`), the
+    prompt, and the context on the right."""
 
     DEFAULT_CSS = f"""
     PromptRow {{ height: 1; background: {colors.BAR}; }}
@@ -95,7 +96,10 @@ class PromptRow(Horizontal):
     """
 
     def compose(self) -> ComposeResult:
-        yield Static("busk> ", id="prompt-label")
+        label = Text("busk> ")
+        for k, gel in enumerate(colors.GELS):
+            label.stylize(gel, k, k + 1)
+        yield Static(label, id="prompt-label")
         yield Prompt(id="prompt")
         yield Static("", id="context")
 

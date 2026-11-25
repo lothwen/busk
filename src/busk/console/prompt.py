@@ -22,10 +22,12 @@ import contextlib
 import ctypes
 import re
 import shutil
+import sys
 from collections.abc import Mapping, Sequence
 from types import ModuleType, TracebackType
 from typing import TYPE_CHECKING, Final
 
+from busk.banner import ColorMode, color_mode, letter_colors
 from busk.console.parser import HELP, ParseError, tokenize
 
 if TYPE_CHECKING:
@@ -37,6 +39,18 @@ _DELIMITERS: Final = " \t,"
 _KEYWORD: Final = re.compile(r"[a-z][a-zA-Z]*(?:\|[a-z][a-zA-Z]*)*")  # `on|off`, not `N`
 _PLACEHOLDER: Final = re.compile(r"<[^<>\s]+>")
 _DEFINITION: Final = re.compile(r"(<[^<>\s]+>) =")
+
+
+def prompt(color: ColorMode | None, *, marked: bool = False) -> str:
+    """:data:`PROMPT`, each letter of ``busk`` in its gel as the banner lights
+    it (:mod:`busk.banner`), in ``color`` (``None``: plain). ``marked``: for
+    readline, each escape between ``\\001`` and ``\\002``, which tell it that
+    the escape takes no room on the line."""
+    if color is None:
+        return PROMPT
+    start, end = ("\001", "\002") if marked else ("", "")
+    letters = zip(letter_colors(color), "busk", strict=True)
+    return "".join(f"{start}{sgr}{end}{ch}" for sgr, ch in letters) + f"{start}\x1b[39m{end}> "
 
 
 def split(before: str) -> tuple[str, str]:
@@ -177,7 +191,9 @@ def _flow(label: str, items: Sequence[str], width: int) -> list[str]:
 class Editing:
     """Line editing at the prompt with :mod:`readline`, where it exists:
     history, and while a command line is read (``with editing:``) Tab
-    completion and ``?``. The questions (``save …? [y/n]``) keep plain input."""
+    completion and ``?``. The questions (``save …? [y/n]``) keep plain input.
+    :attr:`prompt` is the prompt to ask with: in colour where stdout shows
+    colours (:func:`prompt`)."""
 
     def __init__(self, console: Console) -> None:
         self.console = console
@@ -197,6 +213,9 @@ class Editing:
                 readline.parse_and_bind("tab: complete")
                 readline.parse_and_bind("set show-all-if-ambiguous on")
                 readline.set_completion_display_matches_hook(self._display)
+        color = color_mode(sys.stdout)
+        self.prompt = prompt(color, marked=self.readline is not None)
+        self.shown = prompt(color)  # the prompt printed again after the help
 
     @property
     def question_key(self) -> bool:
@@ -262,7 +281,7 @@ class Editing:
         self._help = hints(self.console, before)
         if self.libedit:  # no display hook: print it here, then the line again
             print("\n" + "\n".join(self._help), flush=True)
-            print(PROMPT + readline.get_line_buffer(), end="", flush=True)
+            print(self.shown + readline.get_line_buffer(), end="", flush=True)
             return []
         return [text + "1", text + "2"]  # two: readline calls _display, and keeps the line
 
@@ -283,7 +302,7 @@ class Editing:
             library.rl_forced_update_display()
             ctypes.c_int.in_dll(library, "rl_display_fixed").value = 1
         except (OSError, AttributeError, ValueError):
-            print(PROMPT + readline.get_line_buffer(), end="", flush=True)
+            print(self.shown + readline.get_line_buffer(), end="", flush=True)
 
 
 def _common(words: Sequence[str]) -> str:

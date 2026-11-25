@@ -42,6 +42,7 @@ from busk_tui.pages.busk_console import ConsoleLayout
 from busk_tui.pages.busk_stack import StackLayout
 from busk_tui.pages.busk_stage import StageLayout
 from busk_tui.widgets.controls import MARKED, ActionButton
+from busk_tui.widgets.frame import OwnLinkColors
 from busk_tui.widgets.playback_panel import PlaybackEditor, SlotTile
 
 LAYOUTS: Final[tuple[tuple[Layout, str], ...]] = (("A", "console"), ("B", "stack"), ("C", "stage"))
@@ -93,8 +94,9 @@ def step(selected: int, slots: Sequence[int | None], by: int) -> int:
     return shown[(shown.index(selected) + by) % len(shown)]
 
 
-class BuskHeader(Widget):
-    """``page 1 Main · slots 1–13 · sel 101 thru 102``, and the layouts."""
+class BuskHeader(OwnLinkColors, Widget):
+    """``page 1 Main · slots 1–13 · sel 101 thru 102``, and the layouts (the
+    one shown dark on cyan)."""
 
     DEFAULT_CSS = "BuskHeader { height: 1; width: 1fr; }"
 

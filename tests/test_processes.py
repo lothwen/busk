@@ -66,6 +66,23 @@ def test_quit_ends_the_tree_and_the_root_prints_the_statistics(
     assert packets[-1].terminated  # the output closed its stream at the end
 
 
+def test_the_console_takes_commands_after_the_roots_start_up_lines(
+    show: Path, receiver: Receiver
+) -> None:
+    """The console runs its first command, or opens its prompt, once the
+    root has said what the show's routes did: no start-up line of the root
+    lands on the prompt."""
+    with BuskRun(show, sacn_port=receiver.port) as run:
+        run.send("info\n")  # at once, while the run starts
+        run.wait_for(lambda line: line.startswith("show: "))
+        run.send("quit\n")
+        assert run.wait() == 0, run.err
+    out = run.out
+    opened = next(k for k, line in enumerate(out) if line.startswith("sACN r1: ") and "→" in line)
+    answered = next(k for k, line in enumerate(out) if line.startswith("show: "))
+    assert opened < answered, out
+
+
 def test_a_failing_script_exits_1(show: Path, tmp_path: Path) -> None:
     script = tmp_path / "bad.busk"
     script.write_text("gm 50%\nno such command\n")

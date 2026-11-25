@@ -585,7 +585,7 @@ another thread edited was done 32–45 ms after it was due at the 99th percentil
 
 ## Reference
 
-The 50 names of `busk.__all__`. Each has a docstring with the details; path parameters
+The 52 names of `busk.__all__`. Each has a docstring with the details; path parameters
 take `str` or `os.PathLike`.
 
 | Name | What it is |
@@ -602,6 +602,7 @@ take `str` or `os.PathLike`.
 | `LiveShow` | A show in real time in your process: as `OfflineShow`, with `start`, `stop` and `with`, `frame` instead of `tick`, `routes`, `surfaces`, `inputs` and `health` |
 | `pending_recovery` | `pending_recovery(path, *, state_dir=None) -> PendingRecovery or None`: whether `busk run` would recover the show at `path` |
 | `midi_devices` | `midi_devices() -> tuple[str, ...]`: the MIDI input devices plugged in now, as `surface add midi` takes them |
+| `banner_frames` | `banner_frames(rate=30.0) -> tuple[str, ...]`: the banner `busk run` prints before its prompt, as the frames of its animation, `rate` a second; each is 12 lines of 38 columns with 24-bit ANSI colours, and the last is the banner at rest |
 | `DmxFrame` | One engine output: `seq`, `time`, and `universes`, a mapping of universe number to 512 bytes |
 | `EngineHealth` | How a `LiveShow`'s engine is doing: `state` (`"starting"`, `"running"`, `"stalled"`, `"stopped"`; under `busk run` with processes also `"restarting"`, `"failed"`), `ticks`, `overruns`, `lastTickAge` (seconds since its newest tick, or `None`) |
 | `Show` | The show file format, a `TypedDict` |

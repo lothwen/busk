@@ -674,6 +674,7 @@ def test_the_console_process_keeps_the_routes_the_root_sent_last(
     fake = types.SimpleNamespace(
         Thread=lambda **kwargs: types.SimpleNamespace(start=lambda: started.append(kwargs["name"])),
         Lock=threading.Lock,
+        Event=threading.Event,
     )
     monkeypatch.setattr(console_host, "threading", fake)
     monkeypatch.setattr(os, "_exit", exit_)

@@ -2,7 +2,8 @@
 shows it ran last, with a preview, and offers a new show and a show from a
 file; the app ends with the show chosen, read first, or with nothing. A show
 can be forgotten (call 23), and the ones busk would recover are marked
-(call 24)."""
+(call 24). They are in a box about half the screen's size, under busk's
+banner where it fits."""
 
 from __future__ import annotations
 
@@ -21,8 +22,8 @@ from textual.widgets import Static
 
 import busk
 from busk_tui import colors, config
-from busk_tui.bridge import show_read
-from busk_tui.launcher import Launcher, LauncherScreen
+from busk_tui.bridge import banner, show_read
+from busk_tui.launcher import BANNER_RATE, Launcher, LauncherScreen, frame_text
 from busk_tui.model import Recovery
 from busk_tui.widgets.file_picker import FileDialog
 from busk_tui.widgets.show_dialogs import NO_RECENT, NewShowDialog, OpenDialog
@@ -43,9 +44,13 @@ def remember(*shows: tuple[Path, str]) -> None:
         config.remember_show(config.state_path(), path, title)
 
 
-def drive(app: Launcher, body: Callable[[Pilot[Path]], Awaitable[None]]) -> None:
+def drive(
+    app: Launcher,
+    body: Callable[[Pilot[Path]], Awaitable[None]],
+    size: tuple[int, int] = (120, 30),
+) -> None:
     async def main() -> None:
-        async with app.run_test(size=(120, 30)) as pilot:
+        async with app.run_test(size=size) as pilot:
             await pilot.pause()
             await body(pilot)
 
@@ -448,3 +453,84 @@ def test_a_mark_that_comes_after_the_preview_is_added_to_it(tmp_path: Path) -> N
         assert app.is_running
 
     drive(app, body)
+
+
+# ------------------------------------------------------------------ the banner
+
+
+def test_the_banner_plays_over_the_middle_of_a_box_half_the_screen(tmp_path: Path) -> None:
+    club = show_at(tmp_path / "club.show", "Club Night")
+    remember((club, "Club Night"))
+    rates: list[float] = []
+
+    def quick(rate: float) -> tuple[str, ...]:
+        """busk's banner, every 20th frame: the first, the last and two between."""
+        rates.append(rate)
+        return banner(rate)[::20]
+
+    app = Launcher(show_read, banner=quick)
+
+    async def body(pilot: Pilot[Path]) -> None:
+        screen = home(app)
+        shown = screen.banner
+        assert shown is not None
+        assert rates == [BANNER_RATE]
+        assert shown.display
+        assert not screen.badge.display
+        assert (shown.rows, shown.columns) == (12, 38)
+        box = screen.query_one("#box").region
+        assert (box.width, box.height) == (100, 25)  # half of 200 × 50
+        assert shown.region.bottom + 1 == box.y  # a row between them
+        assert abs(shown.region.center[0] - box.center[0]) <= 0.5
+        assert "lighting console engine" not in frame_text(shown.frames[0]).plain
+        await until(pilot, lambda: shown.shown == len(shown.frames) - 1)
+        assert "lighting console engine" in str(shown.content)
+        assert shown.timer is not None
+        await pilot.pause(0.2)
+        assert shown.shown == len(shown.frames) - 1  # the last stays
+        assert screen.recent.list.has_focus
+
+    drive(app, body, size=(200, 50))
+
+
+def test_where_the_banner_does_not_fit_the_badge_stands_there() -> None:
+    app = Launcher(show_read, banner=banner)
+
+    async def body(pilot: Pilot[Path]) -> None:
+        screen = home(app)
+        assert screen.banner is not None
+        assert not screen.banner.display
+        assert screen.badge.display
+        box = screen.query_one("#box").region
+        assert (box.width, box.height) == (80, 12)  # the fewest columns and rows
+        await pilot.resize_terminal(120, 30)
+        await pilot.pause()
+        assert screen.banner.display
+        assert not screen.badge.display
+        assert screen.query_one("#box").region.size == (80, 15)
+
+    drive(app, body, size=(80, 24))
+
+
+def test_without_a_banner_the_badge_stands_over_the_box() -> None:
+    app = Launcher(show_read)
+
+    async def body(pilot: Pilot[Path]) -> None:
+        screen = home(app)
+        assert screen.banner is None
+        assert screen.badge.display
+        assert str(screen.badge.content) == " busk "
+
+    drive(app, body)
+
+
+def test_a_frame_leaves_out_the_background_its_escapes_reset_to() -> None:
+    text = frame_text("\x1b[38;2;1;2;3m\x1b[48;2;4;5;6mA\x1b[49mB\x1b[0m")
+    assert text.plain == "AB"
+
+    def styles_at(offset: int) -> list[str]:
+        return [str(span.style) for span in text.spans if span.start <= offset < span.end]
+
+    assert any("on #040506" in style for style in styles_at(0))
+    assert not any(" on " in style for style in styles_at(1))
+    assert any("#010203" in style for style in styles_at(1))

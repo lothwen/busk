@@ -70,6 +70,7 @@ from busk import (
     SurfaceStatus,
     TrackedCue,
     UnsupportedFeature,
+    banner_frames,
     load_show,
     midi_devices,
     pending_recovery,
@@ -1312,6 +1313,12 @@ def recovery_read(path: Path, state_dir: Path | None = None) -> Recovery | None:
         _debug.exception("pending_recovery(%r) raised", str(path))
         return None
     return None if found is None else Recovery(found.written, found.edits)
+
+
+def banner(rate: float) -> tuple[str, ...]:
+    """busk's banner, as the frames of its animation, ``rate`` a second, in
+    24-bit ANSI colours (``busk.banner_frames``), for the launcher."""
+    return banner_frames(rate)
 
 
 def _errors(issues: Sequence[Issue]) -> tuple[str, ...]:

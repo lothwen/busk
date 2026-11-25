@@ -12,8 +12,9 @@
   GAP-13 (``SurfaceInput``), the one of GAP-54 (``read_profile``), the
   one of GAP-03 (``SessionStatus``), the two of GAP-58
   (``pending_recovery``, ``PendingRecovery``), the one of GAP-59
-  (``RigCheck``) and the one of GAP-62 (``midi_devices``;
-  ``docs/dev/tui/engine-gaps.md``).
+  (``RigCheck``), the one of GAP-62 (``midi_devices``;
+  ``docs/dev/tui/engine-gaps.md``) and the start-up banner's
+  (``banner_frames``).
   Each resolves lazily from the module of the §5.1 table, and the type
   checkers' re-exports in ``busk/__init__.py`` are the same table.
 * Nothing else is an attribute of ``busk``.
@@ -66,6 +67,7 @@ PUBLIC = [
     "LiveShow",
     "pending_recovery",
     "midi_devices",
+    "banner_frames",
     # Data types
     "Show",
     "FixtureProfile",
@@ -116,7 +118,7 @@ one after it, GAP-21's one after that, GAP-27's two after it, GAP-46's
 three after them, GAP-13's one after those, GAP-03's one after it and
 GAP-58's two: ``pending_recovery`` after ``LiveShow``, ``PendingRecovery``
 after ``SessionStatus``; GAP-59's one after it; GAP-62's one after
-``pending_recovery``."""
+``pending_recovery``; the banner's after it."""
 
 DUNDERS = {"__init__", "__enter__", "__exit__", "__iter__", "__len__", "__str__"}
 """The special methods a public class documents; the rest come from Python."""
@@ -140,7 +142,7 @@ def run(script: str) -> str:
 
 
 def test_all_is_the_planned_list_sorted() -> None:
-    assert len(PUBLIC) == 51
+    assert len(PUBLIC) == 52
     assert busk.__all__ == sorted(PUBLIC)
 
 

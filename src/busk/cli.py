@@ -49,7 +49,8 @@
       :mod:`busk.persistence.eventlog`) to
       ``<stateDir>/logs/<show id>/<UTC start>.log``; ``info`` names the file.
 
-    * On a terminal the console prompt opens, with Tab completion and ``?``
+    * On a terminal the console prompt opens, under busk's banner (which
+      :mod:`busk.launch` plays while the run starts), with Tab completion and ``?``
       (Ctrl+C clears the line; a second one in a row, ``quit`` or Ctrl+D ends
       the run and offers to save unsaved edits). When stdin is
       not a terminal, commands are read from it line by line, and its end
@@ -124,15 +125,8 @@ from busk.console.console import status_line
 from busk.engine.clock import SWITCH_INTERVAL
 from busk.persistence.paths import installation_cid, state_directory
 from busk.persistence.show_file import utc_now
-from busk.process.console_host import (
-    FRONTEND_CLASHES,
-    ThreadsBackend,
-    add_run_arguments,
-    cannot_read,
-    print_issues,
-    run_console,
-)
-from busk.process.options import RunOptions
+from busk.process.console_host import ThreadsBackend, cannot_read, print_issues, run_console
+from busk.process.options import FRONTEND_CLASHES, RunOptions, add_run_arguments
 from busk.process.report import plural
 from busk.process.root import Root
 

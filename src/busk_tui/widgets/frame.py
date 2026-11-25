@@ -7,6 +7,7 @@ import time
 
 from rich.style import Style
 from rich.text import Text
+from textual import events
 from textual.widget import Widget
 
 from busk_tui import colors
@@ -43,7 +44,8 @@ RENAME_SHOW = Style(meta={"@click": "app.rename_show"})
 """The status bar's title: a click opens the show's name dialog."""
 
 FILE_MENU = Style(meta={"@click": "app.file_menu"})
-"""The status bar's ``busk ▾`` badge: a click opens the File menu."""
+"""The status bar's ``busk ▾`` badge, each letter of busk in its gel
+(:data:`colors.GELS`): a click opens the File menu."""
 
 _ENGINE_WARNINGS: dict[EngineState, bool] = {
     "starting": False,
@@ -77,7 +79,17 @@ class RouteLights:
         return tuple(on for _, on, _ in lights)
 
 
-class StatusBar(Widget):
+class OwnLinkColors:
+    """For a widget whose links draw in their own colours: Textual's link
+    style would paint its link colour over them (a selected tab's dark text
+    on cyan came out white)."""
+
+    @property
+    def link_style(self) -> Style:
+        return Style()
+
+
+class StatusBar(OwnLinkColors, Widget):
     """Row 1: what the show and the engine are doing (spec §5, plan §3 15).
 
     The app hands it each piece as it changes; it draws them all in one line,
@@ -86,10 +98,7 @@ class StatusBar(Widget):
     and one on the show's title its ``rename_show`` (pending plan Phase 36)."""
 
     DEFAULT_CSS = f"""
-    StatusBar {{
-        height: 1; background: {colors.BAR};
-        link-style: none; link-background-hover: {colors.SEL}; link-color-hover: {colors.FG};
-    }}
+    StatusBar {{ height: 1; background: {colors.BAR}; }}
     """
 
     def __init__(self, *, id: str | None = None) -> None:
@@ -102,8 +111,31 @@ class StatusBar(Widget):
         self.engine: EngineState = "starting"
         self.late = False
         self.beats: float | None = None
+        self.hovered: str | None = None  # the action of the link under the mouse
         self._lights = RouteLights()
         self._on: tuple[bool, ...] = ()
+
+    @property
+    def link_style_hover(self) -> Style:
+        """None: :meth:`left_text` lights the link under the mouse, whole
+        (Textual lights one span, and the badge has one for each letter)."""
+        return Style()
+
+    def on_mouse_move(self, event: events.MouseMove) -> None:
+        hovered = event.style.meta.get("@click")
+        if hovered != self.hovered:
+            self.hovered = hovered
+            self.refresh()
+
+    def on_leave(self, event: events.Leave) -> None:
+        if self.hovered is not None:
+            self.hovered = None
+            self.refresh()
+
+    def _lit(self, link: Style) -> Style:
+        """``link``, on the selection grey while the mouse is over it."""
+        lit = self.hovered is not None and self.hovered == link.meta.get("@click")
+        return link + Style(bgcolor=colors.SEL) if lit else link
 
     # ------------------------------------------------------------- input
 
@@ -132,11 +164,12 @@ class StatusBar(Widget):
     def left_text(self) -> Text:
         """Everything but the clock."""
         text = Text()
-        badge = Style(bold=True, color=colors.BG, bgcolor=colors.CYAN) + FILE_MENU
-        text.append(" busk ▾ ", style=badge)
+        text.append(" busk ▾ ", style=self._lit(Style(bold=True, color=colors.MID) + FILE_MENU))
+        for k, gel in enumerate(colors.GELS):  # over the link: one, lit whole on hover
+            text.stylize(gel, 1 + k, 2 + k)
         text.append("  show ", style=colors.DIM)
         title = self.title if len(self.title) <= 24 else self.title[:23] + "…"
-        text.append(title or "—", style=Style(color=colors.FG) + RENAME_SHOW)
+        text.append(title or "—", style=self._lit(Style(color=colors.FG) + RENAME_SHOW))
         if self.session is not None and self.session.dirty:
             text.append(" *", style=colors.AMBER)
         if self.engine != "running":
@@ -206,8 +239,9 @@ def route_light(route: RouteView, on: bool, label: str | None = None) -> Text:
     return Text("○ " + label, style=colors.BORDER)  # disabled, ignored, or no output
 
 
-class TabBar(Widget):
-    """F1 … F10, the current one in reverse video; wraps when narrow."""
+class TabBar(OwnLinkColors, Widget):
+    """F1 … F10, the current one in reverse video (dark on cyan); wraps when
+    narrow."""
 
     DEFAULT_CSS = f"""
     TabBar {{

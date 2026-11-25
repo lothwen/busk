@@ -8,7 +8,7 @@ The public API
 ==============
 
 Every public name is importable from ``busk`` itself; ``__all__`` lists the
-51 of them. The library guide, ``docs/library.md``, has the examples and the
+52 of them. The library guide, ``docs/library.md``, has the examples and the
 reference.
 
 Show documents
@@ -41,8 +41,10 @@ Running a show
     (:attr:`~LiveShow.surfaces`), what comes in from them
     (:attr:`~LiveShow.inputs`) and how its engine is doing
     (:attr:`~LiveShow.health`). :func:`pending_recovery` says whether
-    ``busk run`` would recover a show its last run left behind, and
-    :func:`midi_devices` which MIDI devices are plugged in.
+    ``busk run`` would recover a show its last run left behind,
+    :func:`midi_devices` which MIDI devices are plugged in, and
+    :func:`banner_frames` gives busk's start-up banner, for a frontend to
+    play.
 Data types
     :class:`Show`, :class:`FixtureProfile` and :data:`Command`, the
     ``TypedDict``\\ s of the file and command formats; :class:`Issue`,
@@ -150,6 +152,7 @@ __all__ = [
     "TrackedEffect",
     "TrackedValue",
     "UnsupportedFeature",
+    "banner_frames",
     "load_show",
     "midi_devices",
     "new_show",
@@ -204,6 +207,7 @@ _EXPORTS: dict[str, str] = {
     "SurfaceInput": "busk.console.inputs",
     "SurfaceStatus": "busk.io.surfaces",
     "midi_devices": "busk.io.surfaces",
+    "banner_frames": "busk.banner",
     "UnsupportedFeature": "busk.compiler.compile",
     "OfflineShow": "busk.runner",
     "LiveShow": "busk.runner",
@@ -217,6 +221,7 @@ _EXPORTS: dict[str, str] = {
 """Each public name → the module that defines it (phase-8-plan §5.1)."""
 
 if TYPE_CHECKING:  # what type checkers see: the same table, as explicit re-exports
+    from busk.banner import banner_frames as banner_frames
     from busk.commands.types import Command as Command
     from busk.compiler.compile import UnsupportedFeature as UnsupportedFeature
     from busk.console.console import EffectTemplateInfo as EffectTemplateInfo
